@@ -130,6 +130,37 @@ const ConnectionHeldLine = (props: { name: string }) => {
   )
 }
 
+type SetupFailed = Extract<MessagePart, { kind: "note"; note: "setup_failed" }>
+
+/** The translation key of a setup that did not succeed (spec 035). */
+const setupFailedKey = (code: SetupFailed["code"]): MessageKey => {
+  switch (code) {
+    case "exit":
+      return "chat.note.setupFailed"
+    case "timeout":
+      return "chat.note.setupFailed.timeout"
+    case "spawn":
+      return "chat.note.setupFailed.spawn"
+    default: {
+      const never: never = code
+      return never
+    }
+  }
+}
+
+const setupFailedPart = (part: MessagePart): SetupFailed | undefined =>
+  part.kind === "note" && part.note === "setup_failed" ? part : undefined
+
+/** The muted line of a setup action that did not succeed (spec 035). The turn went on. */
+const SetupFailedLine = (props: { part: SetupFailed }) => {
+  const { t } = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="setup-failed">
+      {t(setupFailedKey(props.part.code), { name: props.part.name })}
+    </p>
+  )
+}
+
 /**
  * The words of the muted line "<main model> reached its limit. <backup model> goes on." (spec 006,
  * "Backup model"). It gives the reset time when the provider named one.
@@ -154,6 +185,21 @@ const BackupGoesOnLine = (props: {
   return (
     <p class={styles.compactFailed} data-testid="backup-line">
       {backupWords(app, props.part)}
+    </p>
+  )
+}
+
+type BusyRetry = Extract<MessagePart, { kind: "note"; note: "busy_retry" }>
+
+const busyRetryPart = (part: MessagePart): BusyRetry | undefined =>
+  part.kind === "note" && part.note === "busy_retry" ? part : undefined
+
+/** The muted line "The model is busy. Trying again (1 of 3)." (spec 006). */
+const BusyRetryLine = (props: { part: BusyRetry }) => {
+  const { t } = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="busy-line">
+      {t("chat.note.busyRetry", { n: props.part.n, of: props.part.of })}
     </p>
   )
 }
@@ -1306,11 +1352,11 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
 const NoteLine = (props: { message: ChatMessage }) => {
   const app = useApp()
   const { t } = app
-  const note = () =>
-    props.message.parts.find((p): p is Extract<MessagePart, { kind: "note" }> => p.kind === "note")
-  const words = () => {
-    const part = note()
-    if (!part) return ""
+  const notes = () =>
+    props.message.parts.filter(
+      (p): p is Extract<MessagePart, { kind: "note" }> => p.kind === "note",
+    )
+  const wordsOf = (part: Extract<MessagePart, { kind: "note" }>) => {
     // The muted line of a handover has a link to the new thread (spec 003, "Hand over").
     if (part.note === "handed_over") return ""
     if (part.note === "watch_unchanged") return t("routines.note.unchanged", { name: part.routine })
@@ -1318,8 +1364,10 @@ const NoteLine = (props: { message: ChatMessage }) => {
       return t("chat.compact.failed", { reason: errorWords(t, part.code) })
     if (part.note === "connection_down") return t("chat.note.connectionDown", { name: part.name })
     if (part.note === "connection_held") return t("chat.note.connectionHeld", { name: part.name })
+    if (part.note === "setup_failed") return t(setupFailedKey(part.code), { name: part.name })
     if (part.note === "backup_goes_on") return backupWords(app, part)
     if (part.note === "kept_going") return t("chat.note.keptGoing", { n: part.n, of: part.of })
+    if (part.note === "busy_retry") return t("chat.note.busyRetry", { n: part.n, of: part.of })
     if (part.note === "tree_repaired")
       return t(
         part.why === "loop" ? "channels.parent.cleared.loop" : "channels.parent.cleared.levels",
@@ -1330,12 +1378,25 @@ const NoteLine = (props: { message: ChatMessage }) => {
     })
   }
   const handedOver = () => {
-    const part = note()
-    return part?.note === "handed_over" ? part : undefined
+    const part = notes()[0]
+    return notes().length === 1 && part?.note === "handed_over" ? part : undefined
   }
   return (
     <div class={styles.noteLine} data-testid="note-line">
-      <Show when={handedOver()} fallback={<span>{words()}</span>}>
+      <Show
+        when={handedOver()}
+        fallback={
+          <span class={styles.noteStack}>
+            <For each={notes()}>
+              {(part) => (
+                <span {...(part.note === "busy_retry" ? { "data-testid": "busy-line" } : {})}>
+                  {wordsOf(part)}
+                </span>
+              )}
+            </For>
+          </span>
+        }
+      >
         {(part) => (
           <span data-testid="handed-over-line">
             <HandedOverText part={part()} />
@@ -1408,6 +1469,7 @@ const PartView = (props: {
         />
       )}
     </Match>
+    <Match when={setupFailedPart(props.part)}>{(note) => <SetupFailedLine part={note()} />}</Match>
     <Match
       when={props.part.kind === "note" && props.part.note === "kept_going" ? props.part : undefined}
     >
@@ -1417,6 +1479,7 @@ const PartView = (props: {
         />
       )}
     </Match>
+    <Match when={busyRetryPart(props.part)}>{(note) => <BusyRetryLine part={note()} />}</Match>
     <Match when={props.part.kind === "tool"}>
       <ToolStep
         agent={props.agent}

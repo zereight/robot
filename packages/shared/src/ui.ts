@@ -12,12 +12,17 @@ export const Page = Schema.Literals([
   "chats",
   "today",
   "workflows",
+  "routines",
   "tasks",
   "orgchart",
   "usage",
   "help",
 ])
 export type Page = typeof Page.Type
+
+/** The page that shows this list. Routines and workflows are separate pages (spec 001). */
+export const listPage = (kind: "routine" | "workflow") =>
+  kind === "routine" ? "routines" : "workflows"
 
 export const PLACE_LIST_MIN = 200
 export const PLACE_LIST_MAX = 400
@@ -138,17 +143,28 @@ export interface UserSectionView {
 
 export interface PlaceSection {
   readonly id: SectionId
-  /** The places that are in no user section. They show first. */
+  /**
+   * The places that are in no user section. In Channels they show first. In Agents they show
+   * last, in the section "Unassigned".
+   */
   readonly places: readonly Place[]
-  /** The user sections, in the order the user set. They show after the places above. */
+  /** The user sections, in the order the user set. */
   readonly sections: readonly UserSectionView[]
 }
 
-/** Every place of a built-in section, also those in its user sections. */
-export const allPlaces = (section: PlaceSection): readonly Place[] => [
-  ...section.places,
-  ...section.sections.flatMap((s) => s.places),
-]
+/** The collapse key of "Unassigned". It is not the id of a user section. */
+export const UNASSIGNED_SECTION_ID = "unassigned:agents"
+
+/** True when places with no section show before the user sections. Agents show them last. */
+export const loosePlacesFirst = (id: SectionId) => id !== "agents"
+
+/** Every place of a built-in section, in the order the list shows. */
+export const allPlaces = (section: PlaceSection): readonly Place[] => {
+  const nested = section.sections.flatMap((s) => s.places)
+  return loosePlacesFirst(section.id)
+    ? [...section.places, ...nested]
+    : [...nested, ...section.places]
+}
 
 export interface SectionSummary {
   readonly unread: number

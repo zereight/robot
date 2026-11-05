@@ -23,6 +23,12 @@ export const BROWSER_TOOL_NAMES = [
 ] as const
 
 /**
+ * The tool that asks the app to look at one thing again later (spec 007, "Look again later"). A
+ * vendor program has no tool of its own for work that takes time, so every runtime gets it.
+ */
+export const FOLLOW_UP_TOOL_NAME = "wait_until"
+
+/**
  * The tool that searches the past chats (spec 007). A runtime gets it only when memory is on for
  * the agent, as an API agent does.
  */
@@ -34,8 +40,9 @@ export const SEARCH_TOOL_NAME = "search_chats"
  */
 export const AGENT_TOOL_NAMES = ["list_agents", "send_message"] as const
 
-/** The tools that the app can give to a runtime. */
+/** The tools that the app can give to a runtime, in the order of their definitions. */
 export const BRIDGE_TOOL_NAMES = [
+  FOLLOW_UP_TOOL_NAME,
   ...BROWSER_TOOL_NAMES,
   SEARCH_TOOL_NAME,
   ...AGENT_TOOL_NAMES,

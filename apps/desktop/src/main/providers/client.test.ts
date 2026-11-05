@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, it, test } from "bun:test"
 import type { ModelInfo } from "@robot/shared"
 import {
   anthropicEfforts,
   createdOf,
   effortsFromCapabilities,
   effortToSend,
+  failureFrom,
   listModels,
   modelEfforts,
   offeredEfforts,
@@ -267,5 +268,38 @@ describe("listModels for an Anthropic account", () => {
     answer([{ id: "o3", capabilities: { effort: { supported: false } } }])
     const models = await listModels({ ...conn, kind: "openai" })
     expect(models[0]?.efforts).toEqual(["low", "medium", "high"])
+  })
+})
+
+const failed = (status: number, message: string) =>
+  new Response(JSON.stringify({ error: { message } }), { status })
+
+describe("When a provider answers with an error", () => {
+  describe("with too many requests", () => {
+    it("should call the provider busy", async () => {
+      expect((await failureFrom(failed(429, "Too many requests"))).code).toBe("provider_busy")
+    })
+  })
+
+  describe("with a usage limit", () => {
+    it("should call the provider limited", async () => {
+      expect((await failureFrom(failed(429, "You have hit your usage limit."))).code).toBe(
+        "provider_limit",
+      )
+    })
+  })
+
+  describe("with a plain 429", () => {
+    it("should call the provider limited", async () => {
+      expect((await failureFrom(failed(429, "slow down"))).code).toBe("provider_limit")
+    })
+  })
+
+  describe("with an overloaded model", () => {
+    it("should call the provider busy", async () => {
+      expect((await failureFrom(failed(503, "The engine is overloaded"))).code).toBe(
+        "provider_busy",
+      )
+    })
   })
 })

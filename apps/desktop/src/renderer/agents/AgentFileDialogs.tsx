@@ -291,6 +291,33 @@ const readFailure = (error: unknown): AgentFileFailure | undefined => {
 /** One line of the part "Not imported": where it is in the file, and why it is not made. */
 export const NotImportedList = (props: { items: readonly NotImported[]; testId: string }) => {
   const { t } = useApp()
+  const where = (item: NotImported): string => {
+    switch (item.reason) {
+      case "no_place":
+        return t("importReview.notImported.step", {
+          owner: item.owner,
+          step: item.step,
+          name: item.name,
+        })
+      case "channel_no_member":
+        return t("importReview.notImported.channel", { owner: item.owner })
+      case "skill_no_agent":
+      case "skills_full":
+        return t("importReview.notImported.skill", { owner: item.owner })
+      case "no_step":
+        return t("importReview.notImported.node", {
+          owner: item.owner,
+          type: item.nodeType,
+          name: item.name,
+        })
+      case "text_cut":
+        return t("importReview.notImported.cut", { owner: item.owner, name: item.name })
+      case "unknown_field":
+        return item.owner === null
+          ? t("importReview.notImported.file", { field: item.field })
+          : t("importReview.notImported.field", { owner: item.owner, field: item.field })
+    }
+  }
   return (
     <div data-testid={props.testId}>
       <h3 class={review.sectionTitle}>{t("importReview.notImported.title")}</h3>
@@ -302,24 +329,7 @@ export const NotImportedList = (props: { items: readonly NotImported[]; testId: 
           <For each={props.items}>
             {(item) => (
               <li data-testid="not-imported-item">
-                <span>
-                  {item.reason === "no_place"
-                    ? t("importReview.notImported.step", {
-                        owner: item.owner,
-                        step: item.step,
-                        name: item.name,
-                      })
-                    : item.reason === "channel_no_member"
-                      ? t("importReview.notImported.channel", { owner: item.owner })
-                      : item.reason === "skill_no_agent" || item.reason === "skills_full"
-                        ? t("importReview.notImported.skill", { owner: item.owner })
-                        : item.owner === null
-                          ? t("importReview.notImported.file", { field: item.field })
-                          : t("importReview.notImported.field", {
-                              owner: item.owner,
-                              field: item.field,
-                            })}
-                </span>{" "}
+                <span>{where(item)}</span>{" "}
                 <span class={review.hint}>{t(`importReview.reason.${item.reason}` as const)}</span>
               </li>
             )}

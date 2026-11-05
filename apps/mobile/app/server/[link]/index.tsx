@@ -1,4 +1,4 @@
-import { allPlaces, summarize } from "@robot/phone"
+import { allPlaces, loosePlacesFirst, summarize, UNASSIGNED_SECTION_ID } from "@robot/phone"
 import type { Agent, Channel, Place, PlaceSection } from "@robot/shared"
 import { router, Stack, useLocalSearchParams } from "expo-router"
 import { useState } from "react"
@@ -142,7 +142,7 @@ const Section = (props: {
               {section.id === "agents" ? t("places.empty.agents") : t("places.empty.channels")}
             </Body>
           ) : null}
-          {section.places.map(row)}
+          {loosePlacesFirst(section.id) ? section.places.map(row) : null}
           {section.sections.map((user) => {
             const key = `user:${user.id}`
             const userOpen = !props.closed.includes(key)
@@ -166,6 +166,25 @@ const Section = (props: {
               </View>
             )
           })}
+          {section.id === "agents" && everything.length > 0 ? (
+            <View style={styles.userSection}>
+              <Header
+                title={t("places.unassigned")}
+                open={!props.closed.includes(UNASSIGNED_SECTION_ID)}
+                places={section.places}
+                onPress={() => props.toggle(UNASSIGNED_SECTION_ID)}
+              />
+              {!props.closed.includes(UNASSIGNED_SECTION_ID) ? (
+                section.places.length === 0 ? (
+                  <Body muted style={styles.empty}>
+                    {t("places.emptySection")}
+                  </Body>
+                ) : (
+                  section.places.map(row)
+                )
+              ) : null}
+            </View>
+          ) : null}
         </>
       ) : null}
     </View>
@@ -266,11 +285,19 @@ const PlaceRow = (props: {
         { backgroundColor: pressed ? palette.pressed : "transparent" },
       ]}
     >
-      {place.kind === "agent" ? (
-        <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
-      ) : (
-        <ChannelMark picture={props.channel?.picture} size={36} />
-      )}
+      <View style={styles.mark}>
+        {place.kind === "agent" ? (
+          <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
+        ) : (
+          <ChannelMark picture={props.channel?.picture} size={36} />
+        )}
+        {/* The dot sits on the face, with its ring, as on the desktop (spec 001). */}
+        {place.working ? (
+          <View style={styles.markDot}>
+            <WorkingDot ring />
+          </View>
+        ) : null}
+      </View>
       <View style={styles.placeText}>
         <View style={styles.placeTop}>
           <ShownText
@@ -281,7 +308,6 @@ const PlaceRow = (props: {
               { color: palette.text, fontWeight: place.unread > 0 ? "700" : "500" },
             ]}
           />
-          {place.working ? <WorkingDot /> : null}
           {role ? (
             // The name comes first. The slot is what is left of the line. The badge is cut with an
             // ellipsis in it, and it hides when less than 4 characters of it fit.
@@ -355,6 +381,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.m,
   },
   placeText: { flex: 1, gap: 2 },
+  // The face, picture or `#` mark of a place, with the working dot at its lower right (spec 001).
+  mark: { width: 36, height: 36 },
+  markDot: { position: "absolute", right: -4, bottom: -4 },
   placeTop: { flexDirection: "row", alignItems: "center", gap: space.s },
   placeName: { fontSize: text.m, flexShrink: 1 },
   roleSlot: { flex: 1, minWidth: 0, flexDirection: "row" },

@@ -127,6 +127,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
+import { BUSY_TRIES } from "../providers/busyRetry.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { goOnTurns } from "../providers/resume.ts"
@@ -158,6 +159,7 @@ import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
 import { SettingsStore } from "./Settings.ts"
+import { prepareTurn } from "./setupRun.ts"
 import { closing, quietReporter, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { Tasks } from "./Tasks.ts"
@@ -326,6 +328,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
     Channels,
     Effect.gen(function* () {
       const db = yield* Database
+      const dataDir = (yield* Platform).dataDir
       const bus = yield* EventBus
       const providers = yield* Providers
       const holds = yield* ModelHolds
@@ -908,6 +911,23 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               save("streaming")
               emitMessage(id)
             }
+            // Setup actions of the workspace run before the model (spec 035).
+            if (attempt === "first" && !keeping) {
+              const failures = yield* Effect.promise(() =>
+                prepareTurn(dataDir, o.agent.workspace, { signal: controller.signal }),
+              )
+              if (!controller.signal.aborted && failures.length > 0) {
+                for (const failure of failures)
+                  parts.push({
+                    kind: "note",
+                    note: "setup_failed",
+                    name: failure.name,
+                    code: failure.code,
+                  })
+                save("streaming")
+                emitMessage(id)
+              }
+            }
             const changePart = (
               callId: string,
               change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
@@ -1104,6 +1124,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 workspace: o.agent.workspace,
                 permission: levelOnRuntime(o.agent.permission, isRuntime),
                 useTools,
+                // A vendor runtime shows what its program reports. A call with no tools of the app
+                // is not tried again (spec 006).
+                ...(!isRuntime && useTools
+                  ? {
+                      busy: {
+                        wait: (n: number) => {
+                          parts.push({ kind: "note", note: "busy_retry", n, of: BUSY_TRIES })
+                          save("streaming")
+                          emitMessage(id)
+                          silence.pulse()
+                        },
+                        again: () => silence.pulse(),
+                      },
+                    }
+                  : {}),
               },
               {
                 execute: async (call) =>

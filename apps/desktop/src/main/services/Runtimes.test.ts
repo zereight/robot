@@ -13,6 +13,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   type ChatMessage,
+  HOUR_CACHE_MS,
   messageText,
   type PermissionLevel,
   type ToolStepKind,
@@ -35,6 +36,7 @@ import { Providers } from "./Providers.ts"
 import { Runtimes } from "./Runtimes.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
@@ -484,6 +486,46 @@ const chatSetup = async (
   return { run, t, agent, local, history, reply, send, settled, card, respond, account }
 }
 
+/** The text blocks of one stand-in program call, when it recorded them. */
+function callBlocks(call: Record<string, unknown> | undefined): readonly string[] {
+  const blocks = call?.blocks
+  if (!Array.isArray(blocks)) return []
+  return blocks.flatMap((block) => (typeof block === "string" ? [block] : []))
+}
+
+/** Moves the end time of every reply of the agent, so a test can pass the cache hour. */
+async function ageReplies(s: Awaited<ReturnType<typeof chatSetup>>, msAgo: number) {
+  const at = Date.now() - msAgo
+  await s.run(
+    Database.use((db) =>
+      Effect.sync(() => {
+        db.run(
+          "UPDATE message SET finished_at = ? WHERE agent_id = ? AND author = 'agent'",
+          at,
+          s.agent.id,
+        )
+      }),
+    ),
+  )
+}
+
+const compactedOf = (messages: readonly ChatMessage[]) =>
+  messages.flatMap((message) => message.parts.filter((part) => part.kind === "compacted"))
+
+/** Waits until a reply holds this text. A compact row has no such text. */
+async function replyHas(s: Awaited<ReturnType<typeof chatSetup>>, text: string) {
+  await until(
+    async () =>
+      (await s.history()).messages.some(
+        (message) =>
+          message.author === "agent" &&
+          message.status === "done" &&
+          messageText(message).includes(text),
+      ),
+    15_000,
+  )
+}
+
 describe("download", () => {
   test("a missing program is downloaded, checked, found and used", async () => {
     fake.setCodex({ loggedIn: true, method: "chatgpt" })
@@ -601,6 +643,58 @@ describe("a chat on a subscription", () => {
       "You: Echo: second",
       "User: third",
     ])
+  })
+
+  test("Claude Code compacts before the next turn when the last reply ended an hour ago", async () => {
+    const s = await chatSetup("claude_code")
+    await s.send("one")
+    await s.settled()
+    await s.send("two")
+    await replyHas(s, "Echo: two")
+    await ageReplies(s, HOUR_CACHE_MS - 30 * 60_000)
+    await s.send("three warm")
+    await replyHas(s, "Echo: three warm")
+    expect(compactedOf((await s.history()).messages)).toEqual([])
+
+    await ageReplies(s, HOUR_CACHE_MS + 60_000)
+    await s.send("four cold")
+    await replyHas(s, "Echo: four cold")
+    expect(compactedOf((await s.history()).messages)).toEqual([
+      expect.objectContaining({ auto: true }),
+    ])
+    const blocks = callBlocks(fake.claudeCalls().at(-1))
+    expect(blocks.some((block) => block.includes("Summary of the earlier conversation"))).toBe(true)
+    expect(blocks.some((block) => block.includes("User: one"))).toBe(false)
+    expect(blocks.some((block) => block.includes("three warm"))).toBe(true)
+    expect(blocks.some((block) => block.includes("User: four cold"))).toBe(true)
+  })
+
+  test("Claude Code does not compact after an hour when automatic compact is off", async () => {
+    const s = await chatSetup("claude_code")
+    await s.run(SettingsStore.use((store) => store.update({ autoCompact: false })))
+    await s.send("one")
+    await s.settled()
+    await s.send("two")
+    await replyHas(s, "Echo: two")
+    await ageReplies(s, HOUR_CACHE_MS + 60_000)
+    await s.send("three")
+    await replyHas(s, "Echo: three")
+    expect(compactedOf((await s.history()).messages)).toEqual([])
+    expect(callBlocks(fake.claudeCalls().at(-1)).some((block) => block.includes("User: one"))).toBe(
+      true,
+    )
+  })
+
+  test("Codex does not compact after an hour", async () => {
+    const s = await chatSetup("codex")
+    await s.send("one")
+    await s.settled()
+    await s.send("two")
+    await replyHas(s, "Echo: two")
+    await ageReplies(s, HOUR_CACHE_MS + 60_000)
+    await s.send("three")
+    await replyHas(s, "Echo: three")
+    expect(compactedOf((await s.history()).messages)).toEqual([])
   })
 
   test("for Claude Code, the memory goes with the message and stays the same in the next turns", async () => {

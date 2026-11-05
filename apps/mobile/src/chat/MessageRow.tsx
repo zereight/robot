@@ -19,6 +19,26 @@ import { ShownText } from "../ui/names.tsx"
 import type { RowMessage } from "./rows.ts"
 import { ToolCard } from "./ToolCard.tsx"
 
+type SetupFailed = Extract<MessagePart, { kind: "note"; note: "setup_failed" }>
+
+/** The translation key of a setup that did not succeed (spec 035). */
+function setupFailedKey(
+  code: SetupFailed["code"],
+): "chat.note.setup_failed" | "chat.note.setup_failed_timeout" | "chat.note.setup_failed_spawn" {
+  switch (code) {
+    case "exit":
+      return "chat.note.setup_failed"
+    case "timeout":
+      return "chat.note.setup_failed_timeout"
+    case "spawn":
+      return "chat.note.setup_failed_spawn"
+    default: {
+      const never: never = code
+      return never
+    }
+  }
+}
+
 /** A chat message or a channel message: what a row needs of both. */
 export interface ShownMessage extends RowMessage {
   readonly status: ChatMessage["status"]
@@ -290,23 +310,29 @@ const Part = (props: {
                       t("chat.note.handed_over", { name: part.toName })
                     : part.note === "kept_going"
                       ? t("chat.note.kept_going", { n: part.n, of: part.of })
-                      : part.note === "tree_repaired"
-                        ? t(`chat.note.tree_repaired.${part.why}`)
-                        : part.note === "backup_goes_on"
-                          ? part.until === null
-                            ? t("chat.note.backup_goes_on", {
-                                main: part.main,
-                                backup: part.backup,
-                              })
-                            : t("chat.note.backup_goes_on_until", {
-                                main: part.main,
-                                backup: part.backup,
-                                time: new Date(part.until).toLocaleTimeString(locale, {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                }),
-                              })
-                          : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
+                      : part.note === "busy_retry"
+                        ? t("chat.note.busy_retry", { n: part.n, of: part.of })
+                        : part.note === "tree_repaired"
+                          ? t(`chat.note.tree_repaired.${part.why}`)
+                          : part.note === "backup_goes_on"
+                            ? part.until === null
+                              ? t("chat.note.backup_goes_on", {
+                                  main: part.main,
+                                  backup: part.backup,
+                                })
+                              : t("chat.note.backup_goes_on_until", {
+                                  main: part.main,
+                                  backup: part.backup,
+                                  time: new Date(part.until).toLocaleTimeString(locale, {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  }),
+                                })
+                            : part.note === "setup_failed"
+                              ? t(setupFailedKey(part.code), { name: part.name })
+                              : t(`chat.note.starter.${part.what}.${part.why}`, {
+                                  name: part.name,
+                                })}
         </Text>
       )
     case "tool":

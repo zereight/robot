@@ -1404,3 +1404,26 @@ describe("the step of the hand-off rule along the organizations (spec 030 'Migra
     ])
   })
 })
+
+describe("When a database gains the follow-up action", () => {
+  describe("with a follow-up from before that step", () => {
+    test("should start a new turn for it", () => {
+      const step = migrations.findIndex((sql) => sql.includes("follow_up ADD COLUMN action"))
+      // The steps of the organizations come after it (spec 030, "Migration"); a shipped step keeps its place.
+      expect(step).toBe(migrations.findIndex((sql) => sql.includes("CREATE TABLE follow_up")) + 1)
+      const db = upTo(step)
+      db.exec(`
+        INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+        INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+          workspace, section, created_at, updated_at)
+          VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
+        INSERT INTO follow_up (id, agent_id, thread_id, task_id, reason, at, created_at)
+          VALUES ('f', 'a', NULL, 't', 'later', 1, 1);
+      `)
+      db.exec(migrations[step] ?? "")
+      expect(db.prepare("SELECT action FROM follow_up WHERE id = 'f'").get()).toEqual({
+        action: "queue",
+      })
+    })
+  })
+})

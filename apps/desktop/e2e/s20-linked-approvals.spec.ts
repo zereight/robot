@@ -242,6 +242,7 @@ test("linked server: approvals, questions and tasks are answered from another co
     await two.page.getByTestId("open-settings").click()
     await two.page.getByTestId("settings-nav-devices").click()
     await clientRow(two.page, "MacBook 1").getByTestId("client-remove").click()
+    await clientRow(two.page, "MacBook 1").getByTestId("client-remove-confirm").click()
     await expect(clientRow(two.page, "MacBook 1")).toHaveCount(0)
     await two.page.getByTestId("settings-close").click()
 

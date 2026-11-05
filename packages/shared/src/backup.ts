@@ -15,8 +15,9 @@ const CREDIT_WORDS =
   /credit balance|insufficient (credits?|funds|balance)|out of credits?|no (more )?credits?|add (more )?credits|buy more credits|payment required/i
 const QUOTA_WORDS =
   /insufficient[_ ]quota|exceeded your (current )?quota|quota (is |was |has been )?(exceeded|spent|reached|used)|out of quota|no quota|quota exceeded|resource[_ ]exhausted/i
+// "Too many requests" is a busy provider, not a usage limit (spec 006, "Busy provider").
 const PLAN_WORDS =
-  /usage limit|plan limit|(5|five)[- ]hour limit|weekly limit|daily limit|monthly limit|limit (reached|exceeded)|hit your (\w+ )?limit|reached your (\w+ )?limit|extra usage|allowance|rate[_ -]?limit|too many requests|\b429\b/i
+  /usage limit|plan limit|(5|five)[- ]hour limit|weekly limit|daily limit|monthly limit|limit (reached|exceeded)|hit your (\w+ )?limit|reached your (\w+ )?limit|extra usage|allowance|rate[_ -]?limit|\b429\b/i
 
 /**
  * Which limit a report from a provider or a program names. Credit and quota come before the plan

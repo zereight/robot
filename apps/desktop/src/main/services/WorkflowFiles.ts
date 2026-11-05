@@ -1,6 +1,8 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs"
 import {
+  type CcNotExported,
   type ChecklistItem,
+  ccFileName,
   type Edge,
   graphFault,
   ignoredWorkflowFields,
@@ -8,6 +10,7 @@ import {
   missingAgentNames,
   type NotImported,
   nameKey,
+  parseCcWorkflowFile,
   parseWorkflowFile,
   planNames,
   redactSecrets,
@@ -24,6 +27,7 @@ import {
   type WorkflowFilePreview,
   type WorkflowFileStep,
   type WorkflowFileWorkflow,
+  writeCcWorkflowFile,
   writeWorkflowFile,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer } from "effect"
@@ -41,6 +45,14 @@ export interface WorkflowFilesService {
     serverId: string
     workflowIds: readonly string[]
   }): Effect.Effect<{ path: string | null; count: number }, AppError>
+  /**
+   * Asks where to save, then writes one workflow as a file of CC Workflow Studio. `path` is null
+   * when cancelled. `notExported` lists what the file does not hold.
+   */
+  exportCc(input: {
+    serverId: string
+    workflowId: string
+  }): Effect.Effect<{ path: string | null; notExported: readonly CcNotExported[] }, AppError>
   /** Asks for a workflow file and reads it. Returns what an import would make, or null if cancelled. */
   open(serverId: string): Effect.Effect<WorkflowFilePreview | null, AppError>
   /**
@@ -50,7 +62,34 @@ export interface WorkflowFilesService {
   import(input: {
     serverId: string
     pick: readonly number[]
+    /**
+     * For a file of CC Workflow Studio: the agent of every agent step. The file names no agent.
+     * An agent that does not exist or is archived is refused.
+     */
+    agentId?: string | undefined
   }): Effect.Effect<WorkflowFileImported, AppError>
+}
+
+/**
+ * A row of "Not imported" from a CC Workflow Studio file, for the workflow `owner` (the name that
+ * the new workflow gets). The names of nodes come from the file, so the hiding of secrets
+ * reaches them too.
+ */
+const hideNotImported = (
+  item: NotImported,
+  owner: string,
+  hide: (text: string) => string,
+): NotImported => {
+  switch (item.reason) {
+    case "no_step":
+      return { ...item, owner, name: hide(item.name), nodeType: hide(item.nodeType) }
+    case "text_cut":
+      return { ...item, owner, name: hide(item.name) }
+    case "unknown_field":
+      return { ...item, owner }
+    default:
+      return item
+  }
 }
 
 export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesService>()(
@@ -96,8 +135,11 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
           catch: (e) => new AppError({ code: "file_unreadable", detail: String(e) }),
         })
         if (text === null) return yield* new AppError({ code: "workflow_file_too_large" })
-        const parsed = parseWorkflowFile(text)
+        // A file of CC Workflow Studio becomes one workflow in the shape of a ROBot file.
+        const parsedCc = parseCcWorkflowFile(text)
+        const parsed = parsedCc ?? parseWorkflowFile(text)
         if (!parsed.ok) return yield* refusal(parsed)
+        const cc = parsedCc?.ok ? parsedCc.cc : undefined
         const hide = yield* hider
         const file: WorkflowFile = mapFileTexts(parsed.file, hide)
         // A workflow where the app hid a secret in one of its texts starts not ticked.
@@ -113,7 +155,8 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         return {
           file,
           secrets,
-          ignored: ignoredWorkflowFields(text),
+          cc,
+          ignored: cc ? [] : ignoredWorkflowFields(text),
           taken,
           names: planNames(
             file.workflows.map((w) => w.name),
@@ -121,8 +164,19 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
             WORKFLOW_NAME_MAX,
           ),
           agentIds: yield* activeAgents(serverId),
+          hide,
         }
       })
+
+      /** The names of all agents of a server, also the archived ones, by id. */
+      const agentNames = (serverId: string) =>
+        Effect.gen(function* () {
+          const all = [
+            ...(yield* agents.list(serverId, false)),
+            ...(yield* agents.list(serverId, true)),
+          ]
+          return new Map(all.map((a) => [a.id, a.name]))
+        })
 
       /** A workflow of the app as the entry of a file. */
       const toFileWorkflow = (
@@ -207,12 +261,7 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         // The file keeps the order of the list of workflows.
         chosen.sort((a, b) => all.indexOf(a) - all.indexOf(b))
         const hide = yield* hider
-        const names = new Map(
-          [
-            ...(yield* agents.list(input.serverId, false)),
-            ...(yield* agents.list(input.serverId, true)),
-          ].map((a) => [a.id, a.name]),
-        )
+        const names = yield* agentNames(input.serverId)
         const written = chosen.map((w) => toFileWorkflow(w, (id) => names.get(id), hide))
         // Two names can look alike once hidden. The file may not hold two of one name.
         const unique = planNames(
@@ -245,6 +294,33 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         return { path: target, count: chosen.length }
       })
 
+      const exportCc = Effect.fn("WorkflowFiles.exportCc")(function* (input: {
+        serverId: string
+        workflowId: string
+      }) {
+        const found = (yield* workflows.list(input.serverId)).find((w) => w.id === input.workflowId)
+        if (!found) return yield* new AppError({ code: "workflow_not_found" })
+        const hide = yield* hider
+        const names = yield* agentNames(input.serverId)
+        const entry = toFileWorkflow(found, (id) => names.get(id), hide)
+        const result = writeCcWorkflowFile({
+          workflow: entry,
+          trigger: found.trigger.kind,
+          now: new Date(),
+        })
+        if (Buffer.byteLength(result.text) > WORKFLOW_FILE_MAX_BYTES)
+          return yield* new AppError({ code: "workflow_file_too_large" })
+        const target = yield* Effect.promise(() =>
+          platform.pickWorkflowFileSave(`${ccFileName(entry.name)}.json`),
+        )
+        if (!target) return { path: null, notExported: [] as readonly CcNotExported[] }
+        yield* Effect.try({
+          try: () => writeFileSync(target, result.text),
+          catch: (e) => new AppError({ code: "workflow_file_write", detail: String(e) }),
+        })
+        return { path: target, notExported: result.notExported }
+      })
+
       const open = Effect.fn("WorkflowFiles.open")(function* (serverId: string) {
         const path = yield* Effect.promise(() => platform.pickWorkflowFile())
         if (!path) return null
@@ -254,6 +330,9 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
           reason: "unknown_field",
           ...f,
         }))
+        // The file holds one workflow. Its rows name it as the new workflow will be named.
+        for (const item of loaded.cc?.notImported ?? [])
+          notImported.push(hideNotImported(item, loaded.names[0] ?? item.owner ?? "", loaded.hide))
         // The file holds no channel: the place of each post step is not made.
         for (const [i, w] of loaded.file.workflows.entries())
           for (const [j, step] of w.steps.entries())
@@ -265,6 +344,7 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
                 name: step.name,
               })
         return {
+          form: loaded.cc ? "cc" : "robot",
           workflows: loaded.file.workflows.map((w, i) => {
             const name = loaded.names[i] ?? w.name
             return {
@@ -277,6 +357,8 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
                 loaded.agentIds.has(key),
               ),
               secretRemoved: loaded.secrets[i] ?? false,
+              lostConnections: loaded.cc?.lostConnections ?? false,
+              needAgent: loaded.cc?.agentSteps ?? 0,
             }
           }),
           notImported,
@@ -286,6 +368,7 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
       const importWorkflows = Effect.fn("WorkflowFiles.apply")(function* (input: {
         serverId: string
         pick: readonly number[]
+        agentId?: string | undefined
       }) {
         if (!pending) return yield* new AppError({ code: "invalid_input" })
         const loaded = yield* load(pending, input.serverId)
@@ -296,6 +379,10 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         )
           return yield* new AppError({ code: "invalid_input" })
         if (picked.size === 0) return yield* new AppError({ code: "import_nothing_picked" })
+        const chosenAgent = input.agentId ?? ""
+        if (chosenAgent !== "" && ![...loaded.agentIds.values()].includes(chosenAgent))
+          return yield* new AppError({ code: "invalid_input" })
+        const needConnect = new Set(loaded.cc?.lostInputs ?? [])
         const chosen = loaded.file.workflows.filter((_, i) => picked.has(i))
         // Only the workflows that are made take a name.
         const names = planNames(
@@ -310,15 +397,24 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         ) {
           // Every imported workflow is off: its schedule does not fire until the user says so.
           const created = yield* workflows.create(
-            toWorkflowInput(input.serverId, workflow, name, (key) => loaded.agentIds.get(key)),
+            toWorkflowInput(
+              input.serverId,
+              workflow,
+              name,
+              (key) => loaded.agentIds.get(key),
+              // Only a file of CC Workflow Studio has agent steps that name no agent.
+              loaded.cc ? chosenAgent : "",
+            ),
             { enabled: false },
           )
           const todo: ChecklistItem[] = []
-          for (const step of created.steps) {
+          for (const [i, step] of created.steps.entries()) {
             if (step.kind === "agent" && step.agentId === "")
               todo.push({ kind: "stepAgent", stepId: step.id, name: step.name })
             if (step.kind === "post" && step.channelId === "")
               todo.push({ kind: "stepPlace", stepId: step.id, name: step.name })
+            if (needConnect.has(i + 1))
+              todo.push({ kind: "stepConnect", stepId: step.id, name: step.name })
           }
           if (created.trigger.kind === "schedule") todo.push({ kind: "workflowOn" })
           yield* checklists.create({ workflowId: created.id }, todo)
@@ -347,7 +443,12 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         return { workflows: made }
       })
 
-      return WorkflowFiles.of({ export: exportWorkflows, open, import: importWorkflows })
+      return WorkflowFiles.of({
+        export: exportWorkflows,
+        exportCc,
+        open,
+        import: importWorkflows,
+      })
     }),
   )
 }

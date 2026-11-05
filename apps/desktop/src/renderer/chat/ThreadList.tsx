@@ -129,6 +129,7 @@ export const ThreadList = (props: { agentId: string }) => {
           label: t("threads.delete"),
           onSelect: () => setDeleting(x),
           disabled: busy !== null,
+          danger: true,
           testId: "thread-delete",
         },
       )
@@ -288,7 +289,7 @@ const DeleteDialog = (props: { agentId: string; thread: ChatThread; onClose: () 
         <div class={styles.actions}>
           <Button onClick={props.onClose}>{t("agents.cancel")}</Button>
           <Button
-            variant="primary"
+            variant="danger"
             onClick={() => void remove()}
             data-testid="thread-delete-confirm"
           >

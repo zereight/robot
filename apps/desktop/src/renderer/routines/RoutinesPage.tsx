@@ -32,6 +32,7 @@ import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { useShownText } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
+import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
@@ -39,6 +40,7 @@ import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { usageLine } from "../tasks/usageText.ts"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -566,6 +568,8 @@ export const RoutinesView = () => {
   const [editing, setEditing] = createSignal<Routine | "new">()
   const [mode, setMode] = createSignal<"list" | "week" | "month">("list")
   const [anchor, setAnchor] = createSignal(new Date())
+  // The danger button of a card asks first (spec 000, "Danger buttons").
+  const [deleting, setDeleting] = createSignal<string>()
   const [routines, { refetch }] = createResource(
     () => ui.server()?.id,
     (serverId) => call("routines.list", { serverId }),
@@ -629,7 +633,7 @@ export const RoutinesView = () => {
   }
 
   return (
-    <div class={styles.page} data-testid="routines-view">
+    <div class={`${shell.page} ${styles.page}`} data-testid="routines-view">
       <div class={styles.bar}>
         <Segmented
           label={t("routines.view")}
@@ -749,12 +753,32 @@ export const RoutinesView = () => {
                 <Button onClick={() => setEditing(r)} data-testid="routine-edit">
                   {t("agents.memory.edit")}
                 </Button>
-                <Button
-                  onClick={() => call("routines.delete", { id: r.id })}
-                  data-testid="routine-delete"
+                <Show
+                  when={deleting() === r.id}
+                  fallback={
+                    <Button
+                      variant="danger"
+                      onClick={() => setDeleting(r.id)}
+                      data-testid="routine-delete"
+                    >
+                      {t("agents.memory.delete")}
+                    </Button>
+                  }
                 >
-                  {t("agents.memory.delete")}
-                </Button>
+                  <Confirm
+                    ask={t("routines.delete.ask", { name: r.name })}
+                    confirm={t("agents.memory.delete")}
+                    keep={t("common.keep")}
+                    onConfirm={() => {
+                      setDeleting(undefined)
+                      void call("routines.delete", { id: r.id })
+                    }}
+                    onKeep={() => setDeleting(undefined)}
+                    testId="routine-delete-ask"
+                    confirmTestId="routine-delete-confirm"
+                    keepTestId="routine-delete-keep"
+                  />
+                </Show>
               </div>
             )}
           </For>

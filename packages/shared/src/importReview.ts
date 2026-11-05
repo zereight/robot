@@ -28,6 +28,15 @@ export type NotImported =
   | { readonly reason: "skill_no_agent"; readonly owner: string }
   /** A skill over the limit of 100 skills of the server (spec 017). */
   | { readonly reason: "skills_full"; readonly owner: string }
+  /** A node of a CC Workflow Studio file that has no step in ROBot: it became a note (spec 010). */
+  | {
+      readonly reason: "no_step"
+      readonly owner: string
+      readonly nodeType: string
+      readonly name: string
+    }
+  /** A text of a CC Workflow Studio file that the import cut to its limit (spec 010). */
+  | { readonly reason: "text_cut"; readonly owner: string; readonly name: string }
 
 type Json = Record<string, unknown>
 const isObject = (value: unknown): value is Json =>
@@ -180,6 +189,8 @@ export type ChecklistItem =
   | { readonly kind: "stepAgent"; readonly stepId: string; readonly name: string }
   /** A post step with no place: "Pick". */
   | { readonly kind: "stepPlace"; readonly stepId: string; readonly name: string }
+  /** A step that lost an input at a node of a CC Workflow Studio file that became a note: "Connect". */
+  | { readonly kind: "stepConnect"; readonly stepId: string; readonly name: string }
   /** A workflow with a schedule that is off: "Turn on". */
   | { readonly kind: "workflowOn" }
 
@@ -201,6 +212,8 @@ export interface ChecklistWorld {
       | { readonly id: string; readonly kind: "post"; readonly channelId: string }
       | { readonly id: string; readonly kind: "condition" | "approval" | "notify" }
     )[]
+    /** The connections of the workflow. An item "Connect" needs them. */
+    readonly edges?: readonly { readonly to: string }[]
   }
 }
 
@@ -221,6 +234,11 @@ export const checklistItemDone = (item: ChecklistItem, world: ChecklistWorld): b
     case "stepPlace": {
       const step = world.workflow?.steps.find((s) => s.id === item.stepId)
       return !step || (step.kind === "post" && step.channelId !== "")
+    }
+    case "stepConnect": {
+      const workflow = world.workflow
+      const step = workflow?.steps.find((s) => s.id === item.stepId)
+      return !step || (workflow?.edges ?? []).some((e) => e.to === item.stepId)
     }
     case "workflowOn":
       return world.workflow?.enabled === true
@@ -277,10 +295,13 @@ export const agentCounts = (ticks: readonly AgentTicks[]) => {
   }
 }
 
-/** The ticks at the start for workflows: a workflow where the app hid a secret is not ticked. */
+/**
+ * The ticks at the start for workflows: a workflow where the app hid a secret, or that lost a
+ * connection at a node of a CC Workflow Studio file, is not ticked.
+ */
 export const startWorkflowTicks = (
-  workflows: readonly { readonly secretRemoved: boolean }[],
-): boolean[] => workflows.map((w) => !w.secretRemoved)
+  workflows: readonly { readonly secretRemoved: boolean; readonly lostConnections: boolean }[],
+): boolean[] => workflows.map((w) => !w.secretRemoved && !w.lostConnections)
 
 /** The places in the file of the workflows that are ticked. */
 export const workflowPicks = (ticks: readonly boolean[]): number[] =>

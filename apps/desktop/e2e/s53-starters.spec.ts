@@ -162,7 +162,7 @@ test("starters: the choice, the filled fields, the paused routine and the skill"
   expect(agentsOfSkill(skills[0])).toEqual([briefer?.id as string])
 
   // The routine is on the Routines page, paused, with its schedule in words.
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routine-card")).toHaveCount(1)
   await expect(page.getByTestId("routine-card")).toContainText("Weekday briefing")
   await expect(page.getByTestId("routine-card")).toContainText("Mon, Tue, Wed, Thu, Fri at 08:00")

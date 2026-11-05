@@ -110,6 +110,9 @@ The user can change the course of a turn without stopping it.
     "Answered in the chat" and the agent goes on with the message as its answer.
   - A message that the agent did not read when the turn ends (for example after Stop) starts the
     next turn, as one message in the order that the user sent them.
+  - A follow-up with the action "steer" joins the turn by these rules (005). It does not answer
+    a question card. While a question card waits, the agent reads it after the user answers the
+    card, or after Stop.
 - **Wait in a queue**: the message waits in a short queue above the message box. The user can
   remove or edit a queued message before it is sent. Each queued message has "Send now", which
   sends it into the current turn as with "Join the current turn".
@@ -156,8 +159,9 @@ the app can run it (see "Automatic compact").
   (005). It does not ask first, because the chat keeps all its rows.
 - A restart during a compact changes nothing.
 - The mark "Holds outside content" stays after a compact (007).
-- An agent on a vendor runtime (006) that compacts by itself has no Compact and no automatic
-  compact. For other agents, nothing else changes.
+- An agent on a vendor runtime (006) that compacts by itself has no Compact control. It has no
+  automatic compact, except an agent on Claude Code when its cache has ended (see "Automatic
+  compact"). For other agents, nothing else changes.
 
 ## Automatic compact
 
@@ -170,9 +174,24 @@ the app can run it (see "Automatic compact").
   larger than about 470000 tokens, 400000 tokens come before 85 percent. A long context costs more
   at each request, so the app does not wait for 85 percent there. For a smaller model, the 85
   percent rule comes first and the limit has no effect. The limit is not a setting. The setting
-  "Compact long chats automatically" (013) turns both rules on and off.
-- It does not run when the size of the context is not known, or when the provider compacts by
-  itself (see "Context meter"). It does not run in a channel, which has its own rule (004).
+  "Compact long chats automatically" (013) turns these rules, and the 1 hour cache rule below, on
+  and off.
+- Anthropic keeps the start of a request in the cache of the model for 1 hour. Each turn writes
+  that cache again. Claude Code does this on every turn. An Anthropic account does this on a turn
+  that a person starts: a direct chat, a thread, a handover, or a message from Teams. A routine, a
+  workflow and a message of another agent keep that cache for 5 minutes. They do not use this
+  rule. Before a turn that keeps the cache for 1 hour, when the last reply of that conversation
+  ended 1 hour or more ago, the cache is gone. The next turn would write the history again. The
+  app compacts first, then the turn goes on. This uses the same compact, the same pause of 5
+  turns and the same line "Compacted" as the rules above. It does not replace the 85 percent rule
+  or the limit of 400000 tokens. An Anthropic account still uses those. Claude Code does not. A
+  conversation of 2 turns or fewer does not compact. A turn that goes on after a restart does not.
+  While less than 1 hour has passed since the last reply, this rule does not compact. Codex, Muse
+  Code, pi, opencode, Cursor, an OpenAI account and a custom account do not get this compact.
+- The 85 percent rule and the limit of 400000 tokens do not run when the size of the context is
+  not known, or when the provider compacts by itself (see "Context meter"). They do not run in a
+  channel, which has its own rule (004). The 1 hour cache rule for Claude Code is the one
+  exception for a provider that compacts by itself.
 - After a compact the use is not known until the next reply (see "Context meter"). So a second
   compact cannot follow at once.
 - An automatic compact is part of the task of the turn. Its tokens add to the usage of that task
@@ -351,8 +370,9 @@ and its role line. Nothing moves.
   "Working…", or, in about half of the turns, a short playful phrase that the app picks at
   random for the turn and keeps until the turn ends. At least 20 phrases exist in each language.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
-  the line names the routine. The stop button shows whenever this line shows, in every place
-  where the agent works (chat, channel, routine, workflow).
+  the line names the routine, and for a turn of a follow-up it says that the agent looks again
+  (005). The stop button shows whenever this line shows, in every place where the agent works
+  (chat, channel, routine, workflow).
 - Quiet: when the turn shows no sign of life for the quiet time, the working line reads "No
   answer from <name> for <time>" (see 005, "Quiet line"). The stop button stays. The quiet line
   does not animate, and the light of its badge is still. The elapsed time of the turn stays where
@@ -424,6 +444,15 @@ and its role line. Nothing moves.
 - Automatic compact is on. A stand-in provider reports 90 percent use after a reply. The user
   sends a message: the line "Compacting…" shows, then the turn goes on. The ring is empty until the
   reply. Turn the setting off: the same message starts the turn at once.
+- An agent on Claude Code has two turns. An hour after the last reply, the next message compacts
+  first. The program gets a summary and the newest 2 turns. Before that hour, the same chat does
+  not compact. With the setting off, an hour later, the next message does not compact. An agent
+  on Codex does not compact after an hour.
+- An agent on an Anthropic account has two turns, and the use of the context is low. An hour
+  after the last reply, the next message of the user compacts first. Before that hour, the same
+  chat does not compact. A routine of that agent, an hour after the last reply, does not compact
+  for this reason. An agent on an OpenAI account, or on a custom account, does not compact after
+  an hour when the use is low.
 - Automatic compact is on, and a stand-in model has a context of 1000000 tokens. It reports 399999
   tokens (40 percent) after a reply: the next message starts the turn with no compact. It reports
   400000 tokens: the next message shows "Compacting…" first. With a stand-in model of 200000 tokens

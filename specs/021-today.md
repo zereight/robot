@@ -44,7 +44,8 @@ it is empty, it shows the muted line "Nothing waits for you."
    of chats are not listed.
 4. **Next 24 hours**: the runs of routines and the scheduled runs of workflows that are due
    within the next 24 hours, soonest first. A routine or workflow that is paused or off does not
-   show.
+   show. The follow-ups of agents that are due in that time show too (005, "Follow-up"), with the
+   agent and the reason.
 
 ### Model account problem
 

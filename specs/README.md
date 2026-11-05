@@ -17,7 +17,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 007 | [Agent workspace and tools: files, shell, browser, approvals, permission rules, action log, other agents, computer use](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what an agent keeps between chats, and how the user edits it](008-memory.md) | Draft |
 | 009 | [Routines: scheduled jobs, calendar, missed runs, limits and pause on repeated failure](009-routines.md) | Draft |
-| 010 | [Workflows: a graph of steps and triggers, with an assistant, workflow files and starters](010-workflows.md) | Draft |
+| 010 | [Workflows: a graph of steps and triggers, with an assistant, workflow files, CC Workflow Studio files and starters](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
 | 012 | [Device link: pair phones and computers, messages, identity, offline behaviour](012-device-link.md) | Draft |
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
@@ -42,6 +42,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
+| 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
 | 036 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](036-organization-prefix.md) | Draft |
 
 ## Milestones

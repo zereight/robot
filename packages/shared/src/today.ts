@@ -36,6 +36,7 @@ export type TodayKind =
   | "workflow_done"
   | "routine_next"
   | "workflow_next"
+  | "followup_next"
 
 /** What a click on a row opens. */
 export type TodayOpen =
@@ -259,6 +260,17 @@ export interface WorkflowFacts {
   readonly runs: readonly RunFacts[]
   /** The next scheduled run time, or null when the trigger is not a schedule. */
   readonly nextRun: number | null
+}
+
+/** A follow-up that waits for its time (spec 005, "Follow-up"): it shows in "Next 24 hours". */
+export interface FollowUpFacts {
+  readonly id: string
+  readonly agentId: string
+  /** What the agent will look at: one line. */
+  readonly reason: string
+  /** The task that the follow-up starts, which the details of the row open. */
+  readonly taskId: string
+  readonly at: number
 }
 
 export interface AccountFacts {
@@ -505,6 +517,7 @@ export const nextRows = (
   routines: readonly Pick<RoutineFacts, "id" | "name" | "agentId" | "enabled" | "nextRun">[],
   workflows: readonly Pick<WorkflowFacts, "id" | "name" | "enabled" | "nextRun">[],
   now: number,
+  followUps: readonly FollowUpFacts[] = [],
 ) => {
   const due = (enabled: boolean, at: number | null): at is number =>
     enabled && at !== null && at > now && at <= now + TODAY_AHEAD_MS
@@ -544,6 +557,26 @@ export const nextRows = (
                 at: w.nextRun as number,
                 resetsAt: null,
                 open: { kind: "workflow", id: w.id },
+              },
+            ]
+          : [],
+      ),
+      // A follow-up that an agent asked for itself (spec 005, "Follow-up").
+      ...followUps.flatMap((f): TodayRow[] =>
+        due(true, f.at)
+          ? [
+              {
+                id: `next:follow_up:${f.id}`,
+                kind: "followup_next",
+                agentId: f.agentId,
+                text: f.reason,
+                where: null,
+                computer: null,
+                reason: null,
+                count: 0,
+                at: f.at,
+                resetsAt: null,
+                open: { kind: "task", id: f.taskId },
               },
             ]
           : [],

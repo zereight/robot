@@ -281,6 +281,13 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     )
   })
 
+  test("an older file may list the channels of a skill: the reading ignores them (spec 030, 'Migration')", () => {
+    const plain = parseAgentFile(file(two, { skills: [skill()] }))
+    const older = parseAgentFile(file(two, { skills: [skill({ channels: ["Docs"] })] }))
+    if (!plain.ok || !older.ok) throw new Error("refused")
+    expect(older.file.skills).toEqual(plain.file.skills)
+  })
+
   test("a channel needs a name; the other fields get defaults", () => {
     const result = parseAgentFile(file(two, { channels: [{ name: "  Plain ", members: ["Bob"] }] }))
     if (!result.ok) throw new Error("refused")

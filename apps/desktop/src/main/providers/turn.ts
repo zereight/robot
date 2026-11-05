@@ -2,6 +2,7 @@ import type { PermissionLevel } from "@robot/shared"
 import type { BridgeHandler } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import type { ToolOutcome } from "./agent.ts"
+import type { BusyWait } from "./busyRetry.ts"
 import type { CacheLifetime } from "./cache.ts"
 import type { ToolCall, ToolDef, Turn } from "./chat.ts"
 import type { Resume } from "./resume.ts"
@@ -56,6 +57,11 @@ export interface TurnInput {
    * example in a channel, or for a program that takes no input during a turn.
    */
   readonly inbox?: TurnInbox
+  /**
+   * Set for an agent that uses the tools of the app. A busy provider is tried again (spec 006).
+   * A vendor runtime, a compact and a model step leave it out.
+   */
+  readonly busy?: BusyWait
 }
 
 /** How a turn reaches the user and the tools. */

@@ -11,6 +11,7 @@ import { call } from "../lib/rpc.ts"
 import settingsStyles from "../settings/settings.module.css"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ConnectDialog } from "./ConnectDialog.tsx"
@@ -20,6 +21,8 @@ import { SyncRow } from "./SyncRow.tsx"
 
 const ClientRow = (props: { client: ClientEntry }) => {
   const { t } = useApp()
+  // The danger button of the row asks first (spec 000, "Danger buttons").
+  const [removing, setRemoving] = createSignal(false)
   return (
     <li class={styles.item} data-testid="client-row" data-name={props.client.name}>
       <div class={styles.itemMain}>
@@ -47,12 +50,28 @@ const ClientRow = (props: { client: ClientEntry }) => {
         </Show>
       </div>
       <div class={styles.actions}>
-        <Button
-          onClick={() => call("devices.client.remove", { id: props.client.id })}
-          data-testid="client-remove"
+        <Show
+          when={removing()}
+          fallback={
+            <Button variant="danger" onClick={() => setRemoving(true)} data-testid="client-remove">
+              {t("devices.client.remove")}
+            </Button>
+          }
         >
-          {t("devices.client.remove")}
-        </Button>
+          <Confirm
+            ask={t("devices.client.remove.ask", { name: props.client.name })}
+            confirm={t("devices.client.remove")}
+            keep={t("common.keep")}
+            onConfirm={() => {
+              setRemoving(false)
+              void call("devices.client.remove", { id: props.client.id })
+            }}
+            onKeep={() => setRemoving(false)}
+            testId="client-remove-ask"
+            confirmTestId="client-remove-confirm"
+            keepTestId="client-remove-keep"
+          />
+        </Show>
       </div>
     </li>
   )
@@ -63,6 +82,8 @@ const ServerRow = (props: { entry: ServerEntry }) => {
   const [editing, setEditing] = createSignal(false)
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
+  // The danger button of the row asks first (spec 000, "Danger buttons").
+  const [removing, setRemoving] = createSignal(false)
 
   const stateLine = () => {
     const e = props.entry
@@ -147,12 +168,32 @@ const ServerRow = (props: { entry: ServerEntry }) => {
             >
               {t("devices.server.edit")}
             </Button>
-            <Button
-              onClick={() => call("devices.server.remove", { id: props.entry.id })}
-              data-testid="server-remove"
+            <Show
+              when={removing()}
+              fallback={
+                <Button
+                  variant="danger"
+                  onClick={() => setRemoving(true)}
+                  data-testid="server-remove"
+                >
+                  {t("devices.server.remove")}
+                </Button>
+              }
             >
-              {t("devices.server.remove")}
-            </Button>
+              <Confirm
+                ask={t("devices.server.remove.ask", { name: props.entry.name })}
+                confirm={t("devices.server.remove")}
+                keep={t("common.keep")}
+                onConfirm={() => {
+                  setRemoving(false)
+                  void call("devices.server.remove", { id: props.entry.id })
+                }}
+                onKeep={() => setRemoving(false)}
+                testId="server-remove-ask"
+                confirmTestId="server-remove-confirm"
+                keepTestId="server-remove-keep"
+              />
+            </Show>
           </div>
         </Show>
       </div>

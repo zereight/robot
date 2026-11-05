@@ -413,6 +413,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                   ...(input.tools ? { tools: input.tools } : {}),
                   ...(cache ? { cache } : {}),
                   signal: input.signal,
+                  ...(input.busy ? { busy: input.busy } : {}),
                 },
                 hooks.execute,
                 input.resume?.call,

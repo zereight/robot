@@ -1369,6 +1369,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             return { kind: "agent" }
           case "memory_check":
             return { kind: "memoryCheck" }
+          case "follow_up":
+            return null
         }
       }
 

@@ -15,6 +15,11 @@ export interface Palette {
   accentInk: string
   success: string
   danger: string
+  /**
+   * The text of a danger button that is filled with the danger colour (spec 000, "Danger
+   * buttons"). It reads on the danger colour in both themes.
+   */
+  dangerText: string
   focus: string
   /** The app mark, as a small badge. The app mark does not change with the theme: it has its own dark tile. */
   markTile: string
@@ -50,6 +55,7 @@ export const palettes: Record<"dark" | "light", Palette> = {
     accentInk: "#8ea0ff",
     success: "#3bb27a",
     danger: "#ea7069",
+    dangerText: "#19191b",
     focus: "#8ea0ff",
     markTile: "#0a0817",
     markEyes: "#eafff8",
@@ -75,6 +81,7 @@ export const palettes: Record<"dark" | "light", Palette> = {
     accentInk: "#3953c8",
     success: "#187147",
     danger: "#b43730",
+    dangerText: "#ffffff",
     focus: "#3953c8",
     markTile: "#0a0817",
     markEyes: "#eafff8",

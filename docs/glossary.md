@@ -92,6 +92,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Shared folder | A workspace that two or more agents use (025). | 공유 폴더 (proposed) | shared workspace, project |
 | File claim | The mark that a task holds on a file that it changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
 | Own copy | A separate working copy of a Git repository that one part of a channel job uses (025). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
+| Setup action | A named command in `robot.json` that the app can run from the chat, at the start of a turn, or on the first turn in an own copy (035). | 준비 동작 (proposed) | script, hook, task |
 | Branch of a part | The new Git branch of an own copy (025). | 부분 브랜치 (proposed) | — |
 | Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |
 | Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |
@@ -99,8 +100,11 @@ A new word goes here in the same pull request as the spec that brings it.
 | Record only | A switch of a watch routine or a workflow trigger: a change or a trigger starts no task and calls no model, and only shows as "Recorded" (spec question of 009, 010). | 기록만 하기 | dry run, observe mode, test mode |
 | Recorded | A run of "Record only": what fired, with no task (spec question of 009, 010). | 기록됨 | skipped, ignored |
 | Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
+| Diagram | The Mermaid text of the open workflow. The app shows the text and does not draw the picture (010). | 다이어그램 | chart, graph image |
 | Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (031). | — (proposed: 스타터) | template, preset |
 | Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (031). | — (proposed: 채널 스타터) | team starter, team, squad |
+| CC Workflow Studio file | A JSON file of the public tool CC Workflow Studio. ROBot imports it as a workflow and writes a workflow to it (010). The name of the tool stays in English. | CC Workflow Studio 파일 (proposed) | workflow file (that name is the ROBot file), project file |
+| Not exported | The list after an export to CC Workflow Studio: what the file does not hold (010). The list "Not imported" is its pair (014). | 내보내지 않는 항목 (proposed) | skipped, ignored |
 | Goal text | The words that the user types in the goal dialog. They stay on this computer and are not kept (031). | — (proposed: 목표 글) | prompt, task description |
 | Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
 | Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |

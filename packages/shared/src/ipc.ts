@@ -2,6 +2,7 @@ import type { AgentFileExported, AgentFileImported, AgentFilePreview } from "./a
 import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
 import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
+import type { CcNotExported } from "./ccWorkflowExport.ts"
 import type {
   Channel,
   ChannelActivity,
@@ -11,6 +12,7 @@ import type {
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
+import type { FollowUp } from "./followUp.ts"
 import type { Handbook, HandbookVersion } from "./handbook.ts"
 import type { HandoverOpen, HandoverState } from "./handover.ts"
 import type { AgentPick, ImportChecklist } from "./importReview.ts"
@@ -64,6 +66,13 @@ import type { SearchPage } from "./search.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type {
+  SetupActionInput,
+  SetupFileView,
+  SetupList,
+  SetupRunResult,
+  SetupSaveResult,
+} from "./setupActions.ts"
 import type { SkillDraftResult, SkillSourceRef } from "./skillDraft.ts"
 import type { Skill, SkillInput } from "./skills.ts"
 import type { AgentStarterCreate } from "./starters.ts"
@@ -469,6 +478,13 @@ export interface RpcMethods {
   "tasks.requestChanges": { input: { id: string; text: string }; output: undefined }
   /** Cancels every task of the request of this task that is not final (spec 004, 005). */
   "tasks.endRequest": { input: { id: string }; output: undefined }
+  /**
+   * The follow-ups that wait in the details of one task (spec 005, "Follow-up"). A linked device
+   * may call it: the rows stay on the computer that runs them.
+   */
+  "followups.list": { input: { taskId: string }; output: readonly FollowUp[] }
+  /** Deletes one follow-up. No task starts for it. A linked device may call it (spec 005, 012). */
+  "followups.remove": { input: { id: string }; output: undefined }
   "channels.list": { input: { serverId: string }; output: readonly Channel[] }
   "channels.create": { input: ChannelCreate; output: Channel }
   "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }
@@ -767,14 +783,23 @@ export interface RpcMethods {
     input: { serverId: string; workflowIds: readonly string[] }
     output: { path: string | null; count: number }
   }
+  /**
+   * Asks where to save, then writes one workflow as a file of CC Workflow Studio. `path` is null
+   * when cancelled. `notExported` lists what the file does not hold.
+   */
+  "workflowFile.exportCc": {
+    input: { serverId: string; workflowId: string }
+    output: { path: string | null; notExported: readonly CcNotExported[] }
+  }
   /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
   "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
   /**
    * Makes the workflows of the file that `workflowFile.open` read that the user ticked (`pick`:
-   * their places in the file, from 0). All of them are off.
+   * their places in the file, from 0). All of them are off. For a file of CC Workflow Studio,
+   * `agentId` is the agent of every agent step (the file names none).
    */
   "workflowFile.apply": {
-    input: { serverId: string; pick: readonly number[] }
+    input: { serverId: string; pick: readonly number[]; agentId?: string }
     output: WorkflowFileImported
   }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }
@@ -866,7 +891,14 @@ export interface RpcMethods {
    * linked computer and the phone get the main thread only (011, 012).
    */
   "chat.history": { input: ThreadRef; output: ChatHistory }
-  "chat.send": { input: ChatSend; output: { queued: boolean } }
+  "chat.send": {
+    input: ChatSend
+    /**
+     * `failedFiles` names the local paths that did not reach a linked server. The other files of
+     * the message still go (spec 003, flow 4). Absent when every file went, and on this computer.
+     */
+    output: { queued: boolean; failedFiles?: readonly string[] }
+  }
   "chat.stop": { input: ThreadRef; output: undefined }
   /** As `tasks.retry`, for the failed reply of a chat. */
   "chat.retry": {
@@ -888,6 +920,19 @@ export interface RpcMethods {
   "chat.meter": { input: ThreadRef; output: ChatMeter }
   /** Runs a manual compact of the thread (spec 003, "Compact"). It ends when the compact ends. */
   "chat.compact": { input: ThreadRef; output: undefined }
+  /** The setup actions of the agent's workspace (spec 035). This computer only. */
+  "setup.list": { input: { agentId: string }; output: SetupList }
+  /** Runs the named action in that workspace. The user picked it. */
+  "setup.run": { input: { agentId: string; name: string }; output: SetupRunResult }
+  /** Allows or stops automatic runs of the list in that workspace. */
+  "setup.allow": { input: { agentId: string; on: boolean }; output: SetupList }
+  /** The file the editor shows for that workspace: the shared file, or one to make. */
+  "setup.file": { input: { agentId: string }; output: SetupFileView }
+  /** Writes the list from the editor. `replace` confirms an unreadable file goes away. */
+  "setup.save": {
+    input: { agentId: string; actions: readonly SetupActionInput[]; replace: boolean }
+    output: SetupSaveResult
+  }
   /** The threads of an agent, for the list in the chat header (spec 003, "Threads"). */
   "chat.threads": { input: { agentId: string }; output: ChatThreads }
   "chat.thread.create": { input: { agentId: string }; output: ChatThread }
@@ -948,6 +993,8 @@ export interface RpcEvents {
   "runtimes.changed": RuntimeStatus
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
+  /** A follow-up of an agent was made, deleted, or started its task (spec 005, "Follow-up"). */
+  "followups.changed": { agentId: string }
   /** The handbook of a server was saved or restored, here or by sync or a linked device (spec 002). */
   "handbook.changed": { serverId: string }
   "actionLog.changed": Record<string, never>
@@ -1004,12 +1051,22 @@ export interface RpcEvents {
   "orgChart.model": ChartModel
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
-  "app.openPage": { page: "workflows" | "teams"; serverId?: string }
+  "app.openPage": { page: "workflows" | "routines" | "teams"; serverId?: string }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage
   "channel.removed": { channelId: string; messageId: string }
+  /**
+   * A file of a message is going to a linked server (spec 003, flow 4). The window that sends it
+   * shows the progress on the chip. It does not go to other devices.
+   */
+  "attachments.transfer": {
+    path: string
+    sent: number
+    total: number
+    state: "sending" | "failed" | "done"
+  }
   /** A new or changed message. While a reply streams, this comes many times. */
   "chat.message": ChatMessage
   "chat.removed": { agentId: string; messageId: string }

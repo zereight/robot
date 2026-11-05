@@ -6,6 +6,8 @@ export interface MenuItem {
   readonly label: string
   readonly run: () => void
   readonly testId?: string
+  /** An item that takes data away shows its text in the colour of danger (spec 000). */
+  readonly danger?: boolean
 }
 
 /** A small menu at the place of a right click. Escape, a click outside or a choice closes it. */
@@ -55,6 +57,7 @@ export const ContextMenu = (props: {
               role="menuitem"
               class={styles.menuItem}
               data-testid={item.testId}
+              data-danger={item.danger ? "true" : undefined}
               onClick={() => {
                 props.onClose()
                 item.run()

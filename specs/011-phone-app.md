@@ -19,7 +19,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
 1. **Servers**: list of paired servers with the connection state of 012 and the total unread
    count of each. Add server opens the pairing camera.
 2. **Places**: the server's sections, agents and channels, with unread counts and working dots,
-   as on desktop. The dot breathes as it does on the desktop (001), and the breath follows the
+   as on desktop, including "Unassigned" at the bottom of Agents (001). The dot breathes as it
+   does on the desktop (001), and the breath follows the
    setting "Reduce Motion" of the system. This includes the user sections, with the same order and
    the same badge on a collapsed header. The user can open and close a section on the phone. The
    phone remembers this for itself. In this version the phone cannot make, rename, order or
@@ -41,7 +42,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
 6. **Workflows**: the workflows of a server. The user sees them as numbered step lists, runs one,
    reads the runs, edits steps, and asks the assistant, as on the computer (see 010). Running a
    workflow and reading its runs need only the link. Editing steps and asking the assistant need
-   the switch "Can create and change agents" of that computer (012).
+   the switch "Can create and change agents" of that computer (012). The diagram of a workflow
+   (010) is on the computer only in this version.
 7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
    switch "Show tool steps", on at first, and the switch "Show the organization before an agent
    name" (036), on at first.

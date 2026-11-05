@@ -34,6 +34,15 @@ const sectionNames = (page: Page, kind: Kind) =>
   builtIn(page, kind)
     .getByTestId("user-section-toggle")
     .evaluateAll((all) => all.map((el) => el.textContent?.trim()))
+/** User sections, then "Unassigned" when it shows. "Unassigned" is last. */
+const agentBlocks = (page: Page) =>
+  builtIn(page, "agents").evaluate((el) =>
+    [
+      ...el.querySelectorAll<HTMLElement>(
+        "[data-testid=user-section], [data-testid=unassigned-section]",
+      ),
+    ].map((node) => node.dataset.testid ?? ""),
+  )
 
 /** Opens the menu of a list header and makes a section with the name. The list keeps the box on an error. */
 const startSection = async (page: Page, kind: Kind) => {
@@ -85,6 +94,11 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await page.getByTestId("channel-submit").click()
   await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
   await expect(await plainNames(page, "agents")).toEqual(["Ada", "Bo", "Cy"])
+  // Agents with no section are in "Unassigned". The header has no menu.
+  const unassigned = page.getByTestId("unassigned-section")
+  await expect(page.getByTestId("unassigned-toggle")).toHaveText("Unassigned")
+  await expect(unassigned.getByTestId("section-menu")).toHaveCount(0)
+  await expect.poll(() => namesIn(unassigned)).toEqual(["Ada", "Bo", "Cy"])
 
   // Make the agent section "Research". Escape cancels the name box.
   let input = await startSection(page, "agents")
@@ -125,6 +139,9 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await moveByMenu(rowOf(page, "Ada"), page, "Research")
   await expect.poll(() => namesIn(research)).toEqual(["Ada"])
   await expect.poll(() => plainNames(page, "agents")).toEqual(["Bo", "Cy"])
+  // "Unassigned" stays under the user sections.
+  expect(await agentBlocks(page)).toEqual(["user-section", "unassigned-section"])
+  await expect.poll(() => namesIn(page.getByTestId("unassigned-section"))).toEqual(["Bo", "Cy"])
   await expect(research.getByTestId("user-section-empty")).toHaveCount(0)
   // The menu marks the current section. Only sections of the kind of the place are listed.
   await rowOf(page, "Ada").click({ button: "right" })
@@ -229,6 +246,15 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await page.mouse.up()
   await expect(await plainNames(page, "agents")).toEqual(["Bo", "Cy"])
   await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
+  // A drop on "Unassigned" means no section. Put Ada back, so the later steps stay as they are.
+  await dragOnto(page, rowOf(page, "Ada"), page.getByTestId("unassigned-header"))
+  await expect
+    .poll(() => namesIn(page.getByTestId("unassigned-section")))
+    .toEqual(["Ada", "Bo", "Cy"])
+  await expect.poll(() => namesIn(researchAgents)).toEqual([])
+  await moveByMenu(rowOf(page, "Ada"), page, "Research")
+  await expect.poll(() => namesIn(researchAgents)).toEqual(["Ada"])
+  expect(await agentBlocks(page)).toEqual(["user-section", "unassigned-section"])
 
   // "New section" opens a list that is closed, so that the name box shows.
   await page.getByTestId("section-toggle-agents").click()
@@ -242,6 +268,7 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await makeSection(page, "agents", "Ops")
   const ops = userSection(page, "agents", "Ops")
   expect(await sectionNames(page, "agents")).toEqual(["Research", "Ops"])
+  expect(await agentBlocks(page)).toEqual(["user-section", "user-section", "unassigned-section"])
   await header(researchAgents).hover()
   await researchAgents.getByTestId("section-menu").click()
   await expect(page.getByTestId("section-move-up")).toBeDisabled()

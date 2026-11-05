@@ -58,6 +58,24 @@ const link = async (a: Rt, b: Rt) => (await pairRuntimes(a, b)).entry
 const invoke = (b: Rt, serverId: string, method: string, input: unknown) =>
   b.runtime.runPromise(Remote.use((r) => Effect.promise(() => r.invoke(serverId, method, input))))
 
+function failedFiles(value: unknown): readonly string[] {
+  if (typeof value !== "object" || value === null || !("failedFiles" in value)) return []
+  const files = value.failedFiles
+  if (!Array.isArray(files)) return []
+  return files.filter((item): item is string => typeof item === "string")
+}
+
+function filePaths(parts: readonly { kind: string; path?: string }[]): string[] {
+  return parts.flatMap((part) =>
+    part.kind === "file" && typeof part.path === "string" ? [part.path] : [],
+  )
+}
+
+function transferState(payload: unknown) {
+  if (typeof payload !== "object" || payload === null || !("state" in payload)) return ""
+  return typeof payload.state === "string" ? payload.state : ""
+}
+
 beforeAll(() => {
   process.env.ROBOT_LINK_ADDRESSES = "127.0.0.1"
   process.env.ROBOT_LINK_RETRY_MAX_MS = "300"
@@ -364,6 +382,50 @@ describe("a computer that opens a linked server", () => {
       replyTo: null,
     })
     expect(back.ok).toBe(true)
+  })
+
+  test("a file that fails once does not stop the other file, and the next try sends it", async () => {
+    process.env.ROBOT_TEST_FAIL_UPLOAD = "bad.txt"
+    try {
+      const { a, b, local, agent, history } = await setup()
+      const folder = mkdtempSync(join(tmpdir(), "robot-retry-"))
+      const good = join(folder, "good.txt")
+      const bad = join(folder, "bad.txt")
+      writeFileSync(good, "good")
+      writeFileSync(bad, "bad")
+      const sent = await invoke(b, local.id, "chat.send", {
+        agentId: agent.id,
+        text: "two files",
+        replyTo: null,
+        files: [good, bad],
+      })
+      expect(sent.ok && failedFiles(sent.value)).toEqual([bad])
+      const stored = await waitFor(
+        () => history(a),
+        (h) => h.messages.some((m) => m.author === "user" && m.status === "done"),
+      )
+      const first = stored.messages.find((m) => m.author === "user")
+      expect(filePaths(first?.parts ?? [])).toEqual(["attachments/good.txt"])
+      const failed = b.events.find(
+        (e) => e.event === "attachments.transfer" && transferState(e.payload) === "failed",
+      )
+      expect(failed).toBeDefined()
+      const again = await invoke(b, local.id, "chat.send", {
+        agentId: agent.id,
+        text: "",
+        replyTo: null,
+        files: [bad],
+      })
+      expect(again.ok && failedFiles(again.value)).toEqual([])
+      const after = await waitFor(
+        () => history(a),
+        (h) => h.messages.filter((m) => m.author === "user").length >= 2,
+      )
+      const second = after.messages.filter((m) => m.author === "user")[1]
+      expect(filePaths(second?.parts ?? [])).toEqual(["attachments/bad.txt"])
+    } finally {
+      delete process.env.ROBOT_TEST_FAIL_UPLOAD
+    }
   })
 
   test("after access is removed the link says not allowed and the cache is gone", async () => {

@@ -88,6 +88,7 @@ export const en = {
 
   "places.channels": "Channels",
   "places.agents": "Agents",
+  "places.unassigned": "Unassigned",
   "places.empty.channels": "No channels yet. Make one on the computer.",
   "places.empty.agents": "No agents yet. Make one on the computer.",
   "places.emptySection": "Move a place into this section on the computer.",
@@ -187,8 +188,12 @@ export const en = {
   "chat.note.watch": "{routine}: no change.",
   "chat.note.connection_down": "The connection {name} is not available.",
   "chat.note.connection_held": "Tools of the connection {name} wait for your review.",
+  "chat.note.setup_failed": "Setup failed: {name}.",
+  "chat.note.setup_failed_timeout": "Setup failed: {name}. It took too long.",
+  "chat.note.setup_failed_spawn": "Setup failed: {name}. It did not start.",
   "chat.note.handed_over": "Handed over to {name}",
   "chat.note.kept_going": "Kept going ({n} of {of})",
+  "chat.note.busy_retry": "The model is busy. Trying again ({n} of {of}).",
   "chat.note.tree_repaired.loop": "The parent channel was cleared. The tree would have a loop.",
   "chat.note.tree_repaired.levels":
     "The parent channel was cleared. The tree would have more than 3 levels.",

@@ -28,6 +28,11 @@ import {
   createReadGuard,
   endOfTurn,
   type FilePart,
+  FOLLOW_UP_REPLIES,
+  type FollowUpAction,
+  followUpDelivery,
+  followUpLabel,
+  followUpPrompt,
   type HandoverOffReason,
   handoverCardForModel,
   handoverOf,
@@ -35,6 +40,7 @@ import {
   hasVisibleReply,
   holdOutside,
   holdProgram,
+  hourCacheEnded,
   isNoteOnly,
   isTaskProgress,
   joinWords,
@@ -86,6 +92,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
+import { BUSY_TRIES } from "../providers/busyRetry.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { goOnTurns, resumeOf } from "../providers/resume.ts"
@@ -98,6 +105,7 @@ import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { FollowUps } from "./FollowUps.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
@@ -107,9 +115,11 @@ import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
+import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
+import { prepareTurn } from "./setupRun.ts"
 import { closing, quietReporter, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { type RetryOptions, Tasks } from "./Tasks.ts"
@@ -212,6 +222,8 @@ export interface TaskOrigin {
   readonly depth?: number
   /** The text of the task, when it differs from the text of the message (a message of another agent). */
   readonly prompt?: string
+  /** The label of the task in the Tasks page, when the prompt is not a good name (a follow-up). */
+  readonly label?: string
   /** The agent that asked. The reply of this task goes back to it as a new message (spec 007). */
   readonly requester?: string
   /**
@@ -357,6 +369,14 @@ interface ProgramItem {
 const EMIT_EVERY_MS = 50
 const SAVE_EVERY_MS = 500
 const QUOTE_MAX = 500
+/**
+ * A turn a person starts. Anthropic keeps the cache of that turn for 1 hour. A routine, a
+ * workflow and a message of another agent keep the short cache (spec 003).
+ */
+function keepsHourCache(source: TaskSource): boolean {
+  return source === "chat" || source === "handover" || source === "teams"
+}
+
 /** The words around the summary of a compact, as the model reads it (spec 003). */
 const summaryTurn = (summary: string) =>
   `Summary of the earlier conversation, written when it was compacted:\n\n${summary}`
@@ -568,11 +588,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
     Chat,
     Effect.gen(function* () {
       const db = yield* Database
+      const dataDir = (yield* Platform).dataDir
       const bus = yield* EventBus
       const providers = yield* Providers
       const activity = yield* Activity
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const followUps = yield* FollowUps
       const connections = yield* Connections
       const placeMarks = yield* PlaceMarks
       const holds = yield* ModelHolds
@@ -1121,6 +1143,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             prompt,
             source,
             sourceId: origin?.sourceId ?? agentId,
+            ...(origin?.label !== undefined ? { label: origin.label } : {}),
             messageId: reply.id,
             retryOf: retryLinks.get(key) ?? origin?.retryOf ?? null,
             // A routine or a workflow starts its task with no message of the user (spec 005).
@@ -1397,10 +1420,40 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               save("streaming")
               publish()
             }
-            // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
+            // Setup actions of the workspace run before the model (spec 035). A turn that goes on
+            // after a restart does not run them again.
+            if (attempt === "first" && !keeping && !resumed) {
+              const failures = yield* Effect.promise(() =>
+                prepareTurn(dataDir, agent.workspace, { signal: controller.signal }),
+              )
+              if (!controller.signal.aborted && failures.length > 0) {
+                for (const failure of failures)
+                  parts.push({
+                    kind: "note",
+                    note: "setup_failed",
+                    name: failure.name,
+                    code: failure.code,
+                  })
+                save("streaming")
+                publish()
+              }
+            }
+            // At 85 percent or more of the context, the app compacts first (spec 003). A turn
+            // that keeps the 1 hour cache also compacts when that cache has ended. A turn that
             // goes on after a restart does not: its request is made already.
-            if (!resumed && !isRuntime && attempt === "first")
-              yield* autoCompact(place, agent, reply.id, task.id, (code) => {
+            const claude =
+              !!agent.model_account_id &&
+              providers.runtimeKind(agent.model_account_id) === "claude_code"
+            const personTurn = keepsHourCache(source)
+            const anthropic =
+              !isRuntime && personTurn
+                ? (yield* providers.accounts).some(
+                    (account) =>
+                      account.id === agent.model_account_id && account.kind === "anthropic",
+                  )
+                : false
+            if (!resumed && attempt === "first" && (!isRuntime || claude))
+              yield* autoCompact(place, agent, reply.id, task.id, claude || anthropic, (code) => {
                 parts.push({ kind: "note", note: "compact_failed", code })
                 save("streaming")
                 publish()
@@ -1525,6 +1578,23 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               ...(connected ? { connections: connected } : {}),
               onConnection: (callId, connection) =>
                 changePart(callId, (p) => ({ ...p, connection })),
+              // A follow-up works in a direct chat and its threads (spec 005). A routine and a
+              // workflow step have no follow-up: their own way to run work again is the answer.
+              ...(source === "chat" || source === "follow_up"
+                ? {
+                    onFollowUp: (
+                      callId: string,
+                      reason: string,
+                      minutes: number,
+                      action: FollowUpAction,
+                    ) =>
+                      followUpOf(callId, reason, minutes, action, {
+                        agentId,
+                        threadId: place.threadId,
+                        taskId: task.id,
+                      }),
+                  }
+                : {}),
             }
             // A call that waited for the user through a restart may name a tool that the agent found.
             if (resumeNow?.call.name) connected?.reopen(resumeNow.call.name)
@@ -1569,16 +1639,27 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
                 // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
                 // message of another agent) keeps the short one.
-                cache:
-                  task.source === "chat" || task.source === "handover" || task.source === "teams"
-                    ? "long"
-                    : "short",
+                cache: keepsHourCache(task.source) ? "long" : "short",
                 signal: controller.signal,
                 workspace: agent.workspace,
                 permission: levelOnRuntime(agent.permission, isRuntime),
                 useTools: true,
                 ...(resumeNow ? { resume: resumeNow } : {}),
                 inbox,
+                // A vendor runtime shows what its program reports. It is not tried again (spec 006).
+                ...(!isRuntime
+                  ? {
+                      busy: {
+                        wait: (n: number) => {
+                          parts.push({ kind: "note", note: "busy_retry", n, of: BUSY_TRIES })
+                          save("streaming")
+                          publish()
+                          silence.pulse()
+                        },
+                        again: () => silence.pulse(),
+                      },
+                    }
+                  : {}),
               },
               {
                 execute: (call) => tools.execute(context, call),
@@ -1949,6 +2030,30 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         for (const ready of [...turn.watchers]) ready()
       })
 
+      /**
+       * Puts a follow-up into the running turn (spec 005). It does not answer a question card.
+       * It returns false when that turn has ended, so the caller starts a task instead.
+       */
+      const joinNote = (place: Place, turn: LiveTurn, text: string) =>
+        Effect.sync(() => {
+          if (live.get(keyOf(place)) !== turn) return false
+          const row = insertMessage(
+            place.agentId,
+            "user",
+            text,
+            null,
+            null,
+            [],
+            null,
+            { to: turn.replyId, readAt: null },
+            null,
+            place.threadId,
+          )
+          turn.waiting.push({ id: row.id, text: turnText(row) })
+          for (const ready of [...turn.watchers]) ready()
+          return true
+        })
+
       /** True when a message that the user sends now joins the running turn of the agent. */
       const joinable = (place: Place) =>
         Effect.gen(function* () {
@@ -2009,8 +2114,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const agent = yield* usableAgent(input.agentId, origin?.model)
         if (origin?.source === "teams") return yield* sendFromTeams(input, origin, agent)
         // Work from a routine, a workflow or another agent goes to the main thread (spec 003). A
-        // handover goes to the new thread that it made.
-        const threadId = origin && origin.source !== "handover" ? null : (input.threadId ?? null)
+        // handover goes to the new thread that it made, and a follow-up to the thread that asked
+        // for it (spec 005, "Follow-up").
+        const keepsThread = origin?.source === "handover" || origin?.source === "follow_up"
+        const threadId = origin && !keepsThread ? null : (input.threadId ?? null)
         const place: Place = { agentId: input.agentId, threadId }
         if (threadId !== null) {
           const thread = threadRow(input.agentId, threadId)
@@ -2242,6 +2349,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return found ? (compactedOf(found)?.at ?? 0) : 0
       }
       /**
+       * When the last reply of the conversation ended (spec 003). A compact is not a reply: its
+       * request is not the cache of the chat. Null when no reply has ended.
+       */
+      const lastReplyAt = (place: Place): number | null =>
+        db.get<{ finished_at: number }>(
+          `SELECT finished_at FROM message
+           WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND finished_at IS NOT NULL
+             AND parts NOT LIKE ?
+           ORDER BY finished_at DESC LIMIT 1`,
+          place.agentId,
+          place.threadId,
+          COMPACTED_LIKE,
+        )?.finished_at ?? null
+      /**
        * The use of the context that the last reply reported (spec 003). Null after a compact until
        * the next reply, and when no reply reported it.
        */
@@ -2430,27 +2551,43 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       /**
        * Before a turn: at 85 percent or more of the context, compacts first (spec 003, "Automatic
-       * compact"). A failure does not stop the turn: `failed` adds the muted line to the reply.
+       * compact"). A turn that keeps the 1 hour cache also compacts when that cache has ended. A
+       * failure does not stop the turn: `failed` adds the muted line to the reply.
        */
       const autoCompact = (
         place: Place,
         agent: AgentModelRow,
         replyId: string,
         taskId: string,
+        hourCache: boolean,
         failed: (code: string) => void,
       ) =>
         Effect.gen(function* () {
           const setting = (yield* settings.get).autoCompact
           if (!setting) return
-          const size = yield* contextSize(agent)
-          const go = shouldAutoCompact({
-            setting,
-            selfCompacts: false,
-            used: contextUse(place),
-            size,
-            pause: pauseOf(place),
-          })
-          if (!go) return
+          const pause = pauseOf(place)
+          const kind = agent.model_account_id ? providers.runtimeKind(agent.model_account_id) : null
+          const cold =
+            hourCache &&
+            hourCacheEnded({
+              setting,
+              pause,
+              lastReplyAt: lastReplyAt(place),
+              now: Date.now(),
+            })
+          // A vendor program compacts its own context. Only an API account uses the 85 percent
+          // rule here. The `&&` keeps that rule from asking a program for its context size.
+          const due =
+            kind === null &&
+            shouldAutoCompact({
+              setting,
+              selfCompacts: false,
+              used: contextUse(place),
+              size: yield* contextSize(agent),
+              pause,
+            })
+          // A conversation of 2 turns or fewer has nothing to compact. Do not show "Compacting…".
+          if ((!cold && !due) || compactRange(place) === null) return
           setCompacting(place, true)
           yield* runCompact(place, agent, true, taskId).pipe(
             Effect.catch((error: AppError) =>
@@ -2558,6 +2695,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       // --- Threads (spec 003) ---------------------------------------------------------------------
 
+      /** True when the turn that runs in this conversation is a follow-up (spec 003, 005). */
+      const runningFollowUp = (place: Place) =>
+        db.get<{ source: string }>(
+          `SELECT t.source AS source FROM task t JOIN message m ON m.id = t.message_id
+           WHERE t.agent_id = ? AND m.thread_id IS ? AND t.state = 'running'
+           LIMIT 1`,
+          place.agentId,
+          place.threadId,
+        )?.source === "follow_up"
       /** Why a conversation cannot be archived or deleted now, or null. */
       const busyOf = (place: Place) =>
         Effect.gen(function* () {
@@ -2611,7 +2757,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             )
             .map((r) => [r.id, r.n]),
         )
-      const toThread = (row: ThreadRow, unread: number, busy: ThreadBusy | null): ChatThread => ({
+      const toThread = (
+        row: ThreadRow,
+        unread: number,
+        busy: ThreadBusy | null,
+        followUp: boolean,
+      ): ChatThread => ({
         id: row.id,
         agentId: row.agent_id,
         title: row.title,
@@ -2622,6 +2773,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           : null,
         unread,
         busy,
+        followUp,
         marks: placeMarks.get({ kind: "thread", id: row.id }),
       })
       const threadsChanged = (agentId: string) => {
@@ -2641,6 +2793,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 row,
                 unread.get(row.id) ?? 0,
                 yield* busyOf({ agentId, threadId: row.id }),
+                runningFollowUp({ agentId, threadId: row.id }),
               ),
               queued: yield* queuedOf({ agentId, threadId: row.id }),
             })
@@ -2648,6 +2801,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             main: {
               unread: unread.get("") ?? 0,
               busy: yield* busyOf(mainOf(agentId)),
+              followUp: runningFollowUp(mainOf(agentId)),
               queued: yield* queuedOf(mainOf(agentId)),
             },
             threads: list,
@@ -2687,7 +2841,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (!roomForThread(agentId)) return yield* new AppError({ code: "thread_limit" })
         const row = insertThread(agentId, null, null)
         threadsChanged(agentId)
-        return toThread(row, 0, null)
+        return toThread(row, 0, null, false)
       })
       const fork = Effect.fn("Chat.fork")(function* (place: Place, messageId: string) {
         const agent = agentRow(place.agentId)
@@ -2768,7 +2922,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return made
         })
         threadsChanged(place.agentId)
-        return toThread(thread, 0, null)
+        return toThread(thread, 0, null, false)
       })
       const ownThread = (agentId: string, threadId: string) =>
         Effect.suspend(() => {
@@ -3048,6 +3202,64 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           onlyIfMissing: true,
         })
       }
+
+      /**
+       * Records a "wait until" call (spec 005, "Follow-up"). It answers null when the follow-up is
+       * recorded, or the reason of the failure for the step. The callback of a tool is sync, as the
+       * other ones are, so the effect runs at once.
+       */
+      const followUpOf = (
+        _callId: string,
+        reason: string,
+        minutes: number,
+        action: FollowUpAction,
+        where: { agentId: string; threadId: string | null; taskId: string },
+      ) => {
+        let failure: string | null = null
+        Effect.runSync(
+          followUps.add({ ...where, reason, minutes, action }).pipe(
+            Effect.catch((error: AppError) =>
+              Effect.sync(() => {
+                failure =
+                  error.code === "followups_full" ? FOLLOW_UP_REPLIES.full : FOLLOW_UP_REPLIES.place
+              }),
+            ),
+          ),
+        )
+        return failure
+      }
+
+      // The follow-up service starts the turn of a follow-up through this (spec 005). It works as
+      // the tools get their messenger: the chat is built after the follow-ups.
+      followUps.setRunner({
+        start: (followUp, now) =>
+          Effect.gen(function* () {
+            const place: Place = { agentId: followUp.agentId, threadId: followUp.threadId }
+            const key = keyOf(place)
+            const turn = live.get(key)
+            // A compact is no turn, and a turn from Teams must not take this note (spec 003, 005).
+            const delivery = followUpDelivery(followUp.action, {
+              runningHere: turn !== undefined && !turn.fromTeams && !manual.has(key),
+              acceptsInput: holdOf(followUp.agentId) === null,
+            })
+            const text = followUpPrompt(followUp.reason, followUp.at, now)
+            if (delivery === "join" && turn && (yield* joinNote(place, turn, text))) return
+            yield* send(
+              {
+                agentId: followUp.agentId,
+                text,
+                replyTo: null,
+                threadId: followUp.threadId,
+              },
+              {
+                source: "follow_up",
+                sourceId: followUp.agentId,
+                prompt: text,
+                label: followUpLabel(followUp.reason),
+              },
+            ).pipe(Effect.asVoid)
+          }),
+      })
 
       return Chat.of({
         handoverReason,

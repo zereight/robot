@@ -1,9 +1,11 @@
 import { takesAdaptiveThinking, takesThinkingBudget } from "@robot/shared"
+import type { BusyWait } from "./busyRetry.ts"
 import { type CacheLifetime, type CacheMarker, cacheMarker } from "./cache.ts"
 import {
   type Connection,
   failureFrom,
   headersFor,
+  isBusyText,
   limitFailure,
   ProviderFailure,
   request,
@@ -69,6 +71,11 @@ export interface ChatRequest {
    */
   readonly cache?: CacheLifetime
   readonly signal: AbortSignal
+  /**
+   * Set for an agent that uses the tools of the app. The request is tried again when the provider
+   * is busy and it has made no output yet (spec 006). A vendor runtime leaves it out.
+   */
+  readonly busy?: BusyWait
 }
 
 /** The whole reply of the model, as blocks. It comes at the end, only when the reply has thinking. */
@@ -293,8 +300,11 @@ async function* openAiStream(req: ChatRequest): AsyncGenerator<StreamEvent> {
       } | null
       error?: { message?: string }
     }
-    if (chunk.error)
-      throw new ProviderFailure("provider_error", chunk.error.message ?? "stream error")
+    if (chunk.error) {
+      const message = chunk.error.message ?? "stream error"
+      if (isBusyText(message)) throw new ProviderFailure("provider_busy", message)
+      throw new ProviderFailure("provider_error", message)
+    }
     const delta = chunk.choices?.[0]?.delta
     const thinking = delta?.reasoning_content ?? delta?.reasoning
     if (thinking) yield { type: "thinking", text: thinking }

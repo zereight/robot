@@ -140,6 +140,7 @@ export const BrowserProfilesSection = () => {
                       {t("browserProfiles.rename")}
                     </Button>
                     <Button
+                      variant="danger"
                       onClick={() => {
                         setError(undefined)
                         setDeleting(profile)
@@ -213,7 +214,7 @@ export const BrowserProfilesSection = () => {
             <div class={styles.actions}>
               <Button onClick={() => setDeleting(undefined)}>{t("browserProfiles.cancel")}</Button>
               <Button
-                variant="primary"
+                variant="danger"
                 onClick={() => void remove(profile)}
                 data-testid="browser-profile-delete-confirm"
               >

@@ -7,6 +7,7 @@ import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
 import type { SecretAsk } from "./secrets.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
+import type { SetupFailCode } from "./setupActions.ts"
 import type { TaskProgress } from "./task.ts"
 import type { RefusalReason } from "./tools.ts"
 
@@ -87,6 +88,11 @@ export type MessagePart =
    */
   | { readonly kind: "note"; readonly note: "kept_going"; readonly n: number; readonly of: number }
   /**
+   * The muted line "The model is busy. Trying again (1 of 3)." (spec 006, "Busy provider"). `n` is
+   * the try, from 1, and `of` is 3. The model never reads it.
+   */
+  | { readonly kind: "note"; readonly note: "busy_retry"; readonly n: number; readonly of: number }
+  /**
    * The muted line "The parent channel was cleared. The tree would have a loop." (or "... more than
    * 3 levels.") in the channel whose parent field the app cleared to repair the tree (spec 030,
    * "Repair"). `why` says what the tree would have had. It makes no notification and has no Undo.
@@ -108,6 +114,17 @@ export type MessagePart =
       readonly toName: string
       readonly toAgentId: string
       readonly toThreadId: string
+    }
+  /**
+   * A muted line "Setup failed: <name>" (spec 035). The command did not succeed and the turn went
+   * on. `code` is "exit" when the command ended with an error, "timeout" when the time ran out,
+   * and "spawn" when it did not start. The model never reads it.
+   */
+  | {
+      readonly kind: "note"
+      readonly note: "setup_failed"
+      readonly name: string
+      readonly code: SetupFailCode
     }
   /**
    * The handover card (spec 003, "Hand over"): the brief that the app wrote, and the place it

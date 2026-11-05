@@ -7,6 +7,7 @@ import {
   clampWorkflowSideWidth,
   defaultUiState,
   filterPlaces,
+  listPage,
   type Place,
   type PlaceSection,
   placeMatches,
@@ -29,6 +30,20 @@ const place = (name: string, extra: Partial<Place> = {}): Place => ({
   lastMessage: null,
   sectionId: null,
   ...extra,
+})
+
+describe("When the user opens a list", () => {
+  describe("with a routine", () => {
+    test("should open the routines page", () => {
+      expect(listPage("routine")).toBe("routines")
+    })
+  })
+
+  describe("with a workflow", () => {
+    test("should open the workflows page", () => {
+      expect(listPage("workflow")).toBe("workflows")
+    })
+  })
 })
 
 describe("ui state", () => {
@@ -113,7 +128,21 @@ describe("user sections in the place list", () => {
   })
 
   test("all places of a built-in section include its user sections, in the order shown", () => {
-    expect(allPlaces(sample()).map((p) => p.name)).toEqual(["Ada", "Bo", "Eve", "Finn", "Gus"])
+    // Agents: user sections first, then the agents that are in no section.
+    expect(allPlaces(sample()).map((p) => p.name)).toEqual(["Eve", "Finn", "Gus", "Ada", "Bo"])
+    const channels: PlaceSection = {
+      id: "channels",
+      places: [place("Launch", { kind: "channel" })],
+      sections: [
+        {
+          id: "r",
+          name: "Research",
+          places: [place("Chat", { kind: "channel", sectionId: "r" })],
+        },
+      ],
+    }
+    // Channels: a place with no section stays first.
+    expect(allPlaces(channels).map((p) => p.name)).toEqual(["Launch", "Chat"])
   })
 
   test("the sum of unread counts and the working dot of a section", () => {
@@ -287,10 +316,11 @@ describe("the filter of places by organization name (spec 036, Rules)", () => {
     expect(
       allPlaces(found.find((s) => s.id === "channels") as PlaceSection).map((p) => p.name),
     ).toEqual(["docs-team"])
-    expect(agentNames(filterPlaces(list(), "o", () => "Docs"))).toEqual(["Ada", "Bo", "Cy"])
+    // The sections come first and the agents with no section last (spec 001); the filter keeps it.
+    expect(agentNames(filterPlaces(list(), "o", () => "Docs"))).toEqual(["Cy", "Ada", "Bo"])
   })
 
   test("an empty text keeps every place", () => {
-    expect(agentNames(filterPlaces(list(), "  ", organizationOf))).toEqual(["Ada", "Bo", "Cy"])
+    expect(agentNames(filterPlaces(list(), "  ", organizationOf))).toEqual(["Cy", "Ada", "Bo"])
   })
 })

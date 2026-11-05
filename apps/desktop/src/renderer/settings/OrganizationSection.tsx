@@ -70,24 +70,26 @@ export const OrganizationSection = () => {
         }
       >
         <div class={`${settings.row} ${settings.rowWrap}`} data-testid="organization-hand-off-row">
-          <div>
+          <div class={settings.grow}>
             <div class={settings.label}>{t("organization.handOff")}</div>
             <div class={settings.hint}>{t("organization.handOff.hint")}</div>
             <div class={settings.hint} data-testid="organization-hand-off-now">
               {t(`organization.handOff.now.${rule()}` as MessageKey)}
             </div>
           </div>
-          <Segmented
-            label={t("organization.handOff")}
-            testId="organization-hand-off"
-            value={rule()}
-            onChange={(next) => void change(next)}
-            options={HAND_OFF_RULES.map((value) => ({
-              value,
-              label: t(`organization.handOff.${value}` as MessageKey),
-              disabled: readOnly(),
-            }))}
-          />
+          <div class={settings.scrollRow}>
+            <Segmented
+              label={t("organization.handOff")}
+              testId="organization-hand-off"
+              value={rule()}
+              onChange={(next) => void change(next)}
+              options={HAND_OFF_RULES.map((value) => ({
+                value,
+                label: t(`organization.handOff.${value}` as MessageKey),
+                disabled: readOnly(),
+              }))}
+            />
+          </div>
         </div>
         <div class={settings.row} data-testid="organization-ask-up-row">
           <div>

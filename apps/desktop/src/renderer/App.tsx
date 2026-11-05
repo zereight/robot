@@ -24,7 +24,9 @@ import { call } from "./lib/rpc.ts"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { OrgChartPage } from "./orgchart/OrgChartPage.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
+import { RoutinesView } from "./routines/RoutinesPage.tsx"
 import { ConnectionsSection } from "./settings/ConnectionsSection.tsx"
+import { SetupActionsSection } from "./settings/SetupActionsSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { closeSkillForm, SkillFormDialog, skillForm } from "./skills/SkillForm.tsx"
 import { SkillsSection } from "./skills/SkillsSection.tsx"
@@ -59,8 +61,8 @@ export const App = () => {
       setFocusMessage(target.messageId)
     }),
   )
-  // A notice from a workflow opens the page of workflows. A notice of the Teams link opens
-  // Settings, Teams (spec 028).
+  // A notice from a workflow opens the workflows page. A paused routine opens the routines
+  // page. A notice of the Teams link opens Settings, Teams (spec 028).
   onCleanup(
     window.robot.on("app.openPage", ({ page, serverId }) => {
       if (serverId) ui.selectServer(serverId)
@@ -191,6 +193,7 @@ export const App = () => {
               {(_id) => <OrgChartPage />}
             </Show>
           ),
+          routines: () => <RoutinesView />,
           workflows: () => <WorkflowsPage />,
         }}
         settingsSections={{
@@ -200,6 +203,7 @@ export const App = () => {
           notifications: () => <NotificationsSection />,
           connections: () => <ConnectionsSection />,
           skills: () => <SkillsSection />,
+          setup: () => <SetupActionsSection />,
         }}
       />
       <Presence when={newAgent()}>

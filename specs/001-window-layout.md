@@ -13,7 +13,10 @@ new user knows where to look.
   order of pairing. A linked tile shows the first letter of the computer's name and the
   connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
-  (see 021), workflows, tasks, the board (see 024), the org chart (see 029), test devices (see 032), usage. At the bottom: help and settings, then the profile button
+  (see 021), workflows (see 010), routines (see 009), tasks, the board (see 024), the org chart
+  (see 029), test devices (see 032), usage. The workflows button opens the workflow list. The
+  routines button opens the routines list. Each page shows only its own list. At the bottom: help
+  and settings, then the profile button
   when the computer has two or more profiles (see 022). The Today button shows a badge with the
   number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
   above 99. It hides when a linked server is on the screen.
@@ -57,8 +60,16 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 ### Layout
 
-- Inside a built-in section, the places that are in no user section come first. The user sections
-  follow, in the order the user set.
+- Inside Channels, the places that are in no user section come first. The user sections follow,
+  in the order the user set.
+- Inside Agents, the user sections come first, in the order the user set. After them, the section
+  "Unassigned" holds the agents that are in no user section. It is always last. It shows when
+  Agents holds a place or a user section. When Agents holds neither, the list shows the empty
+  line and does not show "Unassigned". The user cannot rename, delete or move it. It is not a
+  user section, and it does not count toward the limit of 20. Its name is translated. The user
+  can collapse it. A collapsed "Unassigned" shows the unread sum and the working dot, as a user
+  section does. When it has no agent, it shows a short muted line. A drop on its header means no
+  section, the same as a drop on the Agents header.
 - A user section has a header like the built-in header: a chevron and the name, muted. It sits 12
   px further in. Its places sit 12 px further in too.
 - A new user section is last, open, and empty.
@@ -95,8 +106,9 @@ The Channels section holds channel sections. The Agents section holds agent sect
   section may have one name.
 - One built-in section holds at most 20 user sections, at all levels (see "Sections inside
   sections").
-- A place is in at most one section. A place with no section shows in the built-in section.
-- Delete of a section moves its places to "No section". It deletes no place.
+- A place is in at most one section. A channel with no section shows in Channels, before the
+  user sections. An agent with no section shows in "Unassigned".
+- Delete of a section moves its places to no section. It deletes no place.
 - The order of the places inside a section does not change.
 - The sections and the places in them belong to the server. The computer and the phone show the
   same ones. The open or closed state of a section belongs to the device (step 4 of "Flows"
@@ -247,17 +259,21 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Selecting a server, then a place, opens the right conversation; the selection survives a
   restart. This also holds for a linked computer.
 - The add button opens the connect dialog.
+- The Workflows button opens the workflow list. The routines list is not on that page. The
+  Routines button opens the routines list. The workflow list is not on that page.
 - At 760 px width, the panel column is closed and the rail is 56 px wide.
 - Make the agent section "Research", then use "Move to section" on one agent: the agent shows
-  under "Research" and not among the other agents. After a restart, it still does.
+  under "Research" and not among the other agents. The other agents show in "Unassigned", and
+  "Unassigned" is under "Research". The header of "Unassigned" has no menu. After a restart, the
+  agent is still under "Research".
 - Make the agent section "Research" again, with another case ("research"): the app refuses it. Make
   a channel section "Research": the app accepts it.
 - Collapse a user section that holds an agent with 2 unread messages: its header shows the badge
   2. Open the section: the badge leaves the header and shows on the agent.
 - Drag a channel onto the header of an agent section: the channel does not move. Drag it onto a
   channel section: it moves.
-- Delete a section that holds two agents, and confirm: both agents show in Agents with no section.
-  No agent is deleted.
+- Delete a section that holds two agents, and confirm: both agents show in "Unassigned", under any
+  user section that remains. No agent is deleted.
 - Type part of an agent name that is in a collapsed user section: the section opens and shows the
   agent. Escape clears the search and the section collapses again.
 - Give one agent the role "Designer" and another the role "Writer". Type "design": only the first

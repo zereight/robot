@@ -23,10 +23,6 @@ const HEIGHT = 820
 
 const openWorkflows = async (page: Page) => {
   await page.getByTestId("page-workflows").click()
-  await page
-    .getByTestId("wf-tabs")
-    .getByText(/^(Workflows|워크플로우)$/)
-    .click()
   await expect(page.getByTestId("wf-list")).toBeVisible()
 }
 
@@ -503,7 +499,6 @@ test("workflow starters on a linked computer: off with the reason without the sw
     await closeSettings(two.page)
     await tile(one.page, "MacBook 2").click()
     await one.page.getByTestId("page-workflows").click()
-    await one.page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
     await expect(one.page.getByTestId("wf-list")).toBeVisible()
 
     // Without the switch: the choice is off and says why. The file choices stay on the server.

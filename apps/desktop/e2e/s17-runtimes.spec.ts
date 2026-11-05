@@ -215,6 +215,7 @@ test("subscription: a second Claude account signs in on its own, and each accoun
   await page.getByTestId("settings-nav-providers").click()
   const work = page.locator("[data-testid^=provider-]").filter({ hasText: "Work" })
   await work.getByTestId("provider-remove").first().click()
+  await work.getByTestId("provider-remove-confirm").click()
   await expect(page.getByTestId("provider-who")).toHaveCount(1)
   await expect(page.getByTestId("provider-status")).toHaveText("Connected")
   await expect

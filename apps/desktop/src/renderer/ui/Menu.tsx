@@ -7,11 +7,17 @@ export interface MenuItem {
   readonly label: string
   readonly onSelect: () => void
   readonly testId?: string
+  /** A small mark before the label, for example the play mark of a setup action. */
+  readonly icon?: JSX.Element
+  /** Extra text for the pointer, for example the command of a setup action. */
+  readonly title?: string
   /** A line of text with no action, above a group of items. */
   readonly heading?: boolean
   /** Set on items of a group where one is current. The current one shows a check mark. */
   readonly checked?: boolean
   readonly disabled?: boolean
+  /** An item that takes data away shows its text in the colour of danger (spec 000). */
+  readonly danger?: boolean
   /**
    * Why the item is off, as a muted line under it. It shows only on an item that is `disabled`,
    * and the screen reader reads it with the item.
@@ -35,14 +41,17 @@ export const PopupMenu = (props: {
   onClose: (refocus: boolean) => void
   label?: string
   testId?: string
+  /** The width of the menu, in px. The short menus stay at the default. */
+  width?: number
 }) => {
   let list: HTMLDivElement | undefined
   const entries = () => [
     ...(list?.querySelectorAll<HTMLElement>("[role^=menuitem]:not(:disabled)") ?? []),
   ]
+  const width = () => props.width ?? MENU_WIDTH
   const top = () =>
     Math.max(8, Math.min(props.top, window.innerHeight - props.items.length * ITEM_HEIGHT - 16))
-  const left = () => Math.max(8, Math.min(props.left, window.innerWidth - MENU_WIDTH - 8))
+  const left = () => Math.max(8, Math.min(props.left, window.innerWidth - width() - 8))
 
   onMount(() => {
     // A menu with no item to choose takes the focus itself, so that Escape still closes it.
@@ -86,7 +95,7 @@ export const PopupMenu = (props: {
         aria-label={props.label}
         data-testid={props.testId}
         tabIndex={-1}
-        style={{ top: `${top()}px`, left: `${left()}px`, width: `${MENU_WIDTH}px` }}
+        style={{ top: `${top()}px`, left: `${left()}px`, width: `${width()}px` }}
         onKeyDown={onKey}
       >
         <For each={props.items}>
@@ -102,17 +111,22 @@ export const PopupMenu = (props: {
               {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the role is menuitemradio exactly when `checked` is set */}
               <button
                 type="button"
-                class={styles.menuItem}
+                class={item.icon ? `${styles.menuItem} ${styles.menuItemIcon}` : styles.menuItem}
                 role={item.checked === undefined ? "menuitem" : "menuitemradio"}
                 aria-checked={item.checked}
                 aria-describedby={reasonId(item)}
                 disabled={item.disabled}
+                title={item.title}
                 data-testid={item.testId}
+                data-danger={item.danger ? "true" : undefined}
                 onClick={() => {
                   props.onClose(false)
                   item.onSelect()
                 }}
               >
+                <Show when={item.icon}>
+                  {(icon) => <span class={styles.menuIcon}>{icon()}</span>}
+                </Show>
                 {item.label}
               </button>
               <Show when={item.disabled && item.reason}>

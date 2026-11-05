@@ -92,7 +92,7 @@ const scenario = (words: Words, reportName: string) => async () => {
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, words.agent)
   const agentId = await agentOf(page, words.agent)
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routines-view")).toBeVisible()
 
   // A routine whose agent says "Blocked" in 3 runs in a row: each failed run has its notice, and
@@ -121,6 +121,7 @@ const scenario = (words: Words, reportName: string) => async () => {
   expect(await blockedRuns(page)).toBe(3)
   expect(notices()).toHaveLength(3)
   await page.getByTestId("routine-delete").click()
+  await page.getByTestId("routine-delete-confirm").click()
   await expect(page.getByTestId("routine-card")).toHaveCount(0)
 
   // 50 routines: the form for one more says why it cannot save. The main process refuses too.
@@ -148,6 +149,7 @@ const scenario = (words: Words, reportName: string) => async () => {
 
   // Delete one: the form saves. A schedule of every 5 minutes shows its note, and saves.
   await page.getByTestId("routine-delete").first().click()
+  await page.getByTestId("routine-delete-confirm").first().click()
   await expect(page.getByTestId("routine-card")).toHaveCount(LIMIT - 1)
   await page.getByTestId("routine-new").click()
   await expect(page.getByTestId("routine-full")).toHaveCount(0)

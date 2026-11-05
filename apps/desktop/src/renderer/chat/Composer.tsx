@@ -46,6 +46,18 @@ import { pendingFill, takeFill } from "./fill.ts"
 import { pastedFiles } from "./paste.ts"
 import { threadPart } from "./threads.ts"
 
+interface FileTransfer {
+  readonly path: string
+  readonly sent: number
+  readonly total: number
+  readonly state: "sending" | "failed"
+}
+
+function transferPercent(sent: number, total: number) {
+  if (total <= 0) return 0
+  return Math.min(100, Math.round((sent / total) * 100))
+}
+
 /** What the box sends: the chat marks its echo, so it slides up from the box. */
 export interface SendPreview {
   readonly text: string
@@ -173,6 +185,19 @@ export const Composer = (props: ComposerProps) => {
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
   const [files, setFiles] = createSignal<string[]>([])
+  /** Files going to a linked server, or waiting for Retry after a failed transfer (spec 003). */
+  const [transfers, setTransfers] = createSignal<readonly FileTransfer[]>([])
+  onCleanup(
+    window.robot.on("attachments.transfer", (event) => {
+      setTransfers(
+        transfers().map((item) =>
+          item.path === event.path && item.state === "sending"
+            ? { ...item, sent: event.sent, total: event.total }
+            : item,
+        ),
+      )
+    }),
+  )
   /** A small picture for each attached image that was pasted or dropped (spec 003, flow 4). */
   const [previews, setPreviews] = createSignal<Readonly<Record<string, string>>>({})
   /** The skill chip at the start of the box (spec 017). One at a time. */
@@ -374,14 +399,20 @@ export const Composer = (props: ComposerProps) => {
     })
     // The small pictures stay alive until the send ends, so a failed send can show them again.
     const shown = previews()
+    const linkedFiles = ui.linked() && attached.length > 0
     setError(undefined)
     setText("")
     setFiles([])
     setPreviews({})
     setSkill(undefined)
+    if (linkedFiles)
+      setTransfers([
+        ...transfers(),
+        ...attached.map((path): FileTransfer => ({ path, sent: 0, total: 0, state: "sending" })),
+      ])
     queueMicrotask(resize)
     try {
-      await call("chat.send", {
+      const result = await call("chat.send", {
         agentId: props.agent.id,
         ...threadPart(props.threadId),
         text: value,
@@ -389,18 +420,78 @@ export const Composer = (props: ComposerProps) => {
         files: [...attached],
         ...(chip ? { skillId: chip.id } : {}),
       })
-      for (const url of Object.values(shown)) URL.revokeObjectURL(url)
+      const failed = new Set(result.failedFiles ?? [])
+      const kept: Record<string, string> = {}
+      for (const [path, url] of Object.entries(shown)) {
+        if (failed.has(path)) kept[path] = url
+        else URL.revokeObjectURL(url)
+      }
+      setPreviews({ ...kept, ...previews() })
+      if (linkedFiles) {
+        const sentNow = new Set(attached)
+        setTransfers(
+          transfers()
+            .filter((item) => !sentNow.has(item.path) || failed.has(item.path))
+            .map((item) => (failed.has(item.path) ? { ...item, state: "failed" } : item)),
+        )
+      }
       props.onCancelReply()
       props.onSent()
     } catch (e) {
       // Put the draft back in front of anything that the user typed or attached in the meantime.
       setText(text() ? `${value}\n${text()}` : value)
-      setFiles([...new Set([...attached, ...files()])].slice(0, ATTACH_MAX))
-      setPreviews({ ...shown, ...previews() })
+      if (linkedFiles) {
+        const sentNow = new Set(attached)
+        setTransfers(
+          transfers().map((item) => (sentNow.has(item.path) ? { ...item, state: "failed" } : item)),
+        )
+        setPreviews({ ...shown, ...previews() })
+      } else {
+        setFiles([...new Set([...attached, ...files()])].slice(0, ATTACH_MAX))
+        setPreviews({ ...shown, ...previews() })
+      }
       if (chip && !skill()) setSkill(chip)
       queueMicrotask(resize)
       setError(describeError(e))
       props.onFailed()
+    }
+  }
+
+  const retryTransfer = async (path: string) => {
+    setTransfers(
+      transfers().map((item) =>
+        item.path === path ? { ...item, state: "sending", sent: 0 } : item,
+      ),
+    )
+    setError(undefined)
+    try {
+      const result = await call("chat.send", {
+        agentId: props.agent.id,
+        ...threadPart(props.threadId),
+        text: "",
+        replyTo: null,
+        files: [path],
+      })
+      if ((result.failedFiles ?? []).includes(path)) {
+        setTransfers(
+          transfers().map((item) => (item.path === path ? { ...item, state: "failed" } : item)),
+        )
+        return
+      }
+      const url = previews()[path]
+      if (url) URL.revokeObjectURL(url)
+      const rest: Record<string, string> = {}
+      for (const [key, value] of Object.entries(previews())) {
+        if (key !== path) rest[key] = value
+      }
+      setPreviews(rest)
+      setTransfers(transfers().filter((item) => item.path !== path))
+      props.onSent()
+    } catch (e) {
+      setTransfers(
+        transfers().map((item) => (item.path === path ? { ...item, state: "failed" } : item)),
+      )
+      setError(describeError(e))
     }
   }
 
@@ -604,7 +695,7 @@ export const Composer = (props: ComposerProps) => {
             </div>
           )}
         </Show>
-        <Show when={files().length > 0}>
+        <Show when={files().length > 0 || transfers().length > 0}>
           <ul class={styles.chips} aria-label={t("chat.attach.list")} data-testid="attachments">
             <For each={files()}>
               {(path) => (
@@ -627,6 +718,40 @@ export const Composer = (props: ComposerProps) => {
                   >
                     <X size={12} />
                   </IconButton>
+                </li>
+              )}
+            </For>
+            <For each={transfers()}>
+              {(item) => (
+                <li class={styles.chip} data-testid="attachment-chip" data-state={item.state}>
+                  <Show when={previews()[item.path]}>
+                    {(src) => (
+                      <img
+                        class={styles.chipThumb}
+                        src={src()}
+                        alt=""
+                        data-testid="attachment-preview"
+                      />
+                    )}
+                  </Show>
+                  <span class={styles.chipName}>{fileName(item.path)}</span>
+                  <Show
+                    when={item.state === "failed"}
+                    fallback={
+                      <span class={styles.chipSize} data-testid="attachment-progress">
+                        {t("chat.attach.progress", {
+                          percent: transferPercent(item.sent, item.total),
+                        })}
+                      </span>
+                    }
+                  >
+                    <Button
+                      data-testid="attachment-retry"
+                      onClick={() => void retryTransfer(item.path)}
+                    >
+                      {t("chat.attach.retry")}
+                    </Button>
+                  </Show>
                 </li>
               )}
             </For>

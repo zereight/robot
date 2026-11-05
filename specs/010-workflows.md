@@ -6,7 +6,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 
 ## Concepts
 
-- **Workflow**: a name, a trigger, and a graph of steps on a canvas.
+- **Workflow**: a name, a trigger, and a graph of steps on a canvas. The workflow list is its own
+  page. The Workflows button on the rail opens it (001). The page does not show routines.
 - **Trigger**: manual, schedule (as in 009), a message in a chosen channel that matches text, or
   a web hook (see "Web hook").
 - **Step kinds**: agent step (an agent and a prompt that can use earlier results), model step (a
@@ -31,7 +32,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 ## Flows
 
 1. Edit: the user drags steps onto the canvas, connects outputs to inputs, and edits each step in
-   a side panel. Zoom and pan with the trackpad or mouse.
+   a side panel. Zoom and pan with the trackpad or mouse. A step, a connection and a note are
+   deleted with a danger button that asks first (000, "Danger buttons").
 2. Run: manual trigger or the configured trigger. Steps light up as they run. Each agent step is a
    task (see 005).
 3. History: a list of runs with their states; a run opens to show each step's input and result.
@@ -47,6 +49,10 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 7. Start from a starter: from the menu of the Workflows page, the user picks "New from a starter",
    picks a starter and an agent, and presses Create. The app makes a new workflow (see
    "Starters").
+8. Move a workflow to or from CC Workflow Studio: the user imports its file with "Import
+   workflows", or exports one workflow with "Export for CC Workflow Studio" (see "CC Workflow Studio
+   files").
+9. Diagram: the editor shows the Mermaid text of the open workflow (see "Diagram").
 
 ## Workflow file
 
@@ -74,6 +80,95 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   exist, a condition without both branches, or more steps than the limit), the app refuses the
   whole file and names the workflow and the place of the fault.
 - Notes in the file keep their text, tone and place.
+
+## CC Workflow Studio files
+
+CC Workflow Studio is a public tool in which the user draws a workflow on a canvas and saves it as
+a JSON file. The user can move a workflow from that tool to ROBot and from ROBot to that tool.
+The form of the file and the table of steps are in
+[docs/cc-wf-studio-format.md](../docs/cc-wf-studio-format.md).
+
+That tool has more kinds of node than ROBot has kinds of step, and ROBot has parts that the tool
+does not have. So a move loses some parts. The app always says which parts, and never loses a part
+in silence.
+
+### Import
+
+- "Import workflows" takes a file of CC Workflow Studio as well as a ROBot file. The app finds the
+  form from the content, not from the name of the file. A file of neither form is refused with the
+  reason "This is not a workflow file." The file holds one workflow.
+- The review screen shows first (see 014, "Review before an import"). The app makes nothing
+  before the user confirms.
+- The rules of "Workflow file" hold: the new workflow is off, its trigger is manual, a name that
+  is taken gets a number, text that looks like a secret is hidden, and the limits of 30 steps and
+  10 MB hold.
+- A node with a prompt makes an agent step. A node with an if and else makes a condition in the
+  mode "Ask a model". The first branch of that node is the branch "yes", and the second is the
+  branch "no".
+- The file names no agent that ROBot can link. So each agent step has no agent, shows "Pick an
+  agent", and fails a run with the reason "No agent". The review screen has the field "Agent for
+  agent steps", with the agents that are not archived and the choice "None" at the start. An agent
+  that the user picks is the agent of every agent step.
+- A node that has no step in ROBot (a question to the user, a switch, a skill, a connection to a
+  tool, a Codex call, a sub-agent flow, a session checkpoint, a group) becomes a note. The note
+  has the tone "pink", the place of the node, and a first line that says what the node was. It
+  holds the main text of the node. The start node and the end node make nothing.
+- A connection to or from a node that became a note is dropped. A step that lost an input this
+  way shows "Connect" in the checklist after the import (see 014).
+- A node in a group keeps the place that it has on the canvas of the tool.
+- A variable `{{name}}` in a prompt gets the value that the node holds for it. Another `{{...}}`
+  text stays as it is.
+- The app refuses the whole file, and names the node or the place of the fault, in these cases:
+  the file has more than 30 steps, a connection joins a step to itself, the connections make a
+  loop, a connection names a node that does not exist, or a condition has no connection for the
+  branch "yes" or for the branch "no" (also when the app dropped the connection).
+- The review screen lists under "Not imported" each node that became a note, each part of the
+  file that ROBot does not make (for example sub-agent flows, hooks, the model of a sub-agent),
+  and each text that the app cut. Each row has a reason.
+
+### Export
+
+- The menu of the Workflows page has the choice "Export for CC Workflow Studio". The user picks one
+  workflow and a file name. The app writes one file that CC Workflow Studio opens.
+- An agent step becomes a sub-agent node with the prompt of the step. A condition becomes an if
+  and else node. An approval step becomes a node that asks "Approve" or "Reject"; only "Approve"
+  goes on. The app adds a start node and an end node.
+- A post step and a notify step are not written. The connections go around them, so the steps
+  before and after them stay joined.
+- Notes, the trigger, the agent of a step, the effort of a step and the mark "Continue on failure"
+  have no place in that tool, so the app does not write them.
+- A text that is longer than the limit of that tool is cut.
+- Text that looks like a secret is hidden, as in a ROBot file (see 014).
+- When the write is done, the app lists under "Not exported" what the file does not hold: each
+  step that is not written, the trigger when it is not "manual", the count of notes, the count of
+  steps that lost an agent, an effort or the mark "Continue on failure", and each cut text. If
+  nothing is lost, the app shows no list.
+- The file holds no run, no version, no chat, no key, no secret, no channel, no agent and no id of
+  ROBot.
+- The import of the file that the app wrote makes a workflow with the same agent steps and
+  conditions, the same connections between them and the same prompts. A condition in the mode
+  "contains text" comes back in the mode "Ask a model". Each agent step comes back with no agent,
+  unless the user picks one on the review screen. An approval step comes back as a note, because
+  the import has no step for a question node (see "Import").
+
+## Diagram
+
+The editor has the control "Diagram". It opens a box with the Mermaid flowchart of the graph that
+is open, including a change that is not saved. The box has "Copy". Copy puts that text on the
+clipboard. The control works while the workflow is read-only.
+
+- The first line is `flowchart TD`.
+- Each step is one line, in node-number order. A condition is a diamond. Every other step is a
+  box. The label is the node number, a full stop, a space, and the name of the step.
+- Each connection is one line. A connection that leaves a condition is labelled `yes` or `no`.
+  Those words stay English, because they are the branch values of the file.
+- A note is not in the diagram. The trigger is not a node.
+- A character that would break a line (`"`, `[`, `]`, `{`, `}`, `|`, or a line break) becomes a
+  space.
+- A workflow with no steps has a flowchart with no nodes.
+- The app does not draw the picture. It does not send the text to another service.
+- The phone has no workflow editor, so it has no diagram control in this version. A linked client
+  that opens the editor has the control.
 
 ## Starters
 
@@ -242,6 +337,8 @@ a new issue. ROBot runs no service on the internet for this (000).
 
 ## Rules
 
+- The delete of a workflow, from its card, is a danger button that asks first. Its question names
+  the workflow and says that its runs go with it (000, "Danger buttons").
 - A step starts when all its inputs are done.
 - A failed step stops the run unless the step is marked "Continue on failure". An agent step
   whose task ends as Blocked (see 005) is a failed step, with the reason of the block.
@@ -250,7 +347,7 @@ a new issue. ROBot runs no service on the internet for this (000).
   "Runs on <name>".
 - A linked client (012, "Workflows") sees the workflows of the server and runs and stops them.
   It changes them only with the switch "Can create and change agents". The assistant and the
-  workflow file stay on the server.
+  workflow file stay on the server. So do the import and the export of CC Workflow Studio files.
 - After an app restart, a run that was going is marked failed with the reason "The app
   stopped". This includes a run that waits at an approval step. Its tasks fail the same way,
   also a task that waits for an approval or a question (see 005).
@@ -334,3 +431,40 @@ a new issue. ROBot runs no service on the internet for this (000).
 - A call to the address of a workflow that is off, and a call to a wrong address, get 404. Two
   profiles each have a workflow with a web hook: the two addresses use two ports, and each call
   reaches only its own profile.
+- Open Diagram on a workflow whose step 1 is the agent step "Draft", step 2 is the condition
+  "Polite?", and the branch "yes" goes to step 3 "Post it", with one note on the canvas. The text
+  starts with `flowchart TD`. Step 2 is a diamond. The branch is labelled `yes`. The note is not
+  in the text. A name that holds `"` shows a space in that place.
+- Import a CC Workflow Studio file with a start node, a prompt node, a sub-agent node, a question
+  node, a second prompt node and an end node, joined in this order. The review screen lists one
+  workflow with three steps, and "Not imported" names the question node. After the import the
+  workflow is off. It has a pink note at the place of the question node. The two prompt steps and
+  the sub-agent step show "Pick an agent", and the second prompt step shows "Connect".
+- Import the same file again and pick the agent "Reviewer" in "Agent for agent steps": every agent
+  step names "Reviewer", and no step shows "Pick an agent".
+- Import one workflow in the wrapped form (with a `meta` field) and in the bare form, with
+  connections that have no ports: both make the same workflow.
+- Import a file with a sub-agent node inside a group. The step lands at the place of the group
+  plus the place of the node. A prompt node with `variables` and the text `{{topic}}` gets the
+  value of `topic` in its prompt, and the text `{{other}}` stays.
+- Import a file with a loop: the app refuses it and names the nodes of the loop, and nothing is
+  made. Do the same for an if and else node whose second branch goes to a question node: the app
+  refuses the file and names the node and the branch "no".
+- Import a file of 31 steps: the app refuses it and makes nothing.
+- Export a workflow with an agent step, a condition in the mode "contains text", an approval step,
+  a notify step, a note, and a schedule. The file has a start node, a sub-agent node, an if and
+  else node, a question node with the answers "Approve" and "Reject", and an end node. It has no
+  node for the notify step, and the steps before and after it are joined. "Not exported" names the
+  notify step, the schedule, one note and the agent of one step. The CLI of CC Workflow Studio
+  accepts the file (checked by hand).
+- Export a workflow with a prompt that holds a key: the file holds `[redacted]` and not the key.
+- Export a workflow with a prompt of 12 000 characters: the prompt in the file has 10 000, and
+  "Not exported" names the step and the cut text.
+- Export a workflow with an agent step, a condition and two agent steps after it, and import the
+  file into an empty app: the workflow has the same four steps, the same connections and the same
+  prompts. The condition is in the mode "Ask a model", and each agent step shows "Pick an agent".
+- Export a workflow with an approval step between two agent steps, and import the file: the canvas
+  shows a pink note for the question node, and the second agent step shows "Connect".
+- On a linked client, "Export for CC Workflow Studio" and the import of such a file are not
+  offered. The client shows the muted line "Open this on <server name>.", as for the export and
+  import of a ROBot file (012).

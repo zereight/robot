@@ -143,6 +143,9 @@ export const CLIENT_METHODS = [
   "tasks.get",
   "tasks.recent",
   "tasks.stop",
+  // The follow-ups in the details of a task (spec 005, 012). They stay on this computer.
+  "followups.list",
+  "followups.remove",
   "attachment.upload",
   "attachment.download",
   "attention.list",
@@ -262,6 +265,8 @@ export const PUSHED_EVENTS = [
   "places.changed",
   "agents.changed",
   "tasks.changed",
+  // A follow-up was made, deleted, or started its task (spec 005, 012).
+  "followups.changed",
   "notice",
   "revoked",
   "memory.changed",

@@ -414,6 +414,9 @@ const partCheck = (v: unknown): boolean => {
       // The muted line "Kept going (1 of 8)" travels with the two numbers (spec 005, 019).
       if (v.note === "kept_going")
         return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
+      // The muted line "The model is busy. Trying again (1 of 3)." (spec 006).
+      if (v.note === "busy_retry")
+        return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
       // The old muted line of a repaired channel tree travels with its reason. A version before the
       // organizations posted it (spec 030, "Migration"); no version posts it now, but it stays in
       // the history, and a computer that was not updated can still send one (spec 019).
@@ -423,6 +426,13 @@ const partCheck = (v: unknown): boolean => {
       // for your review." travel with the name (spec 018).
       if (v.note === "connection_down" || v.note === "connection_held")
         return shape(["kind", "note", "name"])(v) && str(CONNECTION_NAME_MAX * 4, 1)(v.name)
+      // The muted line "Setup failed: <name>" travels with the name and the reason (spec 035, 019).
+      if (v.note === "setup_failed")
+        return (
+          shape(["kind", "note", "name", "code"])(v) &&
+          str(80, 1)(v.name) &&
+          oneOf(["exit", "timeout", "spawn"])(v.code)
+        )
       // The muted line "Handed over to <name>" travels with the ids of the new thread (spec 003, 019).
       if (v.note === "handed_over")
         return (

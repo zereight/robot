@@ -8,6 +8,7 @@ import {
   MessagesSquare,
   Network,
   Plus,
+  Repeat,
   Settings,
   TriangleAlert,
   WifiOff,
@@ -141,6 +142,7 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
             badge={today.badgeText()}
           />
           <PageButton page="workflows" label={t("page.workflows")} icon={<Workflow size={20} />} />
+          <PageButton page="routines" label={t("page.routines")} icon={<Repeat size={20} />} />
           <PageButton page="tasks" label={t("page.tasks")} icon={<ListChecks size={20} />} />
           <PageButton page="orgchart" label={t("page.orgchart")} icon={<Network size={20} />} />
           <PageButton page="usage" label={t("page.usage")} icon={<ChartColumn size={20} />} />
@@ -176,6 +178,7 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
                 {
                   label: t("link.tile.remove", { name: server.name }),
                   testId: "server-tile-remove",
+                  danger: true,
                   run: () => {
                     if (server.linkId) void call("devices.server.remove", { id: server.linkId })
                   },

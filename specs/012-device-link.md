@@ -71,13 +71,14 @@ client shows it and sends commands.
 
 - On the server: Settings → Devices lists the linked devices that can open this computer. The
   user picks one and chooses "Remove access". That device cannot connect again until it is
-  paired again.
+  paired again. The step asks first, and its question names the device (000, "Danger buttons").
 - On the server, each linked device in that list has the switch "Can create and change agents".
   It takes effect at once, also for a connection that is open. While the two computers sync
   (019), the switch for that device shows as on and cannot be changed. A link made before this switch
   existed has it off until the user turns it on.
 - On the client: Settings → Devices lists the servers this device can open. The user picks one
-  and chooses "Remove". The link ends on both sides. The cache of that server is deleted.
+  and chooses "Remove". The link ends on both sides. The cache of that server is deleted. Both
+  steps ask first, and the question names the other computer (000, "Danger buttons").
 
 ### Name and switch
 
@@ -103,7 +104,7 @@ client shows it and sends commands.
 A client sees the user sections and the pinned places of the server (001). It cannot make,
 rename, order or delete a section, move a place into another section, or pin or unpin a place.
 A client can mark a place or a message as read or as unread (001, 003). The read state follows
-the server. The Today, Board and usage page buttons and pages, and the
+the server. The Today, Board, Routines and usage page buttons and pages, and the
 other parts in the right column, show a muted line on a client: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one

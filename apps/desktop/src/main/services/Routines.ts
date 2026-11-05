@@ -7,6 +7,7 @@ import {
   isActive,
   type Locale,
   limitState,
+  listPage,
   type OutsideSource,
   ROUTINE_FAILURES_MAX,
   ROUTINES_MAX,
@@ -293,7 +294,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           target: r.channel_id
             ? { kind: "channel", id: r.channel_id }
             : { kind: "agent", id: r.agent_id },
-          page: "workflows",
+          page: listPage("routine"),
         })
         changed(r.server_id)
         return true

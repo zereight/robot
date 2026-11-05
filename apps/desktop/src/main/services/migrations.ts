@@ -1197,6 +1197,30 @@ export const migrations: readonly string[] = [
   -- source column holds text, so no other change is needed.
   `,
   `
+  -- A follow-up (spec 005, "Follow-up"): a turn that an agent asked for itself to look at one
+  -- thing again later. It waits in this table until its time comes, and the app makes one task
+  -- for it. It does not sync (spec 019), so a foreign key is safe here: the delete of an agent or
+  -- of a thread takes its follow-ups with it, and no orphan waits for a turn that cannot start.
+  CREATE TABLE follow_up (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    thread_id TEXT REFERENCES thread (id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX follow_up_at ON follow_up (at);
+  CREATE INDEX follow_up_agent ON follow_up (agent_id);
+  `,
+  `
+  -- The action of a follow-up (spec 005, "Follow-up"): "queue" starts a new turn, and "steer"
+  -- joins the running turn of that conversation when the program can take it. Rows from before
+  -- this step start a new turn, which is what every follow-up did. The table does not sync.
+  ALTER TABLE follow_up ADD COLUMN action TEXT NOT NULL DEFAULT 'queue'
+    CHECK (action IN ('queue', 'steer'));
+  `,
+  `
   -- The switch "Main agent" of an agent (spec 002, flow 7): 0 (off) is the default, as every agent
   -- was before this step. At most one agent on a server has 1. The app keeps this in one step: it
   -- turns the flag off on the old main agent when it turns it on for another one. The column has

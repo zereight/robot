@@ -64,6 +64,7 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { FollowUps } from "./services/FollowUps.ts"
 import { Handbook } from "./services/Handbook.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
@@ -92,6 +93,13 @@ import { SkillDrafts } from "./services/SkillDrafts.ts"
 import { Skills } from "./services/Skills.ts"
 import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
+import {
+  listSetup,
+  readSetupFile,
+  runNamed,
+  setSetupAllowed,
+  writeSetupFile,
+} from "./services/setupRun.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
 import { TeamsLink } from "./services/TeamsLink.ts"
@@ -809,6 +817,15 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Tasks.use((t) => t.endRequest(id))),
       done,
     ),
+  "followups.list": (input) =>
+    decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ taskId }) => FollowUps.use((f) => f.ofTask(taskId))),
+    ),
+  "followups.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => FollowUps.use((f) => f.remove(id))),
+      done,
+    ),
   "channels.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Channels.use((c) => c.list(serverId))),
@@ -1463,14 +1480,22 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String, workflowIds: Schema.Array(Schema.String) }))(
       input,
     ).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.export(data)))),
+  "workflowFile.exportCc": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap((data) => WorkflowFiles.use((f) => f.exportCc(data))),
+    ),
   "workflowFile.open": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
     ),
   "workflowFile.apply": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, pick: Schema.Array(Schema.Int) }))(input).pipe(
-      Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
-    ),
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        pick: Schema.Array(Schema.Int),
+        agentId: Schema.optionalKey(Schema.String),
+      }),
+    )(input).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data)))),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
   "notifications.setMute": (input) =>
     decode(
@@ -1660,6 +1685,69 @@ export const handlers: Handlers = {
     decode(ByThread)(input).pipe(
       Effect.flatMap((i) => Chat.use((c) => c.compact(placeOf(i)))),
       done,
+    ),
+  "setup.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return listSetup((yield* Platform).dataDir, agent.workspace)
+        }),
+      ),
+    ),
+  "setup.run": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, name }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return yield* Effect.promise(() => runNamed(agent.workspace, name))
+        }),
+      ),
+    ),
+  "setup.allow": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, on: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ agentId, on }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return setSetupAllowed((yield* Platform).dataDir, agent.workspace, on)
+        }),
+      ),
+    ),
+  "setup.file": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return readSetupFile(agent.workspace)
+        }),
+      ),
+    ),
+  "setup.save": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        replace: Schema.Boolean,
+        actions: Schema.Array(
+          Schema.Struct({
+            name: Schema.String,
+            command: Schema.String,
+            onOwnCopy: Schema.Boolean,
+            onTurnStart: Schema.Boolean,
+          }),
+        ),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, actions, replace }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return writeSetupFile((yield* Platform).dataDir, agent.workspace, actions, replace)
+        }),
+      ),
     ),
   "chat.threads": (input) =>
     decode(ByAgent)(input).pipe(

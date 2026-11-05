@@ -1,4 +1,5 @@
 import {
+  listPage,
   type MessageKey,
   TODAY_PAGE_SIZE,
   type TodayGroupId,
@@ -51,6 +52,7 @@ const ICONS: Record<TodayKind, () => JSX.Element> = {
   workflow_done: () => <CircleCheck size={18} />,
   routine_next: () => <CalendarClock size={18} />,
   workflow_next: () => <CalendarClock size={18} />,
+  followup_next: () => <CalendarClock size={18} />,
 }
 
 const TodayRowView = (props: { row: TodayRow; group: TodayGroupId; onOpen: () => void }) => {
@@ -124,7 +126,7 @@ export const TodayPage = () => {
       case "routine":
       case "workflow":
         setOpenTarget({ kind: target.kind, id: target.id })
-        ui.selectPage("workflows")
+        ui.selectPage(listPage(target.kind))
         return
       case "account":
         setOpenTarget({ kind: "account", id: target.id })

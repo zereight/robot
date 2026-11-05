@@ -166,7 +166,6 @@ test("review before an import: agent file and workflow file, ticks, not imported
 
   // Workflow file with a post step: "Not imported" names its place.
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await page.getByTestId("wf-menu").click()
   await page.getByTestId("wf-menu-import-file").click()
   const wfDialog = page.getByTestId("workflow-import-dialog")

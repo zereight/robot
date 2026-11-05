@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import {
+  connectMock,
+  createAgent,
+  freshUserData,
+  isDangerButton,
+  launch,
+  resizeWindow,
+  shot,
+} from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 const center = async (locator: Locator) => {
@@ -51,7 +59,6 @@ test("workflows: build, connect, zoom and pan, run, history, approval and read-o
   await expect(page.getByTestId("channel-header-name")).toHaveText("Out")
 
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await expect(page.getByTestId("wf-list-empty")).toBeVisible()
   await page.getByTestId("wf-new").click()
   await expect(page.getByTestId("wf-empty")).toBeVisible()
@@ -96,6 +103,22 @@ test("workflows: build, connect, zoom and pan, run, history, approval and read-o
     )
     .toBe(true)
   await page.getByTestId("wf-zoom-in").click()
+
+  // A step and a note are deleted with a danger button that asks first (spec 000).
+  await page.getByTestId("wf-add-notify").click()
+  await page.getByTestId("wf-step-name").fill("Tell")
+  await expect(page.getByTestId("wf-node")).toHaveCount(4)
+  expect(await isDangerButton(page.getByTestId("wf-delete"))).toBe(true)
+  await page.getByTestId("wf-delete").click()
+  await expect(page.getByTestId("wf-delete-ask")).toContainText(
+    "Delete step 4 “Tell”? Its connections go with it, and the save keeps the change.",
+  )
+  await shot(page, "s14-04-delete-step-ask")
+  await page.getByTestId("wf-delete-keep").click()
+  await expect(page.getByTestId("wf-node")).toHaveCount(4)
+  await page.getByTestId("wf-delete").click()
+  await page.getByTestId("wf-delete-confirm").click()
+  await expect(page.getByTestId("wf-node")).toHaveCount(3)
 
   // Run: steps light up, the second step gets the first result.
   await page.getByTestId("wf-run").click()

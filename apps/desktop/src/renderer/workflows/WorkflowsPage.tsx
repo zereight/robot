@@ -10,18 +10,19 @@ import type { ErrorText } from "../lib/errors.ts"
 import { isForView } from "../lib/events.ts"
 import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
-import { RoutinesView } from "../routines/RoutinesPage.tsx"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
-import { Button, Segmented, Switch } from "../ui/controls.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
+import { Button, Switch } from "../ui/controls.tsx"
 import { Menu, type MenuItem } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { WorkflowEditor } from "./WorkflowEditor.tsx"
 import {
   describeFileError,
+  ExportCcDialog,
   ExportWorkflowsDialog,
   ImportWorkflowsDialog,
   WorkflowFileProblemDialog,
@@ -70,9 +71,12 @@ const WorkflowList = (props: {
     })
   })
   const [exporting, setExporting] = createSignal(false)
+  const [exportingCc, setExportingCc] = createSignal(false)
   const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
   const [fileProblem, setFileProblem] = createSignal<ErrorText>()
   const [starting, setStarting] = createSignal(false)
+  // The danger button of a card asks first (spec 000, "Danger buttons").
+  const [deleting, setDeleting] = createSignal<string>()
 
   /**
    * "New from a starter" (spec 010, "Starters"). It is off, with the reason, when no agent exists
@@ -139,6 +143,11 @@ const WorkflowList = (props: {
                     testId: "wf-menu-export",
                   },
                   {
+                    label: t("workflowFile.menu.exportCc"),
+                    onSelect: () => setExportingCc(true),
+                    testId: "wf-menu-export-cc",
+                  },
+                  {
                     label: t("workflowFile.menu.importFile"),
                     onSelect: () => void startImport(),
                     testId: "wf-menu-import-file",
@@ -148,6 +157,9 @@ const WorkflowList = (props: {
           }
         />
       </div>
+      <Presence when={exportingCc()}>
+        {() => <ExportCcDialog workflows={workflows()} onClose={() => setExportingCc(false)} />}
+      </Presence>
       <Presence when={exporting()}>
         {() => (
           <ExportWorkflowsDialog workflows={workflows()} onClose={() => setExporting(false)} />
@@ -236,13 +248,33 @@ const WorkflowList = (props: {
                 {t("workflows.open")}
               </Button>
               <Show when={ui.canChange()}>
-                <Button
-                  disabled={w.running}
-                  onClick={() => call("workflows.delete", { id: w.id })}
-                  data-testid="wf-delete-card"
+                <Show
+                  when={deleting() === w.id}
+                  fallback={
+                    <Button
+                      variant="danger"
+                      disabled={w.running}
+                      onClick={() => setDeleting(w.id)}
+                      data-testid="wf-delete-card"
+                    >
+                      {t("agents.memory.delete")}
+                    </Button>
+                  }
                 >
-                  {t("agents.memory.delete")}
-                </Button>
+                  <Confirm
+                    ask={t("workflows.delete.ask", { name: w.name })}
+                    confirm={t("agents.memory.delete")}
+                    keep={t("common.keep")}
+                    onConfirm={() => {
+                      setDeleting(undefined)
+                      void call("workflows.delete", { id: w.id })
+                    }}
+                    onKeep={() => setDeleting(undefined)}
+                    testId="wf-delete-card-ask"
+                    confirmTestId="wf-delete-card-confirm"
+                    keepTestId="wf-delete-card-keep"
+                  />
+                </Show>
               </Show>
             </div>
           )}
@@ -252,18 +284,14 @@ const WorkflowList = (props: {
   )
 }
 
-/** The page of routines and workflows. */
+/** The page of workflows. Routines have their own page (spec 001). */
 export const WorkflowsPage = () => {
   const { t } = useApp()
   const ui = useUi()
-  const [tab, setTab] = createSignal<"routines" | "workflows">("routines")
   const [open, setOpen] = createSignal<{ workflow: Workflow | null; frame?: boolean }>()
-  // The Today page asks for a routine or a workflow: the page shows the tab that holds it.
+  // The Today page asks for a workflow: leave the editor so the list can show the card.
   createEffect(() => {
-    const target = openTarget()
-    if (target?.kind === "routine") setTab("routines")
-    else if (target?.kind === "workflow") setTab("workflows")
-    if (target?.kind === "routine" || target?.kind === "workflow") setOpen(undefined)
+    if (openTarget()?.kind === "workflow") setOpen(undefined)
   })
   // A workflow belongs to one server. Another server on screen closes the editor.
   createEffect(
@@ -275,59 +303,27 @@ export const WorkflowsPage = () => {
   )
   // A checklist item opens the list where the user does the step (spec 014).
   createEffect(() => {
-    const target = ui.revealTarget()
-    if (!target) return
-    setOpen(undefined)
-    setTab(target.kind === "routine" ? "routines" : "workflows")
+    if (ui.revealTarget()?.kind === "workflow") setOpen(undefined)
   })
   return (
     <div class={`${shell.page} ${styles.page}`} data-testid="workflows-page">
       <Show
         when={open()}
         fallback={
-          <>
-            <Segmented
-              label={t("workflows.tabs")}
-              value={tab()}
-              options={[
-                { value: "routines", label: t("workflows.tab.routines") },
-                { value: "workflows", label: t("workflows.tab.workflows") },
-              ]}
-              onChange={setTab}
-              testId="wf-tabs"
-            />
-            <Show
-              when={tab() === "routines"}
-              fallback={
-                <Show
-                  when={!ui.serverOffline()}
-                  fallback={
-                    <p class={shell.pageNotice} data-testid="wf-offline">
-                      {t("link.state.offline", { name: ui.server()?.name ?? "" })}
-                    </p>
-                  }
-                >
-                  <WorkflowList
-                    onOpen={(workflow, options) =>
-                      setOpen({ workflow, ...(options?.frame ? { frame: true } : {}) })
-                    }
-                  />
-                </Show>
+          <Show
+            when={!ui.serverOffline()}
+            fallback={
+              <p class={shell.pageNotice} data-testid="wf-offline">
+                {t("link.state.offline", { name: ui.server()?.name ?? "" })}
+              </p>
+            }
+          >
+            <WorkflowList
+              onOpen={(workflow, options) =>
+                setOpen({ workflow, ...(options?.frame ? { frame: true } : {}) })
               }
-            >
-              {/* Routines stay on the server (spec 012). */}
-              <Show
-                when={!ui.linked()}
-                fallback={
-                  <p class={shell.pageNotice} data-testid="page-open-on-server">
-                    {t("link.openOnServer", { name: ui.server()?.name ?? "" })}
-                  </p>
-                }
-              >
-                <RoutinesView />
-              </Show>
-            </Show>
-          </>
+            />
+          </Show>
         }
       >
         {(o) => (

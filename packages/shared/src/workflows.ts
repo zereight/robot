@@ -248,6 +248,38 @@ export const fillTemplate = (template: string, input: string, trigger: string) =
 export const nodeNumbers = (steps: readonly Pick<Step, "id">[]): Map<string, number> =>
   new Map(steps.map((s, i) => [s.id, i + 1]))
 
+/** A character that would break one line of a Mermaid flowchart. It becomes a space. */
+const DIAGRAM_SPACE = new Set(['"', "[", "]", "{", "}", "|", "\n", "\r"])
+
+const diagramLabel = (name: string) =>
+  [...name].map((char) => (DIAGRAM_SPACE.has(char) ? " " : char)).join("")
+
+/**
+ * The Mermaid flowchart of a workflow (spec 010, "Diagram"). The node number is the place of the
+ * step in `steps`, from 1. Notes and the trigger are not arguments, so they are not in the text.
+ */
+export const workflowDiagram = (
+  steps: readonly Pick<Step, "id" | "kind" | "name">[],
+  edges: readonly Pick<Edge, "from" | "to" | "branch">[],
+): string => {
+  const numbers = nodeNumbers(steps)
+  const kindOf = new Map(steps.map((step) => [step.id, step.kind]))
+  const lines = ["flowchart TD"]
+  for (const step of steps) {
+    const n = numbers.get(step.id) ?? 0
+    const label = `${n}. ${diagramLabel(step.name)}`
+    lines.push(step.kind === "condition" ? `  n${n}{"${label}"}` : `  n${n}["${label}"]`)
+  }
+  for (const edge of edges) {
+    const from = numbers.get(edge.from)
+    const to = numbers.get(edge.to)
+    if (from === undefined || to === undefined) continue
+    const branch = kindOf.get(edge.from) === "condition" && edge.branch ? `|${edge.branch}|` : ""
+    lines.push(`  n${from} -->${branch} n${to}`)
+  }
+  return lines.join("\n")
+}
+
 /** The mode of a condition. A condition from before the second mode has none and tests for text. */
 export const conditionMode = (step: Extract<Step, { kind: "condition" }>): ConditionMode =>
   step.mode ?? "contains"

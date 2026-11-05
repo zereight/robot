@@ -87,11 +87,12 @@ test("linked workflows: a client sees, runs and answers, and edits only with the
     await closeSettings(two.page)
     await tile(one.page, "MacBook 2").click()
 
-    // The page opens. Routines stay on the server.
+    // Routines stay on the server. The workflows of the server open here.
+    await one.page.getByTestId("page-routines").click()
+    await expect(one.page.getByTestId("page-open-on-server")).toHaveText("Open this on MacBook 2.")
     await one.page.getByTestId("page-workflows").click()
     await expect(one.page.getByTestId("workflows-page")).toBeVisible()
-    await expect(one.page.getByTestId("page-open-on-server")).toHaveText("Open this on MacBook 2.")
-    await one.page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
+    await expect(one.page.getByTestId("page-open-on-server")).toHaveCount(0)
 
     // Without the switch: the list shows, with no edit controls.
     await expect(one.page.getByTestId("wf-card")).toHaveCount(1)

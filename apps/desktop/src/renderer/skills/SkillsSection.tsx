@@ -7,6 +7,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
 import { editSkill, openSkillForm } from "./SkillForm.tsx"
@@ -147,30 +148,31 @@ export const SkillsSection = () => {
                           >
                             {t("skills.duplicate")}
                           </Button>
-                          <Button onClick={() => setDeleting(skill.id)} data-testid="skill-delete">
+                          <Button
+                            variant="danger"
+                            onClick={() => setDeleting(skill.id)}
+                            data-testid="skill-delete"
+                          >
                             {t("skills.delete")}
                           </Button>
                         </>
                       }
                     >
-                      <span class={styles.confirm} role="alert" data-testid="skill-delete-ask">
-                        {t("skills.delete.ask", { name: skill.name })}
-                      </span>
-                      <Button onClick={() => setDeleting(undefined)}>
-                        {t("skills.delete.cancel")}
-                      </Button>
-                      <Button
-                        variant="primary"
-                        onClick={() =>
+                      <Confirm
+                        ask={t("skills.delete.ask", { name: skill.name })}
+                        confirm={t("skills.delete.confirm")}
+                        keep={t("skills.delete.cancel")}
+                        onConfirm={() =>
                           run(async () => {
                             await call("skills.delete", { id: skill.id })
                             setDeleting(undefined)
                           })
                         }
-                        data-testid="skill-delete-confirm"
-                      >
-                        {t("skills.delete.confirm")}
-                      </Button>
+                        onKeep={() => setDeleting(undefined)}
+                        testId="skill-delete-ask"
+                        confirmTestId="skill-delete-confirm"
+                        keepTestId="skill-delete-keep"
+                      />
                     </Show>
                   </div>
                 </li>

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, createAgent, freshUserData, launch, resizeWindow } from "./harness.ts"
+import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
@@ -47,6 +47,35 @@ test("organization: the hand-off rule is set in settings and kept after a restar
   await second.page.getByTestId("settings-nav-organization").click()
   await expect(rule(second.page, "organizations")).toBeChecked()
   await second.app.close()
+})
+
+test("organization: the hand-off options stay on one line in a narrow window", async () => {
+  test.setTimeout(90_000)
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  await resizeWindow(app, 560, 860)
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-organization").click()
+  const control = page.getByTestId("organization-hand-off")
+  await expect(control).toBeVisible()
+  // Each option keeps its label on one line: a wrapped label fills more than one line box.
+  // A label is a flex item, so its own box is one rectangle; the range over its text follows
+  // the line boxes. The hidden radio button is not text, so it is skipped.
+  const lines = await control.locator("label").evaluateAll((els) =>
+    els.map((el) => {
+      const range = document.createRange()
+      let count = 0
+      for (const node of el.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+          range.selectNodeContents(node)
+          count += range.getClientRects().length
+        }
+      }
+      return count
+    }),
+  )
+  expect(lines).toEqual([1, 1])
+  await shot(page, "organization-narrow-ko")
+  await app.close()
 })
 
 const send = async (page: Page, text: string) => {

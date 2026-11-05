@@ -178,6 +178,24 @@ describe("the watch of a turn", () => {
     watch.stop()
   })
 
+  test("a wait for a busy provider is a sign of life and does not count as started work", () => {
+    const fake = fakeClock()
+    const progress: string[] = []
+    const quiet: (number | null)[] = []
+    const watch = turnWatch({
+      limitMinutes: 1,
+      clock: fake.clock,
+      progress: (p) => progress.push(p),
+      onQuiet: (seconds) => quiet.push(seconds),
+    })
+    watch.handedOver()
+    fake.advance(quietTimeMs(1))
+    watch.pulse()
+    expect(progress).toEqual(["sent"])
+    expect(quiet.at(-1)).toBe(null)
+    watch.stop()
+  })
+
   test("a part of the reply makes the progress started; the count of tokens does not", () => {
     const { progress, watch } = run(1)
     watch.handedOver()

@@ -98,15 +98,6 @@
   overflow-wrap: anywhere;
 }
 
-.confirm {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--c-text-muted);
-  font-size: var(--text-s);
-}
-
 .result {
   margin: 0;
   font-size: var(--text-s);

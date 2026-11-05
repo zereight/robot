@@ -209,6 +209,10 @@ describe("client requests", () => {
     // The tools of an organization are kept on the computer that owns the skills and connections.
     expect(isClientMethod("orgTools.set")).toBe(false)
     // A client hears about workflows and runs.
+    expect(CLIENT_METHODS).toContain("followups.list")
+    expect(CLIENT_METHODS).toContain("followups.remove")
+    expect(isChangeMethod("followups.remove")).toBe(false)
+    expect(PUSHED_EVENTS).toContain("followups.changed")
     expect(PUSHED_EVENTS).toContain("workflows.changed")
     expect(PUSHED_EVENTS).toContain("workflows.run")
     // The event that tells one device about its switch goes to that device only.
@@ -258,6 +262,10 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "workflowFile.export",
     "workflowFile.open",
     "workflowFile.apply",
+    // Setup actions run on the computer that holds the workspace (spec 035).
+    "setup.list",
+    "setup.run",
+    "setup.allow",
   ]
 
   test("no method of sections, knowledge or files is on the list of a client", () => {
@@ -268,7 +276,7 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     // Nothing that starts like them is on the list either.
     for (const method of CLIENT_METHODS) {
       expect(method).not.toMatch(
-        /^(sections|browserProfiles|teams|knowledge|agentFile|workflowFile)\./,
+        /^(sections|browserProfiles|teams|knowledge|agentFile|workflowFile|setup)\./,
       )
     }
   })

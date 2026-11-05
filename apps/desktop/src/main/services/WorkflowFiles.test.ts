@@ -454,6 +454,7 @@ describe("import", () => {
     const ada = await app.agent("Ada")
     const preview = await app.openFile(path)
     expect(preview).toEqual({
+      form: "robot",
       workflows: [
         {
           name: "Digest",
@@ -463,6 +464,8 @@ describe("import", () => {
           notes: 1,
           missingAgents: [],
           secretRemoved: false,
+          lostConnections: false,
+          needAgent: 0,
         },
       ],
       notImported: [{ reason: "no_place", owner: "Digest", step: 4, name: "Post" }],
@@ -873,6 +876,369 @@ describe("review before an import (spec 014)", () => {
     expect(failure(await pickIt(app, [2]))?.code).toBe("invalid_input")
     expect(failure(await pickIt(app, [0, 0]))?.code).toBe("invalid_input")
     expect(await app.list()).toHaveLength(0)
+  })
+})
+
+describe("export for CC Workflow Studio (spec 010)", () => {
+  const exportCc = (app: App, path: string, workflowId: string) => {
+    app.pick.save = path
+    return app.run(WorkflowFiles.use((f) => f.exportCc({ serverId: app.server.id, workflowId })))
+  }
+  const written = (path: string) =>
+    JSON.parse(readFileSync(path, "utf8")) as {
+      name: string
+      nodes: { id: string; type: string; data: Record<string, unknown> }[]
+      connections: { from: string; fromPort: string; to: string }[]
+    }
+
+  test("it writes the file of that tool, and lists what the file does not hold", async () => {
+    const app = await setup()
+    const { workflow } = await full(app)
+    const path = join(app.dataDir, "digest.json")
+    const result = await exportCc(app, path, workflow.id)
+    expect(result.path).toBe(path)
+    const file = written(path)
+    expect(file.name).toBe("digest")
+    expect(file.nodes.map((n) => [n.id, n.type])).toEqual([
+      ["start", "start"],
+      ["step-1", "subAgent"],
+      ["step-2", "ifElse"],
+      ["step-3", "askUserQuestion"],
+      ["end", "end"],
+    ])
+    expect(file.nodes[1]?.data).toMatchObject({ description: "Draft", prompt: "Write a haiku" })
+    expect(file.connections.map((c) => `${c.from}:${c.fromPort}>${c.to}`).sort()).toEqual([
+      "start:output>step-1",
+      "step-1:output>step-2",
+      "step-2:branch-0>step-3",
+      "step-2:branch-1>end",
+      "step-3:branch-0>end",
+    ])
+    expect(result.notExported).toEqual([
+      { kind: "step", step: 4, stepKind: "post", name: "Post" },
+      { kind: "step", step: 5, stepKind: "notify", name: "Tell" },
+      { kind: "trigger", trigger: "schedule" },
+      { kind: "notes", count: 1 },
+      { kind: "stepSettings", count: 1 },
+    ])
+  })
+
+  test("the file holds no id, no agent, no channel and no key of this app", async () => {
+    const app = await setup()
+    const { workflow, ada, out } = await full(app)
+    const path = join(app.dataDir, "digest.json")
+    await exportCc(app, path, workflow.id)
+    const text = readFileSync(path, "utf8")
+    for (const needle of [ada.id, out.id, workflow.id, "Ada", KEY])
+      expect(text).not.toContain(needle)
+  })
+
+  test("text that looks like a secret, and a stored key, are hidden", async () => {
+    const app = await setup()
+    const workflow = await app.create("Keyed", {
+      steps: [
+        {
+          id: "a",
+          kind: "agent",
+          name: "Use",
+          x: 0,
+          y: 0,
+          agentId: "",
+          prompt: `Sign in with ${LOOKALIKE} and ${KEY}`,
+          continueOnFailure: false,
+        },
+      ],
+    })
+    const path = join(app.dataDir, "keyed.json")
+    await exportCc(app, path, workflow.id)
+    const text = readFileSync(path, "utf8")
+    expect(text).not.toContain(LOOKALIKE)
+    expect(text).not.toContain(KEY)
+    expect(text).toContain("[redacted]")
+  })
+
+  test("a cancelled dialog writes nothing, and an unknown workflow is refused", async () => {
+    const app = await setup()
+    const workflow = await app.create("One")
+    app.pick.save = undefined
+    const cancelled = await app.run(
+      WorkflowFiles.use((f) => f.exportCc({ serverId: app.server.id, workflowId: workflow.id })),
+    )
+    expect(cancelled).toEqual({ path: null, notExported: [] })
+    app.pick.save = join(app.dataDir, "none.json")
+    const missing = await app.exit(
+      WorkflowFiles.use((f) => f.exportCc({ serverId: app.server.id, workflowId: "nope" })),
+    )
+    expect(failure(missing)?.code).toBe("workflow_not_found")
+    expect(existsSync(join(app.dataDir, "none.json"))).toBe(false)
+  })
+
+  test("the file that was written imports into an empty app with the same steps and prompts", async () => {
+    const app = await setup()
+    const ada = await app.agent("Ada")
+    const workflow = await app.create("Round", {
+      steps: [
+        {
+          id: "a",
+          kind: "agent",
+          name: "Draft",
+          x: 10,
+          y: 20,
+          agentId: ada.id,
+          prompt: "Write a haiku",
+          continueOnFailure: false,
+        },
+        {
+          id: "c",
+          kind: "condition",
+          name: "Haiku?",
+          x: 300,
+          y: 20,
+          contains: "haiku",
+          mode: "contains",
+        },
+        {
+          id: "y",
+          kind: "agent",
+          name: "Yes",
+          x: 600,
+          y: 0,
+          agentId: ada.id,
+          prompt: "Say well done",
+          continueOnFailure: false,
+        },
+        {
+          id: "n",
+          kind: "agent",
+          name: "No",
+          x: 600,
+          y: 120,
+          agentId: ada.id,
+          prompt: "Try again",
+          continueOnFailure: false,
+        },
+      ],
+      edges: [app.edge("a", "c"), app.edge("c", "y", "yes"), app.edge("c", "n", "no")],
+    })
+    const path = join(app.dataDir, "round.json")
+    await exportCc(app, path, workflow.id)
+
+    const other = await setup()
+    await other.openFile(path)
+    expect(
+      Exit.isSuccess(
+        await other.exit(
+          WorkflowFiles.use((f) => f.import({ serverId: other.server.id, pick: [0] })),
+        ),
+      ),
+    ).toBe(true)
+    const [made] = await other.list()
+    expect(made?.name).toBe("round")
+    expect(made?.steps.map((s) => [s.kind, s.name])).toEqual([
+      ["agent", "Draft"],
+      ["condition", "The input of this step"],
+      ["agent", "Yes"],
+      ["agent", "No"],
+    ])
+    expect(made?.steps.map((s) => (s.kind === "agent" ? s.prompt : null))).toEqual([
+      "Write a haiku",
+      null,
+      "Say well done",
+      "Try again",
+    ])
+    expect(made?.steps[1]).toMatchObject({ mode: "ask" })
+    expect(made?.edges.map((e) => [e.from, e.to, e.branch])).toEqual([
+      ["s1", "s2", undefined],
+      ["s2", "s3", "yes"],
+      ["s2", "s4", "no"],
+    ])
+  })
+})
+
+describe("a file of CC Workflow Studio (spec 010)", () => {
+  const node = (id: string, type: string, data: Record<string, unknown> = {}, name = id) => ({
+    id,
+    type,
+    name,
+    position: { x: 10, y: 20 },
+    data,
+  })
+  const link = (from: string, to: string, fromPort?: string) => ({
+    id: `${from}-${to}`,
+    from,
+    to,
+    ...(fromPort ? { fromPort } : {}),
+  })
+  /** First prompt, a question node, second prompt: the second prompt loses its input. */
+  const cc = (over: Record<string, unknown> = {}) => ({
+    id: "w1",
+    name: "daily-flow",
+    version: "1.0.0",
+    nodes: [
+      node("start", "start"),
+      node("a", "prompt", { label: "First", prompt: "one" }),
+      node("q", "askUserQuestion", { questionText: "Which way?", options: [] }, "which-way"),
+      node("b", "prompt", { label: "Second", prompt: "two" }),
+      node("end", "end"),
+    ],
+    connections: [
+      link("start", "a", "output"),
+      link("a", "q", "output"),
+      link("q", "b", "branch-0"),
+      link("b", "end", "output"),
+    ],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...over,
+  })
+  const apply = (app: App, over: { pick?: readonly number[]; agentId?: string } = {}) =>
+    app.exit(
+      WorkflowFiles.use((f) =>
+        f.import({ serverId: app.server.id, pick: over.pick ?? [0], agentId: over.agentId }),
+      ),
+    )
+  const checklistOf = (app: App, workflowId: string) =>
+    app.run(Checklists.use((c) => c.forWorkflow(workflowId)))
+
+  test("the preview tells the form, the lost connections, the agent steps and the notes", async () => {
+    const app = await setup()
+    const preview = await app.openFile(app.write("cc.json", cc()))
+    expect(preview?.form).toBe("cc")
+    expect(preview?.workflows).toEqual([
+      {
+        name: "daily-flow",
+        fileName: null,
+        trigger: "manual",
+        steps: 2,
+        notes: 1,
+        missingAgents: [],
+        secretRemoved: false,
+        lostConnections: true,
+        needAgent: 2,
+      },
+    ])
+    expect(preview?.notImported).toEqual([
+      { reason: "no_step", owner: "daily-flow", nodeType: "askUserQuestion", name: "which-way" },
+    ])
+  })
+
+  test("the wrapped form is read too, and a ROBot file has the form robot", async () => {
+    const app = await setup()
+    const wrapped = await app.openFile(app.write("w.json", { meta: {}, workflow: cc() }))
+    expect(wrapped?.form).toBe("cc")
+    const robot = await app.openFile(app.write("r.json", file([{ name: "One" }])))
+    expect(robot?.form).toBe("robot")
+    expect(robot?.workflows.map((w) => [w.lostConnections, w.needAgent])).toEqual([[false, 0]])
+  })
+
+  test("a taken name gets a number, and the list of what is not imported uses the new name", async () => {
+    const app = await setup()
+    await app.create("Daily-Flow")
+    const preview = await app.openFile(app.write("cc.json", cc()))
+    expect(preview?.workflows[0]).toMatchObject({ name: "daily-flow 2", fileName: "daily-flow" })
+    expect(preview?.notImported.map((n) => ("owner" in n ? n.owner : null))).toEqual([
+      "daily-flow 2",
+    ])
+  })
+
+  test("the import makes one workflow that is off, with a pink note, and a checklist", async () => {
+    const app = await setup()
+    await app.openFile(app.write("cc.json", cc()))
+    expect(Exit.isSuccess(await apply(app))).toBe(true)
+    const [made] = await app.list()
+    expect(made).toMatchObject({ name: "daily-flow", enabled: false, trigger: { kind: "manual" } })
+    expect(made?.steps.map((s) => [s.kind, s.name])).toEqual([
+      ["agent", "First"],
+      ["agent", "Second"],
+    ])
+    expect(made?.edges).toEqual([])
+    expect(made?.notes).toMatchObject([
+      { tone: "pink", text: "Not imported: askUserQuestion which-way\nWhich way?", x: 10, y: 20 },
+    ])
+    const checklist = await checklistOf(app, made?.id ?? "")
+    expect(checklist?.items).toEqual([
+      { kind: "stepAgent", stepId: "s1", name: "First" },
+      { kind: "stepAgent", stepId: "s2", name: "Second" },
+      { kind: "stepConnect", stepId: "s2", name: "Second" },
+    ])
+  })
+
+  test("an agent that the user picks is the agent of every agent step", async () => {
+    const app = await setup()
+    const ada = await app.agent("Ada")
+    await app.openFile(app.write("cc.json", cc()))
+    expect(Exit.isSuccess(await apply(app, { agentId: ada.id }))).toBe(true)
+    const [made] = await app.list()
+    expect(made?.steps.map((s) => (s.kind === "agent" ? s.agentId : null))).toEqual([
+      ada.id,
+      ada.id,
+    ])
+    const checklist = await checklistOf(app, made?.id ?? "")
+    expect(checklist?.items).toEqual([{ kind: "stepConnect", stepId: "s2", name: "Second" }])
+  })
+
+  test("an agent that does not exist or is archived is refused, and nothing is made", async () => {
+    const app = await setup()
+    const ada = await app.agent("Ada")
+    await app.run(Agents.use((a) => a.archive(ada.id)))
+    await app.openFile(app.write("cc.json", cc()))
+    expect(failure(await apply(app, { agentId: "nobody" }))?.code).toBe("invalid_input")
+    expect(failure(await apply(app, { agentId: ada.id }))?.code).toBe("invalid_input")
+    expect(await app.list()).toHaveLength(0)
+  })
+
+  test("a file with no lost connection has no item Connect, and none is lost without a note", async () => {
+    const app = await setup()
+    const clean = cc({
+      nodes: [node("a", "prompt", { prompt: "one" }), node("b", "prompt", { prompt: "two" })],
+      connections: [link("a", "b", "output")],
+    })
+    const preview = await app.openFile(app.write("cc.json", clean))
+    expect(preview?.workflows[0]).toMatchObject({ lostConnections: false, notes: 0 })
+    expect(preview?.notImported).toEqual([])
+    await apply(app)
+    const [made] = await app.list()
+    expect(made?.edges).toHaveLength(1)
+    const checklist = await checklistOf(app, made?.id ?? "")
+    expect(checklist?.items.map((i) => i.kind)).toEqual(["stepAgent", "stepAgent"])
+  })
+
+  test("text that looks like a secret is hidden, also in the list of what is not imported", async () => {
+    const app = await setup()
+    const keyed = cc({
+      nodes: [
+        node("a", "prompt", { label: "First", prompt: `Use ${LOOKALIKE} to sign in` }),
+        node("q", "skill", { name: "lint" }, `skill-${LOOKALIKE}`),
+      ],
+      connections: [],
+    })
+    const preview = await app.openFile(app.write("cc.json", keyed))
+    expect(preview?.workflows[0]?.secretRemoved).toBe(true)
+    expect(JSON.stringify(preview)).not.toContain(LOOKALIKE)
+    await apply(app)
+    const [made] = await app.list()
+    expect(JSON.stringify(made)).not.toContain(LOOKALIKE)
+  })
+
+  test("a loop refuses the file, names the workflow, and makes nothing", async () => {
+    const app = await setup()
+    const loop = cc({
+      nodes: [node("a", "prompt", { prompt: "1" }), node("b", "prompt", { prompt: "2" })],
+      connections: [link("a", "b"), link("b", "a")],
+    })
+    const result = await app.openExit(app.write("loop.json", loop))
+    expect(failure(result)?.code).toBe("workflow_file_graph")
+    expect(JSON.parse(failure(result)?.detail ?? "{}")).toMatchObject({
+      workflow: "daily-flow",
+      fault: "cycle",
+    })
+    expect(await app.list()).toHaveLength(0)
+  })
+
+  test("a file that is neither form is refused as before", async () => {
+    const app = await setup()
+    const result = await app.openExit(app.write("no.json", { nodes: [], hello: 1 }))
+    expect(failure(result)?.code).toBe("workflow_file_format")
   })
 })
 

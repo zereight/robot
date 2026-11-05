@@ -19,6 +19,7 @@ import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { ChannelMark } from "../ui/ChannelMark.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
@@ -377,12 +378,15 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             <Show
               when={confirmDelete()}
               fallback={
-                <Button onClick={() => setConfirmDelete(true)} data-testid="channel-delete">
+                <Button
+                  variant="danger"
+                  onClick={() => setConfirmDelete(true)}
+                  data-testid="channel-delete"
+                >
                   {t("channels.delete")}
                 </Button>
               }
             >
-              <span class={styles.hint}>{t("channels.delete.confirm")}</span>
               <Show when={devices.sync.pairName()}>
                 {(name) => (
                   <span class={styles.hint} data-testid="delete-sync-line">
@@ -390,9 +394,16 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
                   </span>
                 )}
               </Show>
-              <Button onClick={remove} data-testid="channel-delete-confirm">
-                {t("channels.delete")}
-              </Button>
+              <Confirm
+                ask={t("channels.delete.confirm")}
+                confirm={t("channels.delete")}
+                keep={t("common.keep")}
+                onConfirm={remove}
+                onKeep={() => setConfirmDelete(false)}
+                testId="channel-delete-ask"
+                confirmTestId="channel-delete-confirm"
+                keepTestId="channel-delete-keep"
+              />
             </Show>
           </Show>
           <span class={styles.spacer} />

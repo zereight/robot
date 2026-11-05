@@ -161,6 +161,11 @@ export interface TurnWatch {
   handedOver(): void
   /** Something came back from the model or the program: a sign of life. */
   sense(event: AgentEvent): void
+  /**
+   * A sign of life that is not a part of the reply: the wait for a busy provider, and the start of
+   * the new try (spec 006). The progress stays as it was, because no step has run.
+   */
+  pulse(): void
   /** The turn waits for the user (an approval or a question), or goes on. */
   waiting(on: boolean): void
   /**
@@ -221,6 +226,7 @@ export const turnWatch = (options: TurnWatchOptions): TurnWatch => {
       if (event.state === "running") timer.hold(`tool:${event.call.id}`)
       else timer.release(`tool:${event.call.id}`)
     },
+    pulse: () => timer.alive(),
     waiting: (on) => {
       if (on) {
         options.progress("started")

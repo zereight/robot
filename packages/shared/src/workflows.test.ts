@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, it, test } from "bun:test"
 import { Schema } from "effect"
 import { CLAUDE_EFFORTS, EFFORT_LEVELS, effortsFor } from "./providers.ts"
 import {
@@ -26,6 +26,7 @@ import {
   WORKFLOW_NOTES_MAX,
   WORKFLOW_STEPS_MAX,
   WorkflowInput,
+  workflowDiagram,
 } from "./workflows.ts"
 
 const s = (id: string, kind: "agent" | "condition" | "post" = "agent") => ({ id, kind })
@@ -236,6 +237,40 @@ describe("the answer of a model to a condition", () => {
       "provider_not_connected",
     ])
       expect(retryableFailure(code)).toBe(false)
+  })
+})
+
+describe("When the editor builds a diagram", () => {
+  describe("with an agent step, a condition and a post step", () => {
+    it("should write a flowchart, a diamond, and the English word yes", () => {
+      const text = workflowDiagram(
+        [
+          { id: "a", kind: "agent", name: "Draft" },
+          { id: "c", kind: "condition", name: 'Say "hi"' },
+          { id: "p", kind: "post", name: "Post it" },
+        ],
+        [
+          { from: "a", to: "c" },
+          { from: "c", to: "p", branch: "yes" },
+        ],
+      )
+      expect(text).toBe(
+        [
+          "flowchart TD",
+          '  n1["1. Draft"]',
+          '  n2{"2. Say  hi "}',
+          '  n3["3. Post it"]',
+          "  n1 --> n2",
+          "  n2 -->|yes| n3",
+        ].join("\n"),
+      )
+    })
+  })
+
+  describe("with no steps", () => {
+    it("should write a flowchart with no nodes", () => {
+      expect(workflowDiagram([], [])).toBe("flowchart TD")
+    })
   })
 })
 

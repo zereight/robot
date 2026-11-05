@@ -308,13 +308,13 @@ test("sync tasks: a routine and a workflow run on one computer only, and Run on 
     })
 
     // On the second computer both show where they run, and the button is Run on this computer.
-    await two.page.getByTestId("page-workflows").click()
+    await two.page.getByTestId("page-routines").click()
     await expect(two.page.getByTestId("routine-runs-on")).toHaveText("Runs on MacBook 1", {
       timeout: 20_000,
     })
     await expect(two.page.getByTestId("routine-run")).toHaveCount(0)
     await shot(two.page, "s23-05-routine-elsewhere")
-    await two.page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
+    await two.page.getByTestId("page-workflows").click()
     await expect(two.page.getByTestId("wf-runs-on")).toHaveText("Runs on MacBook 1")
     await expect(two.page.getByTestId("wf-card-run")).toHaveCount(0)
 
@@ -351,13 +351,13 @@ test("sync tasks: a routine and a workflow run on one computer only, and Run on 
     }
     craft("UPDATE routine SET runs_on = ?, name = 'Morning check 2'", deviceTwo)
     craft("UPDATE workflow SET runs_on = ?, name = 'Deploy flow 2'", deviceTwo)
-    await two.page.getByTestId("wf-tabs").getByText("Routines", { exact: true }).click()
+    await two.page.getByTestId("page-routines").click()
     await expect(
       two.page.getByTestId("routine-card").filter({ hasText: "Morning check 2" }),
     ).toBeVisible({ timeout: 20_000 })
     await expect(two.page.getByTestId("routine-runs-on")).toHaveText("Runs on MacBook 1")
     await expect(two.page.getByTestId("routine-run")).toHaveCount(0)
-    await two.page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
+    await two.page.getByTestId("page-workflows").click()
     await expect(two.page.getByText("Deploy flow 2")).toBeVisible({ timeout: 20_000 })
     await expect(two.page.getByTestId("wf-runs-on")).toHaveText("Runs on MacBook 1")
     await expect(two.page.getByTestId("wf-card-run")).toHaveCount(0)
@@ -365,15 +365,15 @@ test("sync tasks: a routine and a workflow run on one computer only, and Run on 
     // The first computer takes them back, so that the move below is a real move.
     craft("UPDATE routine SET runs_on = NULL")
     craft("UPDATE workflow SET runs_on = NULL")
-    await one.page.getByTestId("page-workflows").click()
+    await one.page.getByTestId("page-routines").click()
     await expect(one.page.getByTestId("routine-runs-on")).toHaveCount(0, { timeout: 20_000 })
 
     // Run on this computer moves the routine; the first computer shows where it runs at once.
-    await two.page.getByTestId("wf-tabs").getByText("Routines", { exact: true }).click()
+    await two.page.getByTestId("page-routines").click()
     await two.page.getByTestId("routine-run-here").click()
     await expect(two.page.getByTestId("routine-run")).toBeVisible()
     await expect(two.page.getByTestId("routine-runs-on")).toHaveCount(0)
-    await one.page.getByTestId("page-workflows").click()
+    await one.page.getByTestId("page-routines").click()
     await expect(one.page.getByTestId("routine-runs-on")).toHaveText("Runs on MacBook 2", {
       timeout: 15_000,
     })
