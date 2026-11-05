@@ -213,8 +213,11 @@ describe("the migration of channels (spec 030, Migration)", () => {
     migrate(db)
     expect(orgs(db).map((o) => o.name)).toEqual(["Chat"])
     expect(members(db, "org-Chat")).toEqual(["A", "B"])
-    // The rule itself stays: the step that moves the hand-off rule renames the value.
-    expect(db.prepare("SELECT hand_off FROM organization").get()).toEqual({ hand_off: "channels" })
+    // The value "Along the channels" becomes "Along the organizations" (spec 030, "Migration"): the
+    // later step renames it, after this step has read it.
+    expect(db.prepare("SELECT hand_off FROM organization").get()).toEqual({
+      hand_off: "organizations",
+    })
   })
 
   test('with the hand-off rule "Any agent", a plain channel makes none', () => {

@@ -1340,3 +1340,66 @@ describe('the step of the switch "Main agent" (spec 002, 019)', () => {
     ])
   })
 })
+
+describe("the step of the hand-off rule along the organizations (spec 030 'Migration')", () => {
+  const RULE = migrations.findIndex((sql) => sql.includes("hand_off IN ('any', 'organizations')"))
+
+  test("it is one step, and it is the last one", () => {
+    expect(RULE).toBeGreaterThan(0)
+    expect(
+      migrations.filter((sql) => sql.includes("hand_off IN ('any', 'organizations')")),
+    ).toHaveLength(1)
+    expect(RULE).toBe(migrations.length - 1)
+  })
+
+  test('the value "Along the channels" becomes "Along the organizations"; the switch and the time stay', () => {
+    const db = upTo(RULE)
+    db.exec("UPDATE organization SET hand_off = 'channels', ask_up_the_line = 1, changed_at = 7")
+    db.exec(migrations[RULE] as string)
+    expect(
+      db.prepare("SELECT id, hand_off, ask_up_the_line, changed_at FROM organization").all(),
+    ).toEqual([
+      { id: "organization", hand_off: "organizations", ask_up_the_line: 1, changed_at: 7 },
+    ])
+  })
+
+  test('"Any agent" does not change', () => {
+    const db = upTo(RULE)
+    db.exec("UPDATE organization SET ask_up_the_line = 1, changed_at = 3")
+    db.exec(migrations[RULE] as string)
+    expect(
+      db.prepare("SELECT id, hand_off, ask_up_the_line, changed_at FROM organization").all(),
+    ).toEqual([{ id: "organization", hand_off: "any", ask_up_the_line: 1, changed_at: 3 }])
+  })
+
+  test("the table takes the two known rules, the switch 0 and 1, and one row only", () => {
+    const db = upTo(RULE + 1)
+    db.exec("UPDATE organization SET hand_off = 'organizations'")
+    expect(db.prepare("SELECT hand_off FROM organization").get()).toEqual({
+      hand_off: "organizations",
+    })
+    expect(() => db.exec("UPDATE organization SET hand_off = 'channels'")).toThrow()
+    expect(() => db.exec("UPDATE organization SET hand_off = 'all'")).toThrow()
+    expect(() => db.exec("UPDATE organization SET ask_up_the_line = 2")).toThrow()
+    expect(() => db.exec("INSERT INTO organization (id) VALUES ('second')")).toThrow()
+  })
+
+  test("the step marks nothing for sync, and a later change marks the row, in a sync pair only", () => {
+    const db = upTo(RULE)
+    db.exec(`INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+      VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);`)
+    db.exec("UPDATE organization SET hand_off = 'channels'")
+    db.exec("DELETE FROM sync_dirty")
+    db.exec(migrations[RULE] as string)
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([])
+    db.exec("UPDATE organization SET hand_off = 'any'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "org", id: "organization" },
+    ])
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE organization SET ask_up_the_line = 1")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "org", id: "organization" },
+    ])
+  })
+})

@@ -675,6 +675,15 @@ interface OrganizationRow {
 }
 
 /**
+ * The value "Along the channels" moved to "Along the organizations" (spec 030, "Migration"). A
+ * computer of an older version still sends the old value. It counts as the new one, so its change
+ * of the rule still arrives. This computer never sends the old value.
+ */
+const LEGACY_HAND_OFF = "channels"
+const handOffOf = (value: unknown): string =>
+  value === LEGACY_HAND_OFF ? "organizations" : String(value)
+
+/**
  * The part "Organization" of the settings (spec 013, 030, 019): the hand-off rule and the switch
  * "Ask up the line". It is data of the agents, like the handbook: a change on one computer counts
  * on the other after it syncs, and the later change wins. The profile has one row, always with the
@@ -687,7 +696,7 @@ const org: KindDef = {
   kind: "org",
   rank: 0,
   fields: {
-    handOff: { check: oneOf(HAND_OFF_RULES) },
+    handOff: { check: oneOf([...HAND_OFF_RULES, LEGACY_HAND_OFF]) },
     askUpTheLine: { check: bool },
   },
   required: ["handOff"],
@@ -708,7 +717,7 @@ const org: KindDef = {
     ctx.db.run(
       "INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at) VALUES (?, ?, ?, ?)",
       id,
-      f.handOff as string,
+      handOffOf(f.handOff),
       f.askUpTheLine === true ? 1 : 0,
       ctx.now(),
     )
@@ -716,7 +725,7 @@ const org: KindDef = {
   },
   write: (ctx, id, f) => {
     if (f.handOff !== undefined)
-      ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", f.handOff as string, id)
+      ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", handOffOf(f.handOff), id)
     if (typeof f.askUpTheLine === "boolean")
       ctx.db.run(
         "UPDATE organization SET ask_up_the_line = ? WHERE id = ?",

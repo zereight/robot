@@ -598,7 +598,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run(
                 `INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at)
                  SELECT 'organization', hand_off, ask_up_the_line, changed_at FROM imp.organization
-                 WHERE hand_off IN ('any', 'channels') AND ask_up_the_line IN (0, 1) LIMIT 1`,
+                 WHERE hand_off IN ('any', 'organizations') AND ask_up_the_line IN (0, 1) LIMIT 1`,
               )
               // A workspace path from another computer may not work here.
               for (const a of db.all<{ id: string; workspace: string }>(

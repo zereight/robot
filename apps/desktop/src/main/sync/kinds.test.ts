@@ -2243,12 +2243,12 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
     expect(parseOp(op("organization", { handOff: "any", askUpTheLine: "on" }), NOW)).toBeUndefined()
     // The older item has no switch: the first copy makes the row with the switch off.
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-older")
-    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
+    expect(KINDS.org.create(b, "organization", { handOff: "organizations" })).toBe(true)
     expect(readAskUpTheLine(b.db)).toBe(false)
     // A change of the switch alone leaves the rule as it is, and the reverse.
     KINDS.org.write(b, "organization", { askUpTheLine: true })
     expect(KINDS.org.read(b, "organization")?.fields).toEqual({
-      handOff: "channels",
+      handOff: "organizations",
       askUpTheLine: true,
     })
     KINDS.org.write(b, "organization", { handOff: "any" })
@@ -2264,20 +2264,33 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
 
   test("only the two known values pass the strict check", async () => {
     expect(parseOp(op("organization", { handOff: "any" }), NOW)).toBeDefined()
-    expect(parseOp(op("organization", { handOff: "channels" }), NOW)).toBeDefined()
+    expect(parseOp(op("organization", { handOff: "organizations" }), NOW)).toBeDefined()
     expect(parseOp(op("organization", { handOff: "all" }), NOW)).toBeUndefined()
     expect(parseOp(op("organization", { handOff: 1 }), NOW)).toBeUndefined()
     expect(parseOp(op("organization", { handOff: "any", other: "x" }), NOW)).toBeUndefined()
     // An id that is not the item of the profile does not name a row.
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-id")
-    expect(KINDS.org.create(b, "other", { handOff: "channels" })).toBe(false)
+    expect(KINDS.org.create(b, "other", { handOff: "organizations" })).toBe(false)
+  })
+
+  test('a computer of an older version sends "channels": it counts as "organizations" (spec 030 "Migration")', async () => {
+    expect(parseOp(op("organization", { handOff: "channels" }), NOW)).toBeDefined()
+    const b = target(openDatabase(":memory:"), "/tmp/kinds-org-legacy")
+    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
+    expect(readHandOffRule(b.db)).toBe("organizations")
+    KINDS.org.write(b, "organization", { handOff: "any" })
+    expect(readHandOffRule(b.db)).toBe("any")
+    KINDS.org.write(b, "organization", { handOff: "channels" })
+    expect(readHandOffRule(b.db)).toBe("organizations")
+    // The value never goes out: this computer sends the new name.
+    expect(KINDS.org.read(b, "organization")?.fields).toMatchObject({ handOff: "organizations" })
   })
 
   test("a change is written and read back; a deletion removes the row, and the rule is the default", async () => {
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-write")
-    KINDS.org.write(b, "organization", { handOff: "channels" })
+    KINDS.org.write(b, "organization", { handOff: "organizations" })
     expect(KINDS.org.read(b, "organization")?.fields).toEqual({
-      handOff: "channels",
+      handOff: "organizations",
       askUpTheLine: false,
     })
     KINDS.org.remove(b, "organization")
@@ -2286,14 +2299,14 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
     // A deletion from the other computer sets the defaults: the switch is off.
     expect(readAskUpTheLine(b.db)).toBe(false)
     // The row comes from a first copy again.
-    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
-    expect(readHandOffRule(b.db)).toBe("channels")
+    expect(KINDS.org.create(b, "organization", { handOff: "organizations" })).toBe(true)
+    expect(readHandOffRule(b.db)).toBe("organizations")
     // A change of the rule marks the item for sync in a sync pair.
     b.db.run(
       "INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at) VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1)",
     )
     b.db.run("DELETE FROM sync_dirty")
-    b.db.run("UPDATE organization SET hand_off = 'channels'")
+    b.db.run("UPDATE organization SET hand_off = 'any'")
     expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
       { kind: "org", id: "organization" },
     ])

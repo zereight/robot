@@ -1265,6 +1265,31 @@ export const migrations: readonly string[] = [
   UPDATE channel SET daily_token_limit = NULL WHERE daily_token_limit IS NOT NULL;
   UPDATE task SET error_code = 'org_limit' WHERE error_code = 'channel_limit';
   `,
+  `
+  -- The hand-off rule along the organizations (spec 030, "Migration"): the value 'channels' becomes
+  -- 'organizations', and "Any agent" does not change. The check of the column names the two values,
+  -- and SQLite cannot change a check, so the table of one row is made again with the same columns.
+  -- The step that made the organizations has read the old value before this step, so a channel with
+  -- two members made one. The time of the last change and the switch "Ask up the line" stay. The
+  -- step marks nothing for sync, because both computers of a pair make the same change; the new
+  -- triggers are the same as the old ones (spec 019).
+  DROP TRIGGER sync_dirty_organization_insert;
+  DROP TRIGGER sync_dirty_organization_update;
+  DROP TRIGGER sync_dirty_organization_delete;
+  CREATE TABLE hand_off_next (
+    id TEXT PRIMARY KEY CHECK (id = 'organization'),
+    hand_off TEXT NOT NULL DEFAULT 'any' CHECK (hand_off IN ('any', 'organizations')),
+    changed_at INTEGER NOT NULL DEFAULT 0,
+    ask_up_the_line INTEGER NOT NULL DEFAULT 0 CHECK (ask_up_the_line IN (0, 1))
+  );
+  INSERT INTO hand_off_next (id, hand_off, changed_at, ask_up_the_line)
+    SELECT id, CASE hand_off WHEN 'channels' THEN 'organizations' ELSE hand_off END, changed_at,
+      ask_up_the_line
+    FROM organization;
+  DROP TABLE organization;
+  ALTER TABLE hand_off_next RENAME TO organization;
+  ${dirtyTriggers("organization", "org", plainId)}
+  `,
 ]
 
 /**
