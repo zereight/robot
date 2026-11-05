@@ -35,6 +35,7 @@ The user connects the model accounts they already have, and each agent uses one 
 3. Switch: the user changes the model of an agent mid-history. The next turn uses it; the earlier
    turns stay.
 4. Disconnect: removes the stored secret. Agents that used it show "Provider not connected".
+   "Remove" deletes the account, and it asks first (000, "Danger buttons").
 5. Environment variables for Claude Code: on the Claude Code page, the user keeps a list of rows.
    A row has a name, a value, and a "Secret" switch. The variables belong to the provider on this
    computer, not to one agent. The app reads the list at the start of each run.

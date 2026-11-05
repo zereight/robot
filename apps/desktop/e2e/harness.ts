@@ -2,7 +2,12 @@ import { spawnSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { type ElectronApplication, _electron as electron, type Page } from "@playwright/test"
+import {
+  type ElectronApplication,
+  _electron as electron,
+  type Locator,
+  type Page,
+} from "@playwright/test"
 import { freeNearbyPort } from "./ports.ts"
 
 const appDir = resolve(import.meta.dirname, "..")
@@ -82,6 +87,21 @@ export const shot = async (page: Page, name: string, options: { moving?: boolean
     animations: options.moving ? "allow" : "disabled",
   })
 }
+
+/**
+ * True when the button is filled with the colour of danger of the theme that is on (spec 000,
+ * "Danger buttons"). A probe paints the token, because the browser gives the colour of a filled
+ * background in a form that the token text does not always match.
+ */
+export const isDangerButton = (button: Locator) =>
+  button.evaluate((el) => {
+    const probe = document.createElement("div")
+    probe.style.background = "var(--c-danger)"
+    document.body.append(probe)
+    const danger = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return getComputedStyle(el).backgroundColor === danger
+  })
 
 /**
  * Resizes the app window to a content size in px. The window starts hidden and shows when its page

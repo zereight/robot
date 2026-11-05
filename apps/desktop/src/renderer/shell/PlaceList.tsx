@@ -480,6 +480,7 @@ export const PlaceList = (props: PlaceListProps) => {
             holdsPlaces
               ? setDeleting({ id: section.id, name: section.name })
               : void ui.deleteSection(section.id),
+          danger: true,
           testId: "section-delete",
         },
       ],
@@ -983,7 +984,7 @@ export const PlaceList = (props: PlaceListProps) => {
                 {t("sections.delete.back")}
               </Button>
               <Button
-                variant="primary"
+                variant="danger"
                 onClick={() => {
                   setDeleting(undefined)
                   void ui.deleteSection(target.id)

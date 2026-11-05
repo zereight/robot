@@ -13,6 +13,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { ModelsPart } from "./ModelsPart.tsx"
 import styles from "./providers.module.css"
@@ -246,6 +247,8 @@ const AccountItem = (props: { account: ProviderAccount }) => {
   const { t } = useApp()
   const [reconnect, setReconnect] = createSignal(false)
   const [note, setNote] = createSignal<ErrorText>()
+  // The danger button of the row asks first (spec 000, "Danger buttons").
+  const [removing, setRemoving] = createSignal(false)
   const run = async (task: () => Promise<unknown>, ok?: MessageKey) => {
     setNote(undefined)
     try {
@@ -360,18 +363,35 @@ const AccountItem = (props: { account: ProviderAccount }) => {
           </Button>
         </Show>
         <Button
+          variant="danger"
           onClick={() => run(() => call("providers.disconnect", { accountId: props.account.id }))}
           data-testid="provider-disconnect"
         >
           {t("providers.disconnect")}
         </Button>
       </Show>
-      <Button
-        onClick={() => run(() => call("providers.remove", { accountId: props.account.id }))}
-        data-testid="provider-remove"
+      <Show
+        when={removing()}
+        fallback={
+          <Button variant="danger" onClick={() => setRemoving(true)} data-testid="provider-remove">
+            {t("providers.remove")}
+          </Button>
+        }
       >
-        {t("providers.remove")}
-      </Button>
+        <Confirm
+          ask={t("providers.remove.ask", { name: props.account.name })}
+          confirm={t("providers.remove")}
+          keep={t("common.keep")}
+          onConfirm={() => {
+            setRemoving(false)
+            void run(() => call("providers.remove", { accountId: props.account.id }))
+          }}
+          onKeep={() => setRemoving(false)}
+          testId="provider-remove-ask"
+          confirmTestId="provider-remove-confirm"
+          keepTestId="provider-remove-keep"
+        />
+      </Show>
       <Show when={reconnect()}>
         <div style={{ width: "100%" }}>
           <ConnectForm account={props.account} onDone={() => setReconnect(false)} />

@@ -4,6 +4,9 @@ import type { MessageKey } from "./en.ts"
 export const ko: Record<MessageKey, string> = {
   "app.name": "ROBot",
 
+  // The question of a danger step (spec 000, "Danger buttons"). "Keep it" is the way back.
+  "common.keep": "그대로 두기",
+
   "settings.title": "설정",
   "settings.close": "설정 닫기",
   "settings.section.general": "일반",
@@ -292,6 +295,8 @@ export const ko: Record<MessageKey, string> = {
   "providers.disconnect": "연결 해제",
   "providers.reconnect": "다시 연결",
   "providers.remove": "삭제",
+  "providers.remove.ask":
+    "계정 {name}을(를) 삭제할까요? 이 계정을 쓰던 에이전트는 “공급자에 연결되지 않음”으로 보여요.",
   "providers.cancel": "취소",
   "providers.empty": "아직 계정이 없어요. 계정을 추가해서 에이전트에게 모델을 연결하세요.",
   "providers.runtimes":
@@ -1300,6 +1305,11 @@ export const ko: Record<MessageKey, string> = {
   "workflows.reject": "거절",
   "workflows.deleteStep": "단계 삭제",
   "workflows.deleteEdge": "연결 삭제",
+  "workflows.deleteStep.ask":
+    "{n}번 단계 “{name}”을(를) 삭제할까요? 연결도 함께 사라지고, 저장하면 그대로 반영돼요.",
+  "workflows.deleteEdge.ask": "{from}에서 {to}로 가는 연결을 삭제할까요?",
+  "workflows.delete.ask": "워크플로 “{name}”을(를) 삭제할까요? 실행 기록도 함께 사라져요.",
+  "workflows.note.delete.ask": "이 메모를 삭제할까요? 적은 내용이 사라져요.",
   "workflows.canvas.empty": "단계를 추가해 시작하세요.",
   "workflows.panel.empty": "편집할 단계를 선택하세요.",
   "workflows.readOnly": "이 워크플로우가 실행 중입니다. 실행이 끝날 때까지 읽기 전용입니다.",
@@ -1411,9 +1421,13 @@ export const ko: Record<MessageKey, string> = {
   "devices.client.online": "지금 연결됨",
   "devices.client.offline": "지금 연결 안 됨",
   "devices.client.remove": "접근 해제",
+  "devices.client.remove.ask":
+    "{name}의 접근을 해제할까요? 다시 연결하기 전까지 이 컴퓨터를 열 수 없어요.",
   "devices.client.canChange": "에이전트 만들기와 바꾸기 허용",
   "devices.client.canChange.locked": "두 컴퓨터가 동기화하는 동안은 켜져 있어요.",
   "devices.server.remove": "삭제",
+  "devices.server.remove.ask":
+    "{name}을(를) 삭제할까요? 두 컴퓨터의 연결이 끊기고, 이 컴퓨터에 저장한 사본도 지워져요.",
   "devices.server.edit": "주소 수정",
   "devices.server.addresses": "주소",
   "devices.server.addresses.hint":
@@ -1663,6 +1677,8 @@ export const ko: Record<MessageKey, string> = {
   "knowledge.source.deleted": "삭제됨",
   "knowledge.source.open": "열기",
   "knowledge.source.delete": "출처 삭제",
+  "knowledge.source.delete.ask":
+    "출처 {name}을(를) 삭제할까요? 이 출처를 인용한 글은 남고, “지식 점검”에서 출처가 없는 글로 세어져요.",
   "knowledge.updated": "{time}에 변경됨",
   "knowledge.editor.user": "마지막으로 직접 수정했습니다.",
   "knowledge.editor.agent": "마지막으로 에이전트가 수정했습니다.",
@@ -2123,6 +2139,7 @@ export const ko: Record<MessageKey, string> = {
   "routines.model.same": "에이전트와 같음",
   "routines.model.own": "이 루틴만의 모델",
   "routines.paused": "3번 연속 실패해서 일시 중지됨",
+  "routines.delete.ask": "루틴 “{name}”을(를) 삭제할까요? 달력에서 실행 기록도 사라져요.",
   "error.routine_paused": "{detail}이(가) 3번 연속 실패해서 일시 중지됐어요.",
   "routines.note.unchanged": "{name}: 확인했어요, 바뀐 것 없음.",
   "error.invalid_watch": "감시 설정이 올바르지 않아요.",

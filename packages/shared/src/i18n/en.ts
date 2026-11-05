@@ -2,6 +2,9 @@
 export const en = {
   "app.name": "ROBot",
 
+  // The question of a danger step (spec 000, "Danger buttons"). "Keep it" is the way back.
+  "common.keep": "Keep it",
+
   "settings.title": "Settings",
   "settings.close": "Close settings",
   "settings.section.general": "General",
@@ -292,6 +295,7 @@ export const en = {
   "providers.disconnect": "Disconnect",
   "providers.reconnect": "Connect again",
   "providers.remove": "Remove",
+  "providers.remove.ask": "Remove the account {name}? Its agents show “Provider not connected”.",
   "providers.cancel": "Cancel",
   "providers.empty": "No accounts yet. Add one to give your agents a model.",
   "providers.runtimes":
@@ -1314,6 +1318,11 @@ export const en = {
   "workflows.reject": "Reject",
   "workflows.deleteStep": "Delete step",
   "workflows.deleteEdge": "Delete connection",
+  "workflows.deleteStep.ask":
+    "Delete step {n} “{name}”? Its connections go with it, and the save keeps the change.",
+  "workflows.deleteEdge.ask": "Delete the connection from {from} to {to}?",
+  "workflows.delete.ask": "Delete the workflow “{name}”? Its runs go with it.",
+  "workflows.note.delete.ask": "Delete this note? The text goes away.",
   "workflows.canvas.empty": "Add a step to start.",
   "workflows.panel.empty": "Select a step to edit it.",
   "workflows.readOnly": "This workflow is running. It is read-only until the run ends.",
@@ -1426,9 +1435,13 @@ export const en = {
   "devices.client.online": "Connected now",
   "devices.client.offline": "Not connected now",
   "devices.client.remove": "Remove access",
+  "devices.client.remove.ask":
+    "Remove access for {name}? It cannot open this computer until you pair it again.",
   "devices.client.canChange": "Can create and change agents",
   "devices.client.canChange.locked": "On while the two computers sync.",
   "devices.server.remove": "Remove",
+  "devices.server.remove.ask":
+    "Remove {name}? The link ends on both computers, and the saved copy on this one goes.",
   "devices.server.edit": "Edit address",
   "devices.server.addresses": "Addresses",
   "devices.server.addresses.hint":
@@ -1681,6 +1694,8 @@ export const en = {
   "knowledge.source.deleted": "deleted",
   "knowledge.source.open": "Open",
   "knowledge.source.delete": "Delete source",
+  "knowledge.source.delete.ask":
+    "Delete the source {name}? The articles that cite it stay, and “Check knowledge” then counts them as having no source.",
   "knowledge.updated": "Changed {time}",
   "knowledge.editor.user": "You edited it last.",
   "knowledge.editor.agent": "The agent edited it last.",
@@ -2145,6 +2160,7 @@ export const en = {
   "routines.model.same": "Same as the agent",
   "routines.model.own": "A model for this routine",
   "routines.paused": "Paused after 3 failed runs",
+  "routines.delete.ask": "Delete the routine “{name}”? Its runs leave the calendar.",
   "error.routine_paused": "{detail} is paused after 3 failed runs.",
   "routines.note.unchanged": "{name}: checked, nothing changed.",
   "error.invalid_watch": "The watch is not valid.",

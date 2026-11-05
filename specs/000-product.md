@@ -86,6 +86,17 @@ tag, so the user reads their work as they read messages from colleagues.
 - The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
   settings.
+- A **danger button** deletes or removes something that exists: a workflow or a step of one, a
+  routine, an agent, a channel, a thread, a skill, a connection, an account, a linked device, a
+  saved secret, a browser profile, an article or a source of knowledge, a rule, or a memory item.
+  It shows in the colour of danger, and the text on it reads on that colour in both themes. A menu
+  item with the same result shows its text in the colour of danger.
+- A danger button asks first when nothing on that screen puts the thing back: the delete of a
+  workflow or a routine with their runs, a step, a connection or a note of a workflow, a
+  connection, an account, a link to a device, and a source of knowledge. The question is one line
+  that names what goes away. Its button is a danger button, and the other button keeps the data.
+  Two cases do not ask. A delete that an Undo row follows at once (008, 016) shows in the colour
+  of danger only. So does a step that the user can simply make again, as a rule (007).
 - Light is the one exception to the flat style. It shows who or what is here, and nothing else:
   the app mark glows, an avatar glows in the dark theme (see 002, "Avatars"), and so does the
   badge of the app mark on a working agent (see 003, "States"). Light is not used to decorate a
@@ -108,6 +119,9 @@ tag, so the user reads their work as they read messages from colleagues.
 ## Acceptance
 
 - A new user can go from first start to a streamed agent reply without reading documentation.
+- A delete or a remove shows as a red button in both themes. Pressing the delete of a workflow,
+  a routine, a connection, an account, a link to a device or a source of knowledge asks first
+  with a line that names what goes away. "Keep it" changes nothing.
 - The same Mac pairs with an iPhone and with an Android phone, and both work the same way (011).
 - Two profiles on one Mac keep their agents, chats and accounts apart, and a phone that is paired
   with one of them sees only that one (022).

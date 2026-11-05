@@ -13,6 +13,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ConnectionFormDialog } from "./ConnectionForm.tsx"
@@ -133,7 +134,11 @@ export const ConnectionsSection = () => {
           <Button onClick={() => setEditing({ connection: c })} data-testid="connection-edit">
             {t("connections.edit")}
           </Button>
-          <Button onClick={() => setRemoving(c.id)} data-testid="connection-remove">
+          <Button
+            variant="danger"
+            onClick={() => setRemoving(c.id)}
+            data-testid="connection-remove"
+          >
             {t("connections.remove")}
           </Button>
         </div>
@@ -271,24 +276,21 @@ export const ConnectionsSection = () => {
         </Show>
       </details>
       <Show when={removing() === c.id}>
-        <div class={styles.confirm} role="alert" data-testid="connection-remove-ask">
-          <span>{t("connections.remove.ask", { name: c.name })}</span>
-          <Button onClick={() => setRemoving(undefined)} data-testid="connection-remove-cancel">
-            {t("connections.remove.cancel")}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() =>
-              run(async () => {
-                await call("connections.delete", { id: c.id })
-                setRemoving(undefined)
-              })
-            }
-            data-testid="connection-remove-confirm"
-          >
-            {t("connections.remove.confirm")}
-          </Button>
-        </div>
+        <Confirm
+          ask={t("connections.remove.ask", { name: c.name })}
+          confirm={t("connections.remove.confirm")}
+          keep={t("connections.remove.cancel")}
+          onConfirm={() =>
+            run(async () => {
+              await call("connections.delete", { id: c.id })
+              setRemoving(undefined)
+            })
+          }
+          onKeep={() => setRemoving(undefined)}
+          testId="connection-remove-ask"
+          confirmTestId="connection-remove-confirm"
+          keepTestId="connection-remove-cancel"
+        />
       </Show>
     </li>
   )

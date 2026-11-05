@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import {
+  connectMock,
+  createAgent,
+  freshUserData,
+  isDangerButton,
+  launch,
+  resizeWindow,
+  shot,
+} from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
@@ -150,9 +158,18 @@ test("skills: Edit, Duplicate, the list after a slash, the chip and its copy (En
     "Write a weekly summary. Keep it short.",
   ])
   await shot(page, "s31-04-list-en")
-  // A copy that is off does not show in the list of a chat. Delete the second copy.
-  await row(page, "Weekly summary copy 2").getByTestId("skill-delete").click()
-  await row(page, "Weekly summary copy 2").getByTestId("skill-delete-confirm").click()
+  // A copy that is off does not show in the list of a chat. Delete the second copy: the question
+  // names the chip that stays (spec 000, "Danger buttons").
+  const copy2 = row(page, "Weekly summary copy 2")
+  expect(await isDangerButton(copy2.getByTestId("skill-delete"))).toBe(true)
+  await copy2.getByTestId("skill-delete").click()
+  await expect(copy2.getByTestId("skill-delete-ask")).toContainText(
+    "Delete the skill Weekly summary copy 2? Old messages that used it keep their chip.",
+  )
+  await copy2.getByTestId("skill-delete-keep").click()
+  await expect(copy2).toHaveCount(1)
+  await copy2.getByTestId("skill-delete").click()
+  await copy2.getByTestId("skill-delete-confirm").click()
   await expect(row(page, "Weekly summary copy 2")).toHaveCount(0)
   await closeSettings(page)
 

@@ -15,6 +15,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Menu, type MenuItem } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -74,6 +75,8 @@ const WorkflowList = (props: {
   const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
   const [fileProblem, setFileProblem] = createSignal<ErrorText>()
   const [starting, setStarting] = createSignal(false)
+  // The danger button of a card asks first (spec 000, "Danger buttons").
+  const [deleting, setDeleting] = createSignal<string>()
 
   /**
    * "New from a starter" (spec 010, "Starters"). It is off, with the reason, when no agent exists
@@ -245,13 +248,33 @@ const WorkflowList = (props: {
                 {t("workflows.open")}
               </Button>
               <Show when={ui.canChange()}>
-                <Button
-                  disabled={w.running}
-                  onClick={() => call("workflows.delete", { id: w.id })}
-                  data-testid="wf-delete-card"
+                <Show
+                  when={deleting() === w.id}
+                  fallback={
+                    <Button
+                      variant="danger"
+                      disabled={w.running}
+                      onClick={() => setDeleting(w.id)}
+                      data-testid="wf-delete-card"
+                    >
+                      {t("agents.memory.delete")}
+                    </Button>
+                  }
                 >
-                  {t("agents.memory.delete")}
-                </Button>
+                  <Confirm
+                    ask={t("workflows.delete.ask", { name: w.name })}
+                    confirm={t("agents.memory.delete")}
+                    keep={t("common.keep")}
+                    onConfirm={() => {
+                      setDeleting(undefined)
+                      void call("workflows.delete", { id: w.id })
+                    }}
+                    onKeep={() => setDeleting(undefined)}
+                    testId="wf-delete-card-ask"
+                    confirmTestId="wf-delete-card-confirm"
+                    keepTestId="wf-delete-card-keep"
+                  />
+                </Show>
               </Show>
             </div>
           )}

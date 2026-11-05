@@ -203,6 +203,7 @@ test("devices: two copies pair, a wrong code and the switch are refused, access 
 
     // Remove access: the device leaves the list, and its own list says "Pair again".
     await clientRow(a.page, "Laptop").getByTestId("client-remove").click()
+    await clientRow(a.page, "Laptop").getByTestId("client-remove-confirm").click()
     await expect(clientRow(a.page, "Laptop")).toHaveCount(0)
     await expect(serverRow(b.page, "Studio Mac").getByTestId("server-row-state")).toHaveAttribute(
       "data-state",
@@ -216,6 +217,7 @@ test("devices: two copies pair, a wrong code and the switch are refused, access 
 
     // The other computer can drop the entry.
     await serverRow(b.page, "Studio Mac").getByTestId("server-remove").click()
+    await serverRow(b.page, "Studio Mac").getByTestId("server-remove-confirm").click()
     await expect(serverRow(b.page, "Studio Mac")).toHaveCount(0)
     await closeSettings(a.page)
   } finally {

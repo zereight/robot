@@ -125,6 +125,7 @@ export const SavedSecretsSection = () => {
             {t("secrets.replace")}
           </Button>
           <Button
+            variant="danger"
             onClick={() => {
               setError(undefined)
               setDeleting(s)
@@ -242,7 +243,7 @@ export const SavedSecretsSection = () => {
             <div class={styles.actions}>
               <Button onClick={() => setDeleting(undefined)}>{t("secrets.cancel")}</Button>
               <Button
-                variant="primary"
+                variant="danger"
                 onClick={() => void remove(s)}
                 data-testid="saved-secret-delete-confirm"
               >

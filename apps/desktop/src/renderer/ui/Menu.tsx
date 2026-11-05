@@ -16,6 +16,8 @@ export interface MenuItem {
   /** Set on items of a group where one is current. The current one shows a check mark. */
   readonly checked?: boolean
   readonly disabled?: boolean
+  /** An item that takes data away shows its text in the colour of danger (spec 000). */
+  readonly danger?: boolean
   /**
    * Why the item is off, as a muted line under it. It shows only on an item that is `disabled`,
    * and the screen reader reads it with the item.
@@ -116,6 +118,7 @@ export const PopupMenu = (props: {
                 disabled={item.disabled}
                 title={item.title}
                 data-testid={item.testId}
+                data-danger={item.danger ? "true" : undefined}
                 onClick={() => {
                   props.onClose(false)
                   item.onSelect()

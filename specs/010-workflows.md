@@ -32,7 +32,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 ## Flows
 
 1. Edit: the user drags steps onto the canvas, connects outputs to inputs, and edits each step in
-   a side panel. Zoom and pan with the trackpad or mouse.
+   a side panel. Zoom and pan with the trackpad or mouse. A step, a connection and a note are
+   deleted with a danger button that asks first (000, "Danger buttons").
 2. Run: manual trigger or the configured trigger. Steps light up as they run. Each agent step is a
    task (see 005).
 3. History: a list of runs with their states; a run opens to show each step's input and result.
@@ -336,6 +337,8 @@ a new issue. ROBot runs no service on the internet for this (000).
 
 ## Rules
 
+- The delete of a workflow, from its card, is a danger button that asks first. Its question names
+  the workflow and says that its runs go with it (000, "Danger buttons").
 - A step starts when all its inputs are done.
 - A failed step stops the run unless the step is marked "Continue on failure". An agent step
   whose task ends as Blocked (see 005) is a failed step, with the reason of the block.

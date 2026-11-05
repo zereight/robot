@@ -141,6 +141,19 @@
   filter: brightness(1.08);
 }
 
+/* A button that deletes or removes something that exists (spec 000, "Danger buttons"). */
+.danger {
+  composes: button;
+  border-color: var(--c-danger);
+  background: var(--c-danger);
+  color: var(--c-danger-text);
+}
+
+.danger:hover {
+  background: var(--c-danger);
+  filter: brightness(1.08);
+}
+
 .iconButton {
   display: inline-grid;
   place-items: center;
@@ -206,6 +219,26 @@
 
 .menuItem:active:not(:disabled) {
   transform: scale(var(--press-scale));
+}
+
+/* The question of a danger step that asks in place (spec 000, "Danger buttons"). */
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirmAsk {
+  flex: 1;
+  min-width: 160px;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+/* A menu item that takes data away: the text is in the colour of danger (spec 000). */
+.menuItem[data-danger="true"] {
+  color: var(--c-danger);
 }
 
 .menuItem:disabled {

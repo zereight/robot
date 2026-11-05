@@ -27,6 +27,10 @@ describe("theme contrast", () => {
     test(`${theme}: text on accent is at least 4.5:1`, () => {
       expect(contrast(p.accentText, p.accent)).toBeGreaterThanOrEqual(4.5)
     })
+    // A danger button fills with the danger colour and writes on it (spec 000, "Danger buttons").
+    test(`${theme}: text on danger is at least 4.5:1`, () => {
+      expect(contrast(p.dangerText, p.danger)).toBeGreaterThanOrEqual(4.5)
+    })
     test(`${theme}: danger text on main is at least 4.5:1`, () => {
       expect(contrast(p.danger, p.main)).toBeGreaterThanOrEqual(4.5)
     })

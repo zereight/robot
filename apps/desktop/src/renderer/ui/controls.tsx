@@ -97,16 +97,22 @@ export const Switch = (props: {
 )
 
 export const Button = (
-  props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "default" },
+  props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+    /**
+     * `primary` is the usual main action. `danger` deletes or removes something that exists: a
+     * workflow, a step, a routine, a connection, an account (spec 000, "Danger buttons").
+     */
+    variant?: "primary" | "default" | "danger"
+  },
 ) => {
   const [local, rest] = splitProps(props, ["variant", "class"])
-  return (
-    <button
-      type="button"
-      class={`${local.variant === "primary" ? styles.primary : styles.button} ${local.class ?? ""}`}
-      {...rest}
-    />
-  )
+  const look =
+    local.variant === "primary"
+      ? styles.primary
+      : local.variant === "danger"
+        ? styles.danger
+        : styles.button
+  return <button type="button" class={`${look} ${local.class ?? ""}`} {...rest} />
 }
 
 export const IconButton = (

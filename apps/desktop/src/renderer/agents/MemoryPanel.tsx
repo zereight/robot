@@ -239,6 +239,7 @@ const Items = (props: { agentId: string; own: boolean }) => {
                     {t("agents.memory.edit")}
                   </Button>
                   <Button
+                    variant="danger"
                     onClick={() => run(() => call("memory.delete", { id: item.id }))}
                     data-testid="memory-delete"
                   >
