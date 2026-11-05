@@ -1348,6 +1348,40 @@ export const migrations: readonly string[] = [
   -- the agent (spec 019) and stays after later edits.
   ALTER TABLE agent ADD COLUMN made_by TEXT;
   `,
+  `
+  -- One arrival at a place that the user made (spec 038): a schedule, a watch, a web hook, a
+  -- message of an outside program, a message of Teams, or a test of a trigger form. It has no sync
+  -- trigger, because events do not sync (spec 019), and an export holds none (014). It has no
+  -- foreign key to a routine or a workflow: a place that is gone still names its own row, and the
+  -- page keeps the record. The id of a call counts as a duplicate for 7 days, and the app keeps
+  -- at most 2000 rows for a profile.
+  CREATE TABLE robot_event (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    source TEXT NOT NULL,
+    type TEXT NOT NULL,
+    subject TEXT,
+    call_id TEXT,
+    summary TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    link TEXT,
+    agent_id TEXT,
+    place_id TEXT,
+    place_is_routine INTEGER NOT NULL DEFAULT 0 CHECK (place_is_routine IN (0, 1)),
+    place_name TEXT,
+    why TEXT NOT NULL DEFAULT '',
+    got TEXT NOT NULL DEFAULT '',
+    task_id TEXT,
+    result TEXT NOT NULL,
+    reason TEXT,
+    outside INTEGER NOT NULL DEFAULT 0 CHECK (outside IN (0, 1)),
+    at INTEGER NOT NULL
+  );
+  -- The page reads the newest first. The duplicate look reads by the id of a call.
+  CREATE INDEX robot_event_at ON robot_event (server_id, at DESC);
+  CREATE INDEX robot_event_call ON robot_event (server_id, call_id);
+  CREATE INDEX robot_event_subject ON robot_event (server_id, source, subject);
+  `,
 ]
 
 /**

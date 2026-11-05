@@ -3,6 +3,9 @@ import {
   type AgentModel,
   changeText,
   dueRuns,
+  type EventReason,
+  type EventText,
+  type EventWhy,
   hasUsage,
   isActive,
   type Locale,
@@ -35,6 +38,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
+import { Events } from "./Events.ts"
 import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
@@ -157,6 +161,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const notifier = yield* Notifier
       const settings = yield* SettingsStore
       const platform = yield* Platform
+      const events = yield* Events
 
       const localeNow = (): Locale =>
         resolveLocale(Effect.runSync(settings.get).language, platform.systemLocale())
@@ -310,10 +315,56 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         if (!row(task.sourceId)) return false
         if (task.state === "done") clearFailures(task.sourceId)
         // A blocked run is a failed run for the pause, with the reason of the block (spec 009).
-        else if (task.state === "failed" || task.state === "blocked")
+        else if (task.state === "failed" || task.state === "blocked") {
+          // The event that started this run shows "Failed" with the reason (spec 038).
+          Effect.runFork(
+            events.failLatestOfPlace(task.sourceId, {
+              code: task.error?.code ?? "unknown",
+              detail: task.error?.detail ?? "",
+            }),
+          )
           return addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
+        }
         return false
       })
+
+      /**
+       * Records one arrival of this routine on the Events tab (spec 038). It never starts work and
+       * never fails the run: the record is for the user.
+       */
+      const recordEvent = (
+        r: Row,
+        input: {
+          readonly source: "schedule" | "watch"
+          readonly type: EventText
+          readonly summary: EventText
+          readonly detail?: string
+          readonly result: "routed" | "skipped" | "failed"
+          readonly reason?: EventReason | null
+          readonly taskId?: string | null
+          readonly got?: string
+          readonly why: EventWhy
+        },
+      ) =>
+        events
+          .add({
+            serverId: r.server_id,
+            source: input.source,
+            type: input.type,
+            subject: r.name,
+            summary: input.summary,
+            detail: input.detail ?? "",
+            agentId: r.agent_id,
+            placeId: r.id,
+            placeIsRoutine: true,
+            placeName: r.name,
+            why: input.why,
+            got: input.got ?? "",
+            taskId: input.taskId ?? null,
+            result: input.result,
+            reason: input.reason ?? null,
+          })
+          .pipe(Effect.catchCause(() => Effect.void))
 
       /** Starts a run. `text` is the prompt with what the run gets with it. */
       /** `retryOf`: the task that this run tries again, so that its agent reads the retry note (spec 005). */
@@ -338,14 +389,20 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               .pipe(Effect.asVoid)
       }
 
-      /** A run that cannot start fails, with the reason (spec 009). It counts as a failed run. */
+      /**
+       * A run that cannot start fails, with the reason (spec 009). It counts as a failed run, and
+       * its event says Failed (spec 038). The result tells the caller which way it went, so that
+       * the event does not claim that a run started when none did.
+       */
       const startOrFail = (r: Row, at: number, text: string, outside?: OutsideSource) =>
         start(r, text, outside).pipe(
+          Effect.map(() => ({ ok: true as const })),
           Effect.catch((e: AppError) =>
             Effect.sync(() => {
               const reason = { code: e.code, detail: e.detail ?? "" }
               skip(r.id, at, "failed", reason)
               addFailure(r.id, reason)
+              return { ok: false as const, reason }
             }),
           ),
         )
@@ -364,9 +421,36 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             db.run("UPDATE routine SET last_checked_at = ? WHERE id = ?", now, r.id)
             for (const m of missed) skip(r.id, m, "missed")
             if (at !== null) {
-              if (active(r.id)) skip(r.id, at, "skipped")
-              // A run that starts more than 15 minutes late gets both times.
-              else yield* startOrFail(r, at, runText(r.prompt, at, now))
+              if (active(r.id)) {
+                skip(r.id, at, "skipped")
+                // The run of the same routine still goes (spec 009). The event is Skipped.
+                yield* recordEvent(r, {
+                  source: "schedule",
+                  type: { key: "events.type.plannedRun", params: {} },
+                  summary: { key: "events.summary.plannedRun", params: { name: r.name } },
+                  result: "skipped",
+                  reason: { key: "events.skipped.run", params: {} },
+                  why: { key: "events.why.runStillGoes", params: { name: r.name } },
+                })
+              } else {
+                // A run that starts more than 15 minutes late gets both times.
+                const text = runText(r.prompt, at, now)
+                const ran = yield* startOrFail(r, at, text)
+                // The event says what happened: a run that could not start made no task.
+                yield* recordEvent(r, {
+                  source: "schedule",
+                  type: { key: "events.type.plannedRun", params: {} },
+                  summary: { key: "events.summary.plannedRun", params: { name: r.name } },
+                  got: text,
+                  result: ran.ok ? "routed" : "failed",
+                  reason: ran.ok
+                    ? null
+                    : { key: `error.${ran.reason.code}`, params: { detail: ran.reason.detail } },
+                  why: ran.ok
+                    ? { key: "events.why.routineTime", params: { name: r.name } }
+                    : { key: "events.why.routineNoStart", params: { name: r.name } },
+                })
+              }
             }
             if (at !== null || missed.length > 0) changed(r.server_id)
           }
@@ -393,6 +477,18 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           if (!outcome.ok) {
             skip(r.id, now, "failed", outcome.reason)
             addFailure(r.id, outcome.reason)
+            yield* recordEvent(r, {
+              source: "watch",
+              type: { key: "events.type.check", params: {} },
+              summary: { key: "events.summary.checkFailed", params: { name: r.name } },
+              detail: outcome.reason.detail ?? "",
+              result: "failed",
+              reason: {
+                key: `error.${outcome.reason.code}`,
+                params: { detail: outcome.reason.detail },
+              },
+              why: { key: "events.why.watchFailed", params: { name: r.name } },
+            })
             changed(r.server_id)
             return
           }
@@ -417,7 +513,25 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               return
             }
             const text = watchRunText(r.prompt, change)
-            yield* startOrFail(current, now, text, { kind: "routine", name: r.name })
+            const ran = yield* startOrFail(current, now, text, {
+              kind: "routine",
+              name: r.name,
+            })
+            // The event says what happened: a run that could not start made no task.
+            yield* recordEvent(current, {
+              source: "watch",
+              type: { key: "events.type.change", params: {} },
+              summary: { key: "events.summary.change", params: { name: r.name } },
+              detail: change,
+              got: text,
+              result: ran.ok ? "routed" : "failed",
+              reason: ran.ok
+                ? null
+                : { key: `error.${ran.reason.code}`, params: { detail: ran.reason.detail } },
+              why: ran.ok
+                ? { key: "events.why.watchChange", params: { name: r.name } }
+                : { key: "events.why.watchNoStart", params: { name: r.name } },
+            })
             changed(r.server_id)
             return
           }
