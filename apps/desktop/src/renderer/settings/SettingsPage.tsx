@@ -530,7 +530,16 @@ export const SettingsPage = (props: {
     >
       <div class={styles.dragStrip} aria-hidden="true" />
       <nav class={styles.nav} aria-label={t("settings.title")}>
-        <div class={styles.navTitle}>{t("settings.title")}</div>
+        <div class={styles.navHeader}>
+          <IconButton
+            label={t("settings.close")}
+            onClick={props.onClose}
+            data-testid="settings-close"
+          >
+            <X size={18} />
+          </IconButton>
+          <div class={styles.navTitle}>{t("settings.title")}</div>
+        </div>
         <For each={sections}>
           {(s) => (
             <button
@@ -582,14 +591,6 @@ export const SettingsPage = (props: {
           </Match>
         </SwitchCase>
       </section>
-      <IconButton
-        class={styles.close}
-        label={t("settings.close")}
-        onClick={props.onClose}
-        data-testid="settings-close"
-      >
-        <X size={18} />
-      </IconButton>
     </div>
   )
 }
