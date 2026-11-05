@@ -95,6 +95,37 @@ instructions, in the place where the handbook is read (002, "Handbook").
   organization in its list (029, "Phone") and changes nothing.
 - **Migration**: the goal of an organization that the migration makes from a channel is empty.
 
+## Retrospective
+
+An organization can look at its own work and propose a change, and the user decides whether to keep
+it.
+
+- **Ways in**: the menu of an organization node on the org chart (029) has "Look back…". It needs
+  the switch "Can create and change agents" on a linked computer, as every edit of the chart does.
+- **What it reads**: the work of the members that the node draws, in the last 7 days, as the
+  outcome line of 029 counts it: for each task that ended as done, blocked or failed, its label; for
+  each part of a channel, its verdict and the reason of a "Not met". It reads **no** prompt, no
+  message text, no thinking, no tool output and no file content, so the request cannot carry
+  outside content by accident.
+- **What it gives**: one to three proposals. Each one is one of two kinds:
+  - **Instructions**: a new text for the instructions of one agent (002), with the whole text.
+  - **Skill**: a new skill (017) with a name, a description and its instructions, for one agent.
+  A proposal names the evidence it rests on, in one line, as counts: "3 of 5 parts with the verdict
+  Not met". It never explains what a model thinks.
+- **What happens then**: each proposal opens the form of its kind, filled in, and the user saves it
+  or closes it. **Nothing is saved before the user saves.** A retrospective makes no change request
+  (037) and no change: it fills a form and stops.
+- **One request**: the look back is one request to the model account of the lead, or of the first
+  member by name when the organization has no lead. It makes no task and no message, and it holds no
+  slot in the queue. A token used by the request does not count in the daily token limit, because
+  the app has no task to count it against (see `docs/spec-questions.md`).
+- **Limits**: one look back at a time for each organization. The button is off while one runs. A
+  look back fails with the reason in words when the organization has no member, when no model
+  account of the member is connected, or when the answer holds no proposal.
+- **Why not a change request**: a proposal is a text that the user reads and saves. An agent that
+  changed its own instructions would escape the rule of 000 that an agent gets better only through
+  things that the user can see and edit.
+
 ## Organization tree
 
 - In the form, the field "Parent organization" lists "None" and the organizations that the rules of
@@ -474,6 +505,8 @@ The first start of this version changes the data of each profile once.
 - A model, an effort, a permission level or a workspace that an organization gives to its members.
 - A reporting line on an agent, or a field "reports to" (029).
 - Approvals that go up the line. Only the user answers an approval.
+- A retrospective that saves by itself, and a proposal that changes a permission level, a
+  workspace, a model or an organization.
 - Reviews of the work of an agent, and scores. The chart shows the counts of 029, not a grade.
 - Organizations in an agent file.
 - A member of organizations that are not on one line (see "One line").
@@ -492,6 +525,16 @@ The first start of this version changes the data of each profile once.
   agent that is in no organization reads the goal of none.
 - A goal of 401 characters is refused with the reason in words. An empty goal gives the agent
   nothing, and the node shows no goal line.
+- Retrospective: an organization "Docs" whose members have 5 parts with the verdict "Not met" and 1
+  with "Met". The menu of its node has "Look back…". After the answer, one to three proposals show.
+  A proposal of the kind "Instructions" opens the profile of its agent with the new text in the
+  field, and nothing is saved until the user saves it. A proposal of the kind "Skill" opens the skill
+  form filled in. Close every form without saving: the profile of the agent and the list of skills
+  are the same as before.
+- The request of a retrospective holds the labels and the verdicts, and no message, no prompt, no
+  thinking and no tool output.
+- An organization with no member: "Look back…" is refused with the reason in words and no request is
+  made.
 - An agent is a member of "Product" and of "Docs" under it: its turn holds the goal of "Product"
   before the goal of "Docs", and the goal of "Docs" before its own instructions.
 - Make an organization named "product": it is refused, because the name is taken (the check

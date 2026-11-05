@@ -35,6 +35,7 @@ import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
+import { Retro } from "./services/Retro.ts"
 import { Routines } from "./services/Routines.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
@@ -151,7 +152,10 @@ export const appLayer = (options: AppLayerOptions) => {
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const starters = Starters.layer.pipe(Layer.provideMerge(routines))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(starters))
-  const teach = Layer.mergeAll(Teach.layer, SkillDrafts.layer).pipe(Layer.provideMerge(workflows))
+  // The retrospective of an organization asks the same way as a draft skill (spec 030, "Retrospective").
+  const teach = Layer.mergeAll(Teach.layer, SkillDrafts.layer, Retro.layer).pipe(
+    Layer.provideMerge(workflows),
+  )
   const browserProfiles = BrowserProfiles.layer.pipe(Layer.provideMerge(teach))
   const teamsLink = TeamsLink.layer(options.clock ? { clock: options.clock } : {}).pipe(
     Layer.provideMerge(browserProfiles),

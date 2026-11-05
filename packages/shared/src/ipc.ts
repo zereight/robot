@@ -61,6 +61,7 @@ import type {
   RuntimeTarget,
 } from "./providers.ts"
 import type { QuietState } from "./quiet.ts"
+import type { RetroProposal } from "./retro.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
 import type { SearchPage } from "./search.ts"
@@ -867,6 +868,16 @@ export interface RpcMethods {
   "organizations.update": { input: { id: string; patch: OrgPatch }; output: Org }
   "organizations.delete": { input: { id: string }; output: undefined }
   /** The part "Tools" of the form of an organization: the skills and connections with its value. */
+  /**
+   * The retrospective of an organization (spec 030, "Retrospective"): one request to the model of
+   * the lead, and one to three proposals. It saves nothing.
+   */
+  "retro.look": {
+    input: { orgId: string; requestId: string }
+    output: readonly RetroProposal[]
+  }
+  /** Drops a look back: the model call stops and its answer is not used. */
+  "retro.cancel": { input: { requestId: string }; output: undefined }
   "orgTools.list": { input: { orgId: string }; output: readonly OrgToolRow[] }
   /** Sets the value of an organization for a skill or a connection: "Inherit", "On" or "Off". */
   "orgTools.set": {

@@ -93,6 +93,7 @@ import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
+import { Retro } from "./services/Retro.ts"
 import { Routines } from "./services/Routines.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
@@ -932,6 +933,17 @@ export const handlers: Handlers = {
   "organizations.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Organizations.use((o) => o.remove(id))),
+      done,
+    ),
+  // The retrospective of an organization (spec 030, "Retrospective"): one request, and nothing
+  // saved. The user saves a proposal in the form of its kind.
+  "retro.look": (input) =>
+    decode(Schema.Struct({ orgId: Schema.String, requestId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ orgId, requestId }) => Retro.use((r) => r.look({ orgId, requestId }))),
+    ),
+  "retro.cancel": (input) =>
+    decode(Schema.Struct({ requestId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ requestId }) => Retro.use((r) => r.cancel(requestId))),
       done,
     ),
   "orgTools.list": (input) =>

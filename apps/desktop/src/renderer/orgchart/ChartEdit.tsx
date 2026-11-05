@@ -32,6 +32,7 @@ import {
   undoSteps,
 } from "./edit.ts"
 import styles from "./orgchart.module.css"
+import { RetroDialog } from "./RetroDialog.tsx"
 
 // Edit on the org chart (spec 029, "Edit on the chart"): the menus of the nodes, the drag of an
 // agent node onto an organization node, the drag of an organization node onto an organization node
@@ -258,6 +259,9 @@ export const createChartEdit = (deps: {
   const [creating, setCreating] = createSignal<{ orgId: string | null }>()
   /** The form of an organization that is open: an id, or `NEW_ORG`. */
   const [formOf, setFormOf] = createSignal<string>()
+  // The organization whose retrospective is open (spec 030, "Retrospective"). It draws over the
+  // canvas, as the form of an organization does.
+  const [retroOf, setRetroOf] = createSignal<string>()
 
   const refocus = (el: HTMLElement | undefined) => {
     if (el?.isConnected) el.focus({ preventScroll: true })
@@ -388,6 +392,9 @@ export const createChartEdit = (deps: {
     // read only (spec 012).
     const items: MenuItem[] = [
       act(t("orgchart.edit.editOrg"), () => setFormOf(orgId), "org-menu-edit-org"),
+      // The retrospective of an organization (spec 030, "Retrospective"). It asks the model and
+      // saves nothing: the user saves a proposal in the form of its kind.
+      act(t("orgchart.edit.retro"), () => setRetroOf(node.orgId ?? undefined), "org-menu-retro"),
     ]
     const base: OpenMenu = { ...at, label, items }
     if (!canEdit()) return base
@@ -729,6 +736,15 @@ export const createChartEdit = (deps: {
           />
         )}
       </Presence>
+      <Presence when={retroOf()}>
+        {(id) => (
+          <RetroDialog
+            orgId={id}
+            orgName={orgName(orgs.orgs(), id)}
+            onClose={() => setRetroOf(undefined)}
+          />
+        )}
+      </Presence>
     </>
   )
 
@@ -787,8 +803,8 @@ export const createChartEdit = (deps: {
     menuOpen: () => menu() !== undefined,
     /** True while the form of a new agent is open. */
     creating: () => creating() !== undefined,
-    /** True while the form of an organization is open. */
-    creatingOrg: () => formOf() !== undefined,
+    /** True while the form of an organization or a look back is open. */
+    creatingOrg: () => formOf() !== undefined || retroOf() !== undefined,
     /** A click on an organization node: its form (spec 029, 030). */
     openOrg: (id: string) => setFormOf(id),
     /** The button "New organization": the form of a new one. */

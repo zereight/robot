@@ -235,3 +235,37 @@
   color: var(--c-text-muted);
   font-size: var(--text-xs);
 }
+
+/* The proposals of a retrospective (spec 030, "Retrospective"): a list of one to three, each with
+   the evidence that it rests on and the button that opens the form of its kind. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+}
+
+.proposalHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.proposalName {
+  font-size: var(--text-s);
+  font-weight: 500;
+  color: var(--c-text);
+}

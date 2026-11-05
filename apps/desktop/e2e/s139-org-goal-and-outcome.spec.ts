@@ -251,3 +251,54 @@ test("search and the list view: a search dims and never moves a node, the list i
     await app.close()
   }
 })
+
+test("the retrospective of an organization asks the model and saves nothing by itself", async () => {
+  test.setTimeout(240_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  try {
+    await resizeWindow(app, 1300, 900)
+    await connectMock(page, mock.openaiUrl, GOOD_KEY)
+    await createAgent(page, "Ada")
+    await openOrgChart(page)
+    const serverId = await serverIdOf(page)
+    await rpc(page, "organizations.create", {
+      serverId,
+      name: "Docs",
+      memberIds: [await agentIdOf(page, "Ada")],
+      leadId: null,
+    })
+    await expect(orgRow(page, "Docs")).toBeVisible()
+
+    // The menu of an organization node holds "Look back…" (spec 030, "Retrospective").
+    await orgRow(page, "Docs").click({ button: "right" })
+    const menu = page.getByTestId("org-menu")
+    await expect(menu.getByTestId("org-menu-retro")).toBeVisible()
+    await shot(page, "s139-08-retro-menu")
+    const before = mock.requests.length
+    await menu.getByTestId("org-menu-retro").click()
+    await expect(page.getByTestId("retro-dialog")).toBeVisible()
+    // The look back is one request to the model, and it makes no task.
+    await expect.poll(() => mock.requests.length, { timeout: 20_000 }).toBeGreaterThan(before)
+    // The stand-in answers no proposal for a request that it does not know, so the form says so and
+    // nothing is saved.
+    await expect(page.getByTestId("retro-empty").or(page.getByTestId("retro-failed"))).toBeVisible({
+      timeout: 30_000,
+    })
+    const tasks = await rpc<unknown[]>(page, "tasks.list", { serverId })
+    expect(tasks).toHaveLength(0)
+    await expect(page.getByTestId("retro-close")).toBeVisible()
+    await page.getByTestId("retro-close").click()
+    await expect(page.getByTestId("retro-dialog")).toHaveCount(0)
+    // The instructions of Ada did not change.
+    const agents = await rpc<{ id: string; name: string; instructions: string }[]>(
+      page,
+      "agents.list",
+      { serverId, archived: false },
+    )
+    expect(agents.find((a) => a.name === "Ada")?.instructions).not.toContain("Check every link")
+  } finally {
+    await mock.close()
+    await app.close()
+  }
+})
