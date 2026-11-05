@@ -26,6 +26,7 @@ import { Agents } from "../services/Agents.ts"
 import { Chat } from "../services/Chat.ts"
 import { Devices } from "../services/Devices.ts"
 import { EventBus } from "../services/EventBus.ts"
+import { Organizations } from "../services/Organizations.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 import { SettingsStore } from "../services/Settings.ts"
@@ -534,6 +535,67 @@ describe("the phone on a real computer", () => {
     expect(again.orgs[0]?.nodes[0]?.name).toBe("Ada L")
     expect(view(phone, link.id).state).toBe("online")
   }, 30_000)
+  test("the phone reads the deepest organization of each agent, follows a rename, and keeps it in the cache (spec 035, 011)", async () => {
+    const pc = await computer("Studio")
+    const storage = new MemoryStorage()
+    const secrets = memorySecrets()
+    const phone = await openPhone(storage, secrets)
+    await phone.setDeviceName("Pixel")
+    const { run } = await pair(pc, phone)
+    const link = await run.done
+    await waitFor(
+      () => view(phone, link.id).state,
+      (s) => s === "online",
+    )
+    // No organization yet: the phone holds an empty list, so no agent has a prefix.
+    await waitFor(
+      () => view(phone, link.id).data.agentOrgs,
+      (o) => o !== null && Object.keys(o).length === 0,
+    )
+    // Ada is in "Docs" under "Product" and in "Product": the deepest one is "Docs".
+    const product = await pc.run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: pc.local.id,
+          name: "Product",
+          memberIds: [pc.agent.id],
+          leadId: null,
+        }),
+      ),
+    )
+    const docs = await pc.run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: pc.local.id,
+          name: "Docs",
+          memberIds: [pc.agent.id],
+          leadId: null,
+          parentId: product.id,
+        }),
+      ),
+    )
+    await waitFor(
+      () => view(phone, link.id).data.agentOrgs,
+      (o) => o?.[pc.agent.id] === "Docs",
+    )
+    // A rename reaches the phone with no new pairing; the prefix text changes at the next read.
+    await pc.run(Organizations.use((o) => o.update(docs.id, { name: "Documentation" })))
+    await waitFor(
+      () => view(phone, link.id).data.agentOrgs,
+      (o) => o?.[pc.agent.id] === "Documentation",
+    )
+    // The cache holds the names; a restart with the server away still shows them.
+    await phone.flush()
+    phone.close()
+    await pc.run(Devices.use((d) => Effect.promise(() => d.setAccept(false))))
+    const later = await openPhone(storage, secrets)
+    await waitFor(
+      () => view(later, link.id).state,
+      (s) => s === "offline",
+    )
+    expect(view(later, link.id).data.agentOrgs).toEqual({ [pc.agent.id]: "Documentation" })
+  }, 40_000)
+
   test("the phone watches the org chart: the model, the pushes, nothing held while the server is not online, and a new read when it is back", async () => {
     const pc = await computer("Studio")
     const storage = new MemoryStorage()
@@ -586,7 +648,7 @@ describe("the phone on a real computer", () => {
     const known = (path: string) =>
       path === "device.json" ||
       path === "servers.json" ||
-      /^cache\/[^/]+\/(places|agents|channels)\.json$/.test(path)
+      /^cache\/[^/]+\/(places|agents|channels|agent-orgs)\.json$/.test(path)
     expect([...storage.files.keys()].filter((path) => !known(path))).toEqual([])
     for (const text of storage.files.values()) {
       expect(text).not.toContain("handoffsCapped")
