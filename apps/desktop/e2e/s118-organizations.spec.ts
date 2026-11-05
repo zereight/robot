@@ -13,8 +13,8 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
 
-// Spec 030, "Flows" 1, 2, 4 and 5, "Organization tree" and the part "Tools" with the values
-// "Inherit" and "On" (S118), with 002 (the row "Organizations"), 017 and 018 (the pickers), and 012
+// Spec 030, "Flows" 1, 2, 4 and 5, "Organization tree" and the part "Tools" (the value "Off" and the
+// line "Now" are in s120-tools.spec.ts), with 002 (the row "Organizations"), 017 and 018 (the pickers), and 012
 // (a linked computer with and without the switch "Can create and change agents"). The form opens
 // from the org chart (029): the button "New organization" and a click on an organization node.
 
@@ -311,12 +311,14 @@ test("organizations: the profile lists the organizations of an agent and the too
       "organization",
     ])
     const skillOrg = (name: string) => page.locator(`[data-testid=skill-org][data-org='${name}']`)
-    await expect(skillOrg("Product")).toBeChecked()
-    await expect(skillOrg("Docs")).not.toBeChecked()
-    await expect(page.getByTestId("skill-org-value")).toHaveText(["On"])
+    // Each organization shows its value as one of three (spec 030, "Tools"): S120 widened the picker.
+    const skillValue = (name: string, v: string) =>
+      skillOrg(name).locator(`[data-testid=skill-org-value] label[data-value=${v}] input`)
+    await expect(skillValue("Product", "on")).toBeChecked()
+    await expect(skillValue("Docs", "inherit")).toBeChecked()
     // Save keeps the list as it is.
-    await skillOrg("Docs").check()
-    await expect(page.getByTestId("skill-org-value")).toHaveText(["On", "On"])
+    await skillOrg("Docs").locator("[data-testid=skill-org-value] label[data-value=on]").click()
+    await expect(skillValue("Docs", "on")).toBeChecked()
     await shot(page, "s118-06-skill-picker")
     await page.getByTestId("skill-save").click()
     await expect(page.getByTestId("skill-form-dialog")).toHaveCount(0)
@@ -352,7 +354,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     await page.getByTestId("skill-edit").click()
     await expect(page.getByTestId("skill-org")).toHaveCount(2)
     await expect(skillOrg("Product")).toHaveCount(0)
-    await expect(skillOrg("Docs")).toBeChecked()
+    await expect(skillValue("Docs", "on")).toBeChecked()
     await page.keyboard.press("Escape")
     await expect(page.getByTestId("skill-form-dialog")).toHaveCount(0)
     // "Docs" still gives the skill to "Site" (a top organization now has its own entry "On").
