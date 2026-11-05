@@ -21,7 +21,9 @@ The user gives an agent work in plain language and sees what the agent does whil
 - Tool use shows as a compact card inside the reply: an icon, a short label of what the agent did
   (read a file, ran a command, opened a page), and its result state. A click opens the details.
   Finished steps can fold into one line per run (see "Folded tool steps").
-- Thinking, when the model gives it, folds into one muted line that the user can open.
+- Thinking, when the model gives it, folds into one muted line that lists every thought of the
+  reply, in order, whether the switch "Show tool steps" is on or off. A model that thinks before
+  each step gives many thoughts, and they still show as that one line.
 - Hover on a row shows actions: reply, copy, fork (see "Threads"), and for the user's own last
   message, edit. On a finished message of an agent it also shows "Read aloud" (027) and "Mark as
   unread" (see "Mark as unread").
@@ -34,8 +36,9 @@ A long run of tool steps fills the chat. The user can fold it away.
   finished plain tool steps in a message shows as one muted line with the count. For example:
   "2 tool steps", or "1 tool step" for one step. The user opens the line to read the cards, and
   closes it again.
-- A run is steps with no other part between them. Text, thinking, files, muted lines and cards
-  that stay open split runs.
+- A run is steps with no other part between them. Text, files, muted lines and cards that stay
+  open split runs. The one line of the thoughts of a reply sits above its runs, so thinking
+  between two steps does not split them.
 - A step folds only when it finished with no mark: not running, not waiting, not failed, not
   refused, and with no approval, question, decision, memory, knowledge or settings note. A step
   that runs, waits, failed, was refused, or carries such a note always shows as its own card or
@@ -548,3 +551,6 @@ and its role line. Nothing moves.
   reads shows two folded lines with the count 1 each.
 - With the switch off, a step that waits for an approval and a failed step still show as cards.
   Turn the switch on: the cards show with no folded line.
+- A reply that thinks before each of its four steps shows one thought line, and, with the switch
+  off, one folded line with the count 4. Open the thought line: it lists the four thoughts in
+  order.

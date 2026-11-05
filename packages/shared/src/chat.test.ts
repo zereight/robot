@@ -225,6 +225,25 @@ describe("folded tool steps", () => {
     ])
   })
 
+  test("a reply that thinks between its steps shows one thought, and its steps fold as one run", () => {
+    const thinking = (text: string): MessagePart => ({ kind: "thinking", text })
+    const [a, b, c] = [tool("done"), tool("done"), tool("done")]
+    const parts = [thinking("one"), a, thinking("two"), b, thinking("three"), c]
+    expect(groupParts(parts, true)).toEqual([
+      { kind: "part", part: thinking("one\n\ntwo\n\nthree") },
+      { kind: "tools", parts: [a, b, c] },
+    ])
+  })
+
+  test("the thoughts of a reply stay one row with the cards shown", () => {
+    const thinking = (text: string): MessagePart => ({ kind: "thinking", text })
+    const parts = [thinking("one"), text("hi"), thinking("two")]
+    expect(groupParts(parts, false)).toEqual([
+      { kind: "part", part: thinking("one\n\ntwo") },
+      { kind: "part", part: text("hi") },
+    ])
+  })
+
   test("one step reads in the singular, any other count in the plural", () => {
     expect(translate("en", foldedToolsKey(1), { count: 1 })).toBe("1 tool step")
     expect(translate("en", foldedToolsKey(2), { count: 2 })).toBe("2 tool steps")
