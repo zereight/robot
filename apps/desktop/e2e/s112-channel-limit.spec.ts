@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import {
   connectMock,
@@ -22,11 +22,11 @@ import {
   turnOnSync,
 } from "./sync-helpers.ts"
 
-// Spec 030, "Channel tools" and "Daily token limit" (S112), with 017, 018, 005, 006, 002, 012, 014
-// and 019: the part "Tools of this channel", the mark "channel" in the forms of skills and
-// connections, "From <channel>" in the profile, the daily token limit (the field, the line at 80%,
-// Blocked at the limit, Retry after a raise, the limit of a parent channel, the row of the usage
-// page), a linked computer, the sync of the limit and the export. The stand-in model reports the
+// Spec 030, "Daily token limit" (S112), with 005, 006, 012, 014 and 019: the daily token limit of a
+// channel (the field, the line at 80%, Blocked at the limit, Retry after a raise, the limit of a
+// parent channel, the row of the usage page), a linked computer, the sync of the limit and the
+// export. The tools of a channel are gone: the tools of an organization are in s120-tools.spec.ts.
+// The limit moves to the organizations in the next step, and this spec moves with it. The stand-in model reports the
 // tokens that the words USAGE in a message ask for (see `spendOf` in mock-provider.ts).
 
 interface ChannelInfo {
@@ -87,262 +87,11 @@ const tasksOf = async (page: Page) =>
 const notices = (file: string) =>
   existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean) : []
 
-const SERVER = resolve(import.meta.dirname, "fakes/mcp-server.mjs")
-const CHAT = "/v1/chat/completions"
-const openAgent = (page: Page, name: string) =>
-  page.locator("[data-testid^=place-agent-]").filter({ hasText: name }).click()
-const skillOption = (page: Page, name: string) =>
-  page.locator(`[data-testid=skill-option][data-skill='${name}']`)
-/** The names of the tools in the newest chat request to the stand-in model. */
-const toolsOfLastRequest = (mock: Awaited<ReturnType<typeof startMockProvider>>) => {
-  const chats = mock.requests.filter((r) => r.path === CHAT)
-  const body = chats.at(-1)?.body as { tools?: { function?: { name?: string } }[] } | undefined
-  return (body?.tools ?? []).map((t) => t.function?.name ?? "")
-}
-/** What the profile of the open agent says about the tools that it has from channels. */
-const profileLines = async (page: Page) => {
-  await page.getByTestId("chat-header-agent").click()
-  await expect(page.getByTestId("agent-profile")).toBeVisible()
-  // Each line holds the name of the tool and the line "From <channel>", in two spans.
-  const lines = await page
-    .getByTestId("channel-tool-line")
-    .evaluateAll((els) =>
-      els.map((el) => [...el.children].map((c) => c.textContent?.trim() ?? "").join(" ")),
-    )
-  await page.keyboard.press("Escape")
-  await expect(page.getByTestId("agent-profile")).toHaveCount(0)
-  return lines
-}
-const toolRow = (page: Page, name: string) =>
-  page.locator(`[data-testid=channel-tool-row][data-name='${name}']`)
-
 /** Opens the settings of the open channel. */
 const openSettings = async (page: Page) => {
   await page.getByTestId("channel-settings").click()
   await expect(page.getByTestId("channel-dialog")).toBeVisible()
 }
-
-test("tools of a channel: a skill and a connection reach the members of lower channels, the forms show the mark, the profile shows From <channel>, and leaving a channel takes them away", async () => {
-  test.setTimeout(300_000)
-  const mock = await startMockProvider()
-  const { app, page } = await launch(freshUserData(), {
-    ROBOT_SYSTEM_LOCALE: "en-US",
-    ROBOT_TEST_HOME: freshUserData(),
-  })
-  try {
-    await resizeWindow(app, 1300, 900)
-    await connectMock(page, mock.openaiUrl, GOOD_KEY)
-    for (const name of ["Ada", "Bo", "Cy", "Di"]) await createAgent(page, name)
-    const ids = {
-      Ada: await agentId(page, "Ada"),
-      Bo: await agentId(page, "Bo"),
-      Cy: await agentId(page, "Cy"),
-    }
-    // Product holds Docs, and Docs holds Site: "Product" is two levels above "Site".
-    const product = await makeChannel(page, "Product", [ids.Ada])
-    const docs = await makeChannel(page, "Docs", [ids.Bo], { parentId: product.id })
-    const site = await makeChannel(page, "Site", [ids.Cy], { parentId: docs.id })
-
-    // --- A skill for the agent Di only, and one for all agents --------------------------------
-    await page.getByTestId("open-settings").click()
-    await page.getByTestId("settings-nav-skills").click()
-    await page.getByTestId("skills-new").click()
-    await page.getByTestId("skill-name").fill("Weekly summary")
-    await page.getByTestId("skill-instructions").fill("Write a weekly summary.")
-    await page.getByTestId("skill-save").click()
-    await expect(page.getByTestId("skill-form-dialog")).toHaveCount(0)
-    await page.getByTestId("skills-new").click()
-    await page.getByTestId("skill-name").fill("Release notes")
-    await page.getByTestId("skill-instructions").fill("Write the release notes in three lines.")
-    await page.getByTestId("skill-agents-mode").getByText("Chosen agents").click()
-    // The picker lists the agents, then the channels, each channel with the mark "channel".
-    const channelRows = page.getByTestId("skill-channel")
-    await expect(channelRows).toHaveCount(3)
-    await expect(page.getByTestId("skill-channel-mark")).toHaveText([
-      "channel",
-      "channel",
-      "channel",
-    ])
-    await expect(page.getByTestId("skill-agent")).toHaveCount(4)
-    await shot(page, "s112-11-skill-form-channels")
-    await page.locator("[data-testid=skill-agent][data-agent=Di]").check()
-    await page.getByTestId("skill-save").click()
-    await expect(page.getByTestId("skill-form-dialog")).toHaveCount(0)
-    const row = page.locator("[data-testid=skill-row][data-skill='Release notes']")
-    await expect(row.getByTestId("skill-row-agents")).toHaveText("Di")
-    await page.getByTestId("settings-close").click()
-
-    // Nobody in Product, Docs or Site has the skill yet. Cy sees only the skill for all agents.
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill("/")
-    await expect(skillOption(page, "Weekly summary")).toHaveCount(1)
-    await expect(skillOption(page, "Release notes")).toHaveCount(0)
-    await page.getByTestId("composer-input").fill("")
-    expect(await profileLines(page)).toEqual([])
-
-    // --- The part "Tools of this channel" in the settings of Product ---------------------------
-    await openChannel(page, product)
-    await openSettings(page)
-    const part = page.getByTestId("channel-tools")
-    await expect(part).toContainText("Tools of this channel")
-    // The skill for all agents shows on and cannot change. The skill of Di shows off.
-    await expect(toolRow(page, "Weekly summary").getByTestId("channel-tool-all")).toBeVisible()
-    await expect(toolRow(page, "Weekly summary").getByTestId("channel-tool-switch")).toBeDisabled()
-    await expect(toolRow(page, "Release notes").getByTestId("channel-tool-switch")).toHaveAttribute(
-      "aria-checked",
-      "false",
-    )
-    await toolRow(page, "Release notes").getByTestId("channel-tool-switch").click()
-    await expect(toolRow(page, "Release notes").getByTestId("channel-tool-switch")).toHaveAttribute(
-      "aria-checked",
-      "true",
-    )
-    await part.scrollIntoViewIfNeeded()
-    await shot(page, "s112-12-tools-of-channel")
-    await page.getByTestId("channel-dialog").getByRole("button", { name: "Cancel" }).click()
-    await expect(page.getByTestId("channel-dialog")).toHaveCount(0)
-
-    // The switch is the list of the skill: the skill form shows "Product", with the mark, ticked.
-    await page.getByTestId("open-settings").click()
-    await page.getByTestId("settings-nav-skills").click()
-    await expect(row.getByTestId("skill-row-agents")).toHaveText("Di, Product")
-    await row.getByTestId("skill-edit").click()
-    await expect(page.locator("[data-testid=skill-channel][data-channel=Product]")).toBeChecked()
-    await expect(page.locator("[data-testid=skill-channel][data-channel=Docs]")).not.toBeChecked()
-    await expect(page.locator("[data-testid=skill-agent][data-agent=Di]")).toBeChecked()
-    await shot(page, "s112-13-skill-form-ticked")
-    await page.getByTestId("skill-cancel").click()
-    await page.getByTestId("settings-close").click()
-
-    // --- A member of Site (two levels below) has the skill in its direct chat, with the line ----
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill("/")
-    await expect(skillOption(page, "Release notes")).toHaveCount(1)
-    await page.getByTestId("composer-input").fill("")
-    await page.getByTestId("chat-header-agent").click()
-    await expect(page.getByTestId("agent-profile")).toBeVisible()
-    const lines = page.getByTestId("channel-tool-line")
-    await expect(lines).toHaveCount(1)
-    await expect(lines.first()).toContainText("Release notes")
-    await expect(lines.first().getByTestId("channel-tool-from")).toHaveText("From Product")
-    await page
-      .getByTestId("agent-profile")
-      .getByTestId("channel-tools-lines")
-      .scrollIntoViewIfNeeded()
-    await shot(page, "s112-14-profile-from-channel")
-    await page.keyboard.press("Escape")
-    await expect(page.getByTestId("agent-profile")).toHaveCount(0)
-    // It uses the skill as its own: the chip, and the instructions reach the model.
-    await page.getByTestId("composer-input").fill("/release")
-    await page.getByTestId("composer-input").press("Enter")
-    await expect(page.getByTestId("composer-skill")).toContainText("Release notes")
-    await page.getByTestId("composer-input").fill("for version two")
-    await page.getByTestId("composer-input").press("Enter")
-    await idle(page)
-    const sent = mock.requests
-      .filter((r) => r.path === CHAT)
-      .map((r) => (r.body as { messages: { content: string }[] }).messages.at(-1)?.content ?? "")
-      .find((c) => c.includes("for version two"))
-    expect(sent).toContain("Write the release notes in three lines.")
-    // Ada (a member of Product itself) and Bo (a member of Docs) have it too. Di has it from its
-    // own list, not from a channel, so the profile of Di has no line.
-    await openAgent(page, "Ada")
-    expect(await profileLines(page)).toEqual(["Release notes From Product"])
-    await openAgent(page, "Bo")
-    expect(await profileLines(page)).toEqual(["Release notes From Product"])
-    await openAgent(page, "Di")
-    await page.getByTestId("composer-input").fill("/")
-    await expect(skillOption(page, "Release notes")).toHaveCount(1)
-    await page.getByTestId("composer-input").fill("")
-    expect(await profileLines(page)).toEqual([])
-
-    // --- Remove the member from Site: the next turn has no such skill --------------------------
-    await rpc(page, "channels.update", { id: site.id, patch: { memberIds: [] } })
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill("/")
-    await expect(skillOption(page, "Weekly summary")).toHaveCount(1)
-    await expect(skillOption(page, "Release notes")).toHaveCount(0)
-    await page.getByTestId("composer-input").fill("")
-    expect(await profileLines(page)).toEqual([])
-    // The member comes back: the skill comes back with it.
-    await rpc(page, "channels.update", { id: site.id, patch: { memberIds: [ids.Cy] } })
-    await openAgent(page, "Bo")
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill("/")
-    await expect(skillOption(page, "Release notes")).toHaveCount(1)
-    await page.getByTestId("composer-input").fill("")
-
-    // --- A connection that Product gives: the form shows the mark, the tools reach Cy, the same
-    // approval card asks before a call, and the switch off takes the tools away -------------------
-    await page.getByTestId("open-settings").click()
-    await page.getByTestId("settings-nav-connections").click()
-    await page.getByTestId("connection-add").click()
-    await page.getByTestId("connection-name").fill("Notes")
-    await page.getByTestId("connection-command").fill(process.execPath)
-    await page.getByTestId("connection-args").fill(SERVER)
-    await page.getByTestId("connection-agents-mode").getByText("Some agents").click()
-    await expect(page.getByTestId("connection-channel")).toHaveCount(3)
-    await expect(page.getByTestId("connection-channel-mark")).toHaveText([
-      "channel",
-      "channel",
-      "channel",
-    ])
-    await page.locator("[data-testid=connection-channel][data-channel=Docs]").check()
-    await page.getByTestId("connection-test").click()
-    await expect(page.getByTestId("connection-test-result")).toContainText("Connected. Tools: 8.")
-    await page.getByTestId("connection-confirm").check()
-    await page.getByTestId("connection-save").click()
-    await expect(page.getByTestId("connection-form-dialog")).toBeHidden()
-    const notes = page.locator("[data-testid=connection-row][data-connection=Notes]")
-    await expect(notes.getByTestId("connection-row-agents")).toHaveText("Docs")
-    await page.getByTestId("settings-close").click()
-    // Docs is one level above Site: Cy has the connection from Docs, Bo (a member of Docs) too.
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill("hello Cy")
-    await page.getByTestId("composer-input").press("Enter")
-    await idle(page)
-    expect(toolsOfLastRequest(mock)).toContain("mcp__notes__echo")
-    expect(await profileLines(page)).toEqual(["Release notes From Product", "Notes From Docs"])
-    // Ada is in Product, a higher channel of Docs: a tool of a lower channel does not go up.
-    await openAgent(page, "Ada")
-    await page.getByTestId("composer-input").fill("hello Ada")
-    await page.getByTestId("composer-input").press("Enter")
-    await idle(page)
-    expect(toolsOfLastRequest(mock)).not.toContain("mcp__notes__echo")
-    // The call of Cy asks the same approval as before.
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill('TOOL mcp__notes__echo {"text":"hi"}')
-    await page.getByTestId("composer-input").press("Enter")
-    const ask = page.getByTestId("ask-card")
-    await expect(ask).toBeVisible({ timeout: 15_000 })
-    await expect(ask).toContainText("Notes · echo")
-    await shot(page, "s112-15-approval-card")
-    await page.getByTestId("ask-deny").click()
-    await idle(page)
-    // The switch off in the settings of Docs takes the connection away from the next turn.
-    await openChannel(page, docs)
-    await openSettings(page)
-    await expect(toolRow(page, "Notes").getByTestId("channel-tool-switch")).toHaveAttribute(
-      "aria-checked",
-      "true",
-    )
-    await toolRow(page, "Notes").getByTestId("channel-tool-switch").click()
-    await expect(toolRow(page, "Notes").getByTestId("channel-tool-switch")).toHaveAttribute(
-      "aria-checked",
-      "false",
-    )
-    await page.getByTestId("channel-dialog").getByRole("button", { name: "Cancel" }).click()
-    await openAgent(page, "Cy")
-    await page.getByTestId("composer-input").fill("hello again")
-    await page.getByTestId("composer-input").press("Enter")
-    await idle(page)
-    expect(toolsOfLastRequest(mock)).not.toContain("mcp__notes__echo")
-    expect(await profileLines(page)).toEqual(["Release notes From Product"])
-  } finally {
-    await app.close().catch(() => {})
-    await mock.close()
-  }
-})
 
 test("the daily token limit: the field, the line at 80%, Blocked at the limit, Retry after a raise, the usage page and Korean", async () => {
   test.setTimeout(240_000)
@@ -652,7 +401,6 @@ test("the limit of a parent channel stops its lower channels and names the paren
     await shot(page, "s112-09-parent-limit-ko")
     await openSettings(page)
     await expect(page.getByTestId("channel-daily-limit")).toContainText("하루 토큰 한도")
-    await expect(page.getByTestId("channel-tools")).toContainText("이 채널의 도구")
     await shot(page, "s112-10-settings-ko")
     await page.getByTestId("channel-dialog").getByRole("button", { name: "취소" }).click()
     await page.getByTestId("page-today").click()
@@ -697,7 +445,7 @@ const pairOneWay = async (one: Launched, two: Launched, canChange: boolean) => {
   await expect(tile(one.page, "MacBook 2")).toHaveAttribute("data-state", "online")
 }
 
-test("a linked computer with the switch changes the limit and reads the tools; with the switch off it reads the lines From <channel> only", async () => {
+test("a linked computer with the switch changes the limit; with the switch off it reads only", async () => {
   test.setTimeout(300_000)
   const [PORT_1, PORT_2] = await freePortPair()
   const two: Launched = await launch(freshUserData(), envFor(PORT_2))
@@ -705,7 +453,7 @@ test("a linked computer with the switch changes the limit and reads the tools; w
   try {
     await resizeWindow(one.app, 1300, 900)
     await resizeWindow(two.app, 1300, 900)
-    // MacBook 2 holds the agent, the channel, the skill and the switch of the channel.
+    // MacBook 2 holds the agent and the channel.
     const serverId = await localServerId(two.page)
     const ada = await rpc<{ id: string }>(two.page, "agents.create", {
       serverId,
@@ -714,20 +462,6 @@ test("a linked computer with the switch changes the limit and reads the tools; w
       instructions: "",
     })
     const docs = await makeChannel(two.page, "Docs", [ada.id])
-    const skill = await rpc<{ id: string }>(two.page, "skills.create", {
-      serverId,
-      name: "Release notes",
-      description: "",
-      instructions: "Write the release notes.",
-      agentIds: [ada.id],
-      channelIds: [],
-    })
-    await rpc(two.page, "channelTools.set", {
-      channelId: docs.id,
-      kind: "skill",
-      id: skill.id,
-      on: true,
-    })
     await pairOneWay(one, two, true)
 
     // MacBook 1 opens the channel of MacBook 2. The limit field works, with the switch on.
@@ -736,15 +470,6 @@ test("a linked computer with the switch changes the limit and reads the tools; w
     await openSettings(one.page)
     await one.page.getByTestId("channel-daily-limit").getByTestId("channel-limit-switch").click()
     await one.page.getByTestId("channel-limit").fill("20,000")
-    // The part "Tools of this channel" is there to read: the switch of the skill cannot change.
-    await expect(one.page.getByTestId("channel-tools-linked")).toContainText(
-      "These tools are kept on MacBook 2. You can read them here and change them there.",
-    )
-    const row = toolRow(one.page, "Release notes")
-    await expect(row.getByTestId("channel-tool-switch")).toBeDisabled()
-    await expect(row.getByTestId("channel-tool-switch")).toHaveAttribute("aria-checked", "true")
-    await one.page.getByTestId("channel-tools").scrollIntoViewIfNeeded()
-    await shot(one.page, "s112-16-linked-tools-read-only")
     await one.page.getByTestId("channel-submit").click()
     await expect(one.page.getByTestId("channel-dialog")).toHaveCount(0)
     await expect
@@ -752,27 +477,7 @@ test("a linked computer with the switch changes the limit and reads the tools; w
         async () => (await channelsOf(two.page)).find((c) => c.name === "Docs")?.dailyTokenLimit,
       )
       .toBe(20_000)
-    // The link has no way to change the tools of a channel.
-    await expect(
-      rpc(one.page, "channelTools.set", {
-        channelId: docs.id,
-        kind: "skill",
-        id: skill.id,
-        on: false,
-      }),
-    ).rejects.toThrow()
-    expect(
-      (await rpc<{ on: boolean }[]>(two.page, "channelTools.list", { channelId: docs.id })).map(
-        (r) => r.on,
-      ),
-    ).toEqual([true])
-
-    // The profile of the agent on MacBook 1 shows the line, read-only.
-    await openAgent(one.page, "Ada")
-    expect(await profileLines(one.page)).toEqual(["Release notes From Docs"])
-
-    // The user turns the switch off on MacBook 2: the settings of the channel are gone on MacBook
-    // 1, so it changes nothing of this spec. It still reads the line in the profile.
+    // The user turns the switch off on MacBook 2: the settings of the channel are gone on MacBook 1.
     await openDevices(two.page)
     await two.page.locator("[data-testid=client-can-change]").first().click()
     await expect(two.page.locator("[data-testid=client-can-change]").first()).toHaveAttribute(
@@ -783,8 +488,6 @@ test("a linked computer with the switch changes the limit and reads the tools; w
     await expect(one.page.getByTestId("new-channel")).toHaveCount(0)
     await openChannel(one.page, docs)
     await expect(one.page.getByTestId("channel-settings")).toHaveCount(0)
-    await openAgent(one.page, "Ada")
-    expect(await profileLines(one.page)).toEqual(["Release notes From Docs"])
     // The limit that MacBook 1 set is still on MacBook 2, and the line of the channel is read there.
     await expect(limitLine(one.page)).toHaveCount(0)
     expect((await channelsOf(two.page)).find((c) => c.name === "Docs")?.dailyTokenLimit).toBe(
@@ -796,25 +499,15 @@ test("a linked computer with the switch changes the limit and reads the tools; w
   }
 })
 
-test("sync: the limit and the tree go to the other computer, the tools of a channel stay with the skills of each computer; an export and a restore bring back the limit and the lists of skills", async () => {
+test("sync: the limit and the tree go to the other computer; an export and a restore bring back the limit", async () => {
   test.setTimeout(300_000)
   const work = freshUserData()
   const archive = join(work, "export.zip")
   const s = await synced(await freePortPair(), [{ ROBOT_TEST_SAVE_PATH: archive }, {}])
   const { one, two } = s
   try {
-    const serverId = await localServerId(one.page)
     const product = await makeChannel(one.page, "Product", [], { dailyTokenLimit: 50_000 })
     const docs = await makeChannel(one.page, "Docs", [], { parentId: product.id })
-    // A skill of MacBook 1 that Product gives. Skills do not sync (spec 019).
-    await rpc(one.page, "skills.create", {
-      serverId,
-      name: "Release notes",
-      description: "",
-      instructions: "Write the release notes.",
-      agentIds: [],
-      channelIds: [product.id],
-    })
     await turnOnSync(one, two)
     await closeSettings(one.page)
     await closeSettings(two.page)
@@ -841,27 +534,7 @@ test("sync: the limit and the tree go to the other computer, the tools of a chan
         .getByTestId("usage-channel-limit"),
     ).toHaveText("30,000")
 
-    // The part "Tools of this channel" shows each computer's own skills: MacBook 2 has none of the
-    // skill of MacBook 1, and the other way round.
-    const rows = (page: Page) =>
-      rpc<{ name: string; on: boolean }[]>(page, "channelTools.list", {
-        channelId: product.id,
-      }).then((r) => r.map((x) => `${x.name}:${x.on}`))
-    expect(await rows(one.page)).toEqual(["Release notes:true"])
-    expect(await rows(two.page)).toEqual([])
-    const own = await rpc<{ id: string }>(two.page, "skills.create", {
-      serverId: await localServerId(two.page),
-      name: "Local only",
-      description: "",
-      instructions: "Only here.",
-      agentIds: null,
-      channelIds: [],
-    })
-    expect(own.id).toBeTruthy()
-    expect(await rows(one.page)).toEqual(["Release notes:true"])
-
-    // Export on MacBook 1 and restore into an empty app: the tree, the limits and the channel in
-    // the list of the skill come back.
+    // Export on MacBook 1 and restore into an empty app: the tree and the limits come back.
     await one.page.getByTestId("open-settings").click()
     await one.page.getByTestId("settings-nav-data").click()
     await one.page.getByTestId("data-export").click()
@@ -877,22 +550,6 @@ test("sync: the limit and the tree go to the other computer, the tools of a chan
       await third.page.getByTestId("data-restore").click()
       await expect(third.page.getByTestId("data-note")).toContainText("Restored")
       expect(await shown(third.page)).toEqual(["Docs:30000:sub", "Product:50000:top"])
-      const back = await rpc<{ name: string; channelIds: string[] }[]>(third.page, "skills.list", {
-        serverId: await localServerId(third.page),
-      })
-      expect(back.map((x) => [x.name, x.channelIds.length])).toEqual([["Release notes", 1]])
-      expect(back[0]?.channelIds).toEqual([product.id])
-      // The skill form on the restored computer shows the channel ticked, with its mark.
-      await third.page.getByTestId("settings-nav-skills").click()
-      await third.page
-        .locator("[data-testid=skill-row][data-skill='Release notes']")
-        .getByTestId("skill-edit")
-        .click()
-      await expect(
-        third.page.locator("[data-testid=skill-channel][data-channel=Product]"),
-      ).toBeChecked()
-      await expect(third.page.getByTestId("skill-channel-mark").first()).toHaveText("channel")
-      await shot(third.page, "s112-17-restored-skill-channel")
     } finally {
       await third.app.close().catch(() => {})
     }

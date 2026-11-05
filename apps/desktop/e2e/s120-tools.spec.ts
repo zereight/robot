@@ -1,4 +1,4 @@
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import {
   connectMock,
@@ -11,7 +11,15 @@ import {
 } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
-import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
+import {
+  closeSettings,
+  envFor,
+  openDevices,
+  rpc,
+  setName,
+  synced,
+  turnOnSync,
+} from "./sync-helpers.ts"
 
 // Spec 030, "Access" and "Tools" (S120), with 017, 018, 002 (flow 12), 007 and 012: the tools of an
 // organization with the values "Inherit", "On" and "Off", the muted line "Now: <value> from
@@ -628,3 +636,116 @@ for (const canChange of [true, false]) {
     }
   })
 }
+
+// --- Two computers and the archive (spec 019, 014) ------------------------------------------------
+
+test("sync and export: the tree goes to the other computer, the tools of an organization stay with the skills of each computer, and a restore brings back On and Off", async () => {
+  test.setTimeout(300_000)
+  const work = freshUserData()
+  const archive = join(work, "export.zip")
+  const s = await synced(await freePortPair(), [{ ROBOT_TEST_SAVE_PATH: archive }, {}])
+  const { one, two } = s
+  try {
+    const serverId = await serverIdOf(one.page)
+    const ada = await rpc<{ id: string }>(one.page, "agents.create", {
+      serverId,
+      name: "Ada",
+      role: "",
+      instructions: "",
+    })
+    const product = await makeOrg(one.page, "Product", ["Ada"])
+    const docs = await makeOrg(one.page, "Docs", [], "Product")
+    // A skill of MacBook 1 that Product turns on and Docs turns off. Skills do not sync (019).
+    await rpc(one.page, "skills.create", {
+      serverId,
+      name: "Release notes",
+      description: "",
+      instructions: "Write the release notes.",
+      agentIds: [ada.id],
+      organizations: [
+        { id: product.id, value: "on" },
+        { id: docs.id, value: "off" },
+      ],
+    })
+    await turnOnSync(one, two)
+    await closeSettings(one.page)
+    await closeSettings(two.page)
+
+    // The tree goes to MacBook 2. Its part "Tools" shows its own skills: none of MacBook 1.
+    await expect
+      .poll(async () => (await orgsOf(two.page)).map((o) => [o.name, o.parentId ? "sub" : "top"]), {
+        timeout: 30_000,
+      })
+      .toEqual([
+        ["Docs", "sub"],
+        ["Product", "top"],
+      ])
+    const rows = (page: Page, orgId: string) =>
+      rpc<{ name: string; choice: string }[]>(page, "orgTools.list", { orgId }).then((r) =>
+        r.map((x) => `${x.name}:${x.choice}`),
+      )
+    expect(await rows(one.page, product.id)).toEqual(["Release notes:on"])
+    expect(await rows(one.page, docs.id)).toEqual(["Release notes:off"])
+    expect(await rows(two.page, product.id)).toEqual([])
+    // A skill that only MacBook 2 has does not reach MacBook 1.
+    await rpc(two.page, "skills.create", {
+      serverId: await serverIdOf(two.page),
+      name: "Local only",
+      description: "",
+      instructions: "Only here.",
+      agentIds: null,
+    })
+    expect(await rows(two.page, product.id)).toEqual(["Local only:on"])
+    expect(await rows(one.page, product.id)).toEqual(["Release notes:on"])
+
+    // Export on MacBook 1 and restore into an empty app: the values "On" and "Off" come back.
+    await one.page.getByTestId("open-settings").click()
+    await one.page.getByTestId("settings-nav-data").click()
+    await one.page.getByTestId("data-export").click()
+    await expect(one.page.getByTestId("data-note")).toContainText(archive)
+    const third = await launch(freshUserData(), {
+      ROBOT_SYSTEM_LOCALE: "en-US",
+      ROBOT_TEST_OPEN_PATH: archive,
+    })
+    try {
+      await resizeWindow(third.app, 1200, 860)
+      await third.page.getByTestId("open-settings").click()
+      await third.page.getByTestId("settings-nav-data").click()
+      await third.page.getByTestId("data-restore").click()
+      await expect(third.page.getByTestId("data-note")).toContainText("Restored")
+      const back = await rpc<{ name: string; organizations: { id: string; value: string }[] }[]>(
+        third.page,
+        "skills.list",
+        { serverId: await serverIdOf(third.page) },
+      )
+      expect(back.map((x) => [x.name, x.organizations])).toEqual([
+        [
+          "Release notes",
+          [
+            { id: product.id, value: "on" },
+            { id: docs.id, value: "off" },
+          ],
+        ],
+      ])
+      // The skill form on the restored computer shows the two values.
+      await third.page.getByTestId("settings-nav-skills").click()
+      await third.page
+        .locator("[data-testid=skill-row][data-skill='Release notes']")
+        .getByTestId("skill-edit")
+        .click()
+      const value = (name: string, v: string) =>
+        third.page.locator(
+          `[data-testid=skill-org][data-org='${name}'] [data-testid=skill-org-value] label[data-value=${v}] input`,
+        )
+      await expect(value("Product", "on")).toBeChecked()
+      await expect(value("Docs", "off")).toBeChecked()
+      await shot(third.page, "s120-10-restored-picker")
+    } finally {
+      await third.app.close().catch(() => {})
+    }
+  } finally {
+    await one.app.close().catch(() => {})
+    await two.app.close().catch(() => {})
+    await s.mock.close()
+  }
+})
