@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import { join } from "node:path"
 
 /** The logs that the app writes. */
-export type LogName = "channels" | "teams" | "browser" | "app"
+export type LogName = "channels" | "organizations" | "teams" | "browser" | "app"
 
 /** The size limit of one log file. When a file grows past it, the oldest lines go first. */
 export const LOG_MAX_BYTES = 256 * 1024

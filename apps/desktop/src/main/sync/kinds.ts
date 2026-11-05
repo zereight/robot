@@ -14,6 +14,7 @@ import {
   ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
+  HAND_OFF_RANGES,
   HAND_OFF_RULES,
   HANDBOOK_MAX,
   HANDBOOK_SOURCES,
@@ -29,6 +30,7 @@ import {
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
+  ORG_NAME_MAX,
   parseOutsideSource,
   parsePlaceOutside,
   placeOutsideText,
@@ -1151,6 +1153,123 @@ const channel: KindDef = {
     // the removal of each note too, and makes no history row here (spec 019).
     ctx.db.run("DELETE FROM memory WHERE channel_id = ?", id)
     ctx.db.run("DELETE FROM channel WHERE id = ?", id)
+  },
+  label: (f) => String(f.name ?? ""),
+}
+
+// ------------------------------------------------------------------------------ organization
+
+interface OrgUnitRow {
+  id: string
+  name: string
+  lead_agent_id: string | null
+  parent_id: string | null
+  hand_off_range: string
+  daily_token_limit: number | null
+  created_at: number
+  updated_at: number
+}
+
+const setOrgMembers = (ctx: Ctx, orgId: string, members: readonly string[]) => {
+  ctx.db.run("DELETE FROM org_member WHERE org_id = ?", orgId)
+  let position = 0
+  for (const agentId of members) {
+    if (!has(ctx.db, "agent", agentId)) continue
+    ctx.db.run(
+      "INSERT OR IGNORE INTO org_member (org_id, agent_id, position) VALUES (?, ?, ?)",
+      orgId,
+      agentId,
+      position++,
+    )
+  }
+}
+
+/**
+ * An organization (spec 030, 019): its name, members, lead, parent organization, hand-off range and
+ * daily token limit. The tools of an organization do not sync, because skills and connections do
+ * not. A parent that has not come yet, or is gone, counts as no parent, so the row needs no order of
+ * its own. After a sync the tree is checked (`repairOrgs` of the engine).
+ */
+const orgunit: KindDef = {
+  kind: "orgunit",
+  rank: 2,
+  fields: {
+    name: {
+      check: (v) => {
+        if (typeof v !== "string") return false
+        const n = charLength(v.trim())
+        return n >= 1 && n <= ORG_NAME_MAX
+      },
+    },
+    lead: { check: nullable(str(100, 1)) },
+    parent: { check: nullable(str(100, 1)) },
+    members: {
+      check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
+    },
+    handOffRange: { check: oneOf(HAND_OFF_RANGES) },
+    dailyTokenLimit: { check: nullable(validDailyLimit) },
+    createdAt: { check: int },
+  },
+  required: ["name", "lead", "parent", "members", "handOffRange", "dailyTokenLimit", "createdAt"],
+  fixed: ["createdAt"],
+  count: (db) => q.count(db, "org_unit"),
+  ids: (db, after, limit) => q.ids(db, "org_unit", after, limit),
+  read: (ctx, id) => {
+    const r = ctx.db.get<OrgUnitRow>("SELECT * FROM org_unit WHERE id = ?", id)
+    if (!r) return undefined
+    return {
+      fields: {
+        name: r.name,
+        lead: r.lead_agent_id,
+        parent: r.parent_id,
+        members: ctx.db
+          .all<{ agent_id: string }>(
+            "SELECT agent_id FROM org_member WHERE org_id = ? ORDER BY position",
+            id,
+          )
+          .map((m) => m.agent_id),
+        handOffRange: r.hand_off_range,
+        dailyTokenLimit: r.daily_token_limit,
+        createdAt: r.created_at,
+      },
+      parent: null,
+      wall: r.updated_at,
+    }
+  },
+  create: (ctx, id, f) => {
+    insert(ctx.db, "org_unit", {
+      id,
+      server_id: ctx.localServerId(),
+      name: (f.name as string).trim(),
+      name_key: nameKey(f.name as string),
+      lead_agent_id: f.lead,
+      parent_id: typeof f.parent === "string" ? f.parent : null,
+      hand_off_range: f.handOffRange,
+      daily_token_limit: validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null,
+      created_at: f.createdAt,
+      updated_at: ctx.now(),
+    })
+    setOrgMembers(ctx, id, f.members as string[])
+    return true
+  },
+  write: (ctx, id, f) => {
+    if (!has(ctx.db, "org_unit", id)) return
+    const columns: Record<string, unknown> = {}
+    if (f.name !== undefined) {
+      columns.name = (f.name as string).trim()
+      columns.name_key = nameKey(f.name as string)
+    }
+    if (f.lead !== undefined) columns.lead_agent_id = f.lead
+    if (f.parent !== undefined) columns.parent_id = typeof f.parent === "string" ? f.parent : null
+    if (typeof f.handOffRange === "string") columns.hand_off_range = f.handOffRange
+    if (f.dailyTokenLimit !== undefined)
+      columns.daily_token_limit = validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null
+    columns.updated_at = ctx.now()
+    update(ctx.db, "org_unit", "id = ?", [id], columns)
+    if (f.members !== undefined) setOrgMembers(ctx, id, f.members as string[])
+  },
+  remove: (ctx, id) => {
+    ctx.db.run("DELETE FROM org_unit WHERE id = ?", id)
   },
   label: (f) => String(f.name ?? ""),
 }
@@ -2495,6 +2614,7 @@ export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   org,
   agent,
   channel,
+  orgunit,
   memory,
   message,
   thread,

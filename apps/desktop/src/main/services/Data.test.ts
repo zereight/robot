@@ -26,6 +26,7 @@ import { Decision } from "./Decision.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Organization } from "./Organization.ts"
+import { Organizations } from "./Organizations.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
@@ -819,6 +820,110 @@ describe("export and import", () => {
     const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
     expect(bDb.all("SELECT id, agents, channels, enabled FROM tool_connection")).toEqual([
       { id: "c1", agents: "[]", channels: JSON.stringify([docs.id]), enabled: 0 },
+    ])
+  })
+
+  test("organizations come back with their members, lead, parent, range, limit and tool lists (spec 030, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-orgs.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const ada = await a.run(
+      Agents.use((x) => x.create({ serverId: local.id, name: "Ada", role: "", instructions: "" })),
+    )
+    const bo = await a.run(
+      Agents.use((x) => x.create({ serverId: local.id, name: "Bo", role: "", instructions: "" })),
+    )
+    const company = await a.run(
+      Organizations.use((o) =>
+        o.create({ serverId: local.id, name: "Company", memberIds: [ada.id], leadId: ada.id }),
+      ),
+    )
+    const support = await a.run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: local.id,
+          name: "Support",
+          memberIds: [ada.id, bo.id],
+          leadId: bo.id,
+          parentId: company.id,
+          handOffRange: "own_lower",
+          dailyTokenLimit: 50_000,
+        }),
+      ),
+    )
+    const skill = await a.run(
+      Skills.use((s) =>
+        s.create(local.id, { name: "Notes", description: "", instructions: "Do it." }, [ada.id]),
+      ),
+    )
+    await a.run(Organizations.use((o) => o.setTool(support.id, "skill", skill.id, "on")))
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const orgs = await b.run(Organizations.use((o) => o.list(bLocal.id)))
+    expect(orgs.map((o) => o.id)).toEqual([company.id, support.id])
+    expect(orgs.find((o) => o.id === support.id)).toMatchObject({
+      memberIds: [ada.id, bo.id],
+      leadId: bo.id,
+      parentId: company.id,
+      handOffRange: "own_lower",
+      dailyTokenLimit: 50_000,
+    })
+    const skills = await b.run(Skills.use((s) => s.list(bLocal.id)))
+    expect(skills.find((x) => x.id === skill.id)?.organizations).toEqual([
+      { id: support.id, value: "on" },
+    ])
+  })
+
+  test("an archive with a loop or a fourth level of organizations comes back repaired, with a line in the organization log (spec 030, Repair)", async () => {
+    const out = join(testPlatform().dataDir, "export-broken-orgs.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const make = (name: string, parentId: string | null) =>
+      a.run(
+        Organizations.use((o) =>
+          o.create({ serverId: local.id, name, memberIds: [], leadId: null, parentId }),
+        ),
+      )
+    const top = await make("Top", null)
+    const mid = await make("Mid", top.id)
+    const low = await make("Low", mid.id)
+    const deep = await make("Deep", null)
+    const left = await make("Left", null)
+    const right = await make("Right", null)
+    // The app refuses all of these, but an archive can hold them: the data is changed by hand.
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run("UPDATE org_unit SET parent_id = ? WHERE id = ?", low.id, deep.id)
+    db.run("UPDATE org_unit SET parent_id = ? WHERE id = ?", right.id, left.id)
+    db.run("UPDATE org_unit SET parent_id = ? WHERE id = ?", left.id, right.id)
+    db.run("UPDATE org_unit SET created_at = 1000 WHERE id = ?", left.id)
+    db.run("UPDATE org_unit SET created_at = 2000 WHERE id = ?", right.id)
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const list = await b.run(Organizations.use((o) => o.list(bLocal.id)))
+    const name = new Map(list.map((o) => [o.id, o.name]))
+    // "Deep" would be on the fourth level, and of "Left" and "Right" the one made later lost its parent.
+    expect(list.map((o) => [o.name, o.parentId ? name.get(o.parentId) : null]).sort()).toEqual([
+      ["Deep", null],
+      ["Left", "Right"],
+      ["Low", "Mid"],
+      ["Mid", "Top"],
+      ["Right", null],
+      ["Top", null],
+    ])
+    const log = readFileSync(join(b.dataDir, "logs", "organizations.log"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event: string; organization: string; kind: string })
+      .sort((x, y) => x.organization.localeCompare(y.organization))
+    expect(log.map((l) => [l.event, l.organization, l.kind])).toEqual([
+      ["tree_repaired", "Deep", "levels"],
+      ["tree_repaired", "Right", "loop"],
     ])
   })
 

@@ -3,6 +3,7 @@ import {
   AGENT_NAME_MAX,
   CHANNEL_NAME_MAX,
   nameKey,
+  ORG_NAME_MAX,
   SYNC_CHANGES_MAX,
   type SyncChangeEntry,
   type SyncKind,
@@ -10,6 +11,7 @@ import {
 } from "@robot/shared"
 import { repairChannelTree } from "../services/channelTreeRepair.ts"
 import type { DatabaseService } from "../services/Database.ts"
+import { type OrgRepaired, repairOrgTree } from "../services/orgRepair.ts"
 import { compareStamps, HybridClock, NO_STAMP, type Stamp, sameStamp, wireStamp } from "./clock.ts"
 import { type Ctx, type Fields, KIND_ORDER, KINDS, type KindDef, type Parent } from "./kinds.ts"
 import type { ParsedOp, WireOp } from "./wire.ts"
@@ -27,6 +29,11 @@ export interface EngineDeps {
   readonly newWorkspace: (name: string, id: string) => string
   readonly facesDir: string
   readonly removeSecret: (accountId: string) => void
+  /**
+   * Called with the repairs of the organization tree that the engine made (spec 030, "Repair"). The
+   * caller writes the line of the organization log and tells the window.
+   */
+  readonly onOrgRepair?: (repairs: readonly OrgRepaired[]) => void
   readonly now?: () => number
 }
 
@@ -95,7 +102,11 @@ const stampOf = (row: FieldRow): Stamp => ({ l: row.l, c: row.c, n: row.n })
 const NAMED: Partial<Record<SyncKind, number>> = {
   agent: AGENT_NAME_MAX,
   channel: CHANNEL_NAME_MAX,
+  orgunit: ORG_NAME_MAX,
 }
+
+/** The table of a kind whose name is unique, when it is not the name of the kind. */
+const tableOf = (kind: SyncKind): string => (kind === "orgunit" ? "org_unit" : kind)
 
 /** The name of a changed item, shortened so that `suffix` still fits. */
 export const fitName = (base: string, suffix: string, max: number) => {
@@ -553,6 +564,7 @@ export class SyncEngine {
       // A change of a channel that was made here and waits for its stamp gets it before the stamps
       // of this batch count: the repair of the channel tree compares them (spec 030, "Repair").
       if (ops.some((op) => op.kind === "channel")) this.#settleChannels()
+      if (ops.some((op) => op.kind === "orgunit")) this.#settleOrgs()
       for (const op of ops) {
         this.#db.run("SAVEPOINT sync_op")
         try {
@@ -620,6 +632,44 @@ export class SyncEngine {
           ]
         : []),
     ])
+  }
+
+  // ------------------------------------------------------------------------------ organization tree
+
+  /**
+   * Repairs the organization tree after changes of the other computer (spec 030, "Repair", 019), in
+   * the same way as `repairTree` does for channels: the parent field of the organization whose
+   * parent change is later is cleared, both computers choose the same one, and the cleared field is
+   * a change like any other. Like `repairTree`, `apply` does not call it: the caller runs it after
+   * the sync has applied all the changes that it has, and after a first copy is whole.
+   */
+  repairOrgs(): Touch[] {
+    return this.#db.transaction(() => this.#repairOrgs())
+  }
+
+  /** Records the changes of organizations that were made here and wait for their stamps. */
+  #settleOrgs() {
+    for (const row of this.#db.all<{ id: string }>(
+      "SELECT id FROM sync_dirty WHERE kind = 'orgunit'",
+    ))
+      this.#settle("orgunit", row.id)
+  }
+
+  #repairOrgs(): Touch[] {
+    // Both computers must compare each parent change with the same stamp.
+    this.#settleOrgs()
+    const changed = new Map(
+      this.#db
+        .all<{ id: string; l: number; c: number; n: string }>(
+          "SELECT id, l, c, n FROM sync_field WHERE kind = 'orgunit' AND field = 'parent'",
+        )
+        .map((r) => [r.id, { l: r.l, c: r.c, n: r.n }]),
+    )
+    const repaired = repairOrgTree(this.#db, { mode: "sync", changed, now: this.#now })
+    if (repaired.length > 0) this.#deps.onOrgRepair?.(repaired)
+    return repaired.map(
+      (r): Touch => ({ kind: "orgunit", id: r.id, action: "changed", parent: null }),
+    )
   }
 
   // ------------------------------------------------------------------------------ main agent
@@ -897,7 +947,7 @@ export class SyncEngine {
     const suffix = ` (${this.#authorName(authorId)})`
     const free = (candidate: string) =>
       !this.#db.get(
-        `SELECT 1 AS x FROM ${kind} WHERE name_key = ? AND id != ?`,
+        `SELECT 1 AS x FROM ${tableOf(kind)} WHERE name_key = ? AND id != ?`,
         nameKey(candidate),
         forId,
       ) && !taken?.has(nameKey(candidate))
@@ -913,7 +963,7 @@ export class SyncEngine {
    */
   #clashFree(kind: SyncKind, id: string, name: string, stamp: Stamp, force: boolean): string {
     const other = this.#db.get<{ id: string; name: string }>(
-      `SELECT id, name FROM ${kind} WHERE name_key = ? AND id != ?`,
+      `SELECT id, name FROM ${tableOf(kind)} WHERE name_key = ? AND id != ?`,
       nameKey(name),
       id,
     )
@@ -926,7 +976,7 @@ export class SyncEngine {
     if (!force && order > 0) return this.#uniqueName(kind, id, name, stamp.n)
     const renamed = this.#uniqueName(kind, other.id, other.name, otherStamp.n || this.#deps.self)
     this.#db.run(
-      `UPDATE ${kind} SET name = ?, name_key = ? WHERE id = ?`,
+      `UPDATE ${tableOf(kind)} SET name = ?, name_key = ? WHERE id = ?`,
       renamed,
       nameKey(renamed),
       other.id,

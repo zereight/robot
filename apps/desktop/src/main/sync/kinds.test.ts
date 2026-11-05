@@ -13,6 +13,7 @@ import { Channels } from "../services/Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "../services/Database.ts"
 import { Handbook } from "../services/Handbook.ts"
 import { readAskUpTheLine, readHandOffRule } from "../services/handOff.ts"
+import { Organizations } from "../services/Organizations.ts"
 import { Routines } from "../services/Routines.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -64,6 +65,25 @@ const source = async () => {
         instructions: "Write the answer as a list.",
         memberIds: [ada.id, bo.id],
         leadId: ada.id,
+      }),
+    ),
+  )
+  // An organization with a parent, a lead, a range and a limit (spec 030, 019).
+  const top = await run(
+    Organizations.use((o) =>
+      o.create({ serverId, name: "Company", memberIds: [ada.id], leadId: ada.id }),
+    ),
+  )
+  const org = await run(
+    Organizations.use((o) =>
+      o.create({
+        serverId,
+        name: "Support",
+        memberIds: [ada.id, bo.id],
+        leadId: bo.id,
+        parentId: top.id,
+        handOffRange: "own_lower",
+        dailyTokenLimit: 50_000,
       }),
     ),
   )
@@ -371,7 +391,7 @@ const source = async () => {
     ada.id,
     NOW,
   )
-  return { db, serverId, ada, bo, channel, routine, workflow }
+  return { db, serverId, ada, bo, channel, org, routine, workflow }
 }
 
 /** A database that records the text of every statement that it runs. */
@@ -2307,5 +2327,76 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
     expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
       { kind: "org", id: "organization" },
     ])
+  })
+})
+
+describe("the organization crosses as its own kind (spec 030, 019)", () => {
+  const op = (id: string, fields: Record<string, unknown>) => ({
+    k: "orgunit",
+    i: id,
+    o: "dev-a",
+    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+  })
+
+  test("the members, lead, parent, range and limit are read and arrive on the other computer", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-org")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.orgunit.read(ctxA, a.org.id)?.fields) as Fields
+    expect(fields).toMatchObject({
+      name: "Support",
+      lead: a.bo.id,
+      members: [a.ada.id, a.bo.id],
+      handOffRange: "own_lower",
+      dailyTokenLimit: 50_000,
+    })
+    expect(typeof fields.parent).toBe("string")
+    expect(parseOp(op(a.org.id, fields), NOW)).toBeDefined()
+    // A wrong range, a limit out of range and a name that is too long do not pass.
+    for (const bad of [
+      { handOffRange: "everyone" },
+      { dailyTokenLimit: 9_999 },
+      { dailyTokenLimit: "50000" },
+      { name: "x".repeat(61) },
+      { members: "all" },
+    ])
+      expect(parseOp(op(a.org.id, { ...fields, ...bad }), NOW), JSON.stringify(bad)).toBeUndefined()
+
+    // The members and the lead are agents of the other computer, so they come with the agents.
+    const b = target(openDatabase(":memory:"), dir)
+    for (const agent of [a.ada, a.bo]) {
+      const f = copy(KINDS.agent.read(ctxA, agent.id)?.fields) as Fields
+      expect(KINDS.agent.create(b, agent.id, f)).toBe(true)
+    }
+    expect(KINDS.orgunit.create(b, a.org.id, fields)).toBe(true)
+    expect(KINDS.orgunit.read(b, a.org.id)?.fields).toEqual(fields)
+  })
+
+  test("a change is written, a parent that is gone counts as no parent, and a delete removes the row", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-org-write")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    KINDS.orgunit.write(ctxA, a.org.id, {
+      name: " Help ",
+      members: [a.ada.id, "gone"],
+      lead: a.ada.id,
+      parent: null,
+      handOffRange: "all",
+      dailyTokenLimit: null,
+    })
+    expect(KINDS.orgunit.read(ctxA, a.org.id)?.fields).toMatchObject({
+      name: "Help",
+      // A member that is not an agent here is left out.
+      members: [a.ada.id],
+      lead: a.ada.id,
+      parent: null,
+      handOffRange: "all",
+      dailyTokenLimit: null,
+    })
+    KINDS.orgunit.write(ctxA, a.org.id, { parent: "not-here" })
+    expect(KINDS.orgunit.read(ctxA, a.org.id)?.fields.parent).toBe("not-here")
+    KINDS.orgunit.remove(ctxA, a.org.id)
+    expect(KINDS.orgunit.read(ctxA, a.org.id)).toBeUndefined()
+    expect(a.db.get("SELECT 1 FROM org_member WHERE org_id = ?", a.org.id)).toBeUndefined()
   })
 })

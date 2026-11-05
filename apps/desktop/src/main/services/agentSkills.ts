@@ -1,5 +1,6 @@
 import { type SkillAfterAgentDelete, skillAfterAgentDelete } from "@robot/shared"
 import type { DatabaseService } from "./Database.ts"
+import { orgEntriesOf } from "./orgData.ts"
 
 // What happens to the skills of a server when one of its agents is deleted (spec 017, "Rules").
 // These are plain functions on the database: the delete of the agent calls them, and so does the
@@ -10,6 +11,7 @@ interface SkillAgentsRow {
   id: string
   agents: string | null
   channels: string
+  organizations: string
 }
 
 /** A JSON list of ids, or `undefined` when the text holds no readable list. */
@@ -37,16 +39,18 @@ const plan = (db: DatabaseService, agentId: string) => {
   if (serverId === undefined) return { serverId, steps: [] }
   const exists = (id: string) => Boolean(db.get("SELECT 1 FROM agent WHERE id = ?", id))
   const channelExists = (id: string) => Boolean(db.get("SELECT 1 FROM channel WHERE id = ?", id))
+  const orgExists = (id: string) => Boolean(db.get("SELECT 1 FROM org_unit WHERE id = ?", id))
   const steps: { id: string; after: SkillAfterAgentDelete }[] = []
   for (const row of db.all<SkillAgentsRow>(
-    "SELECT id, agents, channels FROM skill WHERE server_id = ? AND agents IS NOT NULL",
+    "SELECT id, agents, channels, organizations FROM skill WHERE server_id = ? AND agents IS NOT NULL",
     serverId,
   )) {
     const ids = idsOf(row)
     if (!ids) continue
-    // A channel in the list that is still there keeps the skill (spec 030).
+    // A channel or an organization in the list that is still there keeps the skill (spec 030).
     const channelsLeft = (listOf(row.channels) ?? []).filter(channelExists).length
-    const after = skillAfterAgentDelete(ids, agentId, exists, channelsLeft)
+    const orgsLeft = orgEntriesOf(row).filter((o) => o.value === "on" && orgExists(o.id)).length
+    const after = skillAfterAgentDelete(ids, agentId, exists, channelsLeft + orgsLeft)
     if (after.kind !== "same") steps.push({ id: row.id, after })
   }
   return { serverId, steps }

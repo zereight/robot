@@ -4,12 +4,14 @@ import {
   givingChannels,
   type LimitChannel,
   limitViewOf,
+  mayUseTool,
   stoppingChannel,
   type ToolAudience,
   tokensOf,
   usedWithLower,
 } from "@robot/shared"
 import type { DatabaseService } from "./Database.ts"
+import { orgGiversFor } from "./orgData.ts"
 
 // The channel side of the tools of a channel and of its daily token limit (spec 030). These are
 // plain functions on the database, so that the skills, the connections, the channels and the usage
@@ -160,3 +162,20 @@ export const limitView = (
   const limit = channels.find((c) => c.id === channelId)?.dailyLimit ?? null
   return limitViewOf(limit, used.get(channelId) ?? 0)
 }
+
+/**
+ * Whether an agent may use the skill or the connection of a stored row (spec 030): "All agents" is
+ * on, or the list holds the agent, or a channel that gives it, or an organization of the agent holds
+ * the value "On" (itself or from a higher organization). The caller checks that the row is on.
+ */
+export const mayUseRow = (
+  db: DatabaseService,
+  row: {
+    readonly agents: string | null
+    readonly channels: string | null
+    readonly organizations?: string | null
+  },
+  agentId: string,
+): boolean =>
+  mayUseTool(audienceOf(row), agentId, givingFor(db, agentId)) ||
+  (row.agents !== null && orgGiversFor(db, row, agentId).length > 0)

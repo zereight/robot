@@ -1,4 +1,5 @@
 import { charLength, nameKey } from "./agents.ts"
+import type { OrgToolEntry } from "./orgTools.ts"
 import type { HeldTag } from "./toolReview.ts"
 
 // ---------------------------------------------------------------------------------------------
@@ -70,6 +71,11 @@ export interface ToolConnectionInput {
   readonly agents: "all" | readonly string[]
   /** The channels in the list of the connection (spec 018, 030). Absent counts as none. */
   readonly channels?: readonly string[]
+  /**
+   * The organizations in the list of the connection with the value "On" or "Off" (spec 018, 030).
+   * Absent counts as none.
+   */
+  readonly organizations?: readonly OrgToolEntry[]
 }
 
 /** What the window sends to save a connection. `id` is left out for a new connection. */
@@ -128,6 +134,8 @@ export interface ToolConnection {
   readonly agents: "all" | readonly string[]
   /** The channels in the list of the connection (spec 018, 030). Empty for "all". */
   readonly channels: readonly string[]
+  /** The organizations in the list of the connection (spec 018, 030). Empty for "all". */
+  readonly organizations: readonly OrgToolEntry[]
   readonly state: ConnectionState
   /** The reason, when the state is "error". */
   readonly failure: ConnectionFailure | null

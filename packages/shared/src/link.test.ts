@@ -154,6 +154,9 @@ describe("client requests", () => {
         "memory.scopes",
         "memory.update",
         "models.available",
+        "organizations.create",
+        "organizations.delete",
+        "organizations.update",
         "workflows.create",
         "workflows.update",
         "workflows.delete",
@@ -197,6 +200,14 @@ describe("client requests", () => {
     expect(isClientMethod("memory.check.set")).toBe(true)
     expect(isChangeMethod("memory.check.set")).toBe(true)
     expect(isClientMethod("memory.check.now")).toBe(false)
+    // A client reads the organizations, their tools and the tools that an agent has from them with
+    // the link only. It makes, edits and deletes an organization only with the switch (spec 012, 030).
+    for (const method of ["organizations.list", "orgTools.list", "orgTools.forAgent"]) {
+      expect(isClientMethod(method)).toBe(true)
+      expect(isChangeMethod(method)).toBe(false)
+    }
+    // The tools of an organization are kept on the computer that owns the skills and connections.
+    expect(isClientMethod("orgTools.set")).toBe(false)
     // A client hears about workflows and runs.
     expect(PUSHED_EVENTS).toContain("workflows.changed")
     expect(PUSHED_EVENTS).toContain("workflows.run")

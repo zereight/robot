@@ -48,7 +48,9 @@ import type {
 import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { HandOffRule, Organization } from "./organization.ts"
+import type { Org, OrgCreate, OrgPatch } from "./organizations.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
+import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolRow } from "./orgTools.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
@@ -713,6 +715,8 @@ export interface RpcMethods {
       serverId: string
       agentIds: readonly string[] | null
       channelIds?: readonly string[]
+      /** The organizations in the list (spec 017, 030), with the value "On" or "Off". */
+      organizations?: readonly OrgToolEntry[]
     }
     output: Skill
   }
@@ -722,6 +726,7 @@ export interface RpcMethods {
       id: string
       agentIds: readonly string[] | null
       channelIds?: readonly string[]
+      organizations?: readonly OrgToolEntry[]
     }
     output: Skill
   }
@@ -816,6 +821,29 @@ export interface RpcMethods {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
   }
+  /**
+   * Organizations (spec 030). A linked device reads the list and the tools with the link only, and
+   * makes, changes and deletes organizations only with the switch "Can create and change agents"
+   * (spec 012). The tools of an organization change on this computer only.
+   */
+  "organizations.list": { input: { serverId: string }; output: readonly Org[] }
+  "organizations.create": { input: OrgCreate; output: Org }
+  "organizations.update": { input: { id: string; patch: OrgPatch }; output: Org }
+  "organizations.delete": { input: { id: string }; output: undefined }
+  /** The part "Tools" of the form of an organization: the skills and connections with its value. */
+  "orgTools.list": { input: { orgId: string }; output: readonly OrgToolRow[] }
+  /** Sets the value of an organization for a skill or a connection ("On" or "Inherit" for now). */
+  "orgTools.set": {
+    input: {
+      orgId: string
+      kind: "skill" | "connection"
+      id: string
+      choice: Extract<OrgToolChoice, "on" | "inherit">
+    }
+    output: readonly OrgToolRow[]
+  }
+  /** The skills and connections that an agent has from organizations: the lines "From <organization>". */
+  "orgTools.forAgent": { input: { agentId: string }; output: readonly AgentOrgTool[] }
   /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
   "today.get": { input: undefined; output: TodaySnapshot }
   /** The org chart of this computer (spec 029). It reads local data only and sends nothing out. */
@@ -975,6 +1003,18 @@ export interface RpcEvents {
   "orgChart.changed": OrgSnapshot
   /** The part "Organization" changed here, by sync, or on a linked server (spec 030). */
   "organization.changed": { serverId: string }
+  /** An organization was made, changed or deleted, here, by sync, or on a linked server (spec 030). */
+  "organizations.changed": { serverId: string }
+  /**
+   * The app cleared the parent field of an organization to repair the tree (spec 030, "Repair").
+   * This computer only; the open org chart shows the line for a short time.
+   */
+  "organizations.repaired": {
+    serverId: string
+    organizationId: string
+    name: string
+    reason: "loop" | "levels"
+  }
   /**
    * The org chart of a linked server changed: its whole ready model (spec 029, 012). A server
    * pushes it to its linked devices. This computer sends it to no window of its own, so a window

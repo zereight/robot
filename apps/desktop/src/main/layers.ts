@@ -27,6 +27,7 @@ import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { ModelHolds } from "./services/ModelHolds.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Organization } from "./services/Organization.ts"
+import { Organizations } from "./services/Organizations.ts"
 import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
@@ -134,9 +135,12 @@ export const appLayer = (options: AppLayerOptions) => {
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
-  const agents = Layer.mergeAll(Chat.layer, Usage.layer, ChannelTools.layer).pipe(
-    Layer.provideMerge(tasks),
-  )
+  const agents = Layer.mergeAll(
+    Chat.layer,
+    Usage.layer,
+    ChannelTools.layer,
+    Organizations.layer,
+  ).pipe(Layer.provideMerge(tasks))
   // The memory check counts the turns that end as done, and runs its own short turn (spec 008).
   const memoryCheck = MemoryCheck.layer.pipe(Layer.provideMerge(agents))
   // The handover of a chat needs the chat service (spec 003, "Hand over").

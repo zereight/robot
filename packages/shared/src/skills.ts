@@ -1,5 +1,7 @@
 /** Skills (spec 017): saved instructions that the user calls in a chat. */
 
+import type { OrgToolEntry } from "./orgTools.ts"
+
 export const SKILL_NAME_MAX = 40
 export const SKILL_DESCRIPTION_MAX = 140
 export const SKILL_INSTRUCTIONS_MAX = 20_000
@@ -18,6 +20,11 @@ export interface Skill {
    * to the members of its lower channels. Empty for "All agents" and for a list of agents only.
    */
   readonly channelIds: readonly string[]
+  /**
+   * The organizations in the list of the skill (spec 017, 030) with the value "On" or "Off". An
+   * organization that is not here has the value "Inherit". Empty for "All agents".
+   */
+  readonly organizations: readonly OrgToolEntry[]
   readonly enabled: boolean
   readonly createdAt: number
 }

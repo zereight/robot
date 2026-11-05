@@ -66,6 +66,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
 import { Notifier } from "./Notifier.ts"
+import { noteOrgRepairs } from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { secretKey } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
@@ -255,6 +256,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         },
         facesDir: join(platform.dataDir, "faces"),
         removeSecret: (accountId) => secrets.remove(secretKey(accountId)),
+        // A repair of the organization tree writes one line to the organization log (spec 014).
+        onOrgRepair: (repairs) => noteOrgRepairs(bus, platform.dataDir, localServerId(), repairs),
       })
 
       const peerName = (p: PairRow) => devices.link(p.peer_id)?.name ?? p.peer_name
@@ -319,6 +322,10 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             case "iversion":
               // The instruction history shows in the profile of the agent (spec 002).
               once("agents", () => bus.emit("agents.changed", { serverId }))
+              break
+            case "orgunit":
+              // The organizations show in their form, in the profile and in the lists (spec 030).
+              once("orgunits", () => bus.emit("organizations.changed", { serverId }))
               break
             case "org":
               // The part "Organization" and the legend of the org chart show the rule (spec 030).
@@ -1093,7 +1100,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         // A first copy is checked when it is whole (`finishCopy`): it holds the channels in parts.
         if (pairRow()?.phase === "copying") return
         repairDue = false
-        touched([...engine.repairTree(), ...engine.repairMain()])
+        touched([...engine.repairTree(), ...engine.repairOrgs(), ...engine.repairMain()])
       }
       /** The check is due. Each batch that comes in the meantime moves it back. */
       const repairSoon = () => {
@@ -1118,7 +1125,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         if (repairTimer) clearTimeout(repairTimer)
         repairTimer = undefined
         repairDue = false
-        const repaired = [...engine.repairTree(), ...engine.repairMain()]
+        const repaired = [...engine.repairTree(), ...engine.repairOrgs(), ...engine.repairMain()]
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
         touched(repaired)

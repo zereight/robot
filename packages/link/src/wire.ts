@@ -136,6 +136,12 @@ export const CLIENT_METHODS = [
   "channelTools.list",
   "channelTools.forAgent",
   "channels.limit",
+  // The organizations of the server, the part "Tools" of an organization, and the lines "From
+  // <organization>" of a profile (spec 030, 012). A client reads them and changes none of them with
+  // these; to make, edit or delete an organization it needs the switch (see `CHANGE_METHODS`).
+  "organizations.list",
+  "orgTools.list",
+  "orgTools.forAgent",
   "tasks.list",
   "tasks.get",
   "tasks.recent",
@@ -173,6 +179,10 @@ export const CLIENT_METHODS = [
   "channels.update",
   // The picture of a channel (spec 004, 012): a client sends a square PNG of at most 256 px.
   "channels.setPicture",
+  // Make, edit and delete an organization (spec 012, 030).
+  "organizations.create",
+  "organizations.update",
+  "organizations.delete",
   "memory.list",
   // The channels for the filter and for a move of a channel note (spec 008, 012).
   "memory.scopes",
@@ -219,6 +229,9 @@ export const CHANGE_METHODS = [
   "channels.update",
   // The picture of a channel (spec 004, 012): a client sends a square PNG of at most 256 px.
   "channels.setPicture",
+  "organizations.create",
+  "organizations.update",
+  "organizations.delete",
   "memory.list",
   "memory.scopes",
   "memory.move",
@@ -261,6 +274,8 @@ export const PUSHED_EVENTS = [
   "workflows.run",
   // The part "Organization" changed (spec 030, 012): a client that shows it reads it again.
   "organization.changed",
+  // An organization was made, changed or deleted (spec 030, 012): a client reads the list again.
+  "organizations.changed",
   // The org chart changed (spec 029, 012): the whole ready model, so a client reads nothing again.
   "orgChart.model",
   // A turn became quiet, went on, or ended (spec 005, "Quiet line", 012). The start and the end
