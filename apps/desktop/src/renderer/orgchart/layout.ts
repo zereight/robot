@@ -68,7 +68,8 @@ export const metrics = (unit: number) => {
     agentW: odd(cells(15.5 * unit)),
     agentH: odd(cells(6.8 * unit)),
     headW: odd(cells(21 * unit)),
-    headH: odd(cells(4.6 * unit)),
+    // The name, the counts and the outcome of the node (spec 029, "Organization node"): three lines.
+    headH: odd(cells(6.4 * unit)),
     /** The lane between two columns, and at the left and right of a organization node. */
     gutter: 4,
     /** From the header of a organization node to its lead or its first row. */

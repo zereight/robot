@@ -64,6 +64,50 @@ export interface OrgHandoff {
   readonly newest: number
 }
 
+/**
+ * The work of one agent that ended in the window of 7 days (spec 029, "Organization node"). The
+ * chart adds these up for the members that an organization node draws.
+ */
+export interface OrgOutcome {
+  readonly agentId: string
+  /** Tasks that ended as done. */
+  readonly done: number
+  /** Tasks that ended as blocked. */
+  readonly blocked: number
+  /** Verdicts "Met" of parts of a channel (spec 004, 005). */
+  readonly met: number
+  /** Verdicts "Not met" of parts of a channel. */
+  readonly notMet: number
+}
+
+/** The counts of an organization node's outcome line, in the order of the words. */
+export interface OutcomeCounts {
+  readonly done: number
+  readonly blocked: number
+  readonly met: number
+  readonly notMet: number
+}
+
+export const NO_OUTCOME: OutcomeCounts = { done: 0, blocked: 0, met: 0, notMet: 0 }
+
+/** The four words of the outcome line, in the order that the node shows them (spec 029). */
+export const OUTCOME_WORDS = ["done", "blocked", "met", "not_met"] as const
+export type OutcomeWord = (typeof OUTCOME_WORDS)[number]
+
+const OUTCOME_OF_WORD: Readonly<Record<OutcomeWord, keyof OutcomeCounts>> = {
+  done: "done",
+  blocked: "blocked",
+  met: "met",
+  not_met: "notMet",
+}
+
+/** The outcome counts as pairs, without zeros, in the order done, blocked, met, not met. */
+export const outcomeList = (counts: OutcomeCounts) =>
+  OUTCOME_WORDS.flatMap((word) => {
+    const count = counts[OUTCOME_OF_WORD[word]]
+    return count > 0 ? [{ word, count }] : []
+  })
+
 /** What the server reads for the chart. */
 export interface OrgSnapshot {
   /** The main agent, or null. With none (or an archived one) the root is "You". */
@@ -71,6 +115,11 @@ export interface OrgSnapshot {
   readonly agents: readonly OrgAgent[]
   readonly orgs: readonly OrgChartOrg[]
   readonly handoffs: readonly OrgHandoff[]
+  /**
+   * The work that ended in the window of 7 days, for each agent (spec 029, "Organization node").
+   * Absent counts as none, so a snapshot of an older step reads as it did.
+   */
+  readonly outcomes?: readonly OrgOutcome[]
   /** The hand-off rule (spec 030). Absent counts as "Any agent", as for a server of an older step. */
   readonly handOffRule?: HandOffRule
 }
@@ -136,6 +185,11 @@ export interface ChartOrg {
   readonly leadKey: string | null
   /** The members that are not drawn. Empty when all are drawn. */
   readonly more: readonly ChartOverflow[]
+  /**
+   * The work of the drawn members that ended in the last 7 days (spec 029, "Organization node").
+   * The node shows one line of counts, or none when every count is 0.
+   */
+  readonly outcome: OutcomeCounts
   /**
    * The key of the organization node of the parent organization (spec 030), or null for a top
    * organization node and for "No organization": those hang from the root.
@@ -271,6 +325,21 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
   const main = snapshot.mainAgentId ? agents.get(snapshot.mainAgentId) : undefined
   const orgs = orgsOf(snapshot)
 
+  // The outcome of each agent, for the line under the header of an organization node (spec 029).
+  const outcomeByAgent = new Map((snapshot.outcomes ?? []).map((o) => [o.agentId, o] as const))
+  const outcomeOf = (members: readonly OrgAgent[]): OutcomeCounts => {
+    const out = { done: 0, blocked: 0, met: 0, notMet: 0 }
+    for (const m of members) {
+      const o = outcomeByAgent.get(m.id)
+      if (!o) continue
+      out.done += o.done
+      out.blocked += o.blocked
+      out.met += o.met
+      out.notMet += o.notMet
+    }
+    return out
+  }
+
   // Which agents are in an organization node. The others go to "No organization".
   const inOrg = new Set(orgs.flatMap((o) => o.memberIds))
   const loose = snapshot.agents.filter((a) => !inOrg.has(a.id)).sort(byName)
@@ -366,6 +435,8 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
         face: m.face,
         state: m.state,
       })),
+      // The outcome covers the members that the node draws, as the spec says (spec 029).
+      outcome: outcomeOf(drawn),
       parentKey: g.parentKey,
       level: g.level,
     }

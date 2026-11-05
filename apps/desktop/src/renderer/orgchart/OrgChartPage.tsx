@@ -46,6 +46,7 @@ import {
   moreWord,
   orgLabel,
   orgTitle,
+  outcomeLine,
   stateWord,
 } from "./names.ts"
 import styles from "./orgchart.module.css"
@@ -719,6 +720,12 @@ export const OrgChartPage = () => {
                   <span aria-hidden="true">·</span>
                   <span data-testid="org-unit-states">{countsLine(t, c().counts)}</span>
                 </Show>
+              </span>
+            </Show>
+            {/* The work of the drawn members in the last 7 days (spec 029, "Organization node"). */}
+            <Show when={outcomeLine(t, c().outcome) !== ""}>
+              <span class={styles.outcome} data-testid="org-unit-outcome">
+                {outcomeLine(t, c().outcome)}
               </span>
             </Show>
           </button>

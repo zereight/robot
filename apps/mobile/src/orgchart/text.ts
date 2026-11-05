@@ -1,6 +1,6 @@
-import type { AgentState } from "@robot/shared"
+import type { AgentState, OutcomeWord } from "@robot/shared"
 import type { MessageKey, MessageParams } from "../i18n/index.ts"
-import type { OrgAgentRow, OrgBlock, OrgCount, OrgHandoffRow } from "./list.ts"
+import type { OrgAgentRow, OrgBlock, OrgCount, OrgHandoffRow, OrgOutcomeCount } from "./list.ts"
 
 // The words of the screen "Org chart" (spec 029, "Phone"). They come from the catalogue of the
 // phone, in English and Korean. Names, role lines and task labels are text of the user and are
@@ -32,6 +32,17 @@ export const membersText = (t: Translate, count: number) =>
 export const countsText = (t: Translate, counts: readonly OrgCount[]) =>
   counts.map((c) => t(COUNT[c.state], { count: c.count })).join(" · ")
 
+const OUTCOME: Record<OutcomeWord, MessageKey> = {
+  done: "org.outcome.done",
+  blocked: "org.outcome.blocked",
+  met: "org.outcome.met",
+  not_met: "org.outcome.not_met",
+}
+
+/** The work of the members in the last 7 days: "12 done · 2 blocked". Empty when no count. */
+export const outcomeText = (t: Translate, outcome: readonly OrgOutcomeCount[]) =>
+  outcome.map((c) => t(OUTCOME[c.word], { count: c.count })).join(" · ")
+
 /** The name that a block shows. The block "No organization" takes its name from the catalogue. */
 export const blockName = (t: Translate, block: Pick<OrgBlock, "orgId" | "name">) =>
   block.orgId === null ? t("org.noOrganization") : block.name
@@ -40,9 +51,11 @@ export const blockName = (t: Translate, block: Pick<OrgBlock, "orgId" | "name">)
 export const blockLine = (t: Translate, block: OrgBlock) =>
   [membersText(t, block.memberCount), countsText(t, block.counts)].filter(Boolean).join(" · ")
 
-/** The accessible name of a block header. */
+/** The accessible name of a block header, with the outcome line (spec 029). */
 export const blockLabel = (t: Translate, block: OrgBlock) =>
-  [blockName(t, block), blockLine(t, block)].join(", ")
+  [blockName(t, block), blockLine(t, block), outcomeText(t, block.outcome)]
+    .filter(Boolean)
+    .join(", ")
 
 /** The accessible name of an agent row: the name, the role line, the state, the mark, the task. */
 export const agentLabel = (t: Translate, row: OrgAgentRow, mark?: "main") =>

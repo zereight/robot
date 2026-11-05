@@ -41,6 +41,7 @@ const block = (extra: Partial<OrgBlock> = {}): OrgBlock => ({
     { state: "working", count: 2 },
     { state: "idle", count: 3 },
   ],
+  outcome: [],
   rows: [],
   more: [],
   level: 1,

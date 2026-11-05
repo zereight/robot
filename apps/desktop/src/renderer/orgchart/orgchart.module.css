@@ -376,6 +376,18 @@ button.node[data-kind="more"]:hover {
   color: var(--c-text-muted);
 }
 
+/* The work of the members in the last 7 days (spec 029, "Organization node"). Muted text, no
+   colour and no bar: the line never carries a state. One line, cut at its end. */
+.outcome {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  color: var(--c-text-muted);
+}
+
 /* ---- The controls, the note of a hand-off line and the list behind "+<n> more". */
 
 .controls {

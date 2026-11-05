@@ -445,7 +445,7 @@ The first start of this version changes the data of each profile once.
 - A model, an effort, a permission level or a workspace that an organization gives to its members.
 - A reporting line on an agent, or a field "reports to" (029).
 - Approvals that go up the line. Only the user answers an approval.
-- Reviews of the work of an agent, scores, and counts of verdicts on the chart.
+- Reviews of the work of an agent, and scores. The chart shows the counts of 029, not a grade.
 - Organizations in an agent file.
 - A member of organizations that are not on one line (see "One line").
 - A choice of the organization that the prefix of 036 shows.

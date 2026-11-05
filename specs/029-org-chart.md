@@ -140,6 +140,25 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 - The header of an organization node shows the name of the organization and the number of members.
   Beside it, a small count for each state that at least one member has, in this order: working,
   waiting for you, idle, offline. For example "2 working · 3 idle".
+- Under that line, the node shows the **outcome** of its members in the last 7 days. It is a
+  sentence of counts in muted text, with no colour, no bar and no percent:
+  - `<n> done` and `<n> blocked`, each shown only when it is more than 0;
+  - `<n> met` and `<n> not met`, from the verdicts of the parts of a channel (004, 005), each
+    shown only when it is more than 0.
+  For example "12 done · 2 blocked · 9 met · 1 not met". A node with no such task shows no
+  outcome line.
+  - The counts cover the tasks of the members that the node draws, on the computer that reads them,
+    and the tasks of the other computer of a sync pair after they sync. A task of an archived agent
+    is not counted. A task of a lower organization counts only in that lower organization, because
+    the access of 030 goes down the tree and the counts do not go up.
+  - A task counts once in each organization node that draws its agent, as the copies of an agent
+    count (see "Copy"). The node "No organization" counts the tasks of its members.
+  - "Done" counts a task that ended as done. A part of a channel in review that the user accepted
+    counts. A task that the user cancelled does not count.
+  - The window of 7 days is the same as the window of the hand-off lines. It is not a setting.
+    A task counts in the window of the time it ended. A task that has not ended does not count.
+  - A change of the outcome line does not move a node, as a change of a count does not (see
+    "Layout").
 - An organization node draws at most 12 agent nodes: the lead first, then the other members by name,
   ignoring case. When there are more, the last tile reads "+<n> more". A click on it lists the other
   members, with face, name and state. A click on a row opens the profile.
@@ -366,6 +385,15 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
   busiest hand-offs."
 - Turn on "reduce motion", then open a chart with 40 agents and 20 organization nodes: nothing
   overlaps, and no line passes through a node. Repeat with it off: the same positions.
+- An organization "Docs" with members A and B. A ends 12 tasks as done and 2 as blocked in the last
+  7 days, and a part of the channel job of A gets the verdict "Not met" once and "Met" 9 times: the
+  node "Docs" shows "12 done · 2 blocked · 9 met · 1 not met". A task of A that ended 8 days ago
+  does not count.
+- Archive A: the node "Docs" shows no outcome line, because A is not drawn.
+- A is a member of "Docs" and of "Product", its parent: the outcome of A counts in both nodes, as
+  its copy does.
+- A is in no organization: "No organization" counts its tasks.
+- End a task of A as failed: the outcome line does not change, because "failed" is not "done".
 - Open the page, zoom in, and let an agent change state: the zoom and the view stay.
 - Press "Fit to view" on a chart whose last node is at the bottom right: the node is not under the
   controls.

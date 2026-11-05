@@ -4,9 +4,12 @@ import {
   type ChartModel,
   type ChartOrg,
   type Face,
+  NO_OUTCOME,
   ORG_HANDOFF_LINES_MAX,
   ORG_NODES_MAX,
   ORG_STATES,
+  type OutcomeWord,
+  outcomeList,
 } from "@robot/shared"
 
 // The list of the screen "Org chart" (spec 029, "Phone"; spec 011). The server sends a ready model
@@ -43,6 +46,12 @@ export interface OrgCount {
   readonly count: number
 }
 
+/** One count of the outcome line of a block: "done", "blocked", "met" or "not_met" (spec 029). */
+export interface OrgOutcomeCount {
+  readonly word: OutcomeWord
+  readonly count: number
+}
+
 export interface OrgBlock {
   /** `o:<organization id>`, or `o:none` for the block "No organization". */
   readonly key: string
@@ -53,6 +62,11 @@ export interface OrgBlock {
   readonly memberCount: number
   /** The states that at least one member has, in the order working, waiting, idle, offline. */
   readonly counts: readonly OrgCount[]
+  /**
+   * The work of the drawn members in the last 7 days (spec 029, "Organization node"), without the
+   * zeros, in the order done, blocked, met, not met. Empty when every count is 0.
+   */
+  readonly outcome: readonly OrgOutcomeCount[]
   /** The lead first, then the others by name. At most 12. */
   readonly rows: readonly OrgAgentRow[]
   /** The members behind the row "+<n> more". Empty when every member has a row. */
@@ -126,6 +140,8 @@ const block = (org: ChartOrg): OrgBlock => {
     counts: ORG_STATES.flatMap((state) =>
       org.counts[state] > 0 ? [{ state, count: org.counts[state] }] : [],
     ),
+    // A server of an older build sends no outcome: the block shows no line.
+    outcome: outcomeList(org.outcome ?? NO_OUTCOME),
     rows: shown.map(agentRow),
     more: [
       ...cut.map((node) => moreRow(`${org.key}/more/${node.agentId}`, node)),
