@@ -144,7 +144,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
   font-size: var(--text-s);
   cursor: pointer;
   text-decoration: underline;

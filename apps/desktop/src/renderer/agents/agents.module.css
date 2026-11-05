@@ -513,7 +513,7 @@
 /* The header button of the browser, while the agent asks the user to look. */
 .browserAsking,
 .browserAsking:hover {
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
 }
 
 .browserCard[data-control="true"] .browserCardBar {
@@ -644,7 +644,7 @@
 
 .teachMark {
   font-weight: 600;
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
 }
 
 .teachBar[data-paused="true"] .teachMark {

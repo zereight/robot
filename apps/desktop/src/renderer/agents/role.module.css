@@ -170,7 +170,7 @@
   place-items: center;
   flex: none;
   width: 14px;
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
 }
 
 .optionText {

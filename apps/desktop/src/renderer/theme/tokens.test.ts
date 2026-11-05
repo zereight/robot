@@ -17,6 +17,12 @@ describe("theme contrast", () => {
         expect(contrast(p.text, background)).toBeGreaterThanOrEqual(4.5)
         expect(contrast(p.textMuted, background)).toBeGreaterThanOrEqual(4.5)
       })
+      // Coloured text (links, status words, errors) is read on every surface too (spec 013).
+      test(`${theme}: coloured text on ${surface} is at least 4.5:1`, () => {
+        for (const ink of [p.accentInk, p.success, p.danger, p.focus]) {
+          expect(contrast(ink, background)).toBeGreaterThanOrEqual(4.5)
+        }
+      })
     }
     test(`${theme}: text on accent is at least 4.5:1`, () => {
       expect(contrast(p.accentText, p.accent)).toBeGreaterThanOrEqual(4.5)

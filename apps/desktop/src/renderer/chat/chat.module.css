@@ -362,7 +362,7 @@
   border: none;
   background: none;
   padding: 0;
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
   font-size: var(--text-xs);
   cursor: pointer;
 }
@@ -636,11 +636,7 @@
 }
 
 .markdown a {
-  color: var(--c-focus);
-}
-
-:root[data-theme="light"] .markdown a {
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
 }
 
 .heading {
