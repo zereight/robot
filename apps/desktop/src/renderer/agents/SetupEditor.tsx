@@ -1,6 +1,6 @@
 import type { MessageKey, SetupFileView, SetupList } from "@robot/shared"
 import { SETUP_ACTIONS_MAX, setupRowProblem } from "@robot/shared"
-import { createEffect, createResource, createSignal, For, Show } from "solid-js"
+import { createEffect, createResource, createSignal, Index, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -160,40 +160,40 @@ export const SetupEditorForm = (props: {
                 }
               >
                 <ul class={styles.setupRows}>
-                  <For each={rows() ?? []}>
+                  <Index each={rows() ?? []}>
                     {(row, index) => (
                       <li class={styles.setupRow} data-testid="setup-row">
                         <div class={styles.setupField}>
-                          <label class={styles.setupLabel} for={`setup-name-${index()}`}>
+                          <label class={styles.setupLabel} for={`setup-name-${index}`}>
                             {t("setup.name")}
                           </label>
                           <input
-                            id={`setup-name-${index()}`}
+                            id={`setup-name-${index}`}
                             class={styles.setupInput}
-                            value={row.name}
+                            value={row().name}
                             maxLength={80}
                             autocomplete="off"
                             spellcheck={false}
                             aria-label={t("setup.name")}
-                            aria-invalid={problemKey(row) === "setup.invalid.name"}
-                            onInput={(e) => update(index(), { name: e.currentTarget.value })}
+                            aria-invalid={problemKey(row()) === "setup.invalid.name"}
+                            onInput={(e) => update(index, { name: e.currentTarget.value })}
                             data-testid="setup-name"
                           />
                         </div>
                         <div class={styles.setupField}>
-                          <label class={styles.setupLabel} for={`setup-command-${index()}`}>
+                          <label class={styles.setupLabel} for={`setup-command-${index}`}>
                             {t("setup.command")}
                           </label>
                           <input
-                            id={`setup-command-${index()}`}
+                            id={`setup-command-${index}`}
                             class={`${styles.setupInput} ${styles.setupCommand}`}
-                            value={row.command}
+                            value={row().command}
                             maxLength={4000}
                             autocomplete="off"
                             spellcheck={false}
                             aria-label={t("setup.command")}
-                            aria-invalid={problemKey(row) === "setup.invalid.command"}
-                            onInput={(e) => update(index(), { command: e.currentTarget.value })}
+                            aria-invalid={problemKey(row()) === "setup.invalid.command"}
+                            onInput={(e) => update(index, { command: e.currentTarget.value })}
                             data-testid="setup-command"
                           />
                         </div>
@@ -202,8 +202,8 @@ export const SetupEditorForm = (props: {
                             <Switch
                               label={t("setup.mark.ownCopy")}
                               testId="setup-mark-own-copy"
-                              checked={row.onOwnCopy}
-                              onChange={(onOwnCopy) => update(index(), { onOwnCopy })}
+                              checked={row().onOwnCopy}
+                              onChange={(onOwnCopy) => update(index, { onOwnCopy })}
                             />
                             <span>{t("setup.mark.ownCopy")}</span>
                           </span>
@@ -211,21 +211,21 @@ export const SetupEditorForm = (props: {
                             <Switch
                               label={t("setup.mark.turn")}
                               testId="setup-mark-turn"
-                              checked={row.onTurnStart}
-                              onChange={(onTurnStart) => update(index(), { onTurnStart })}
+                              checked={row().onTurnStart}
+                              onChange={(onTurnStart) => update(index, { onTurnStart })}
                             />
                             <span>{t("setup.mark.turn")}</span>
                           </span>
                           <Button
                             onClick={() =>
-                              setRows((now) => (now ?? []).filter((_, at) => at !== index()))
+                              setRows((now) => (now ?? []).filter((_, at) => at !== index))
                             }
                             data-testid="setup-delete"
                           >
                             {t("setup.delete")}
                           </Button>
                         </div>
-                        <Show when={problemKey(row)}>
+                        <Show when={problemKey(row())}>
                           {(key) => (
                             <div class={styles.setupError} role="alert" data-testid="setup-invalid">
                               {t(key())}
@@ -234,7 +234,7 @@ export const SetupEditorForm = (props: {
                         </Show>
                       </li>
                     )}
-                  </For>
+                  </Index>
                 </ul>
               </Show>
               <div class={styles.setupFooter}>
