@@ -43,7 +43,6 @@ const PROMPT = `Say Hello to the team. ${"filler ".repeat(45).trim()}`
 
 const openWorkflows = async (page: Page) => {
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
 }
 
 interface Notice {

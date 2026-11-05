@@ -198,7 +198,7 @@ const scenario = (words: Words) => async () => {
   await closeTask(page)
 
   // ---- a routine with a token limit ----
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routines-view")).toBeVisible()
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("Folder check")

@@ -1,4 +1,5 @@
 import {
+  listPage,
   type MessageKey,
   TODAY_PAGE_SIZE,
   type TodayGroupId,
@@ -125,7 +126,7 @@ export const TodayPage = () => {
       case "routine":
       case "workflow":
         setOpenTarget({ kind: target.kind, id: target.id })
-        ui.selectPage("workflows")
+        ui.selectPage(listPage(target.kind))
         return
       case "account":
         setOpenTarget({ kind: "account", id: target.id })

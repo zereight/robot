@@ -207,7 +207,7 @@ test("new agent: a copy keeps its level, and a routine with its own model starts
     expect(await effortOf(page, "Ada copy")).toBe("high")
 
     // A routine with its own model starts at "Default".
-    await page.getByTestId("page-workflows").click()
+    await page.getByTestId("page-routines").click()
     await page.getByTestId("routine-new").click()
     await page.getByTestId("routine-model-mode").selectOption("own")
     await page.getByTestId("model-model").selectOption("o3-mini")

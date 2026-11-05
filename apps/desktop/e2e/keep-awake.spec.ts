@@ -98,7 +98,7 @@ test("keep awake: held while an agent works, let go when the work ends, and off 
 })
 
 const makeRoutine = async (page: Page) => {
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("Morning check")
   await page.getByTestId("routine-prompt").fill("Say good morning")

@@ -82,6 +82,7 @@ export const ko: Record<MessageKey, string> = {
 
   "page.chats": "에이전트와 대화",
   "page.workflows": "워크플로",
+  "page.routines": "루틴",
   "page.tasks": "작업",
   "page.usage": "사용량",
   "page.help": "도움말",
@@ -1258,9 +1259,6 @@ export const ko: Record<MessageKey, string> = {
   "error.routine_not_found": "이 루틴이 더 이상 없습니다.",
   "error.routine_running": "이 루틴이 아직 실행 중입니다.",
   "error.agent_not_in_channel": "이 에이전트는 해당 채널의 구성원이 아닙니다.",
-  "workflows.tab.routines": "루틴",
-  "workflows.tab.workflows": "워크플로우",
-  "workflows.tabs": "루틴과 워크플로우",
   "workflows.new": "새 워크플로우",
   "workflows.open": "열기",
   "workflows.run": "실행",

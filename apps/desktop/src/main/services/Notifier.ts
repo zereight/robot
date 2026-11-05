@@ -37,8 +37,8 @@ export interface Notice {
   readonly body: string
   /** The place to open on a click. A notice with a page opens that page instead. */
   readonly target?: PlaceTarget
-  /** A page to open on a click: the workflows page, or Settings, Teams (spec 028). */
-  readonly page?: "workflows" | "teams"
+  /** A page to open on a click: workflows, routines, or Settings, Teams (spec 001, 028). */
+  readonly page?: "workflows" | "routines" | "teams"
   /** The agent of a reply or of a failure. The result card of the island needs it. */
   readonly agentId?: string
   /** Why a task or routine failed. The result card of the island shows it. */

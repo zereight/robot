@@ -92,7 +92,7 @@ const scenario = (words: Words, reportName: string) => async () => {
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, words.agent)
   const agentId = await agentOf(page, words.agent)
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routines-view")).toBeVisible()
 
   // A routine whose agent says "Blocked" in 3 runs in a row: each failed run has its notice, and

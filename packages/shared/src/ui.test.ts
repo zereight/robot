@@ -7,6 +7,7 @@ import {
   clampWorkflowSideWidth,
   defaultUiState,
   filterPlaces,
+  listPage,
   type Place,
   type PlaceSection,
   placeMatches,
@@ -29,6 +30,20 @@ const place = (name: string, extra: Partial<Place> = {}): Place => ({
   lastMessage: null,
   sectionId: null,
   ...extra,
+})
+
+describe("When the user opens a list", () => {
+  describe("with a routine", () => {
+    test("should open the routines page", () => {
+      expect(listPage("routine")).toBe("routines")
+    })
+  })
+
+  describe("with a workflow", () => {
+    test("should open the workflows page", () => {
+      expect(listPage("workflow")).toBe("workflows")
+    })
+  })
 })
 
 describe("ui state", () => {

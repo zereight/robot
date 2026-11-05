@@ -11,6 +11,9 @@ Agents do repeat work on a schedule without the user starting it.
   The user can pick another model and effort for the routine only, for example a cheaper model
   for a simple check. A routine can also have a token limit for each run (see "Limits and
   safeguards").
+- **Routines page**: the list of routines. The Routines button on the rail opens it (001). The
+  page does not show workflows. A linked computer shows the button, and the page says to open
+  the list on the server (012). The phone has no routines page in this version (011).
 - A routine from an agent file (002) shows the muted line "Checked steps of this routine ask until
   you save it once." in its form, until the user saves the form (007, "Ask when unsure"). This
   state syncs with the routine (019).
