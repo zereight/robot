@@ -150,6 +150,28 @@ A new word goes here in the same pull request as the spec that brings it.
 | From Teams | The mark of a message that came from a Teams chat. The source of its task is "Teams" (028, 005). | Teams에서 보냄 (proposed) | Sent by (that is 023) |
 | Browser profile | A named set of saved sign-ins on this computer, which agents can share. The interface says "Browser profile" or "Browser", and the texts say "sign-ins" (spec questions of 007, 002, 022). | 브라우저 프로필 | account, session |
 
+## Test devices
+
+| Term | Meaning | Korean | Avoid |
+| --- | --- | --- | --- |
+| Test device | An iOS simulator, an Android emulator, or an iPhone, iPad, Android phone or tablet that the program finds on this Mac (032). | 테스트 기기 (proposed) | device (alone, for a simulator), phone (for a simulator) |
+| Panel | The surface that the downloaded program of test devices draws: the live picture, the logs, the charts and the app data (032). Not drawn or translated by ROBot. | 패널 (proposed) | device panel, mirror (as a name), viewer |
+| Panel column | The column at the right of the window that holds one panel: the activity panel or the panel of test devices (001). | 패널 열 (proposed) | sidebar, dock |
+| Test devices connection | The built-in connection that the app makes for test devices (018, 032). | 테스트 기기 연결 (proposed) | device runtime, plugin, driver |
+| Screen snapshot | The list of controls on the screen of a test device, with role, label and value (032). | 화면 스냅숏 (proposed) | dump, tree, DOM |
+| Device step | A step of an agent that reads or changes a test device (032). | 기기 작업 (proposed) | command (a command is a shell step) |
+| Erase step | A device step that deletes or replaces data on a test device: uninstall an app, replace the clipboard, clear or reset the data of an app, reset or erase a test device (032). | 지우기 작업 (proposed) | wipe, factory reset |
+| Log session | The reading of the log of one app, or of a whole test device, until it is closed (033). | 로그 읽기 (proposed) | stream (for logs) |
+| Measurement | A timed reading of the CPU and memory of one app on a test device, with its samples (033). | 측정 (proposed) | record (see "Record only"), profile, benchmark |
+| Display FPS | The frames per second that the screen of a connected phone shows, for the whole phone (033). | 화면 FPS (proposed) | animation frequency, simulator FPS |
+| App data | The data that an installed app saved on a test device: its stores and files (034). | 앱 데이터 (proposed) | user data, save file |
+| Store | One place of app data: a database, a key-value store, or a set of files (034). | 저장소 (proposed) | table (a table is inside a store), bucket |
+| Screen map | The screens of a project and the links between them, read from its navigation code (034). | 화면 지도 (proposed) | App Flow, flow chart |
+| Screen walk | A screen map that also opens the app on a simulator and photographs each screen it reaches (034). | 화면 둘러보기 (proposed) | crawl, capture |
+| Performance file | A CPU profile or a React DevTools export that the user chooses for analysis (034). | 성능 파일 (proposed) | profile (022 means a profile space), trace, recording |
+| Finding | A result of the analysis of a performance file: a measured task and the features it entered (034). | 발견 사항 (proposed) | issue, score, grade |
+| Analysis program | The separate program on this Mac that analyses a performance file. The user installs it; ROBot does not (034). | 분석 프로그램 (proposed) | analyzer, plugin |
+
 ## Words that ROBot does not use
 
 - "Learns", "trains", "evolves", "gets smarter" about an agent or a model. An agent gets better
@@ -160,6 +182,13 @@ A new word goes here in the same pull request as the spec that brings it.
 - "Bot" as a name for an agent. "Bot" is only the tag beside the name.
 
 ## Open points
+
+- "기기" names a linked computer or phone (012) and a test device (032). In the interface, a
+  simulator or an emulator is "테스트 기기" (proposed). A spec author decides which word changes.
+- The panel of the test devices program has its own words, in the language of that program, and the
+  app does not translate them (032). So "테스트 기기" covers the app's own texts only, and the panel
+  may use another word for the same thing. A spec author decides whether that is acceptable for the
+  Korean interface.
 
 - "연결" names a connection (018) and is part of "연결된 기기" (012). A user can confuse the two in
   Korean. A spec author decides which word changes.

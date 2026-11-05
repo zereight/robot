@@ -39,6 +39,9 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 029 | [Org chart: the main agent, the channels with their members, leads and sub-channels, the state of each agent, the work that agents handed to each other, and edits of members, leads and parent channels; a read-only list on the phone](029-org-chart.md) | Draft |
 | 030 | [Organization: sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel](030-organization.md) | Draft |
 | 031 | [Channel starters and the goal dialog: a goal in a few words shows the starters that fit, and a channel with its agents is made from a fixed list](031-channel-starters.md) | Draft |
+| 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
+| 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
+| 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 
 ## Milestones
 
@@ -77,6 +80,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M31 | The changes to 001, 002, 011, 012 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S107: the role label, the role badge and the filter of places by role |
 | M32 | 030, and the changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S108 to S112: edit on the org chart, sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel |
 | M33 | The changes to 003, 011 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S113: folded tool steps |
+| M34 | 032, 033, 034, and the changes to 000, 001, 007, 013, 014 and 018 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S115 to S117: the built-in connection, its download and its panel, the cards and the classes of the device steps, and the limits of logs, measurements, app data and the analysis of a performance file |
 
 ## Surfaces check
 
