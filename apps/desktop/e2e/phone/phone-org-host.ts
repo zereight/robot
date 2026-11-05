@@ -129,8 +129,11 @@ test("a computer for the phone app, with an org chart", async () => {
     await make("Bo", LONG_ROLE)
     await make("Cy", "Checks facts")
     await make("Dee", "Keeps the calendar")
+    // Ada and Bo are in "Docs", a top organization, so they cannot be in "Team" too (spec 030, "One
+    // line"). Two other agents come first in "Team", so the rows "Team 11" and "Team 12" are still
+    // the ones behind "+2 more".
     const team = Array.from({ length: 12 }, (_, i) => `Team ${String(i + 1).padStart(2, "0")}`)
-    for (const name of team) await make(name, "")
+    for (const name of ["Eli", "Fay", ...team]) await make(name, "")
     const idOf = async (name: string) => (await list()).find((a) => a.name === name)?.id as string
     const [ada, bo, cy] = await Promise.all(["Ada", "Bo", "Cy"].map(idOf))
     await rpc(page, "organizations.create", {
@@ -143,7 +146,7 @@ test("a computer for the phone app, with an org chart", async () => {
     await rpc(page, "organizations.create", {
       serverId: server,
       name: "Team",
-      memberIds: [ada, bo, ...(await Promise.all(team.map(idOf)))],
+      memberIds: await Promise.all(["Eli", "Fay", ...team].map(idOf)),
       leadId: null,
     })
     // One hand-off: Bo sends a message to Cy with the tool "send message".
