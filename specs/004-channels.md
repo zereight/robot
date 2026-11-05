@@ -24,7 +24,9 @@ The user gives a job to a group of agents in one place and watches them divide a
   verdict has a reason of up to 160 characters. A verdict is a field of the part, not a state of
   the task. The part stays Done. The user's review (see "Review of parts") is a different thing:
   it has its own state, and it is the user's decision.
-- **Mention**: `@Name` in a message sends that message to the named agent directly.
+- **Mention**: `@Name` in a message sends that message to the named agent directly. The mention
+  list shows each agent with its organization prefix (035); the text that the pick makes is `@Name`
+  only.
 - **Everyone mention**: `@all` in a message gives the message to every available member. An
   available member is a member that is not archived. The mention list offers `@all` only when the
   channel has two or more members.

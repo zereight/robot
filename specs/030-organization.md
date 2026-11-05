@@ -4,7 +4,8 @@
 
 The user runs the agents as an organization. An organization is a group of agents. It is not a
 channel. A channel is the place where a job is done (004). An organization says who may do what.
-Organizations can sit inside other organizations. Each organization has access: tools, a daily token
+Organizations can sit inside other organizations, and an agent can be in more than one
+organization only when they are on one line of the tree. Each organization has access: tools, a daily token
 limit and a hand-off range. Access goes down to the lower organizations, and a lower organization
 can set its own. A rule can make agents hand work only along the organizations. A question that the
 lead of a channel cannot answer can go to higher agents before it goes to the user. The org chart
@@ -15,9 +16,9 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 - **Organization**: a name (1 to 60 characters, unique, the check ignores case), members (agents),
   one optional lead, a parent organization (empty by default), and access (see "Access"). It has no
   messages, no tasks and no workspace. A profile (022) holds at most 100 organizations.
-  - **Member**: an agent can be a member of any number of organizations. Membership does not go up
-    or down the tree. An agent that is archived stays a member, and every rule below skips it while
-    it is archived.
+  - **Member**: an agent can be a member of more than one organization, but only of organizations
+    that are on one line (see "One line"). Membership does not go up or down the tree. An agent that
+    is archived stays a member, and every rule below skips it while it is archived.
   - **Lead**: one member, or none. An archived lead counts as no lead. A member that is removed
     from the organization is no longer its lead. The lead of an organization is not the lead of a
     channel (004). One agent can be both.
@@ -56,9 +57,10 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
    menus and the drag of the chart (029, "Edit on the chart"). These are the same changes as in the
    form, with the same rules.
 4. Delete: the user presses "Delete organization" in the form. A confirm says: "Delete <name>? <n>
-   lower organizations become top organizations. The access that this organization gives is gone."
-   The line with <n> shows only when <n> is more than 0. The buttons are "Back" and "Delete". The
-   members stay as agents. A deleted organization leaves every skill and connection list. The
+   sub-organizations move up to <parent>. The access that this organization gives is gone." When
+   the organization has no parent, the words are "become top organizations". <n> counts the sub-organizations of the organization, not the ones below them. The line
+   with <n> shows only when <n> is more than 0. The buttons are "Back" and "Delete". The members
+   stay as agents. A deleted organization leaves every skill and connection list. The
    delete has no Undo.
 5. See the organizations of an agent: the profile of an agent (002) has a row "Organizations". A
    click on a name opens the form. The profile also lists each skill and connection that the agent
@@ -72,8 +74,9 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 - The list "Put under…" on the org chart holds the same organizations as the field, without "None"
   and without the parent now, because that pick changes nothing. "Move to the top" does the work of
   "None".
-- A deleted parent organization clears the field of its sub-organizations. They are top
-  organizations.
+- A deleted organization gives its sub-organizations to its parent: their parent field becomes the
+  parent of the deleted organization, or empty when it had none. The tree gets no deeper, and no
+  agent gets off its line (see "One line").
 - **Repair**: a state that breaks the rules of the tree is repaired at once, by a change of the
   parent field that syncs like any other change (019). The tree never stays broken, and no
   organization counts as a top organization only because its field is wrong. A break has one of two
@@ -103,6 +106,62 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
     parent of <name> was cleared. The tree would have more than 3 levels." at the bottom of the
     canvas for 10 seconds. A repair is not a change of the user, so it makes no notification and
     has no Undo.
+
+## One line
+
+An agent can be a member of more than one organization only when all of them are on one line.
+
+- **On one line**: two organizations are on one line when one of them is a higher organization of
+  the other. The organizations of an agent are on one line when each two of them are. So they all
+  sit on one way down the tree, from a top organization to a lower one. With "Docs" under "Product"
+  and "Site" under "Docs", an agent can be in "Product" and "Site", or in "Docs" and "Site", or in
+  all three. It cannot be in "Docs" and "Ops", or in two sub-organizations of "Product", because
+  neither organization of such a pair is higher than the other.
+- **The deepest organization** of an agent: the one of its organizations that is lower than all the
+  others. An agent in no organization has none. The organization prefix (035) uses it.
+- **The check**: the app checks the line at each change of a member and at each change of the tree.
+  The form, the menus and the drags of the chart (029), and a linked computer (012) use the same
+  rules. An agent that is archived still counts, because it stays a member. A save of the form is
+  checked as one change, with all its fields.
+  1. **Add or move a member**: refused when the agent would be in an organization that is not on
+     one line with another organization of the agent. The line is "<agent> is in <other>, which is
+     not on one line with <organization>." <other> is the first of the conflicting organizations in
+     the order of names, ignoring case. For a move, the check runs after the agent has left the
+     organization that it comes from. A removal is always allowed.
+  2. **A new parent organization** (the field "Parent organization", "Put under…", "Move to the
+     top", the drag of a node): refused when it would put the organizations of any agent off one
+     line. The line is "<agent> is in <A> and <B>, which would not be on one line." <agent> is the
+     first such agent in the order of names, and <A> and <B> are the first such pair in the order of
+     names, ignoring case.
+  3. **The lists**: an organization that the check refuses shows muted in the field "Parent
+     organization" and in the lists "Put under…", "Add to organization…" and "Move to
+     organization…", with a short reason: "Not on one line with <other>." for a member, "Would split
+     the line of <agent>." for a parent. The reasons of the tree stay (see "Organization tree"). In
+     the field "Members" of the form, an agent that cannot be added shows muted, cannot be ticked,
+     and has the line "In <other>."
+- **Delete**: the sub-organizations of a deleted organization move up to its parent (see flow 4).
+  Moving up never breaks a line, and it never makes the tree deeper.
+- **Repair**: a state that breaks the line is repaired at once, by the removal of a member. The
+  removal syncs like any other change (019). A break can come from a sync (two computers added the
+  same agent to two organizations that are not on one line, or one computer moved an organization
+  while the other added a member), from an import (014), from the first copy of a sync, and from the
+  migration (see "Migration"). The app repairs the tree first (see "Organization tree"), and then
+  the lines.
+  - For one agent that is off the line: among its organizations that are in at least one pair that
+    is not on one line, the app removes the agent from the one that it joined last. It checks again
+    and goes on until the organizations of the agent are on one line.
+  - **Which was joined later**: the time that sync (019) gives to the change that made the agent a
+    member. When the times are equal, the organization that was made later. When that is equal too,
+    the organization with the later id. An import carries no time of change, because an export holds
+    no sync records (014), so it uses the tie order alone. Both computers choose the same
+    organization, so they end with the same members.
+  - A member that is removed is no longer the lead of that organization.
+  - **When it runs**: as the repair of the tree does (see "Organization tree", "When it runs").
+  - **The notice**: each removal writes one line to the organization log (014): the agent, the
+    organization, the kind "line" and the time. The open org chart shows the line "<agent> was
+    removed from <organization>. It is in <other>, which is not on one line with it." at the bottom
+    of the canvas for 10 seconds. A repair is not a change of the user, so it makes no notification
+    and has no Undo.
 
 ## Access
 
@@ -153,8 +212,10 @@ of each organization that it is a member of, and of the higher organizations of 
 - **What counts**: the tokens (005, "Usage of a task") of each task of an agent that is a member of
   this organization or of one of its lower organizations, on the day. Every source counts: a chat, a
   channel, another agent, a routine, a workflow, a card of the board, an outside program, Teams,
-  the summary of older messages, and the looks of the line for its questions. A task of an agent
-  that is a member of two organizations counts in both.
+  the summary of older messages, and the looks of the line for its questions. A task counts once in
+  each organization that its agent is a member of, and once in each higher organization of those. An
+  organization counts a task once, also when the agent is a member of it and of one of its lower
+  organizations.
 - **The day**: from midnight to midnight in the time of the computer that runs the task. Tasks of
   both computers of a sync pair count when they have synced.
 - At 80% of the limit, the form shows the muted line "80% of the daily token limit is used." It
@@ -250,9 +311,9 @@ on.
   looks at it.
 - A pass of another kind goes to the next agent on the line. The line is for the member that asks,
   in this order:
-  1. The leads of its organizations: the organizations that the member is a member of, in the order
-     of their names (ignoring case; a tie goes to the older). For each one, its lead comes first,
-     then the lead of its parent, and so on up to the top organization.
+  1. The leads on the way up from its deepest organization (see "One line"): the lead of that
+     organization first, then the lead of its parent, and so on up to the top organization. An
+     organization shows once on the way.
   2. The main agent.
 - An agent of the line is skipped when it is archived, blocked by a usage limit, the member that
   asks, or an agent that already looked at this question (the lead of the channel too). The line
@@ -300,6 +361,13 @@ The first start of this version changes the data of each profile once.
   agent" does not change. "Ask up the line" does not change.
 - **The limit counts more**: after the migration, a daily token limit counts the tasks of the
   members from every source (see "Daily token limit"), not only the tasks of one channel.
+- **Agents in channels that do not make one line**: the organizations that the migration makes can
+  hold an agent in organizations that are not on one line (the agent was in two channels with no
+  parent between them). The migration then applies the repair of "One line", but it takes the
+  channel that was made first as the one that the agent joined first (a tie goes to the lower
+  id). The agent stays a member of that channel, and it keeps its place in the other channel. Each
+  removal from an organization writes one line to the organization log. This can take away a path
+  of hand-off that a shared channel gave under the rule "Along the channels".
 - **Two computers**: two computers of a sync pair that migrate before they sync end with the same
   organizations, not with doubles. Both must hold this version to sync (019).
 - **Older agent files**: a file made before this version may hold a parent channel or a daily token
@@ -334,7 +402,8 @@ The first start of this version changes the data of each profile once.
   rule in the legend of the chart (029); the reason of a refused send in the step; the pass lines
   on a question card; "From <organization>" and "Organizations" in the agent profile; the line of
   80% in the form; the blocked parts; the usage page. All hold after a restart.
-- **Words**: Organization, Parent organization, Sub-organization, Top organization, Access, Inherit,
+- **Words**: Organization, Parent organization, Sub-organization, Top organization, On one line,
+  Deepest organization, Access, Inherit,
   Hand-off range, Hand-off rules, Hand-off rule, Any agent, Along the organizations, Ask up the
   line, Tools, Daily token limit (see the glossary).
 
@@ -352,8 +421,8 @@ The first start of this version changes the data of each profile once.
   belong to the profile. An organization in a file is not in this version.
 - **Workflow file (010)**: holds nothing of this spec.
 - **Phone cache (011)**: no change.
-- **Organization log (014)**: one line for each repair of the tree (the organization, the kind and
-  the time), and one line for each send that the hand-off rule refused, with the sender, the
+- **Organization log (014)**: one line for each repair of the tree and of a line (the organization,
+  the agent for a line, the kind and the time), and one line for each send that the hand-off rule refused, with the sender, the
   receiver and the time, and no text of the message.
 - **Channel log (014)**: one line for each look of the line (see "Ask up the line").
 
@@ -372,6 +441,8 @@ The first start of this version changes the data of each profile once.
 - Approvals that go up the line. Only the user answers an approval.
 - Reviews of the work of an agent, scores, and counts of verdicts on the chart.
 - Organizations in an agent file.
+- A member of organizations that are not on one line (see "One line").
+- A choice of the organization that the prefix of 035 shows.
 
 ## Acceptance
 
@@ -382,9 +453,33 @@ The first start of this version changes the data of each profile once.
 - A new organization with no member shows as a node with the muted line "No members."
 - Make an organization named "product": it is refused, because the name is taken (the check
   ignores case).
-- Delete "Product" that has the sub-organization "Docs": the confirm names 1 lower organization.
-  After "Delete", "Docs" is a top organization, and its members are still agents. "Product" is gone
-  from every skill list.
+- Delete "Product" that has the sub-organization "Docs", and no parent: the confirm says "1
+  sub-organization becomes a top organization." After "Delete", "Docs" is a top organization, and its
+  members are still agents. "Product" is gone from every skill list.
+- "Site" is under "Docs", and "Docs" is under "Product". Delete "Docs": the confirm says "1
+  sub-organization moves up to Product." After "Delete", "Site" is under "Product". A member of
+  "Product" and "Site" is still a member of both.
+- One line: "Docs" is under "Product", and "Ops" is a top organization. Agent A is a member of
+  "Docs". Add A to "Product": it works. Add A to "Ops": it is refused with "A is in Docs, which is
+  not on one line with Ops." The form of "Ops" shows A muted, with "In Docs.", and A cannot be
+  ticked. The menu "Add to organization…" of A shows "Ops" muted with "Not on one line with Docs."
+- "Docs" and "Site" are two sub-organizations of "Product". Agent B cannot be in both: it is
+  refused. B can be in "Docs" and in a sub-organization of "Docs".
+- A is a member of "Product" and "Docs" (on one line). Put "Docs" under "Ops" (a top organization):
+  it is refused with "A is in Docs and Product, which would not be on one line." "Move to the top"
+  on "Docs" is refused in the same way. In "Put under…", "Ops" shows muted with "Would split the
+  line of A." Remove A from "Product": the move works.
+- A is a member of "Docs" and "Product", and "Ops" is a sub-organization of "Product". "Move to
+  organization…" from "Docs" to "Ops": A is a member of "Product" and "Ops", and not of "Docs". The
+  check ran after A left "Docs", so the move worked.
+- The repair of a line: before two computers sync, computer 1 adds agent A to "Docs" and computer 2
+  adds A to "Ops". The two organizations are not on one line. After the sync both computers hold A
+  in the organization where A was added first, and not in the other. The line "A was removed from
+  <organization>. It is in <other>, which is not on one line with it." shows on the open chart, and
+  the organization log has one line. If A was the lead of the organization that it left, that
+  organization has no lead.
+- An import holds an agent in two organizations that are not on one line: after the import, the
+  same repair has run, with the tie order of "One line", and the organization log has a line.
 - An import holds a fourth level and a loop: after the import, the same repairs have run. Each
   repair has a line in the organization log.
 - Two computers sync. Before they sync, computer 1 puts "Docs" under "Site", and computer 2 puts
@@ -413,8 +508,8 @@ The first start of this version changes the data of each profile once.
   and its tokens count.
 - The limit of "Product" is used: a new part of a member of "Site" ends as Blocked with the reason
   that names "Product".
-- An agent that is a member of "Docs" and of "Ops" runs 10,000 tokens: both organizations count
-  10,000.
+- An agent that is a member of "Docs" and of its parent "Product" runs 10,000 tokens: "Docs" counts
+  10,000 and "Product" counts 10,000, not 20,000.
 - Hand-off rule "Any agent": agent A of "Docs" sends to agent X in no organization. A task starts.
   The form of "Docs" shows the muted line about the range.
 - Hand-off rule "Along the organizations", with main agent M, "Product" with lead P, and "Docs" under
@@ -448,6 +543,10 @@ The first start of this version changes the data of each profile once.
 - P does not answer in 2 minutes: M looks. M does not answer: the question passes to the user with
   "No agent on the line answered in time." The whole line after L took at most 5 minutes.
 - The user answers while P looks: the answer of the user wins, and the look of P stops.
+- Member A is in "Docs" and in "Site", which is under "Docs", and "Docs" is under "Product". L
+  passes the question as "Not sure". The line is the lead of "Site", then D (lead of "Docs"), then P
+  (lead of "Product"), and then M. After the third agent, the others are skipped (see above). An
+  agent that leads two of these organizations looks once.
 - A member in no organization asks: after L passes as "Not sure", M looks.
 - "Ask up the line" off: a pass of L goes to the user, as in 004.
 - An approval card in a part goes to the user only.
@@ -456,6 +555,10 @@ The first start of this version changes the data of each profile once.
   organizations "Product" and "Docs" exist, with the same members and leads, "Docs" under "Product",
   the tool "On" and the limit of 50,000 on "Docs". The channels "Docs" and "Product" have no parent
   field, no tool and no limit, and keep their messages. "Chat" has no organization.
+- Migration with an agent in two channels that do not make one line: the channels "Docs" (made
+  first) and "Ops" each have a tool, no parent, and the member A. After the first start, the
+  organizations "Docs" and "Ops" exist, A is a member of "Docs" and not of "Ops", and the channel
+  "Ops" still has A. The organization log has one line for the removal.
 - Migration with the hand-off rule "Along the channels": the rule is now "Along the organizations",
   and the channel "Chat" with 2 members made an organization, so the two members can still send to
   each other.

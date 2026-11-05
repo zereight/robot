@@ -42,6 +42,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
+| 035 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](035-organization-prefix.md) | Draft |
 
 ## Milestones
 
@@ -82,6 +83,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M33 | The changes to 003, 011 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S113: folded tool steps |
 | M34 | 032, 033, 034, and the changes to 000, 001, 007, 013, 014 and 018 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S115 to S117: the built-in connection, its download and its panel, the cards and the classes of the device steps, and the limits of logs, measurements, app data and the analysis of a performance file |
 | M35 | The changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019, 029, 030 and 031 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S118 to S121: organizations replace the channel tree, the org chart of organizations, access with inherited values, and the hand-off rule and ask up the line by organizations |
+| M36 | 035, and the changes to 001, 003, 004, 011, 012, 013, 019, 029 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S122 and S123: one line of organizations for the members of an agent, and the organization prefix |
 
 ## Surfaces check
 

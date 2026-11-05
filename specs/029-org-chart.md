@@ -24,8 +24,8 @@ one, and change its members, its lead and its parent organization (see "Edit on 
 - **Agent node**: a face, the name, the role line (one line, cut with "…"), and the state of the
   agent (idle, working, waiting for the user, or offline; see 002). A working agent also shows the
   label of its task (see "Live state").
-- **Copy**: an agent that is a member of two or more organizations has one node in each of their
-  organization nodes. The root is the main agent, so the main agent also has a copy in each
+- **Copy**: an agent that is a member of two or more organizations (they are on one line, see 030)
+  has one node in each of their organization nodes. The root is the main agent, so the main agent also has a copy in each
   organization node where it is a member.
 - **Home node**: the one node of an agent that the hand-off lines use. For the main agent it is the
   root. For any other agent it is the copy in the first organization node in which it appears.
@@ -82,15 +82,18 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
   focused or pointed node opens it. It holds:
   - "Open profile".
   - "Make lead of <organization>", or "Remove as lead" on a lead. Not in "No organization".
-  - "Add to organization…": a list of the organizations where the agent is no member.
+  - "Add to organization…": a list of the organizations where the agent is no member. An
+    organization that the line rule of 030 refuses shows muted, with the short reason of 030.
   - "Move to organization…": the same list. The agent leaves this organization and joins the picked
-    one. Not in "No organization": there it is "Add to organization…" only.
+    one. The line rule is checked after the agent has left. Not in "No organization": there it is
+    "Add to organization…" only.
   - "Remove from <organization>". Not in "No organization".
 - **Menu of the root**: "Open profile". The node "You" has no menu.
 - **Menu of an organization node**: "Edit organization…", "Add member…" (a list of agents that are
-  not archived and not members), "New agent in this organization" (the form of 002; after save the
-  agent is a member), "Put under…" (a list of the organizations that the tree allows, without the
-  parent now, see 030), and "Move to the top" (only on a sub-organization). The node "No
+  not archived and not members; an agent that the line rule refuses shows muted, with "In
+  <other>."), "New agent in this organization" (the form of 002; after save the agent is a member),
+  "Put under…" (a list of the organizations that the tree and the line allow, without the parent
+  now; the others show muted with their reasons of 030), and "Move to the top" (only on a sub-organization). The node "No
   organization" has "New agent" only.
 - **Drag**: the user drags an agent node and drops it on an organization node: the agent moves to
   that organization, as "Move to organization…". With Option held, the agent is added and stays
@@ -112,8 +115,9 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
   a drop on the organization node "No organization" does. When the organization node "No
   organization" is drawn, it takes the drop too. The area goes when the drag ends.
 - **Refusals**: a change that the rules of 030 do not allow is refused with a short line at the
-  bottom of the canvas. A tree that breaks the rules of 030 gives the reason of 030. An agent that
-  works can still change its organizations: membership holds no running work.
+  bottom of the canvas. A tree that breaks the rules of 030 gives the reason of 030, and so does a
+  membership or a parent that breaks the line (030, "One line"). An agent that works can still
+  change its organizations: membership holds no running work.
 - A move of the lead out of its organization leaves that organization with no lead.
 - "New agent in this organization" and "New agent": after the save the chart stays open, and the
   focus goes to the node of the new agent in that organization. When the agent is made but cannot
@@ -341,8 +345,10 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
 - Delete the organization "Docs" in its form: the node leaves the chart, and its agents show in "No
   organization" if they are in no other organization.
 - Make a channel "Docs" with members: the chart does not change.
-- Put agent B in a second organization "Ops": B has a node in both organization nodes. Point at
-  one: both copies stay lit and the rest dim.
+- Put agent B in a second organization "Product", the parent of "Docs": B has a node in both
+  organization nodes. Point at one: both copies stay lit and the rest dim. Put B in "Ops", which is
+  not on one line with them: the line "B is in Docs, which is not on one line with Ops." shows, and
+  nothing changes.
 - A sends B a message with the tool "send message" three times: a dashed line from A to B shows the
   number 3. B replies in a later turn: the count stays 3, and no line from B to A shows.
 - The main agent splits a request and sends parts to two agents: two dashed lines start at the root.
@@ -381,13 +387,15 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
   computer.
 - Organization "Docs" under "Product": the node of "Docs" sits under the node of "Product", with a
   structure line between them. The root has no line to "Docs".
-- Drag agent B from "Docs" onto "Ops": B is a member of "Ops" and not of "Docs", and the line "Moved
-  B to Ops." shows with "Undo". Undo: B is back in "Docs" only. Drag with Option: B is in both.
+- Drag agent B from "Docs" onto "Ops", a sub-organization of "Product" that is not under "Docs": B
+  is a member of "Ops" and not of "Docs", and the line "Moved B to Ops." shows with "Undo". Undo: B
+  is back in "Docs" only. Drag with Option from "Docs" onto "Product", the parent of "Docs": B is
+  in both. Drag with Option from "Docs" onto "Ops": no ring shows, and nothing changes.
 - Open the menu of B with the keyboard and pick "Make lead of Docs": B has the mark "Lead" and the
   lead lines.
 - Drag "Product" onto "Docs", its own sub-organization: no ring shows, and the drop changes nothing.
-- Drag agent A that works on a part of a channel to "Ops": A moves, because an organization holds no
-  running work.
+- Drag agent A that works on a part of a channel to "Ops" (a sub-organization of "Product" where A
+  may go): A moves, because an organization holds no running work.
 - Drag "Docs" onto "Site" so that the tree would have 4 levels: no ring shows and nothing changes.
   Use "Put under…" with the keyboard: "Site" is muted with the reason of 030.
 - Put "Docs" under "Product" on the chart. Then delete "Docs" in its form and press "Undo" on the

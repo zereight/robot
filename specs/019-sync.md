@@ -182,6 +182,11 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - **One main agent**: at most one agent on a server has the switch "Main agent" (002). When two
   computers turn it on for two different agents while apart, the agent whose change is the later
   one keeps it after the sync, and the other loses it on both computers. A user sees no notice.
+- **One line of organizations**: the organizations of one agent are on one line (030, "One
+  line"). When two computers add the same agent to two organizations that are not on one line while
+  apart, or one moves an organization while the other adds a member, the agent stays in the
+  organization where it was added first, and the other computer ends with the same members. The
+  open org chart shows a line about it, and a user sees no other notice.
 - **Delete**: deleting an agent or a channel deletes it on the other computer too. The delete
   dialog says so. Sync never deletes files: the workspace folder of an agent that sync removes
   stays on disk, and the change list shows its path. If one sync would delete 5 or more agents

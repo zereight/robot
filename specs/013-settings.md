@@ -19,9 +19,11 @@ The user sets the app up the way they like in one place.
   "Keep going"). "Dictation language" and "Reading speed" are in 027. "Show in the menu bar" is
   on or off; the default is off (see 015, "Menu bar item").
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
-  list on/off, reduce motion (follow the system by default), and "Show tool steps" (on or off;
+  list on/off, reduce motion (follow the system by default), "Show tool steps" (on or off;
   the default is on), which folds each run of finished plain tool steps into one muted line with
-  the count when off (see 003, "Folded tool steps").
+  the count when off (see 003, "Folded tool steps"), and "Show the organization before an agent
+  name" (on or off; the default is on), which writes "[Docs]" before the name of an agent that is
+  in the organization "Docs" (see 035).
 - **Test devices**: the switch "Test devices", off by default. When it is on, the section shows the
   state of the download, of the server and of each tool that a test device needs, the version, the
   size, the source, "Download", "Delete", "Check for a new version" and "Update", and "Delete all
