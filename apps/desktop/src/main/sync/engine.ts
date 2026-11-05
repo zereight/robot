@@ -10,7 +10,13 @@ import {
   TOMBSTONE_KEEP_MS,
 } from "@robot/shared"
 import type { DatabaseService } from "../services/Database.ts"
-import { type OrgRepaired, repairOrgTree } from "../services/orgRepair.ts"
+import {
+  type LineRepaired,
+  type OrgRepaired,
+  repairOrgLines,
+  repairOrgTree,
+  storedOrgMemberChanges,
+} from "../services/orgRepair.ts"
 import { compareStamps, HybridClock, NO_STAMP, type Stamp, sameStamp, wireStamp } from "./clock.ts"
 import { type Ctx, type Fields, KIND_ORDER, KINDS, type KindDef, type Parent } from "./kinds.ts"
 import type { ParsedOp, WireOp } from "./wire.ts"
@@ -33,6 +39,11 @@ export interface EngineDeps {
    * caller writes the line of the organization log and tells the window.
    */
   readonly onOrgRepair?: (repairs: readonly OrgRepaired[]) => void
+  /**
+   * Called with the removals that repair a line of organizations (spec 030, "One line", "Repair").
+   * The caller writes the line of the organization log and tells the window.
+   */
+  readonly onLineRepair?: (repairs: readonly LineRepaired[]) => void
   readonly now?: () => number
 }
 
@@ -586,7 +597,9 @@ export class SyncEngine {
    * Repairs the organization tree after changes of the other computer (spec 030, "Repair", 019).
    * Two changes that are right alone can make a loop or a fourth level. The parent field of the
    * organization whose parent change is later is cleared, both computers choose the same one, and
-   * the cleared field is a change like any other. `apply` does not call it: a sync sends its
+   * the cleared field is a change like any other. Then it repairs the lines: an agent that two
+   * computers added to two organizations that are not on one line leaves the one that it joined
+   * last (spec 030, "One line"). `apply` does not call it: a sync sends its
    * changes in batches, and a set of changes that makes a valid tree can arrive in two of them.
    * The caller runs it after the sync has applied all the changes that it has, and after a first
    * copy is whole.
@@ -615,9 +628,15 @@ export class SyncEngine {
     )
     const repaired = repairOrgTree(this.#db, { mode: "sync", changed, now: this.#now })
     if (repaired.length > 0) this.#deps.onOrgRepair?.(repaired)
-    return repaired.map(
-      (r): Touch => ({ kind: "orgunit", id: r.id, action: "changed", parent: null }),
-    )
+    // The lines are repaired after the tree (spec 030, "One line"): an agent leaves the
+    // organization whose member change is the later one, so both computers choose the same one.
+    const lines = repairOrgLines(this.#db, {
+      changed: storedOrgMemberChanges(this.#db),
+      now: this.#now,
+    })
+    if (lines.length > 0) this.#deps.onLineRepair?.(lines)
+    const ids = new Set([...repaired.map((r) => r.id), ...lines.map((r) => r.orgId)])
+    return [...ids].map((id): Touch => ({ kind: "orgunit", id, action: "changed", parent: null }))
   }
 
   // ------------------------------------------------------------------------------ main agent

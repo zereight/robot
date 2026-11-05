@@ -66,7 +66,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
 import { Notifier } from "./Notifier.ts"
-import { noteOrgRepairs } from "./orgRepair.ts"
+import { noteLineRepairs, noteOrgRepairs } from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { secretKey } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
@@ -258,6 +258,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         removeSecret: (accountId) => secrets.remove(secretKey(accountId)),
         // A repair of the organization tree writes one line to the organization log (spec 014).
         onOrgRepair: (repairs) => noteOrgRepairs(bus, platform.dataDir, localServerId(), repairs),
+        // The same for the removal of an agent that repairs a line (spec 030, "One line").
+        onLineRepair: (repairs) => noteLineRepairs(bus, platform.dataDir, localServerId(), repairs),
       })
 
       const peerName = (p: PairRow) => devices.link(p.peer_id)?.name ?? p.peer_name

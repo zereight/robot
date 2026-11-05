@@ -36,7 +36,13 @@ import {
   toOrg,
 } from "./orgData.ts"
 import { orgLimitViewOf, orgUsageOf } from "./orgLimitData.ts"
-import { noteOrgRepairs, repairOrgTree } from "./orgRepair.ts"
+import {
+  flushLineNotes,
+  noteLineRepairs,
+  noteOrgRepairs,
+  repairOrgLines,
+  repairOrgTree,
+} from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
@@ -121,6 +127,18 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         localId,
         repairOrgTree(db, { mode: synced ? "sync" : "import" }),
       )
+      // Then the lines (spec 030, "One line", "Repair"). The removals of the migration wait for
+      // their log lines. A profile in a sync pair repairs its lines after the settle of the sync
+      // (`repairOrgs` of the engine), which also runs at the start: the stamps of a change that
+      // waits are not read yet here, and the choice must be the one that the other computer makes.
+      flushLineNotes(db, platform.dataDir)
+      if (!synced)
+        noteLineRepairs(
+          bus,
+          platform.dataDir,
+          localId,
+          db.transaction(() => repairOrgLines(db)),
+        )
 
       const changed = (serverId: string) => bus.emit("organizations.changed", { serverId })
 

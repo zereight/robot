@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, readFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Database } from "./Database.ts"
@@ -499,5 +502,52 @@ describe("tools", () => {
     expect(await listed()).toEqual([{ id: team.id, value: "on" }])
     await s.run(Organizations.use((o) => o.remove(team.id)))
     expect(await listed()).toEqual([])
+  })
+})
+
+describe("the start of the app repairs a line (spec 030, 'One line', 'Repair')", () => {
+  test("an agent in two organizations that are not on one line leaves the one made later, with a line in the log", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-org-start-")), "robot.db")
+    const first = testRuntime({ databaseFile: file })
+    const run1 = first.runtime.runPromise
+    const local = await run1(Servers.use((s) => s.local))
+    const ada = await run1(
+      Agents.use((a) => a.create({ serverId: local.id, name: "Ada", role: "", instructions: "" })),
+    )
+    const make = (name: string) =>
+      run1(
+        Organizations.use((o) =>
+          o.create({ serverId: local.id, name, memberIds: [], leadId: null }),
+        ),
+      )
+    const docs = await make("Docs")
+    const ops = await make("Ops")
+    const db = await run1(Database.use((d) => Effect.succeed(d)))
+    // The app refuses this, but data from outside can hold it: the rows are written by hand.
+    db.run("UPDATE org_unit SET created_at = 1000 WHERE id = ?", docs.id)
+    db.run("UPDATE org_unit SET created_at = 2000 WHERE id = ?", ops.id)
+    for (const id of [docs.id, ops.id])
+      db.run("INSERT INTO org_member (org_id, agent_id, position) VALUES (?, ?, 0)", id, ada.id)
+    db.run("UPDATE org_unit SET lead_agent_id = ? WHERE id = ?", ada.id, ops.id)
+    await first.runtime.dispose()
+
+    const second = testRuntime({ databaseFile: file })
+    const list = await second.runtime.runPromise(Organizations.use((o) => o.list(local.id)))
+    expect(list.map((o) => [o.name, o.memberIds.length, o.leadId])).toEqual([
+      ["Docs", 1, null],
+      ["Ops", 0, null],
+    ])
+    const lines = readFileSync(join(second.dataDir, "logs", "organizations.log"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { event: string; organization: string; agent: string })
+    expect(lines.map((l) => [l.event, l.organization, l.agent])).toEqual([
+      ["line_repaired", "Ops", "Ada"],
+    ])
+    // It runs once: another start finds nothing to repair.
+    await second.runtime.dispose()
+    const third = testRuntime({ databaseFile: file })
+    await third.runtime.runPromise(Organizations.use((o) => o.list(local.id)))
+    expect(() => readFileSync(join(third.dataDir, "logs", "organizations.log"), "utf8")).toThrow()
   })
 })

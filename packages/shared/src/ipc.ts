@@ -987,15 +987,22 @@ export interface RpcEvents {
   /** An organization was made, changed or deleted, here, by sync, or on a linked server (spec 030). */
   "organizations.changed": { serverId: string }
   /**
-   * The app cleared the parent field of an organization to repair the tree (spec 030, "Repair").
-   * This computer only; the open org chart shows the line for a short time.
+   * The app cleared the parent field of an organization to repair the tree, or removed an agent from
+   * an organization to repair a line (spec 030, "Repair", "One line"). This computer only; the open
+   * org chart shows the line for a short time.
    */
-  "organizations.repaired": {
-    serverId: string
-    organizationId: string
-    name: string
-    reason: "loop" | "levels"
-  }
+  "organizations.repaired":
+    | { serverId: string; organizationId: string; name: string; reason: "loop" | "levels" }
+    | {
+        serverId: string
+        organizationId: string
+        /** The organization that the agent left. */
+        name: string
+        reason: "line"
+        agentName: string
+        /** The organization of the agent that is not on one line with the one that it left. */
+        otherName: string
+      }
   /**
    * The org chart of a linked server changed: its whole ready model (spec 029, 012). A server
    * pushes it to its linked devices. This computer sends it to no window of its own, so a window
