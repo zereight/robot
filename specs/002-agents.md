@@ -72,7 +72,8 @@ An agent has:
    moved to the system trash. If this computer syncs (019), the text also says that the agent
    is deleted on the other computer. There, the workspace folder stays where it is. If skills
    are only for this agent (see 017), the text also says how many, and that they are deleted
-   too.
+   too. If the agent owns workflows (see 010), the text also says how many, and that they have no
+   owner then. Any agent can work in them. The workflows stay.
 10. Export agents: from the menu of the Agents section header, the user picks agents and a file
     name. The same dialog has three tick boxes, all off at the start: "Channels of these agents",
     "Skills of these agents" and "Handbook". The app writes one file. Import agents: the user
@@ -82,6 +83,11 @@ An agent has:
 12. Organizations: the profile has a row "Organizations" with the organizations of the agent, and
     each skill and connection that the agent has from an organization shows the line "From
     <organization>" (see 030). A deleted agent leaves every organization.
+13. Workflows: the profile has a row "Workflows" with the workflows that the agent owns (see 010,
+    "Owner and participants"). A click on a name closes the profile and shows the card of the
+    workflow on the Workflows page. An agent with no workflow shows no row.
+14. Make an agent from an organization: the form of an organization (030) opens the form of
+    flow 1 over itself. The agent is made as in flow 1, but the app does not open its direct chat.
 
 ## Role label
 
@@ -434,3 +440,6 @@ It does not change with the theme.
   the user is a dark disc with a person glyph of light. In the light theme, it is a light disc
   with a dark person glyph. The avatars of agents are the faces. Scroll through the chat in both
   themes: nothing stutters because of the avatars.
+- Give an agent the workflow "Weekly" as its owner: the profile lists "Weekly" in the row "Workflows".
+  Archive and delete the agent: the confirm says that one workflow has no owner then, and "Weekly"
+  stays with no owner.

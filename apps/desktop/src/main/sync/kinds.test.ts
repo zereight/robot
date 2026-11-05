@@ -2342,6 +2342,77 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
   })
 })
 
+describe("the owner of a workflow crosses with the workflow (spec 010, 019)", () => {
+  const base = () => ({
+    name: "Flow",
+    trigger: { kind: "manual" },
+    steps: [],
+    edges: [],
+    notes: [],
+    enabled: true,
+    runsOn: "dev-b",
+    createdAt: NOW,
+  })
+  const op = (extra: Record<string, unknown>) => ({
+    k: "workflow",
+    i: "wf-1",
+    o: "dev-b",
+    f: Object.fromEntries(
+      Object.entries({ ...base(), ...extra }).map(([n, v]) => [n, { v, s: stamp }]),
+    ),
+  })
+  const here = () => {
+    const ctx = target(openDatabase(":memory:"), join(testRuntime().dataDir, "kinds-owner"))
+    ctx.db.run(
+      `INSERT INTO org_unit (id, server_id, name, name_key, created_at, updated_at)
+       VALUES ('org-1', 'srv-b', 'Docs', 'docs', 0, 0)`,
+    )
+    return ctx
+  }
+
+  test("an organization, an agent or none passes; a wrong owner does not; an older computer sends none", () => {
+    expect(parseOp(op({}), NOW)).toBeDefined()
+    expect(parseOp(op({ owner: null }), NOW)).toBeDefined()
+    expect(parseOp(op({ owner: { kind: "organization", id: "org-1" } }), NOW)).toBeDefined()
+    expect(parseOp(op({ owner: { kind: "agent", id: "ada" } }), NOW)).toBeDefined()
+    for (const owner of [
+      { kind: "team", id: "x" },
+      { kind: "agent" },
+      { kind: "agent", id: "" },
+      { kind: "agent", id: "x".repeat(101) },
+      { kind: "agent", id: "x", extra: true },
+      "Docs",
+      7,
+    ])
+      expect(parseOp(op({ owner }), NOW), JSON.stringify(owner)).toBeUndefined()
+  })
+
+  test("the owner is made with the workflow, read back, changed, and cleared; an owner that is gone reads as none", () => {
+    const ctx = here()
+    const owner = { kind: "organization", id: "org-1" }
+    expect(KINDS.workflow.create(ctx, "wf-1", { ...base(), owner })).toBe(true)
+    expect(KINDS.workflow.read(ctx, "wf-1")?.fields.owner).toEqual(owner)
+
+    // A change that names no owner leaves the owner as it is.
+    KINDS.workflow.write(ctx, "wf-1", { name: "Renamed" })
+    expect(KINDS.workflow.read(ctx, "wf-1")?.fields.owner).toEqual(owner)
+
+    KINDS.workflow.write(ctx, "wf-1", { owner: null })
+    expect(KINDS.workflow.read(ctx, "wf-1")?.fields.owner).toBeNull()
+    KINDS.workflow.write(ctx, "wf-1", { owner })
+    expect(KINDS.workflow.read(ctx, "wf-1")?.fields.owner).toEqual(owner)
+
+    ctx.db.run("DELETE FROM org_unit WHERE id = 'org-1'")
+    expect(KINDS.workflow.read(ctx, "wf-1")?.fields.owner).toBeNull()
+  })
+
+  test("a workflow from an older computer has no owner here", () => {
+    const ctx = here()
+    expect(KINDS.workflow.create(ctx, "wf-2", base())).toBe(true)
+    expect(KINDS.workflow.read(ctx, "wf-2")?.fields.owner).toBeNull()
+  })
+})
+
 describe("the organization crosses as its own kind (spec 030, 019)", () => {
   const op = (id: string, fields: Record<string, unknown>) => ({
     k: "orgunit",

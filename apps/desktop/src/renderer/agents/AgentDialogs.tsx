@@ -4,6 +4,8 @@ import { formatDateTime } from "../chat/format.ts"
 import { KnowledgePage } from "../knowledge/KnowledgePage.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { OwnedWorkflows } from "../orgs/OwnedWorkflows.tsx"
+import orgStyles from "../orgs/orgs.module.css"
 import { useApp } from "../state/app.tsx"
 import { memoryTarget } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
@@ -249,6 +251,15 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         <hr class={styles.divider} />
         {/* The organizations of the agent, also on a device that cannot change them (spec 002, 030). */}
         <AgentOrgs agent={props.agent} />
+        {/* The workflows that the agent owns (spec 002, flow 13; spec 010). */}
+        <OwnedWorkflows
+          owner={{ kind: "agent", id: props.agent.id }}
+          fieldClass={`${styles.field} ${orgStyles.bare}`}
+          legendClass={styles.label}
+          testId="agent-workflows"
+          itemTestId="agent-workflow"
+          onOpen={props.onClose}
+        />
         <div class={styles.spread}>
           <Show
             when={ui.linked()}

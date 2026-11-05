@@ -164,7 +164,9 @@ A client opens the Workflows page of the server (010) in the same screens as on 
   switch "Can create and change agents". Without it, the canvas is read only and shows no edit
   controls. A try gets the "Not allowed" error of "No switch" above. The rule of 010 holds: a
   workflow cannot be edited while it runs.
-- **Server things:** an agent step picks from the agents of the server that are not archived. A
+- **Server things:** an agent step picks from the participants of the workflow (010, "Owner and
+  participants"), that is, from the agents of the server that are not archived when the workflow
+  has no owner. The field "Owner" follows "Change". A
   model step and a condition in "Ask a model" mode pick from the model accounts of the server. A
   post step picks a place of the server. A client never sees a key or a path.
 - **Web hook:** a client sees the kind of trigger and, for a web hook, the name of the computer

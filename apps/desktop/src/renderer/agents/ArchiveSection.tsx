@@ -30,10 +30,17 @@ export const ArchiveSection = () => {
   const [confirm, setConfirm] = createSignal<Agent>()
   // How many skills a delete of the confirmed agent deletes too: those that are only for it (017).
   const [skills, setSkills] = createSignal(0)
+  // How many workflows the confirmed agent owns: they stay, with no owner (spec 002, flow 9).
+  const [workflows, setWorkflows] = createSignal(0)
   const [error, setError] = createSignal<ErrorText>()
 
   const countSkills = async (agent: Agent) =>
     setSkills((await call("skills.onlyFor", { agentId: agent.id })).count)
+  const countWorkflows = async (agent: Agent) => {
+    const serverId = ui.localServer()?.id
+    const list = serverId ? await call("workflows.list", { serverId }) : []
+    setWorkflows(list.filter((w) => w.owner?.kind === "agent" && w.owner.id === agent.id).length)
+  }
   // The number is read before the dialog opens, so the text never shows a wrong count. It is read
   // again when the skills change while the dialog is open, but not during the delete itself: the
   // delete changes the skills, and the dialog closes with the text that the user confirmed.
@@ -42,6 +49,7 @@ export const ArchiveSection = () => {
     setError(undefined)
     try {
       await countSkills(agent)
+      await countWorkflows(agent)
       setConfirm(agent)
     } catch (e) {
       setError(describeError(e))
@@ -129,6 +137,16 @@ export const ArchiveSection = () => {
                   name: agent.name,
                   count: skills(),
                 })}
+              </p>
+            </Show>
+            <Show when={workflows() > 0}>
+              <p data-testid="delete-workflows-line">
+                {t(
+                  workflows() === 1
+                    ? "agents.delete.workflows.one"
+                    : "agents.delete.workflows.many",
+                  { name: agent.name, count: workflows() },
+                )}
               </p>
             </Show>
             <Show when={error()}>

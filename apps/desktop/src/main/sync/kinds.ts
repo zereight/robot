@@ -63,11 +63,13 @@ import {
   WatchSchema,
   WORKFLOW_NAME_MAX,
   WORKFLOW_NOTES_MAX,
+  WORKFLOW_OWNER_KINDS,
   WORKFLOW_STEPS_MAX,
 } from "@robot/shared"
 import { Schema } from "effect"
 import { releaseSkills } from "../services/agentSkills.ts"
 import type { DatabaseService } from "../services/Database.ts"
+import { readWorkflowOwner } from "../services/workflowOwner.ts"
 
 /** A value that can be written as JSON. */
 export type Fields = Record<string, unknown>
@@ -2380,7 +2382,16 @@ interface WorkflowRow {
   created_at: number
   updated_at: number
   runs_on: string | null
+  owner_kind: string | null
+  owner_id: string | null
 }
+
+/** The owner of a workflow (spec 010): an organization or an agent, with its id, and nothing else. */
+const isOwner = (v: unknown): boolean =>
+  isObject(v) &&
+  shape(["kind", "id"])(v) &&
+  oneOf(WORKFLOW_OWNER_KINDS)(v.kind) &&
+  str(100, 1)(v.id)
 
 const isTrigger = strictly(TriggerSchema as unknown as Schema.Codec<unknown, unknown>)
 const isSteps = strictly(
@@ -2398,6 +2409,10 @@ const isNotes = strictly(
   >,
 )
 
+/** The owner of a workflow from the wire, already checked, or null. */
+const ownerOf = (value: unknown): { kind: string; id: string } | null =>
+  isOwner(value) ? (value as { kind: string; id: string }) : null
+
 const workflow: KindDef = {
   kind: "workflow",
   rank: 3,
@@ -2409,6 +2424,9 @@ const workflow: KindDef = {
     notes: { check: isNotes },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
+    // The owner of a workflow (spec 010). A computer of an older step has none, and the field stays
+    // absent there.
+    owner: { check: nullable(isOwner) },
     createdAt: { check: int },
   },
   required: ["name", "trigger", "steps", "edges", "notes", "enabled", "runsOn", "createdAt"],
@@ -2427,6 +2445,7 @@ const workflow: KindDef = {
         notes: JSON.parse(r.notes),
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
+        owner: readWorkflowOwner(ctx.db, r.owner_kind, r.owner_id),
         createdAt: r.created_at,
       },
       parent: null,
@@ -2448,11 +2467,17 @@ const workflow: KindDef = {
       created_at: f.createdAt,
       updated_at: now,
       runs_on: arrivingRunsOn(ctx, f.runsOn),
+      owner_kind: ownerOf(f.owner)?.kind ?? null,
+      owner_id: ownerOf(f.owner)?.id ?? null,
     })
     return true
   },
   write: (ctx, id, f) => {
     const columns: Record<string, unknown> = {}
+    if (f.owner !== undefined) {
+      columns.owner_kind = ownerOf(f.owner)?.kind ?? null
+      columns.owner_id = ownerOf(f.owner)?.id ?? null
+    }
     if (f.name !== undefined) columns.name = f.name
     if (f.trigger !== undefined) columns.trigger = JSON.stringify(f.trigger)
     if (f.steps !== undefined) columns.steps = JSON.stringify(f.steps)

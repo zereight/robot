@@ -3,6 +3,7 @@ import {
   starterMenuOff,
   type Workflow,
   type WorkflowFilePreview,
+  type WorkflowOwner,
 } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createResource, createSignal, For, on, onCleanup, Show } from "solid-js"
@@ -13,12 +14,15 @@ import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Menu, type MenuItem } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { ownerChoice, ownerFromChoice } from "./ownerChoice.ts"
+import { useOwnerNames } from "./useOwner.ts"
 import { WorkflowEditor } from "./WorkflowEditor.tsx"
 import {
   describeFileError,
@@ -30,12 +34,20 @@ import {
 import { WorkflowStarterDialog } from "./WorkflowStarterDialog.tsx"
 import styles from "./workflows.module.css"
 
+/** The filter "Owner" of the page: every workflow, the ones with no owner, or one owner. */
+const ALL = "all"
+const NONE = "none"
+
 const WorkflowList = (props: {
-  onOpen: (workflow: Workflow | null, options?: { frame?: boolean }) => void
+  onOpen: (
+    workflow: Workflow | null,
+    options?: { frame?: boolean; owner?: WorkflowOwner | null },
+  ) => void
 }) => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
+  const orgs = useOrgs()
   // A linked server that comes back online is asked again. Its workflows are not cached (012).
   const [workflows, { refetch }] = createResource(
     () => (ui.serverOffline() ? undefined : ui.server()?.id),
@@ -49,11 +61,34 @@ const WorkflowList = (props: {
       if (serverId === ui.server()?.id && isForView(view, from)) void refetch()
     }),
   )
+  // The filter "Owner" (spec 010). An owner that is gone leaves the choices, so the list shows all.
+  const [ownerFilter, setOwnerFilter] = createSignal(ALL)
+  const filterOwner = (): WorkflowOwner | null =>
+    ownerFilter() === ALL || ownerFilter() === NONE ? null : ownerFromChoice(ownerFilter())
+  const ownerName = useOwnerNames(workflows)
+  const shown = () =>
+    workflows().filter((w) =>
+      ownerFilter() === ALL
+        ? true
+        : ownerFilter() === NONE
+          ? w.owner === null
+          : ownerChoice(w.owner) === ownerFilter(),
+    )
+  createEffect(() => {
+    const choice = ownerFilter()
+    if (choice === ALL || choice === NONE) return
+    const owner = ownerFromChoice(choice)
+    const exists =
+      owner?.kind === "organization" ? !!orgs.byId(owner.id) : !!owner && !!agents.byId(owner.id)
+    if (!exists) setOwnerFilter(ALL)
+  })
   // The Today page asks for a workflow: its card lights up. A workflow that is gone is dropped.
   createEffect(() => {
     const target = openTarget()
     const list = workflows()
     if (target?.kind !== "workflow" || workflows.loading) return
+    // The card must be on screen, so a filter of the owner does not hide it.
+    setOwnerFilter(ALL)
     if (list.some((w) => w.id === target.id)) {
       queueMicrotask(() => {
         if (flashRow(`[data-workflow-id="${target.id}"]`)) takeTarget("workflow")
@@ -116,10 +151,60 @@ const WorkflowList = (props: {
     <div class={styles.list} data-testid="wf-list">
       <div class={styles.bar}>
         <Show when={ui.canChange()}>
-          <Button variant="primary" onClick={() => props.onOpen(null)} data-testid="wf-new">
+          <Button
+            variant="primary"
+            // A new workflow starts with the owner that the filter names (spec 010).
+            onClick={() => props.onOpen(null, { owner: filterOwner() })}
+            data-testid="wf-new"
+          >
             {t("workflows.new")}
           </Button>
         </Show>
+        <label class={styles.inline}>
+          {t("workflows.owner")}
+          <select
+            class={styles.input}
+            aria-label={t("workflows.owner.filter")}
+            value={ownerFilter()}
+            onChange={(e) => setOwnerFilter(e.currentTarget.value)}
+            data-testid="wf-owner-filter"
+          >
+            <option value={ALL} selected={ownerFilter() === ALL}>
+              {t("workflows.owner.all")}
+            </option>
+            <option value={NONE} selected={ownerFilter() === NONE}>
+              {t("workflows.owner.none")}
+            </option>
+            <Show when={orgs.orgs().length > 0}>
+              <optgroup label={t("workflows.owner.organizations")}>
+                <For each={orgs.orgs()}>
+                  {(o) => {
+                    const value = ownerChoice({ kind: "organization", id: o.id })
+                    return (
+                      <option value={value} selected={ownerFilter() === value}>
+                        {o.name}
+                      </option>
+                    )
+                  }}
+                </For>
+              </optgroup>
+            </Show>
+            <Show when={agents.agents().length > 0}>
+              <optgroup label={t("workflows.owner.agents")}>
+                <For each={agents.agents()}>
+                  {(a) => {
+                    const value = ownerChoice({ kind: "agent", id: a.id })
+                    return (
+                      <option value={value} selected={ownerFilter() === value}>
+                        {a.name}
+                      </option>
+                    )
+                  }}
+                </For>
+              </optgroup>
+            </Show>
+          </select>
+        </label>
         <Menu
           label={t("workflowFile.menu")}
           icon={<Ellipsis size={16} />}
@@ -187,14 +272,14 @@ const WorkflowList = (props: {
         )}
       </Presence>
       <Show
-        when={workflows().length > 0}
+        when={shown().length > 0}
         fallback={
           <p class={styles.hint} data-testid="wf-list-empty">
             {t("workflows.empty")}
           </p>
         }
       >
-        <For each={workflows()}>
+        <For each={shown()}>
           {(w) => (
             <div
               class={styles.card}
@@ -211,6 +296,13 @@ const WorkflowList = (props: {
                   {w.running ? ` · ${t("workflows.runState.running")}` : ""}
                   {w.enabled ? "" : ` · ${t("workflows.off")}`}
                 </span>
+                <Show when={w.owner}>
+                  {(owner) => (
+                    <span class={styles.hint} data-testid="wf-owner">
+                      {t("workflows.owner.card", { name: ownerName(owner()) })}
+                    </span>
+                  )}
+                </Show>
                 <Show when={w.runsOn !== null}>
                   <span class={styles.hint} data-testid="wf-runs-on">
                     {t("sync.runsOn", { name: w.runsOn || t("sync.anotherComputer") })}
@@ -288,7 +380,11 @@ const WorkflowList = (props: {
 export const WorkflowsPage = () => {
   const { t } = useApp()
   const ui = useUi()
-  const [open, setOpen] = createSignal<{ workflow: Workflow | null; frame?: boolean }>()
+  const [open, setOpen] = createSignal<{
+    workflow: Workflow | null
+    frame?: boolean
+    owner?: WorkflowOwner | null
+  }>()
   // The Today page asks for a workflow: leave the editor so the list can show the card.
   createEffect(() => {
     if (openTarget()?.kind === "workflow") setOpen(undefined)
@@ -320,7 +416,11 @@ export const WorkflowsPage = () => {
           >
             <WorkflowList
               onOpen={(workflow, options) =>
-                setOpen({ workflow, ...(options?.frame ? { frame: true } : {}) })
+                setOpen({
+                  workflow,
+                  ...(options?.frame ? { frame: true } : {}),
+                  ...(options?.owner ? { owner: options.owner } : {}),
+                })
               }
             />
           </Show>
@@ -331,6 +431,7 @@ export const WorkflowsPage = () => {
             workflow={o().workflow}
             onBack={() => setOpen(undefined)}
             {...(o().frame ? { frame: true } : {})}
+            owner={o().owner ?? null}
           />
         )}
       </Show>

@@ -19,9 +19,11 @@ import {
   type Trigger,
   type Workflow,
   type WorkflowInput,
+  type WorkflowOwner,
   type WorkflowPatch,
   type WorkflowRun,
   type WorkflowRunDetail,
+  workflowParticipants,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer } from "effect"
 import { CurrentActor } from "./actor.ts"
@@ -30,6 +32,7 @@ import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { loadHandOffModel } from "./handOff.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, toAppError } from "./Providers.ts"
@@ -43,6 +46,7 @@ import {
   readVerdict,
   withTries,
 } from "./workflowAsk.ts"
+import { readWorkflowOwner } from "./workflowOwner.ts"
 
 export interface WorkflowsService {
   list(serverId: string): Effect.Effect<readonly Workflow[]>
@@ -78,6 +82,8 @@ interface WorkflowRow {
   last_checked_at: number
   created_at: number
   runs_on: string | null
+  owner_kind: string | null
+  owner_id: string | null
 }
 interface RunRow {
   id: string
@@ -171,7 +177,19 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         running: isRunning(r.id),
         createdAt: r.created_at,
         runsOn: r.runs_on === null ? null : tasks.computerName(r.runs_on),
+        owner: readWorkflowOwner(db, r.owner_kind, r.owner_id),
       })
+      /** Refuses an owner that does not exist on this server. */
+      const checkOwner = (serverId: string, owner: WorkflowOwner | null | undefined) =>
+        owner === null || owner === undefined
+          ? Effect.void
+          : db.get(
+                `SELECT 1 AS x FROM ${owner.kind === "agent" ? "agent" : "org_unit"} WHERE id = ? AND server_id = ?`,
+                owner.id,
+                serverId,
+              )
+            ? Effect.void
+            : Effect.fail(new AppError({ code: "owner_not_found" }))
       function isRunning(workflowId: string) {
         return (
           db.get(
@@ -422,6 +440,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           switch (step.kind) {
             case "agent": {
               if (step.agentId === "") return failed("no_agent")
+              // The participants are read when the step starts, so a change of a member or of a lead
+              // counts at once (spec 010, "Owner and participants").
+              if (
+                !workflowParticipants(wf.owner, loadHandOffModel(db, wf.serverId, null)).has(
+                  step.agentId,
+                )
+              )
+                return failed("not_participant")
               let prompt = fillTemplate(step.prompt, input, trigger)
               if (input && !step.prompt.includes("{{input}}")) prompt += `\n\nInput:\n${input}`
               else if (!input && trigger && !step.prompt.includes("{{trigger}}"))
@@ -712,11 +738,12 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         create: (input, options) =>
           Effect.gen(function* () {
             yield* checkGraph(input.steps as Step[], input.edges as Edge[], { needSteps: false })
+            yield* checkOwner(input.serverId, input.owner)
             const id = randomUUID()
             const now = Date.now()
             db.run(
-              `INSERT INTO workflow (id, server_id, name, trigger, steps, edges, notes, enabled, last_checked_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO workflow (id, server_id, name, trigger, steps, edges, notes, enabled, last_checked_at, created_at, updated_at, owner_kind, owner_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.name.trim(),
@@ -728,6 +755,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               now,
               now,
               now,
+              input.owner?.kind ?? null,
+              input.owner?.id ?? null,
             )
             changed(input.serverId)
             return toWorkflow(row(id) as WorkflowRow)
@@ -741,15 +770,21 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               patch.edges !== undefined ||
               patch.notes !== undefined ||
               patch.trigger !== undefined ||
-              patch.name !== undefined
+              patch.name !== undefined ||
+              patch.owner !== undefined
             // A workflow cannot be edited while it runs.
             if (touchesGraph && isRunning(id))
               return yield* new AppError({ code: "workflow_running" })
             const steps = (patch.steps ?? JSON.parse(current.steps)) as Step[]
             const edges = (patch.edges ?? JSON.parse(current.edges)) as Edge[]
             yield* checkGraph(steps, edges, { needSteps: false })
+            yield* checkOwner(current.server_id, patch.owner)
+            const owner =
+              patch.owner === undefined
+                ? { kind: current.owner_kind, id: current.owner_id }
+                : { kind: patch.owner?.kind ?? null, id: patch.owner?.id ?? null }
             db.run(
-              `UPDATE workflow SET name = ?, trigger = ?, steps = ?, edges = ?, notes = ?, enabled = ?, last_checked_at = ?, updated_at = ? WHERE id = ?`,
+              `UPDATE workflow SET name = ?, trigger = ?, steps = ?, edges = ?, notes = ?, enabled = ?, last_checked_at = ?, updated_at = ?, owner_kind = ?, owner_id = ? WHERE id = ?`,
               patch.name?.trim() ?? current.name,
               patch.trigger ? JSON.stringify(patch.trigger) : current.trigger,
               JSON.stringify(steps),
@@ -758,6 +793,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               patch.enabled === undefined ? current.enabled : patch.enabled ? 1 : 0,
               Date.now(),
               Date.now(),
+              owner.kind,
+              owner.id,
               id,
             )
             changed(current.server_id)

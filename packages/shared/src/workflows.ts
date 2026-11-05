@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { EFFORT_LEVELS } from "./providers.ts"
 import { ScheduleSchema } from "./routines.ts"
+import { type WorkflowOwner, WorkflowOwnerSchema } from "./workflowOwner.ts"
 
 export const WORKFLOW_NAME_MAX = 60
 export const WORKFLOW_STEPS_MAX = 30
@@ -140,6 +141,8 @@ export const WorkflowInput = Schema.Struct({
   steps: Schema.Array(StepSchema).check(Schema.isMaxLength(WORKFLOW_STEPS_MAX)),
   edges: Schema.Array(EdgeSchema),
   notes: Schema.optionalKey(Schema.Array(NoteSchema).check(Schema.isMaxLength(WORKFLOW_NOTES_MAX))),
+  /** Absent or null: no owner, a shared workflow (spec 010, "Owner and participants"). */
+  owner: Schema.optionalKey(Schema.NullOr(WorkflowOwnerSchema)),
 })
 export type WorkflowInput = typeof WorkflowInput.Type
 
@@ -152,6 +155,8 @@ export const WorkflowPatch = Schema.Struct({
   edges: Schema.optionalKey(Schema.Array(EdgeSchema)),
   notes: Schema.optionalKey(Schema.Array(NoteSchema).check(Schema.isMaxLength(WORKFLOW_NOTES_MAX))),
   enabled: Schema.optionalKey(Schema.Boolean),
+  /** Null: back to no owner. Absent: unchanged. */
+  owner: Schema.optionalKey(Schema.NullOr(WorkflowOwnerSchema)),
 })
 export type WorkflowPatch = typeof WorkflowPatch.Type
 
@@ -170,6 +175,11 @@ export interface Workflow {
   readonly createdAt: number
   /** The name of the other computer where it runs, when it syncs (019). Null: it runs here. */
   readonly runsOn: string | null
+  /**
+   * The organization or the agent that owns the workflow, or null (spec 010). An owner that is
+   * gone counts as null, so it never names an organization or an agent that does not exist.
+   */
+  readonly owner: WorkflowOwner | null
 }
 
 export const RUN_STATES = ["running", "done", "failed", "cancelled", "recorded"] as const

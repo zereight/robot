@@ -243,6 +243,9 @@ These are in the code today and the specs now say something else.
 | S141 | Org chart, outlines: the switch "Outlines" (off at each start) and the outline with the name of each top organization and the organizations under it. | 029 |
 | S142 | Org chart, details: the button "Show details" on an agent node and the read-only panel with the model, the skills and the connections. | 029 |
 | S143 | Org chart, step: the fixed step line under the task label with the name of the tool step or "Failed: <reason>", and its accessible name. | 029 |
+| S144 | Owner of a workflow: the field, the data, the sync and the export, and the rule of participants for the agent step in the editor and in a run. | 010, 019, 014 |
+| S145 | Workflows of an organization and of an agent: the filter and the card, the row "Workflows" in the form and in the profile, and the delete confirm. | 010, 030, 002 |
+| S146 | Make an agent in the form of an organization: the button "New agent". | 030, 002 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -326,6 +329,14 @@ S133 needs the permission rules and approval cards of S30 and the main agent of 
 | 029 | A drag on the chart always changes data. | A drag changes data only while "Arrange" is off. With "Arrange" on, a drag moves nodes and changes no data. |
 | 029 | No outline around teams. | The switch "Outlines" draws an outline around each top organization with the organizations under it. It is off at each start. |
 | 029 | An agent node shows the state and the task label only. | It also has a "Show details" panel (model, skills, connections) and a step line (the tool step that runs, or "Failed: <reason>"). |
+
+## Workflows of organizations and agents (M41): behaviour that changes
+
+| Spec | Before | Now |
+| --- | --- | --- |
+| 010 | A workflow has no owner. Every agent can be the agent of an agent step. | A workflow has an owner: none, one organization, or one agent. An agent step of a workflow of an organization takes the members of that organization and the leads of the other organizations. An agent step of a workflow of an agent takes that agent only. |
+| 030 | The form of an organization picks members among agents that exist. | The field Members has a button "New agent" that makes an agent in the form. The form has a row "Workflows". The delete confirm counts the workflows that lose their owner. |
+| 002 | The profile has no list of workflows. The delete confirm names workspace and skills. | The profile has a row "Workflows". The delete confirm names the workflows that lose their owner. |
 
 ## Decided against
 

@@ -24,6 +24,7 @@ import {
   WORKFLOW_SIDE_MAX,
   WORKFLOW_SIDE_MIN,
   type Workflow,
+  type WorkflowOwner,
   type WorkflowRun,
   type WorkflowRunDetail,
   workflowDiagram,
@@ -40,12 +41,15 @@ import { ScheduleFields } from "../routines/ScheduleFields.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { quietOfTaskLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { showToast } from "../ui/toast.ts"
+import { ownerChoice, ownerFromChoice } from "./ownerChoice.ts"
+import { useParticipants } from "./useOwner.ts"
 import styles from "./workflows.module.css"
 
 const NODE_W = 180
@@ -109,6 +113,8 @@ export const WorkflowEditor = (props: {
    * workflow opens at the usual place and size.
    */
   frame?: boolean
+  /** The owner of a workflow that is not saved yet, from the filter of the page (spec 010). */
+  owner?: WorkflowOwner | null
 }) => {
   const { t } = useApp()
   const ui = useUi()
@@ -116,10 +122,19 @@ export const WorkflowEditor = (props: {
   const forView = (from: string | undefined) =>
     isForView(ui.linked() ? ui.server()?.id : undefined, from)
   const agents = useAgents()
+  const orgs = useOrgs()
   const shownText = useShownText()
   const channels = useChannels()
   const [saved, setSaved] = createSignal<Workflow | null>(props.workflow)
   const [name, setName] = createSignal(props.workflow?.name ?? "")
+  // The owner decides which agents can work in a step (spec 010, "Owner and participants").
+  const [owner, setOwner] = createSignal<WorkflowOwner | null>(
+    props.workflow ? props.workflow.owner : (props.owner ?? null),
+  )
+  const participants = useParticipants(owner)
+  /** True for a step whose agent is set and may not work here: its node and its list say so. */
+  const outsider = (s: Step) =>
+    s.kind === "agent" && s.agentId !== "" && !participants().has(s.agentId)
   const [trigger, setTrigger] = createSignal<Trigger>(props.workflow?.trigger ?? { kind: "manual" })
   const [scheduleOk, setScheduleOk] = createSignal(true)
   const [diagramOpen, setDiagramOpen] = createSignal(false)
@@ -472,6 +487,7 @@ export const WorkflowEditor = (props: {
         steps: plain(graph.steps),
         edges: plain(graph.edges),
         notes: plain(graph.notes),
+        owner: owner(),
       }
       const current = saved()
       const next = current
@@ -633,6 +649,48 @@ export const WorkflowEditor = (props: {
       </Show>
 
       <div class={styles.triggerRow}>
+        <label class={styles.inline} title={t("workflows.owner.hint")}>
+          {t("workflows.owner")}
+          <select
+            class={styles.input}
+            disabled={readOnly()}
+            value={ownerChoice(owner())}
+            onChange={(e) => setOwner(ownerFromChoice(e.currentTarget.value))}
+            data-testid="wf-owner"
+          >
+            <option value="" selected={owner() === null}>
+              {t("workflows.owner.none")}
+            </option>
+            <Show when={orgs.orgs().length > 0}>
+              <optgroup label={t("workflows.owner.organizations")}>
+                <For each={orgs.orgs()}>
+                  {(o) => {
+                    const value = ownerChoice({ kind: "organization", id: o.id })
+                    return (
+                      <option value={value} selected={ownerChoice(owner()) === value}>
+                        {o.name}
+                      </option>
+                    )
+                  }}
+                </For>
+              </optgroup>
+            </Show>
+            <Show when={agents.agents().length > 0}>
+              <optgroup label={t("workflows.owner.agents")}>
+                <For each={agents.agents()}>
+                  {(a) => {
+                    const value = ownerChoice({ kind: "agent", id: a.id })
+                    return (
+                      <option value={value} selected={ownerChoice(owner()) === value}>
+                        {shownText(a.id, a.name)}
+                      </option>
+                    )
+                  }}
+                </For>
+              </optgroup>
+            </Show>
+          </select>
+        </label>
         <label class={styles.inline}>
           {t("workflows.trigger")}
           <select
@@ -855,14 +913,26 @@ export const WorkflowEditor = (props: {
                     {numbers().get(s.id)}
                   </span>
                   <span class={styles.nodeKind}>
-                    {t(`workflows.step.${s.kind}` as MessageKey)}
-                    <Show when={s.kind === "agent" && s.agentId === ""}>
-                      {" · "}
-                      {t("workflows.step.pickAgent")}
-                    </Show>
-                    <Show when={s.kind === "post" && s.channelId === ""}>
-                      {" · "}
-                      {t("workflows.step.pickPlace")}
+                    <Show
+                      when={outsider(s)}
+                      fallback={
+                        <>
+                          {t(`workflows.step.${s.kind}` as MessageKey)}
+                          <Show when={s.kind === "agent" && s.agentId === ""}>
+                            {" · "}
+                            {t("workflows.step.pickAgent")}
+                          </Show>
+                          <Show when={s.kind === "post" && s.channelId === ""}>
+                            {" · "}
+                            {t("workflows.step.pickPlace")}
+                          </Show>
+                        </>
+                      }
+                    >
+                      {/* The warning takes the line of the kind: a longer line would push the name out. */}
+                      <span class={styles.nodeWarn} data-testid="wf-node-outsider">
+                        {t("workflows.step.notParticipant")}
+                      </span>
                     </Show>
                   </span>
                   <span class={styles.nodeName}>{s.name}</span>
@@ -1059,13 +1129,20 @@ export const WorkflowEditor = (props: {
                             <option value="" selected={a().agentId === ""}>
                               {t("workflows.step.pickAgent")}
                             </option>
-                            <For each={agents.agents()}>
+                            <For each={agents.agents().filter((x) => participants().has(x.id))}>
                               {(x) => (
                                 <option value={x.id} selected={x.id === a().agentId}>
                                   {shownText(x.id, x.name)}
                                 </option>
                               )}
                             </For>
+                            <Show when={outsider(a())}>
+                              <option value={a().agentId} selected disabled>
+                                {shownText(a().agentId, agents.byId(a().agentId)?.name ?? "")}
+                                {" · "}
+                                {t("workflows.step.notParticipant")}
+                              </option>
+                            </Show>
                           </select>
                         </label>
                         <label class={styles.field}>
