@@ -112,6 +112,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | Org chart | The page that draws the main agent, the organizations with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows organizations and hand-offs, and the tree of organizations (030). It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
 | Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 | delegation, assignment |
 | Legend words of the org chart | The three kinds of line, named in the legend (029): "Leads" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 이끌어요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to, gives parts |
+| No organization | The node of the org chart, and the drop area, for agents that are in no organization (029, 030). | 조직 없음 | unassigned, ungrouped |
+| No members. | The line of an organization node that has no member (029). | 멤버가 없어요. | empty, nobody |
+| Also in | The line of the org chart that names the other organization of an agent that shows in more than one node (029). | {organization}에도 있어요 | duplicate, copy of |
 | Fit to view | The button and the key "0" that frame the whole org chart with room around it (029). | 화면에 맞추기 | reset, zoom to 100% |
 | Organization | A group of agents with a lead, a parent organization and access. It is not a channel (030). | 조직 | company, department, team (Teams is the link of 028), channel |
 | Parent organization | The organization that an organization sits inside (030). | 상위 조직 | parent team, department |
