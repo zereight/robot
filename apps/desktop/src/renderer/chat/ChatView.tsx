@@ -10,6 +10,7 @@ import {
   type QuietShown,
   sameDay,
   startsGroup,
+  workingLineKey,
 } from "@robot/shared"
 import {
   createEffect,
@@ -60,6 +61,8 @@ const WorkingLine = (props: {
   compacting: boolean
   /** Set while the turn is quiet (spec 005, "Quiet line"): the line replaces the working text. */
   quiet?: QuietShown | undefined
+  /** The turn that runs now is a follow-up (spec 003, 005). */
+  followUp: boolean
 }) => {
   const { t } = useApp()
   const [now, setNow] = createSignal(Date.now())
@@ -68,9 +71,17 @@ const WorkingLine = (props: {
   // The pause for a compact is no silence: its own text stays.
   const quiet = () => (props.compacting ? undefined : props.quiet)
   const text = () => {
-    if (props.compacting) return t("chat.compacting")
     const q = quiet()
-    return q ? t("quiet.line", { name: q.name, time: q.time }) : t("chat.working")
+    const key = workingLineKey({
+      compacting: props.compacting,
+      quiet: q !== undefined,
+      followUp: props.followUp,
+    })
+    if (key === "quiet.line") {
+      if (!q) return t("chat.working")
+      return t(key, { name: q.name, time: q.time })
+    }
+    return t(key)
   }
   return (
     <div
@@ -145,6 +156,11 @@ export const ChatView = (props: ChatViewProps) => {
       ? threads.list.main.busy
       : (threads.list.threads.find((x) => x.id === props.threadId)?.busy ?? null)
   }
+  /** The open thread's turn is a follow-up, so the working line says the agent looks again. */
+  const followUpTurn = () =>
+    props.threadId === null
+      ? threads.list.main.followUp
+      : (threads.list.threads.find((x) => x.id === props.threadId)?.followUp ?? false)
   /** The queued task of the open thread, while no turn runs in it. */
   const queuedLine = () => {
     if (busy() !== "queued") return undefined
@@ -365,6 +381,7 @@ export const ChatView = (props: ChatViewProps) => {
               since={streaming()?.createdAt ?? Date.now()}
               compacting={compacting()}
               quiet={quietOfChatLine(server(), props.agent.id, props.threadId)}
+              followUp={followUpTurn()}
             />
           </Show>
           <Show when={!working() && queuedLine()}>

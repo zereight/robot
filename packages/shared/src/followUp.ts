@@ -104,6 +104,21 @@ export const followUpDue = (at: number, now: number): FollowUpDue => {
   return now - at <= FOLLOW_UP_LATE_MAX ? { kind: "start" } : { kind: "drop" }
 }
 
+/**
+ * The words of the working line (spec 003). A follow-up says that the agent looks again. A quiet
+ * line and a compact replace that text, as they do for any other turn.
+ */
+export const workingLineKey = (input: {
+  readonly compacting: boolean
+  readonly quiet: boolean
+  readonly followUp: boolean
+}): "chat.compacting" | "quiet.line" | "chat.working.followUp" | "chat.working" => {
+  if (input.compacting) return "chat.compacting"
+  if (input.quiet) return "quiet.line"
+  if (input.followUp) return "chat.working.followUp"
+  return "chat.working"
+}
+
 /** The label of the task that a follow-up starts: "Look again: <reason>", cut for a list. */
 export const followUpLabel = (reason: string, max = 60): string => {
   const full = [...`Look again: ${reason}`]

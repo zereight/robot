@@ -2580,6 +2580,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       // --- Threads (spec 003) ---------------------------------------------------------------------
 
+      /** True when the turn that runs in this conversation is a follow-up (spec 003, 005). */
+      const runningFollowUp = (place: Place) =>
+        db.get<{ source: string }>(
+          `SELECT t.source AS source FROM task t JOIN message m ON m.id = t.message_id
+           WHERE t.agent_id = ? AND m.thread_id IS ? AND t.state = 'running'
+           LIMIT 1`,
+          place.agentId,
+          place.threadId,
+        )?.source === "follow_up"
       /** Why a conversation cannot be archived or deleted now, or null. */
       const busyOf = (place: Place) =>
         Effect.gen(function* () {
@@ -2633,7 +2642,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             )
             .map((r) => [r.id, r.n]),
         )
-      const toThread = (row: ThreadRow, unread: number, busy: ThreadBusy | null): ChatThread => ({
+      const toThread = (
+        row: ThreadRow,
+        unread: number,
+        busy: ThreadBusy | null,
+        followUp: boolean,
+      ): ChatThread => ({
         id: row.id,
         agentId: row.agent_id,
         title: row.title,
@@ -2644,6 +2658,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           : null,
         unread,
         busy,
+        followUp,
         marks: placeMarks.get({ kind: "thread", id: row.id }),
       })
       const threadsChanged = (agentId: string) => {
@@ -2663,6 +2678,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 row,
                 unread.get(row.id) ?? 0,
                 yield* busyOf({ agentId, threadId: row.id }),
+                runningFollowUp({ agentId, threadId: row.id }),
               ),
               queued: yield* queuedOf({ agentId, threadId: row.id }),
             })
@@ -2670,6 +2686,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             main: {
               unread: unread.get("") ?? 0,
               busy: yield* busyOf(mainOf(agentId)),
+              followUp: runningFollowUp(mainOf(agentId)),
               queued: yield* queuedOf(mainOf(agentId)),
             },
             threads: list,
@@ -2709,7 +2726,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (!roomForThread(agentId)) return yield* new AppError({ code: "thread_limit" })
         const row = insertThread(agentId, null, null)
         threadsChanged(agentId)
-        return toThread(row, 0, null)
+        return toThread(row, 0, null, false)
       })
       const fork = Effect.fn("Chat.fork")(function* (place: Place, messageId: string) {
         const agent = agentRow(place.agentId)
@@ -2790,7 +2807,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return made
         })
         threadsChanged(place.agentId)
-        return toThread(thread, 0, null)
+        return toThread(thread, 0, null, false)
       })
       const ownThread = (agentId: string, threadId: string) =>
         Effect.suspend(() => {

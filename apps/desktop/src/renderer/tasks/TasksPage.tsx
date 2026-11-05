@@ -185,6 +185,66 @@ const MomentsList = (props: { task: Task; leadName: string | null }) => {
   )
 }
 
+/** The follow-ups of one task, and the delete that asks first (spec 005, "Follow-up"). */
+const FollowUpRows = (props: { taskId: string }) => {
+  const app = useApp()
+  const { t } = app
+  const [error, setError] = createSignal<ErrorText>()
+  const [deleting, setDeleting] = createSignal<string>()
+  const [rows, { refetch }] = createResource(() => call("followups.list", { taskId: props.taskId }))
+  onCleanup(window.robot.on("followups.changed", () => void refetch()))
+  return (
+    <Show when={(rows() ?? []).length > 0}>
+      <h3>{t("tasks.followUp.title")}</h3>
+      <ul class={styles.followUps} data-testid="task-follow-ups">
+        <For each={rows() ?? []}>
+          {(row) => (
+            <li class={styles.followUp} data-testid="task-follow-up">
+              <span class={styles.text}>{row.reason}</span>
+              <time class={styles.joinedTime}>{formatTime(app.locale(), row.at)}</time>
+              <Show
+                when={deleting() === row.id}
+                fallback={
+                  <Button onClick={() => setDeleting(row.id)} data-testid="task-follow-up-delete">
+                    {t("tasks.followUp.delete")}
+                  </Button>
+                }
+              >
+                <div class={styles.confirm}>
+                  <span role="alert" data-testid="task-follow-up-ask">
+                    {t("tasks.followUp.delete.ask")}
+                  </span>
+                  <Button
+                    onClick={() => setDeleting(undefined)}
+                    data-testid="task-follow-up-cancel"
+                  >
+                    {t("tasks.followUp.delete.cancel")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      setError(undefined)
+                      void call("followups.remove", { id: row.id })
+                        .then(() => setDeleting(undefined))
+                        .catch((e: unknown) => setError(describeError(e)))
+                    }}
+                    data-testid="task-follow-up-confirm"
+                  >
+                    {t("tasks.followUp.delete.confirm")}
+                  </Button>
+                </div>
+              </Show>
+            </li>
+          )}
+        </For>
+      </ul>
+      <Show when={error()}>
+        {(err) => <p class={styles.errorText}>{t(err().key, err().params)}</p>}
+      </Show>
+    </Show>
+  )
+}
+
 const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   const app = useApp()
   const { t } = app
@@ -240,6 +300,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 })}
               </p>
             </Show>
+            <FollowUpRows taskId={d().task.id} />
             <BehindLine task={d().task} testid="task-detail-behind" class={styles.meta} />
             <Show when={d().task.waitsFor}>
               {(name) => (

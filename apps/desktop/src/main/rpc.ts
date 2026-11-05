@@ -63,6 +63,7 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { FollowUps } from "./services/FollowUps.ts"
 import { Handbook } from "./services/Handbook.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
@@ -801,6 +802,15 @@ export const handlers: Handlers = {
   "tasks.endRequest": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Tasks.use((t) => t.endRequest(id))),
+      done,
+    ),
+  "followups.list": (input) =>
+    decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ taskId }) => FollowUps.use((f) => f.ofTask(taskId))),
+    ),
+  "followups.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => FollowUps.use((f) => f.remove(id))),
       done,
     ),
   "channels.list": (input) =>

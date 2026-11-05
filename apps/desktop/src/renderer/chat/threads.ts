@@ -30,7 +30,7 @@ export const createThreads = (
 ) => {
   const [state, setState] = createStore<{ loaded: boolean; list: ChatThreads }>({
     loaded: false,
-    list: { main: { unread: 0, busy: null }, threads: [] },
+    list: { main: { unread: 0, busy: null, followUp: false }, threads: [] },
   })
   let run = 0
   const load = () => {

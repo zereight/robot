@@ -130,3 +130,64 @@ test("follow-up: a channel turn gets the refusal and the turn goes on", async ()
   await app.close()
   await mock.close()
 })
+
+test("follow-up: the user deletes it from the task details", async () => {
+  test.setTimeout(180_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 760, 720)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+
+  // Thirty minutes, so the follow-up is still waiting when the user deletes it.
+  await send(page, 'TOOL wait_until {"reason":"CI of the deploy","minutes":30}')
+  await settled(page)
+  await page.getByTestId("page-tasks").click()
+  await page.getByTestId("task-open").first().click()
+  await expect(page.getByTestId("task-follow-up")).toContainText("CI of the deploy")
+  await shot(page, "s118-05-follow-up-in-detail")
+  await page.getByTestId("task-follow-up-delete").click()
+  await expect(page.getByTestId("task-follow-up-ask")).toHaveText(
+    "Delete this? No task starts for it.",
+  )
+  await shot(page, "s118-06-delete-asks")
+  await page.getByTestId("task-follow-up-cancel").click()
+  await expect(page.getByTestId("task-follow-up")).toBeVisible()
+
+  // The same ask in Korean, then the delete. The row leaves, so no task can start for it.
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("task-detail")).toBeHidden()
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("setting-language").locator('label[data-value="ko"]').click()
+  await page.getByTestId("settings-close").click()
+  await page.getByTestId("task-open").first().click()
+  await page.getByTestId("task-follow-up-delete").click()
+  await expect(page.getByTestId("task-follow-up-ask")).toHaveText(
+    "지울까요? 그러면 태스크는 시작되지 않아요.",
+  )
+  await shot(page, "s118-07-delete-asks-korean")
+  await page.getByTestId("task-follow-up-confirm").click()
+  await expect(page.getByTestId("task-follow-up")).toHaveCount(0)
+
+  await app.close()
+  await mock.close()
+})
+
+test("follow-up: the working line says the agent looks again", async () => {
+  test.setTimeout(180_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 760, 720)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+
+  // The follow-up prompt holds the pause above its last line, so the turn stays open long enough
+  // to read the working line.
+  await send(page, 'TOOL wait_until {"reason":"pause 8000ms","minutes":1}')
+  await settled(page)
+  await expect(page.getByTestId("working-text")).toHaveText("Looking again…", { timeout: 90_000 })
+  await shot(page, "s118-08-looking-again")
+
+  await app.close()
+  await mock.close()
+})

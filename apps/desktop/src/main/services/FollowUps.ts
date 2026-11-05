@@ -38,6 +38,8 @@ export interface FollowUpsService {
   }): Effect.Effect<FollowUp, AppError>
   /** The follow-ups that wait, oldest first. With `taskId`, only those of that task. */
   list(agentId: string, taskId?: string): Effect.Effect<readonly FollowUp[]>
+  /** The follow-ups that the details of one task show (spec 005). Oldest first. */
+  ofTask(taskId: string): Effect.Effect<readonly FollowUp[]>
   /** The user deletes a follow-up: no task starts for it. */
   remove(id: string): Effect.Effect<void>
   /**
@@ -185,6 +187,12 @@ export class FollowUps extends Context.Service<FollowUps, FollowUpsService>()(
                   : "SELECT * FROM follow_up WHERE agent_id = ? ORDER BY at",
                 ...(taskId ? [agentId, taskId] : [agentId]),
               )
+              .map(toFollowUp),
+          ),
+        ofTask: (taskId) =>
+          Effect.sync(() =>
+            db
+              .all<Row>("SELECT * FROM follow_up WHERE task_id = ? ORDER BY at", taskId)
               .map(toFollowUp),
           ),
         remove: (id) =>

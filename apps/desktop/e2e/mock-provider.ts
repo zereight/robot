@@ -100,11 +100,11 @@ interface Plan {
 
 /** What the mock answers depends on the last user message. "pause <n>ms" waits before it answers. */
 const plan = (body: ChatBody): Plan => {
-  const text =
-    String(body.messages.at(-1)?.content ?? "")
-      .split("\n")
-      .at(-1) ?? ""
-  const pause = Number(/pause (\d+)ms/.exec(text)?.[1] ?? 0)
+  const message = String(body.messages.at(-1)?.content ?? "")
+  // The last line wins. A follow-up prompt ends with a fixed line, so the mark can sit above it.
+  const onLastLine = /pause (\d+)ms/.exec(message.split("\n").at(-1) ?? "")
+  const anywhere = /pause (\d+)ms/.exec(message)
+  const pause = Number((onLastLine ?? anywhere)?.[1] ?? 0)
   const planned = answer(body)
   return { ...planned, pause: planned.pause ?? pause }
 }

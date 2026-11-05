@@ -9,6 +9,7 @@ import { Effect } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
+import { Database } from "./Database.ts"
 import { FollowUps } from "./FollowUps.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
@@ -128,6 +129,35 @@ describe("follow-up (spec 005)", () => {
         .filter((c) => "prompt" in c)
         .map((c) => String(c.prompt))
       expect(sent.at(-1)).toContain("CI of the deploy")
+    })
+
+    test("the details of the task list that follow-up", async () => {
+      const s = await setup()
+      await s.send("Deploy, then look again.")
+      await s.settled()
+      await s.follow(30)
+      const [followUp] = await s.pending()
+      if (!followUp) throw new Error("no follow-up")
+      const rows = await s.run(FollowUps.use((f) => f.ofTask(followUp.taskId)))
+      expect(rows.map((row) => row.reason)).toEqual(["CI of the deploy"])
+    })
+
+    test("a running follow-up marks the thread, so the working line can name it", async () => {
+      const s = await setup()
+      await s.send("Deploy, then look again.")
+      await s.settled()
+      const tasks = await s.run(Tasks.use((x) => x.list(s.local.id)))
+      const task = tasks.at(-1)
+      if (!task) throw new Error("no task")
+      await s.run(
+        Database.use((d) =>
+          Effect.sync(() => {
+            d.run("UPDATE task SET source = 'follow_up', state = 'running' WHERE id = ?", task.id)
+          }),
+        ),
+      )
+      const threads = await s.run(Chat.use((c) => c.threads(s.ada.id)))
+      expect(threads.main.followUp).toBe(true)
     })
 
     test("the user deletes it before its time: no task starts", async () => {
