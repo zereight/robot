@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { EVERYONE_MENTION, mentionsEveryone, parseMentions } from "./channels.ts"
 import {
+  directMentions,
   insertMention,
   MENTION_LIST_MAX,
   type MentionEntry,
@@ -110,6 +111,29 @@ test("insert: @all is read as the everyone mention", () => {
   expect(mentionsEveryone(text)).toBe(true)
 })
 
+const roster = [
+  { id: "ada", name: "Ada", archived: false },
+  { id: "bo", name: "Bo", archived: false },
+  { id: "cy", name: "Cy", archived: true },
+]
+
+test("a direct chat names another agent, and not itself, an archived agent, an unknown name or @all", () => {
+  expect(directMentions(roster, "ada", "@Bo look").map((agent) => agent.id)).toEqual(["bo"])
+  expect(directMentions(roster, "ada", "@Ada hi")).toEqual([])
+  expect(directMentions(roster, "ada", "@Cy hi")).toEqual([])
+  expect(directMentions(roster, "ada", "@Nope hi")).toEqual([])
+  expect(directMentions(roster, "ada", "@all hi")).toEqual([])
+  expect(directMentions(roster, "ada", "mail a@Bo.com")).toEqual([])
+})
+
+test("a direct chat keeps the order of the agents when the message names two", () => {
+  const open = [
+    { id: "cy", name: "Cy", archived: false },
+    { id: "bo", name: "Bo", archived: false },
+  ]
+  expect(directMentions(open, "ada", "@Bo and @Cy").map((agent) => agent.id)).toEqual(["cy", "bo"])
+})
+
 test("insert: the result is a mention that the channel reads, also with a space in the name", () => {
   for (const name of ["Bo", "Ada Lovelace", "두리"]) {
     const open = openMention("@", 1)
@@ -117,4 +141,41 @@ test("insert: the result is a mention that the channel reads, also with a space 
     const { text } = insertMention("@", open, 1, name)
     expect(parseMentions(text, [name, "Other"])).toEqual([name])
   }
+})
+
+test("entries: an agent matches on the whole name of its organization (spec 036)", () => {
+  const members = [
+    { name: "Ada", organization: "Docs" },
+    { name: "Bo", organization: "Research and Development Group" },
+    { name: "Cy" },
+  ]
+  expect(shown(mentionEntries(members, "doc", false))).toEqual(["Ada"])
+  expect(shown(mentionEntries(members, "GROUP", false))).toEqual(["Bo"])
+  expect(shown(mentionEntries(members, "zz", false))).toEqual([])
+})
+
+test("entries: a name that starts with the query comes before an organization match, in the order of the channel", () => {
+  const members = [
+    { name: "Ops lead", organization: "Docs" },
+    { name: "Dora", organization: "Ops" },
+    { name: "Ada", organization: "Docs" },
+    { name: "Bo", organization: null },
+    { name: "Eli", organization: "Ops" },
+  ]
+  expect(shown(mentionEntries(members, "do", false))).toEqual(["Dora", "Ops lead", "Ada"])
+  expect(shown(mentionEntries(members, "op", false))).toEqual(["Ops lead", "Dora", "Eli"])
+})
+
+test("entries: with no organization in the data (the switch is off) the organization never matches", () => {
+  const members = [{ name: "Ada" }, { name: "Bo" }]
+  expect(shown(mentionEntries(members, "docs", false))).toEqual([])
+})
+
+test("entries: the organization does not change the text of a pick", () => {
+  const members = [{ name: "Ada", organization: "Docs" }]
+  const [line] = mentionEntries(members, "doc", false)
+  if (line?.kind !== "member") throw new Error("no member")
+  const open = openMention("@doc", 4)
+  if (!open) throw new Error("no mention")
+  expect(insertMention("@doc", open, 4, line.member.name).text).toBe("@Ada ")
 })

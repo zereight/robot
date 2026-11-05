@@ -10,7 +10,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 000 | [Product](000-product.md) | Draft |
 | 001 | [Window layout: server rail, place list with user sections, conversation, activity panel](001-window-layout.md) | Draft |
 | 002 | [Agents: create, starters, face, name, role, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
-| 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context](003-direct-chat.md) | Draft |
+| 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context, mentions](003-direct-chat.md) | Draft |
 | 004 | [Channels: several agents, one job, lead agent, split work, check and verdicts, `@all`, fast pick](004-channels.md) | Draft |
 | 005 | [Tasks and plan steps: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |
@@ -36,14 +36,15 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which agents each one reaches](026-token-savings.md) | Draft |
 | 027 | [Voice: dictate into the message box, read a reply aloud, voice chat on the phone](027-voice.md) | Draft |
 | 028 | [Chat bridge: talk to one agent or one channel from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
-| 029 | [Org chart: the main agent, the channels with their members, leads and sub-channels, the state of each agent, the work that agents handed to each other, and edits of members, leads and parent channels; a read-only list on the phone](029-org-chart.md) | Draft |
-| 030 | [Organization: sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel](030-organization.md) | Draft |
+| 029 | [Org chart: the main agent, the organizations with their members, leads and sub-organizations, the state of each agent, the work that agents handed to each other, and the new organization and edits of members, leads and parents; a read-only list on the phone](029-org-chart.md) | Draft |
+| 030 | [Organization: nested organizations of agents, access that goes down the tree (tools, daily token limit, hand-off range), the hand-off rule, ask up the line, migration from the channel tree](030-organization.md) | Draft |
 | 031 | [Channel starters and the goal dialog: a goal in a few words shows the starters that fit, and a channel with its agents is made from a fixed list](031-channel-starters.md) | Draft |
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
-| 036 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](036-manage-tools.md) | Draft |
+| 036 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](036-organization-prefix.md) | Draft |
+| 037 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
 
 ## Milestones
 
@@ -83,7 +84,9 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M32 | 030, and the changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S108 to S112: edit on the org chart, sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel |
 | M33 | The changes to 003, 011 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S113: folded tool steps |
 | M34 | 032, 033, 034, and the changes to 000, 001, 007, 013, 014 and 018 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S115 to S117: the built-in connection, its download and its panel, the cards and the classes of the device steps, and the limits of logs, measurements, app data and the analysis of a performance file |
-| M35 | 036, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S126 to S130: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
+| M35 | The changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019, 029, 030 and 031 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S126 to S129: organizations replace the channel tree, the org chart of organizations, access with inherited values, and the hand-off rule and ask up the line by organizations |
+| M36 | 036, and the changes to 001, 003, 004, 011, 012, 013, 019, 029 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S130 and S131: one line of organizations for the members of an agent, and the organization prefix |
+| M37 | 037, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S133 to S137: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
 
 ## Surfaces check
 

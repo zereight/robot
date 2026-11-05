@@ -53,9 +53,12 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { sensitiveLabelText } from "../lib/sensitive.ts"
+import { AgentInLine, AgentName } from "../orgs/AgentName.tsx"
+import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { openMemory } from "../state/memoryLink.ts"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -1509,9 +1512,25 @@ export const MessageRow = (props: MessageRowProps) => (
   </Show>
 )
 
+/** The agent who wrote a quoted message, when that agent is still known. */
+function quotedSpeaker(
+  quoted: ChatMessage,
+  current: Agent,
+  lookup: (id: string) => Agent | undefined,
+) {
+  if (quoted.author !== "agent") return undefined
+  const id = quoted.speakerId ?? quoted.agentId
+  const found = lookup(id)
+  if (found) return { id: found.id, name: found.name }
+  if (id === current.id) return { id: current.id, name: current.name }
+  return undefined
+}
+
 const FullMessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
+  const agents = useAgents()
+  const orgs = useOrgs()
   const devices = useDevices()
   const [editing, setEditing] = createSignal(false)
   const [draft, setDraft] = createSignal("")
@@ -1522,7 +1541,12 @@ const FullMessageRow = (props: MessageRowProps) => {
   }
   const isAgent = () => props.message.author === "agent"
   const name = () => (isAgent() ? props.agent.name : t("chat.you"))
+  /** The name for a screen reader: with the prefix on, "<name>, <whole organization name>" (spec 036). */
+  const label = () => (isAgent() ? orgs.shown(props.agent.id, props.agent.name).label : name())
   const time = () => formatTime(app.locale(), props.message.createdAt)
+  /** The name of the sender, as the window shows it: an agent has its organization prefix. */
+  const sender = () =>
+    isAgent() ? <AgentName id={props.agent.id} name={props.agent.name} /> : name()
 
   const startEdit = () => {
     setDraft(messageText(props.message))
@@ -1546,7 +1570,7 @@ const FullMessageRow = (props: MessageRowProps) => {
       data-author={props.message.author}
       data-status={props.message.status}
       data-testid="message"
-      aria-label={`${name()}, ${time()}`}
+      aria-label={`${label()}, ${time()}`}
     >
       <Show when={props.first} fallback={<span class={styles.gutterTime}>{time()}</span>}>
         <Show
@@ -1580,10 +1604,24 @@ const FullMessageRow = (props: MessageRowProps) => {
               data-testid="reply-link"
             >
               <Reply size={12} />
-              {t("chat.repliesTo", {
-                name: quoted().author === "agent" ? props.agent.name : t("chat.you"),
-                excerpt: messageText(quoted()).slice(0, 80),
-              })}
+              {/* The sender of the quoted message: an agent has its organization prefix (spec 036). */}
+              <Show
+                when={quotedSpeaker(quoted(), props.agent, (id) => agents.byId(id))}
+                fallback={t("chat.repliesTo", {
+                  name: quoted().author === "agent" ? t("channels.removedAgent") : t("chat.you"),
+                  excerpt: messageText(quoted()).slice(0, 80),
+                })}
+              >
+                {(speaker) => (
+                  <AgentInLine
+                    line={(name) =>
+                      t("chat.repliesTo", { name, excerpt: messageText(quoted()).slice(0, 80) })
+                    }
+                    id={speaker().id}
+                    name={speaker().name}
+                  />
+                )}
+              </Show>
             </button>
           )}
         </Show>
@@ -1592,10 +1630,10 @@ const FullMessageRow = (props: MessageRowProps) => {
             {/* The name of an agent opens its profile, as the face does. */}
             <Show
               when={isAgent() && props.agent.id}
-              fallback={<span class={styles.name}>{name()}</span>}
+              fallback={<span class={styles.name}>{sender()}</span>}
             >
               <ProfileButton agent={props.agent} class={styles.nameButton} testId="message-name">
-                <span class={styles.name}>{name()}</span>
+                <span class={styles.name}>{sender()}</span>
               </ProfileButton>
             </Show>
             <Show when={isAgent()}>

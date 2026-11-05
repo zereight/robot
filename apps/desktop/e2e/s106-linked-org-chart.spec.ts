@@ -24,8 +24,7 @@ const nodeOf = (page: Page, name: string) =>
   page
     .getByTestId("org-node")
     .filter({ has: page.getByTestId("org-name").getByText(name, { exact: true }) })
-const channelOf = (page: Page, name: string) =>
-  page.getByTestId("org-channel").filter({ hasText: name })
+const orgOf = (page: Page, name: string) => page.getByTestId("org-unit").filter({ hasText: name })
 
 /** MacBook 2 shows a code; MacBook 1 connects one way, and MacBook 2 leaves the switch off. */
 const pairOneWay = async (one: Launched, two: Launched) => {
@@ -81,7 +80,7 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     await resizeWindow(two.app, 1300, 860)
     await resizeWindow(one.app, 1300, 860)
 
-    // MacBook 2 has the agents: Ada (lead) and Bo in the channel "Docs", and Dee in no channel.
+    // MacBook 2 has the agents: Ada (lead) and Bo in the organization "Docs", and Dee in no organization.
     await connectMock(two.page, mock.openaiUrl, GOOD_KEY)
     await createAgent(two.page, "Ada")
     const serverTwo = await localServerId(two.page)
@@ -99,10 +98,9 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
       })
     }
     const ids = Object.fromEntries((await agentsOf(two.page)).map((a) => [a.name, a.id]))
-    await rpc(two.page, "channels.create", {
+    await rpc(two.page, "organizations.create", {
       serverId: serverTwo,
       name: "Docs",
-      topic: "",
       memberIds: [ids.Ada, ids.Bo],
       leadId: ids.Ada,
     })
@@ -138,10 +136,10 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     await expect(nodeOf(one.page, "Ada")).toBeVisible()
     await expect(nodeOf(one.page, "Zed")).toHaveCount(0)
     await expect(one.page.getByTestId("org-root")).toHaveAttribute("aria-label", "You")
-    const docs = channelOf(one.page, "Docs")
-    await expect(docs.getByTestId("org-channel-members")).toHaveText("2 members")
-    await expect(docs.getByTestId("org-channel-states")).toHaveText("2 idle")
-    await expect(channelOf(one.page, "No channel").getByTestId("org-channel-members")).toHaveText(
+    const docs = orgOf(one.page, "Docs")
+    await expect(docs.getByTestId("org-unit-members")).toHaveText("2 members")
+    await expect(docs.getByTestId("org-unit-states")).toHaveText("2 idle")
+    await expect(orgOf(one.page, "No organization").getByTestId("org-unit-members")).toHaveText(
       "1 member",
     )
     await expect(nodeOf(one.page, "Ada").getByTestId("org-lead-mark")).toHaveText("Lead")
@@ -150,9 +148,9 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     )
     const lines = (kind: string) => one.page.locator(`[data-testid=org-line][data-kind=${kind}]`)
     await expect(lines("lead")).toHaveCount(1)
-    // "Belongs to": the root to both channel nodes, "Docs" to its lead, "No channel" to Dee.
+    // "Belongs to": the root to both organization nodes, "Docs" to its lead, "No organization" to Dee.
     await expect(lines("structure")).toHaveCount(4)
-    await expect(one.page.getByTestId("org-legend")).toContainText("Gives parts")
+    await expect(one.page.getByTestId("org-legend")).toContainText("Leads")
     // Read only: no control to make or change anything, and the switch is off for this device.
     await expect(one.page.getByTestId("org-new-agent")).toHaveCount(0)
     await expect(one.page.getByTestId("new-agent")).toHaveCount(0)
@@ -166,27 +164,30 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     await nodeOf(one.page, "Bo").click({ button: "right" })
     await expect(menu.getByRole("menuitem")).toHaveText(["Open profile"])
     await one.page.keyboard.press("Escape")
-    await channelOf(one.page, "Docs").click({ button: "right" })
-    await expect(menu.getByRole("menuitem")).toHaveText(["Open channel"])
+    await orgOf(one.page, "Docs").click({ button: "right" })
+    // The form opens read only: "Edit organization…" is no change (spec 012, 029).
+    await expect(menu.getByRole("menuitem")).toHaveText(["Edit organization…"])
     await one.page.keyboard.press("Escape")
-    await channelOf(one.page, "No channel").click({ button: "right" })
+    await orgOf(one.page, "No organization").click({ button: "right" })
     await expect(menu).toHaveCount(0)
     const from = await nodeOf(one.page, "Bo").boundingBox()
-    const to = await channelOf(one.page, "No channel").boundingBox()
+    const to = await orgOf(one.page, "No organization").boundingBox()
     if (!from || !to) throw new Error("no box")
     await one.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
     await one.page.mouse.down()
     await one.page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
-    await expect(channelOf(one.page, "No channel")).toHaveAttribute("data-ring", "false")
+    await expect(orgOf(one.page, "No organization")).toHaveAttribute("data-ring", "false")
     await one.page.mouse.up()
     await expect(one.page.getByTestId("org-notice")).toHaveCount(0)
-    const stored = await rpc<{ name: string; memberIds: string[] }[]>(two.page, "channels.list", {
-      serverId: serverTwo,
-    })
+    const stored = await rpc<{ name: string; memberIds: string[] }[]>(
+      two.page,
+      "organizations.list",
+      { serverId: serverTwo },
+    )
     expect(stored.find((c) => c.name === "Docs")?.memberIds).toEqual([ids.Ada, ids.Bo])
 
-    // A click on an agent node opens that agent on MacBook 2; a click on a channel node opens the
-    // channel of MacBook 2. The server tile stays MacBook 2.
+    // A click on an agent node opens that agent on MacBook 2; a click on an organization node
+    // opens the form of that organization, read only. The server tile stays MacBook 2.
     await nodeOf(one.page, "Bo").click()
     await expect(one.page.getByTestId("chat-header-agent")).toContainText("Bo")
     await expect(one.page.getByTestId("agent-profile")).toBeVisible()
@@ -194,10 +195,16 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     await one.page.keyboard.press("Escape")
     await one.page.getByTestId("page-orgchart").click()
     await expect(one.page.getByTestId("org-canvas")).toBeVisible()
-    await channelOf(one.page, "Docs").click()
-    await expect(one.page.getByTestId("channel-header-name")).toHaveText("Docs")
-    await one.page.getByTestId("page-orgchart").click()
-    await expect(one.page.getByTestId("org-canvas")).toBeVisible()
+    await orgOf(one.page, "Docs").click()
+    await expect(one.page.getByTestId("org-dialog")).toBeVisible()
+    await expect(one.page.getByTestId("org-readonly")).toBeVisible()
+    await expect(one.page.getByTestId("org-form").getByTestId("org-name")).not.toBeEditable()
+    await expect(one.page.getByTestId("org-submit")).toHaveCount(0)
+    await shot(one.page, "s106-03-linked-form-readonly")
+    await one.page.keyboard.press("Escape")
+    await expect(one.page.getByTestId("org-dialog")).toHaveCount(0)
+    // The button "New organization" is not on the chart without the switch.
+    await expect(one.page.getByTestId("org-new")).toHaveCount(0)
 
     // A task starts on MacBook 2: the node of Ada shows "working" and the label on MacBook 1
     // within 1 second of the moment that MacBook 2 itself knows it.
@@ -218,7 +225,7 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
       timeout: 1000,
     })
     await expect(nodeOf(one.page, "Ada").getByTestId("org-state")).toContainText("Working")
-    await expect(docs.getByTestId("org-channel-states")).toHaveText("1 working · 1 idle", {
+    await expect(docs.getByTestId("org-unit-states")).toHaveText("1 working · 1 idle", {
       timeout: 1000,
     })
     await shot(one.page, "s106-03-linked-working")
@@ -236,8 +243,8 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
 
     // Korean: the legend and the counts are Korean; names and the task label are not.
     await rpc(one.page, "settings.update", { language: "ko" })
-    await expect(one.page.getByTestId("org-legend")).toContainText("부분을 나눠 줘요")
-    await expect(docs.getByTestId("org-channel-members")).toHaveText("멤버 2명")
+    await expect(one.page.getByTestId("org-legend")).toContainText("이끌어요")
+    await expect(docs.getByTestId("org-unit-members")).toHaveText("멤버 2명")
     await expect(nodeOf(one.page, "Ada").getByTestId("org-task-label")).toHaveText(LONG_WORK)
     await shot(one.page, "s106-04-linked-chart-korean")
 
@@ -245,14 +252,14 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     // the chart stays in the page.
     await rpc(two.page, "chat.stop", { agentId: ids.Ada })
     await rpc(one.page, "settings.update", { language: "en" })
-    await expect(one.page.getByTestId("org-legend")).toContainText("Gives parts")
+    await expect(one.page.getByTestId("org-legend")).toContainText("Leads")
     await two.app.close()
     await expect(one.page.getByTestId("org-offline")).toHaveText("MacBook 2 is offline.", {
       timeout: 60_000,
     })
     await expect(one.page.getByTestId("org-canvas")).toHaveCount(0)
     await expect(one.page.getByTestId("org-node")).toHaveCount(0)
-    await expect(one.page.getByTestId("org-channel")).toHaveCount(0)
+    await expect(one.page.getByTestId("org-unit")).toHaveCount(0)
     await expect(one.page.getByTestId("org-legend")).toHaveCount(0)
     await expect(one.page.getByTestId("org-page")).not.toContainText("Ada")
     await expect(one.page.getByTestId("org-page")).not.toContainText("Docs")

@@ -64,7 +64,7 @@ With the access "Read and send work", also:
   and, when the task ended, the reply text.
 - **Stop a task**: stops a task that this program started, as Stop does (005).
 
-With the access "Read, send work and manage", also the manage tools (036): read an agent, list and
+With the access "Read, send work and manage", also the manage tools (037): read an agent, list and
 read routines, make and change agents, channels and routines, and wait for a request. Each change
 is a request that the user allows. The program cannot allow it.
 
@@ -80,7 +80,7 @@ is a request that the user allows. The program cannot allow it.
 ## Rules
 
 - A tool can change an agent, a channel or a routine only through a request that the user allows
-  (036), and only with the access "Read, send work and manage".
+  (037), and only with the access "Read, send work and manage".
 - No tool can answer an approval or a question, change a permission level or a rule, change a
   workflow or a setting, delete anything, or read a key, a saved
   secret (020), memory (008), knowledge (016), the handbook (002), or the action log (007).
@@ -126,7 +126,7 @@ is a request that the user allows. The program cannot allow it.
 ## Out of scope
 
 - An address on the network for the helper.
-- Creating or changing workflows from an outside program. Agents, channels and routines: see 036.
+- Creating or changing workflows from an outside program. Agents, channels and routines: see 037.
 - Answers to approvals and questions from an outside program.
 - MCP resources and prompts. The helper offers tools only.
 
@@ -159,4 +159,4 @@ is a request that the user allows. The program cannot allow it.
 - A second profile does not see the entries of the first, and a key of the first does not reach the
   second.
 - Set the access to "Read, send work and manage". "Make an agent" returns "Waits for the user". No
-  tool of the helper can allow the request (036).
+  tool of the helper can allow the request (037).

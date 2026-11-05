@@ -217,6 +217,15 @@ describe("the settings tool (spec 002, Changes from the chat)", () => {
     expect((await s.current()).permission).toBe("ask_risky")
   })
 
+  test("the agent cannot turn on the switch 'Main agent' for itself: it learns where the user does it, and the flag stays off (spec 002)", async () => {
+    const s = await setup()
+    await s.turn(settings({ main_agent: true }))
+    const part = await s.part()
+    expect(part?.state).toBe("failed")
+    expect(part?.output).toContain("The main agent switch: the user turns it on in the profile")
+    expect((await s.current()).isMain).toBe(false)
+  })
+
   test("the app settings change at once", async () => {
     const s = await setup()
     await s.turn(settings({ theme: "light", compact_place_list: true }))

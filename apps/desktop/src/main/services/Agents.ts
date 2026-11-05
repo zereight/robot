@@ -50,6 +50,7 @@ interface AgentRow {
   memory_enabled: number
   knowledge_enabled: number
   read_handbook: number
+  is_main: number
   place_section_id: string | null
   archived_at: number | null
   created_at: number
@@ -64,7 +65,7 @@ export interface AgentsService {
   list(serverId: string, archived: boolean): Effect.Effect<readonly Agent[]>
   get(id: string): Effect.Effect<Agent, AppError>
   /**
-   * Makes an agent. `madeBy` is the name of the caller of a manage tool that made it (spec 036);
+   * Makes an agent. `madeBy` is the name of the caller of a manage tool that made it (spec 037);
    * the user's own form leaves it out.
    */
   create(input: AgentCreate, options?: { readonly madeBy?: string }): Effect.Effect<Agent, AppError>
@@ -165,6 +166,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           memoryEnabled: row.memory_enabled === 1,
           readHandbook: row.read_handbook === 1,
           madeBy: row.made_by,
+          isMain: row.is_main === 1,
           changedBy:
             row.changed_by !== null && row.changed_at !== null
               ? { by: row.changed_by, at: row.changed_at }
@@ -331,6 +333,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           sameModelChoice(main, backup)
         )
           return yield* new AppError({ code: "backup_same" })
+        // An archived agent is not on the chart, and the root would turn to "You" (spec 029).
+        if (patch.isMain === true && row.archived_at !== null)
+          return yield* new AppError({ code: "main_agent_archived" })
         const sets: string[] = []
         const values: (string | number | null)[] = []
         const set = (column: string, value: string | number | null) => {
@@ -363,13 +368,25 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         if (patch.permission !== undefined) set("permission", patch.permission)
         if (patch.memoryEnabled !== undefined) set("memory_enabled", patch.memoryEnabled ? 1 : 0)
         if (patch.readHandbook !== undefined) set("read_handbook", patch.readHandbook ? 1 : 0)
+        if (patch.isMain !== undefined) set("is_main", patch.isMain ? 1 : 0)
         const by = yield* stamp
         set("changed_by", by.by)
         set("changed_at", by.at)
         if (patch.knowledgeEnabled !== undefined)
           set("knowledge_enabled", patch.knowledgeEnabled ? 1 : 0)
         set("updated_at", Date.now())
-        db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
+        // The switch "Main agent" (spec 002, flow 7): at most one agent on a server has it, so the
+        // old main agent loses it in the same step as the new one gets it.
+        db.transaction(() => {
+          if (patch.isMain === true)
+            db.run(
+              "UPDATE agent SET is_main = 0, updated_at = ? WHERE server_id = ? AND is_main = 1 AND id != ?",
+              Date.now(),
+              row.server_id,
+              id,
+            )
+          db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
+        })
         // The hold is about the main model and the backup of this agent. A new main model is not
         // the one that is held, and with no backup nothing takes the turns (spec 006).
         const mainMoved =

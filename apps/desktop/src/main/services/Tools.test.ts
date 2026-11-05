@@ -14,6 +14,7 @@ import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { Servers } from "./Servers.ts"
+import { Skills } from "./Skills.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
@@ -894,6 +895,8 @@ describe("browser for an agent runtime", () => {
       "browser_type",
       "browser_close",
       "browser_ask_look",
+      // The read of a skill needs no memory (spec 017, flow 8).
+      "read_skill",
       "list_agents",
       "send_message",
     ])
@@ -1183,5 +1186,169 @@ describe("a long shell command goes on in the background (spec question of 003, 
     } finally {
       delete process.env.ROBOT_TEST_COMMAND_BACKGROUND_MS
     }
+  })
+})
+
+describe("reading a skill in a turn (spec 017, flow 8)", () => {
+  const contextOf = (
+    s: Awaited<ReturnType<typeof setup>>,
+    taskId: string | null,
+    origin: { kind: "agent" | "channel"; id: string } = { kind: "agent", id: s.agent.id },
+  ): ToolContext => ({
+    agentId: s.agent.id,
+    workspace: s.agent.workspace,
+    permission: "full",
+    signal: new AbortController().signal,
+    onWaiting: () => {},
+    onMemory: () => {},
+    origin: { ...origin, messageId: "m" },
+    onKnowledge: () => {},
+    knowledgeChanges: { count: 0 },
+    turn: newTurnMark("user"),
+    taskId,
+  })
+  const exec = (s: Awaited<ReturnType<typeof setup>>, ctx: ToolContext, args: object) =>
+    s.run(
+      Tools.use((x) =>
+        Effect.promise(() =>
+          x.execute(ctx, { id: "call_1", name: "read_skill", input: JSON.stringify(args) }),
+        ),
+      ),
+    )
+  const makeSkill = (
+    s: Awaited<ReturnType<typeof setup>>,
+    input: { name: string; description: string; instructions: string },
+    agentIds: readonly string[] | null = null,
+  ) => s.run(Skills.use((x) => x.create(s.local.id, input, agentIds)))
+  const makeTask = (s: Awaited<ReturnType<typeof setup>>, source: "chat" | "routine") =>
+    s.run(
+      Tasks.use((x) =>
+        x.create({ agentId: s.agent.id, prompt: "p", source, sourceId: s.agent.id }),
+      ),
+    )
+
+  test("the tool is only offered to turns that pick skills, also to a vendor runtime", async () => {
+    const s = await setup()
+    const names = async (skills?: boolean) =>
+      (
+        await s.run(
+          Tools.use((x) =>
+            Effect.succeed(
+              x.defs({
+                memory: false,
+                knowledge: false,
+                ...(skills === undefined ? {} : { skills }),
+              }),
+            ),
+          ),
+        )
+      ).map((d) => d.name)
+    expect(await names(true)).toContain("read_skill")
+    expect(await names()).not.toContain("read_skill")
+    expect(await names(false)).not.toContain("read_skill")
+    expect([...BRIDGE_TOOL_NAMES]).toContain("read_skill")
+  })
+
+  test("reads the instructions of a usable skill; the card keeps the name and the copy", async () => {
+    const s = await setup()
+    await makeSkill(s, {
+      name: "Weekly summary",
+      description: "Ask for a briefing now.",
+      instructions: "BRIEFING STEPS",
+    })
+    await s.send(call("read_skill", { skill: "Weekly summary" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part).toMatchObject({ name: "read_skill", state: "done", output: "BRIEFING STEPS" })
+    expect(part?.label).toContain("Weekly summary")
+    expect((await s.reply())?.parts.at(-1)).toMatchObject({
+      kind: "text",
+      text: expect.stringContaining("BRIEFING STEPS"),
+    })
+  })
+
+  test("the name ignores case and a slash at the start", async () => {
+    const s = await setup()
+    await makeSkill(s, { name: "Weekly summary", description: "n", instructions: "BRIEFING STEPS" })
+    await s.send(call("read_skill", { skill: "/WEEKLY SUMMARY" }))
+    await s.finished()
+    expect(await s.toolPart()).toMatchObject({ name: "read_skill", state: "done" })
+  })
+
+  test("an unknown, off or foreign skill fails and tells the agent", async () => {
+    const s = await setup()
+    const skill = await makeSkill(s, {
+      name: "Weekly summary",
+      description: "n",
+      instructions: "BRIEFING STEPS",
+    })
+    // One skill stays usable, so the tool stays offered while the other goes.
+    await makeSkill(s, { name: "Other", description: "n", instructions: "OTHER STEPS" })
+    await s.send(call("read_skill", { skill: "No such skill" }))
+    await s.finished()
+    expect(await s.toolPart()).toMatchObject({
+      name: "read_skill",
+      state: "failed",
+      output: "This skill is not available.",
+    })
+    await s.run(Skills.use((x) => x.setEnabled(skill.id, false)))
+    await s.send(call("read_skill", { skill: "Weekly summary" }))
+    await s.finished()
+    expect(await s.toolPart()).toMatchObject({
+      state: "failed",
+      output: "This skill is not available.",
+    })
+    const other = await s.run(
+      Agents.use((a) =>
+        a.create({ serverId: s.local.id, name: "Bo", role: "", instructions: "", model: null }),
+      ),
+    )
+    await s.run(
+      Skills.use((x) =>
+        x.update(
+          skill.id,
+          { name: "Weekly summary", description: "n", instructions: "BRIEFING STEPS" },
+          [other.id],
+        ),
+      ),
+    )
+    await s.run(Skills.use((x) => x.setEnabled(skill.id, true)))
+    await s.send(call("read_skill", { skill: "Weekly summary" }))
+    await s.finished()
+    expect(await s.toolPart()).toMatchObject({
+      state: "failed",
+      output: "This skill is not available.",
+    })
+    expect((await s.reply())?.status).toBe("done")
+  })
+
+  test("reads at Read only", async () => {
+    const s = await setup("read_only")
+    await makeSkill(s, { name: "Weekly summary", description: "n", instructions: "BRIEFING STEPS" })
+    await s.send(call("read_skill", { skill: "Weekly summary" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part).toMatchObject({ name: "read_skill", state: "done", output: "BRIEFING STEPS" })
+    expect(part?.refused).toBeUndefined()
+  })
+
+  test("a channel turn and a routine turn are refused", async () => {
+    const s = await setup()
+    await makeSkill(s, { name: "Weekly summary", description: "n", instructions: "BRIEFING STEPS" })
+    const chat = await makeTask(s, "chat")
+    const routine = await makeTask(s, "routine")
+    expect(
+      await exec(s, contextOf(s, chat.id, { kind: "channel", id: "ch" }), {
+        skill: "Weekly summary",
+      }),
+    ).toMatchObject({ failed: true, output: "Skills are not available here." })
+    expect(await exec(s, contextOf(s, routine.id), { skill: "Weekly summary" })).toMatchObject({
+      failed: true,
+      output: "Skills are not available here.",
+    })
+    expect(await exec(s, contextOf(s, chat.id), { skill: "Weekly summary" })).toMatchObject({
+      failed: false,
+      output: "BRIEFING STEPS",
+    })
   })
 })

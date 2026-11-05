@@ -46,6 +46,14 @@ describe("chat", () => {
     expect(startsGroup(msg("user", noon), msg("agent", noon + 1000))).toBe(true)
   })
 
+  test("two agents in one chat start a new group", () => {
+    const first = msg("agent", noon, { speakerId: "bo" })
+    const same = msg("agent", noon + 1000, { speakerId: "bo" })
+    const other = msg("agent", noon + 2000, { speakerId: "cy" })
+    expect(startsGroup(first, same)).toBe(false)
+    expect(startsGroup(first, other)).toBe(true)
+  })
+
   test("a new day starts a new group", () => {
     const late = new Date(2026, 10, 1, 23, 58).getTime()
     expect(startsGroup(msg("user", late), msg("user", late + 3 * 60_000))).toBe(true)

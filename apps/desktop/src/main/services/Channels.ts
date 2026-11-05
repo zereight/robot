@@ -14,7 +14,6 @@ import {
   BLOCKED_RULE,
   blockedReasonForAgent,
   CHAIN_LIMIT_RULE,
-  CHANNEL_LIMIT_CODE,
   CHANNEL_NAME_MAX,
   CHANNEL_SUMMARY_SYSTEM,
   CHANNEL_TOPIC_MAX,
@@ -44,7 +43,6 @@ import {
   fitSummary,
   hasUsage,
   hasVisibleReply,
-  higherChannels,
   holdOutside,
   holdProgram,
   isFinal,
@@ -64,6 +62,7 @@ import {
   leadLookLog,
   leadLookText,
   levelOnRuntime,
+  lineLeadIds,
   lineLookInstruction,
   lineLookMs,
   lineTokens,
@@ -82,6 +81,7 @@ import {
   newestWindow,
   newTurnMark,
   nudgeRefusal,
+  ORG_LIMIT_CODE,
   type OutsideSource,
   outsideOfCall,
   type ParsedPlan,
@@ -92,7 +92,6 @@ import {
   PICK_RECENT_MAX,
   type PickInput,
   PLAN_STEPS_MAX,
-  parentRefusal,
   parseCheck,
   parseLeadLook,
   parseMentions,
@@ -114,6 +113,7 @@ import {
   summaryWords,
   type Task,
   type TaskProgress,
+  type TaskSource,
   type TaskState,
   type TeamsJobKind,
   type ToolAsk,
@@ -121,7 +121,6 @@ import {
   type TurnStarter,
   toldAboutBlocked,
   toolNameOf,
-  validDailyLimit,
   verdictText,
   type WindowLine,
   withAssignment,
@@ -139,8 +138,6 @@ import { type Actor, CurrentActor } from "./actor.ts"
 import { type Attempt, withBackup } from "./backupTurn.ts"
 import { applyEvent } from "./Chat.ts"
 import { Connections } from "./Connections.ts"
-import { limitStopping } from "./channelAccess.ts"
-import { NOT_REPAIR_LINE } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -148,12 +145,15 @@ import { AppError } from "./errors.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
+import { NOT_REPAIR_LINE } from "./legacyNotes.ts"
 import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
+import { readOrgs } from "./orgData.ts"
+import { orgLimitStop } from "./orgLimitData.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
@@ -257,8 +257,6 @@ interface ChannelRow {
   lead_answers: number
   sensitive_mark: string | null
   outside_mark: string | null
-  parent_channel_id: string | null
-  daily_token_limit: number | null
 }
 
 interface MessageRow {
@@ -358,7 +356,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -396,8 +394,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const toChannel = (row: ChannelRow): Channel => {
         const memberIds = memberRows(row.id).map((m) => m.id)
-        // The muted line of a repaired tree is no message of an agent: it adds no unread count
-        // (spec 030, "Repair").
+        // The old muted line of a repaired channel tree is no message of an agent: it adds no
+        // unread count (see `NOT_REPAIR_LINE`).
         const unread =
           db.get<{ n: number }>(
             `SELECT COUNT(*) AS n FROM channel_message m JOIN channel c ON c.id = m.channel_id
@@ -416,8 +414,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           memberIds,
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
-          parentId: row.parent_channel_id,
-          dailyTokenLimit: row.daily_token_limit,
           picture:
             db.get<{ picture: string | null }>("SELECT picture FROM channel WHERE id = ?", row.id)
               ?.picture ?? null,
@@ -642,6 +638,29 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const until = agent.model_account_id ? limitedUntil.get(agent.model_account_id) : undefined
         return until !== undefined && until > Date.now()
       }
+
+      /**
+       * The daily token limit (spec 030): the error of a look or a summary of the lead that would
+       * start now, with the name of the organization whose limit is used. Else null.
+       */
+      const limitStop = (agentId: string, source: TaskSource = "channel") =>
+        orgLimitStop(db, agentId, source)
+
+      /** The pass line of an agent that cannot look because the limit of `organization` is used. */
+      const limitPass = (agent: AgentRow, organization: string): QuestionPass => ({
+        agentId: agent.id,
+        name: agent.name,
+        kind: "not_sure",
+        reason: blockedReasonForAgent({ code: ORG_LIMIT_CODE, detail: organization }),
+      })
+
+      /**
+       * True when an agent cannot look at a question now: a usage limit of its provider holds, or
+       * the daily token limit of an organization of it is used (spec 004, 030). The question then
+       * goes on to the next reader, and at the end to the user.
+       */
+      const cannotLook = (agent: AgentRow) =>
+        blockedByUsageLimit(agent) || limitStop(agent.id, "question") !== null
 
       /** Streams one reply of an agent into the channel as a new message. Returns its id and text. */
       const streamReply = Effect.fn("Channels.streamReply")(function* (o: {
@@ -962,7 +981,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                         answered: parts.filter((p) => p.kind === "tool" && p.answeredByLead).length,
                       })
                     : null
-                if (ask && !reader) attend(callId, ask)
+                const limited = reader?.kind === "limit" ? reader.pass : null
+                const lookReader = reader?.kind === "lead" ? reader : null
+                if (ask && !lookReader) attend(callId, ask)
                 else if (!ask) {
                   openLooks.get(`${o.agent.id}:${callId}`)?.stop()
                   notifier.clearAttention(o.agent.id, callId)
@@ -974,18 +995,23 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                     ...rest,
                     state: "waiting",
                     ask:
-                      reader && ask.kind === "question"
-                        ? { ...ask, lead: { agentId: reader.lead.id, name: reader.lead.name } }
-                        : ask,
+                      lookReader && ask.kind === "question"
+                        ? {
+                            ...ask,
+                            lead: { agentId: lookReader.lead.id, name: lookReader.lead.name },
+                          }
+                        : limited && ask.kind === "question"
+                          ? { ...ask, passed: limited, passes: [limited] }
+                          : ask,
                   }
                 })
-                if (reader && ask?.kind === "question")
+                if (lookReader && ask?.kind === "question")
                   lookAtQuestion({
                     channel: o.channel,
                     member: o.agent,
                     taskId: o.taskId,
-                    lead: reader.lead,
-                    found: reader.found,
+                    lead: lookReader.lead,
+                    found: lookReader.found,
                     callId,
                     ask,
                     turnEnded: () => controller.signal.aborted,
@@ -1559,7 +1585,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             })
           }),
           {
-            ...limitGate(channel.id, task),
             // A last line "Blocked: ..." ends the task as Blocked. With "Review parts" on, a part of
             // a plan that ends well waits for the user. The setting is read when the part ends
             // (spec 004, 005). The plan, the summary, a check and a reply to a mention are no parts.
@@ -1581,18 +1606,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const full = tasks.queueFull(agentId)
         return full ? { failed: { code: full.code, detail: full.detail ?? "" } } : {}
       }
-      /**
-       * The daily token limit (spec 030): when the limit of the channel, or of a higher channel, is
-       * used, the error of a task that would start now, with the name of that channel. Else null.
-       */
-      const limitStop = (channelId: string) => {
-        const stop = limitStopping(db, channelId)
-        return stop ? { code: CHANNEL_LIMIT_CODE, detail: stop.name } : null
-      }
-      /** The `gate` of `tasks.run` for a task of this channel. A routine task is not a task of the channel. */
-      const limitGate = (channelId: string, task: Pick<Task, "source">) =>
-        task.source === "channel" ? { gate: () => limitStop(channelId) } : {}
-
       /** Fails with the reason when the queue of the agent is full (spec 005, "Queue"). */
       const checkQueue = (agentId: string) => {
         const full = tasks.queueFull(agentId)
@@ -1899,15 +1912,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             ? {
                 id: lead.id,
                 archived: lead.archived_at !== null,
-                blocked: blockedByUsageLimit(lead),
+                blocked: cannotLook(lead),
               }
             : null,
           asker: q.member.id,
           outside: q.outside,
           answered: q.answered,
         })
+        // A lead that cannot look because the daily token limit of its organization is used passes the
+        // question to the user with that reason (spec 030, "At the limit").
+        if (reader.kind === "user" && reader.why === "lead_blocked" && lead) {
+          const stop = limitStop(lead.id, "question")
+          if (stop) return { kind: "limit" as const, pass: limitPass(lead, stop.detail) }
+        }
         if (reader.kind !== "lead" || !lead || !found || found.job.agent_id !== lead.id) return null
-        return { lead, found }
+        return { kind: "lead" as const, lead, found }
       }
 
       /**
@@ -1956,25 +1975,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       }
 
       /**
-       * The agents that may be on the line above a channel (spec 030, "Ask up the line"): the lead
-       * of each higher channel, from the nearest to the top channel, then the main agent. Whether
-       * one of them looks is decided in `readerAfterPass`, with the facts of that moment.
+       * The agents that may be on the line above a member that asks (spec 030, "Ask up the line"):
+       * the leads on the way up from its deepest organization, then the main agent. A member in no
+       * organization has the main agent only. Whether one of them looks is decided in
+       * `readerAfterPass`, with the facts of that moment.
        */
-      const lineCandidates = (channel: ChannelRow): LineAgent[] => {
-        const channels = db.all<{
-          id: string
-          parent_channel_id: string | null
-          lead_agent_id: string | null
-        }>(
-          "SELECT id, parent_channel_id, lead_agent_id FROM channel WHERE server_id = ?",
-          channel.server_id,
-        )
-        const leads = new Map(channels.map((c) => [c.id, c.lead_agent_id]))
+      const lineCandidates = (channel: ChannelRow, askerId: string): LineAgent[] => {
         const ids = [
-          ...higherChannels(
-            channels.map((c) => ({ id: c.id, parentId: c.parent_channel_id })),
-            channel.id,
-          ).map((id) => leads.get(id) ?? null),
+          ...lineLeadIds(readOrgs(db, channel.server_id), askerId),
           organization.mainAgent(channel.server_id),
         ]
         return ids.flatMap((id) => {
@@ -1985,7 +1993,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   id: agent.id,
                   name: agent.name,
                   archived: agent.archived_at !== null,
-                  blocked: blockedByUsageLimit(agent),
+                  blocked: cannotLook(agent),
                 },
               ]
             : []
@@ -2200,7 +2208,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 setting: organization.askUpTheLine(),
                 card: l.ask.kind,
                 asker: l.member.id,
-                candidates: lineCandidates(l.channel),
+                candidates: lineCandidates(l.channel, l.member.id),
                 passes,
                 sinceLeadPass: Date.now() - leadPassedAt,
                 lineMs: lineLimitMs(),
@@ -2514,7 +2522,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 channelPartsOpen(channel.id)
               )
                 break
-              limited = limitStop(channel.id)
+              limited = limitStop(lead.id)
               if (limited) break
               const final = looks >= LOOKS_MAX - 1
               looks++
@@ -2526,7 +2534,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             }
 
             // All parts ended: the lead sums them up, also when some failed or were blocked.
-            limited = limited ?? limitStop(channel.id)
+            limited = limited ?? limitStop(lead.id)
             if (limited) return
             const ended = tasks.children(task.id)
             const unfixed = stillNotMet(ended).flatMap((id) => {
@@ -2557,7 +2565,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             void summary
           }),
           {
-            ...limitGate(channel.id, task),
             // A look or a summary that the limit stopped ends the job as Blocked (spec 030).
             finish: () =>
               limited
@@ -2732,34 +2739,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           return Effect.void
         })
 
-      /**
-       * The rules of the tree for a new parent of channel `id` (spec 030): no loop, at most 3
-       * levels, and a parent that exists on the same server. `id` may be a channel that is not
-       * made yet.
-       */
-      const checkParent = (serverId: string, id: string, parentId: string | null) =>
-        Effect.suspend(() => {
-          if (parentId === null) return Effect.void
-          const tree = db
-            .all<{ id: string; parent_channel_id: string | null }>(
-              "SELECT id, parent_channel_id FROM channel WHERE server_id = ?",
-              serverId,
-            )
-            .map((c) => ({ id: c.id, parentId: c.parent_channel_id }))
-          const refusal = parentRefusal(tree, id, parentId)
-          if (refusal === undefined) return Effect.void
-          return Effect.fail(
-            new AppError({
-              code:
-                refusal === "loop"
-                  ? "parent_loop"
-                  : refusal === "levels"
-                    ? "parent_levels"
-                    : "parent_not_found",
-            }),
-          )
-        })
-
       const writeMembers = (channelId: string, memberIds: readonly string[]) => {
         db.run("DELETE FROM channel_member WHERE channel_id = ?", channelId)
         for (const [position, id] of memberIds.entries()) {
@@ -2777,12 +2756,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         bus.emit("channels.changed", { channelId: channel.id })
       }
 
-      /** The daily token limit (spec 030): off, or a whole number from 10,000 to 100,000,000. */
-      const checkDailyLimit = (limit: number | null) =>
-        limit === null || validDailyLimit(limit)
-          ? Effect.succeed(limit)
-          : Effect.fail(new AppError({ code: "invalid_daily_limit" }))
-
       const create = Effect.fn("Channels.create")(function* (input: ChannelCreate) {
         const name = input.name.trim()
         const topic = input.topic.trim()
@@ -2794,15 +2767,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         yield* checkMembers(input.serverId, memberIds, input.leadId)
         const sectionId = yield* sections.check(input.serverId, "channel", input.sectionId ?? null)
         const id = randomUUID()
-        const parentId = input.parentId ?? null
-        yield* checkParent(input.serverId, id, parentId)
-        const dailyTokenLimit = yield* checkDailyLimit(input.dailyTokenLimit ?? null)
         const now = Date.now()
         db.transaction(() => {
           db.run(
             `INSERT INTO channel (id, server_id, name, name_key, topic, instructions, lead_agent_id,
-              place_section_id, parent_channel_id, daily_token_limit, created_at, updated_at, last_read_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              place_section_id, created_at, updated_at, last_read_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
@@ -2811,8 +2781,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             instructions,
             input.leadId,
             sectionId,
-            parentId,
-            dailyTokenLimit,
             now,
             now,
             now,
@@ -2859,15 +2827,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           patch.sectionId !== undefined
             ? yield* sections.check(row.server_id, "channel", patch.sectionId)
             : row.place_section_id
-        // The parent channel (spec 030). The same parent again needs no check: a parent that the
-        // rules allowed stays allowed, or the tree shows it as none.
-        const parentId = patch.parentId !== undefined ? patch.parentId : row.parent_channel_id
-        if (parentId !== row.parent_channel_id) yield* checkParent(row.server_id, id, parentId)
-        // The daily token limit (spec 030). A limit that is already stored needs no new check.
-        const dailyTokenLimit =
-          patch.dailyTokenLimit !== undefined && patch.dailyTokenLimit !== row.daily_token_limit
-            ? yield* checkDailyLimit(patch.dailyTokenLimit)
-            : row.daily_token_limit
         // A member that works in this channel stays until its part ends or the user stops it.
         for (const removed of current.memberIds.filter((m) => !memberIds.includes(m))) {
           const busy = db.get(
@@ -2881,8 +2840,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         db.transaction(() => {
           db.run(
             `UPDATE channel SET name = ?, name_key = ?, topic = ?, instructions = ?, lead_agent_id = ?,
-              place_section_id = ?, review_parts = ?, parent_channel_id = ?, lead_answers = ?,
-              daily_token_limit = ?, updated_at = ? WHERE id = ?`,
+              place_section_id = ?, review_parts = ?, lead_answers = ?,
+              updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
@@ -2891,9 +2850,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             sectionId,
             // Turning it off changes no part that is in review already (spec 004).
             patch.reviewParts === undefined ? row.review_parts : patch.reviewParts ? 1 : 0,
-            parentId,
             patch.leadAnswers === undefined ? row.lead_answers : patch.leadAnswers ? 1 : 0,
-            dailyTokenLimit,
             Date.now(),
             id,
           )
@@ -2946,25 +2903,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const row = channelRow(id)
         if (!row) return yield* new AppError({ code: "channel_not_found" })
         yield* stopAll(id)
-        // A deleted parent channel clears the field of its sub-channels (spec 030): they are top
-        // channels now, here and, after a sync, on the other computer.
-        const subs = db.all<{ id: string }>(
-          "SELECT id FROM channel WHERE parent_channel_id = ?",
-          id,
-        )
         db.transaction(() => {
           // The notes for the channel go first, while the rows still hold its name (spec 008).
           Effect.runSync(memory.deleteChannel(id))
           db.run("DELETE FROM task WHERE source = 'channel' AND source_id = ?", id)
-          db.run(
-            "UPDATE channel SET parent_channel_id = NULL, updated_at = ? WHERE parent_channel_id = ?",
-            Date.now(),
-            id,
-          )
           db.run("DELETE FROM channel WHERE id = ?", id)
         })
         placesChanged(row.server_id)
-        for (const sub of subs) bus.emit("channels.changed", { channelId: sub.id })
       })
 
       const messageHandlers: ((channelId: string, text: string) => void)[] = []
@@ -3278,7 +3223,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel
+                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

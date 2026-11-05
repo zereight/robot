@@ -1,4 +1,4 @@
-import { type ChartChannel, type ChartLineKind, type ChartModel, ROOT_KEY } from "@robot/shared"
+import { type ChartLineKind, type ChartModel, type ChartOrg, ROOT_KEY } from "@robot/shared"
 
 // The positions of the org chart (spec 029, "Layout"). The window computes them from the model of
 // the chart and the size of the text. The result does not depend on an animation, on the setting
@@ -7,14 +7,14 @@ import { type ChartChannel, type ChartLineKind, type ChartModel, ROOT_KEY } from
 //
 // Everything sits on a grid of CELL px. A node is a whole number of cells, and the gaps between
 // nodes are at least 4 cells, so every node has a free lane of at least 2 cells on each side. The
-// lines run in those lanes: the lead lines run in the gutters of their own channel node, and every
+// lines run in those lanes: the lead lines run in the gutters of their own organization node, and every
 // other line is routed around the nodes on the grid (a search of the shortest path with a small
 // price for each bend). So no line passes through a node, and the numbers on the lines sit where
 // they cover no node and no other number.
 
 /** The size of one grid cell, in px at zoom 100%. */
 export const CELL = 16
-/** A row of channel nodes is at most this wide at zoom 100% (spec 029). */
+/** A row of organization nodes is at most this wide at zoom 100% (spec 029). */
 export const ROW_MAX_PX = 1600
 
 export interface Point {
@@ -28,14 +28,14 @@ export interface Rect {
   readonly h: number
 }
 
-export type PlacedKind = "root" | "channel" | "agent" | "more"
+export type PlacedKind = "root" | "org" | "agent" | "more"
 
 export interface PlacedNode {
-  /** The key of the node in the model. The tile "+<n> more" has the key `<channel>/+more`. */
+  /** The key of the node in the model. The tile "+<n> more" has the key `<organization>/+more`. */
   readonly key: string
   readonly kind: PlacedKind
   readonly rect: Rect
-  /** The key of the channel node that holds an agent node or a tile. */
+  /** The key of the organization node that holds an agent node or a tile. */
   readonly parent: string | null
 }
 
@@ -53,11 +53,11 @@ export interface ChartLayout {
   readonly lines: readonly PlacedLine[]
   /** The box around all nodes. The view fits to it. */
   readonly bounds: Rect
-  /** The box of each row of channel nodes, for the limit of the width of a row. */
+  /** The box of each row of organization nodes, for the limit of the width of a row. */
   readonly rows: readonly Rect[]
 }
 
-export const moreKey = (channelKey: string) => `${channelKey}/+more`
+export const moreKey = (orgKey: string) => `${orgKey}/+more`
 
 /** The sizes of the parts, in cells, for a text size. `unit` is the size of the root text in px. */
 export const metrics = (unit: number) => {
@@ -69,17 +69,17 @@ export const metrics = (unit: number) => {
     agentH: odd(cells(6.8 * unit)),
     headW: odd(cells(21 * unit)),
     headH: odd(cells(4.6 * unit)),
-    /** The lane between two columns, and at the left and right of a channel node. */
+    /** The lane between two columns, and at the left and right of a organization node. */
     gutter: 4,
-    /** From the header of a channel node to its lead or its first row. */
+    /** From the header of a organization node to its lead or its first row. */
     headGap: 4,
     /** From the lead to the first row of the others. */
     busGap: 4,
     /** Between two rows of agent nodes. */
     memberGap: 4,
-    /** Between two channel nodes in a row. */
+    /** Between two organization nodes in a row. */
     groupGap: 6,
-    /** Between two rows of channel nodes. */
+    /** Between two rows of organization nodes. */
     rowGap: 7,
     /** From the root to the first row. */
     rootGap: 7,
@@ -109,7 +109,7 @@ interface Box {
 }
 
 interface Group {
-  readonly channel: ChartChannel
+  readonly org: ChartOrg
   readonly w: number
   readonly h: number
   /** Boxes relative to the group, in cells. */
@@ -122,13 +122,13 @@ interface Group {
   readonly columnX: readonly number[]
 }
 
-const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Group => {
-  const lead = channel.leadKey ? channel.nodes.find((n) => n.key === channel.leadKey) : undefined
-  const others = channel.nodes.filter((n) => n !== lead)
-  const slots = others.length + (channel.more.length > 0 ? 1 : 0)
+const placeGroup = (org: ChartOrg, m: Metrics, rowMaxCells: number): Group => {
+  const lead = org.leadKey ? org.nodes.find((n) => n.key === org.leadKey) : undefined
+  const others = org.nodes.filter((n) => n !== lead)
+  const slots = others.length + (org.more.length > 0 ? 1 : 0)
   const widest = Math.max(1, Math.floor((rowMaxCells - m.gutter) / (m.agentW + m.gutter)))
   // A small team stands in one or two columns, so that a chart of a few agents is not wide and
-  // "Fit to view" keeps the text large enough to read. A full channel node (12 and the tile) has 4.
+  // "Fit to view" keeps the text large enough to read. A full organization node (12 and the tile) has 4.
   const cols = Math.min(widest, slots <= 2 ? 1 : slots <= 6 ? 2 : slots <= 12 ? 3 : 4)
   const gridW = m.gutter + cols * (m.agentW + m.gutter)
   let w = Math.max(gridW, m.headW + 2)
@@ -137,8 +137,8 @@ const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Gro
 
   const boxes: Box[] = [
     {
-      key: channel.key,
-      kind: "channel",
+      key: org.key,
+      kind: "org",
       parent: null,
       x: (w - m.headW) / 2,
       y: 0,
@@ -152,7 +152,7 @@ const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Gro
     boxes.push({
       key: lead.key,
       kind: "agent",
-      parent: channel.key,
+      parent: org.key,
       x: (w - m.agentW) / 2,
       y,
       w: m.agentW,
@@ -165,7 +165,7 @@ const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Gro
   const members: { key: string; col: number }[] = []
   const slotted = [
     ...others.map((n) => ({ key: n.key, kind: "agent" as const })),
-    ...(channel.more.length > 0 ? [{ key: moreKey(channel.key), kind: "more" as const }] : []),
+    ...(org.more.length > 0 ? [{ key: moreKey(org.key), kind: "more" as const }] : []),
   ]
   slotted.forEach((s, i) => {
     const col = i % cols
@@ -173,7 +173,7 @@ const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Gro
     boxes.push({
       key: s.key,
       kind: s.kind,
-      parent: channel.key,
+      parent: org.key,
       x: columnX[col] as number,
       y: y + row * (m.agentH + m.memberGap),
       w: m.agentW,
@@ -183,7 +183,7 @@ const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Gro
   })
   const rows = Math.ceil(slotted.length / cols)
   const h = rows > 0 ? y + rows * m.agentH + (rows - 1) * m.memberGap : y - m.busGap + 0
-  return { channel, w, h, boxes, busY, leadKey: lead?.key ?? null, members, columnX }
+  return { org, w, h, boxes, busY, leadKey: lead?.key ?? null, members, columnX }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -334,7 +334,7 @@ const REUSE_COST = 1.5
 
 /**
  * The shortest paths, around every node, from the ports of one node to the ports of the others
- * (the lines of the root go down to the channel nodes). One search finds all of them, and the
+ * (the lines of the root go down to the organization nodes). One search finds all of them, and the
  * paths share their first part, so they merge into trunks like the branches of a tree.
  */
 const searchTree = (
@@ -503,11 +503,11 @@ const px = (c: number) => c * CELL
 export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   const m = metrics(unit)
   const rowMaxCells = Math.floor(ROW_MAX_PX / CELL)
-  const groups = model.channels.map((c) => placeGroup(c, m, rowMaxCells))
+  const groups = model.orgs.map((c) => placeGroup(c, m, rowMaxCells))
 
-  // A block is a channel node with the blocks of its sub-channels (spec 030) in rows under it, one
+  // A block is a organization node with the blocks of its sub-organizations (spec 030) in rows under it, one
   // level lower. The top blocks sit in rows under the root. Rows go left to right, then the next
-  // row, and a row is at most 1,600 px wide, also a row of sub-channels.
+  // row, and a row is at most 1,600 px wide, also a row of sub-organizations.
   interface Row {
     readonly blocks: { block: Block; x: number }[]
     w: number
@@ -515,7 +515,7 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   }
   interface Block {
     readonly group: Group
-    /** The rows of the sub-channel blocks, relative to the block. */
+    /** The rows of the sub-organization blocks, relative to the block. */
     readonly rows: readonly { row: Row; x: number; y: number }[]
     /** Where the group sits in the block. */
     readonly gx: number
@@ -542,11 +542,11 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   }
   const children = new Map<string | null, Group[]>()
   for (const group of groups) {
-    const up = group.channel.parentKey
+    const up = group.org.parentKey
     children.set(up, [...(children.get(up) ?? []), group])
   }
   const blockOf = (group: Group): Block => {
-    const rows = packRows((children.get(group.channel.key) ?? []).map(blockOf))
+    const rows = packRows((children.get(group.org.key) ?? []).map(blockOf))
     const rowsW = Math.max(0, ...rows.map((r) => r.w))
     const w = Math.max(group.w, rowsW)
     let y = group.h
@@ -561,8 +561,8 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   const rows = packRows((children.get(null) ?? []).map(blockOf))
   const chartW = Math.max(m.agentW, ...rows.map((r) => r.w))
 
-  // Absolute boxes in cells, with the margin around, in the order of the page: a channel node,
-  // what hangs from it, then the blocks of its sub-channels.
+  // Absolute boxes in cells, with the margin around, in the order of the page: a organization node,
+  // what hangs from it, then the blocks of its sub-organizations.
   const boxes: Box[] = []
   const root: Box = {
     key: ROOT_KEY,
@@ -601,9 +601,9 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
 
   const lines = new Map<string, Point[]>()
 
-  // Lead lines and the lines from a channel node to its members run in the lanes of the channel node.
+  // Lead lines and the lines from a organization node to its members run in the lanes of the organization node.
   for (const { group, x, y: gy } of placed) {
-    const header = boxOf(group.channel.key)
+    const header = boxOf(group.org.key)
     const busY = px(gy + group.busY) + CELL / 2
     const hx = px(header.x + (header.w - 1) / 2) + CELL / 2
     const hb = px(header.y + header.h)
@@ -622,7 +622,7 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     }
     if (group.leadKey) {
       const lead = boxOf(group.leadKey)
-      lines.set(`s:${group.channel.key}>${group.leadKey}`, [
+      lines.set(`s:${group.org.key}>${group.leadKey}`, [
         { x: hx, y: hb },
         { x: hx, y: px(lead.y) },
       ])
@@ -633,14 +633,14 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     } else {
       for (const member of group.members) {
         lines.set(
-          `s:${group.channel.key}>${member.key}`,
+          `s:${group.org.key}>${member.key}`,
           toMember({ x: hx, y: hb }, member.key, member.col),
         )
       }
     }
   }
 
-  // The lines of the root: down to the top of a channel node. One search finds them all, and they
+  // The lines of the root: down to the top of a organization node. One search finds them all, and they
   // share their first part, so they merge into trunks.
   const rootLines = model.lines.filter((l) => l.kind === "structure" && l.from === ROOT_KEY)
   if (rootLines.length > 0) {
@@ -660,8 +660,8 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     }
   }
 
-  // The lines from a channel node to the channel nodes of its sub-channels (spec 029, 030): from
-  // a side of the header down to the top of each sub-channel node. The lines of one parent share
+  // The lines from a organization node to the organization nodes of its sub-organizations (spec 029, 030): from
+  // a side of the header down to the top of each sub-organization node. The lines of one parent share
   // their first part. They keep off the lanes of the lead lines where they can.
   const laneUse = new Uint8Array(grid.w * grid.h)
   for (const [id, points] of lines) {
@@ -681,8 +681,8 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   const subLines = model.lines.filter(
     (l) =>
       l.kind === "structure" &&
-      byKey.get(l.from)?.kind === "channel" &&
-      byKey.get(l.to)?.kind === "channel",
+      byKey.get(l.from)?.kind === "org" &&
+      byKey.get(l.to)?.kind === "org",
   )
   const byParent = new Map<string, typeof subLines>()
   for (const l of subLines) byParent.set(l.from, [...(byParent.get(l.from) ?? []), l])
@@ -744,7 +744,7 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     parent: b.parent,
     rect: { x: px(b.x), y: px(b.y), w: px(b.w), h: px(b.h) },
   }))
-  // The page order: the root, then each channel node followed by its agents and its tile.
+  // The page order: the root, then each organization node followed by its agents and its tile.
   const bounds = union(placedNodes.map((n) => n.rect))
   return { nodes: placedNodes, lines: placedLines, bounds, rows: rowRects }
 }

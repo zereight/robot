@@ -50,10 +50,10 @@ Each agent works in its own folder with real tools, and the user stays in contro
 - **Read only**: the agent can read, list and search files, fetch web pages, ask the user a
   question, save memory, list agents and use the board tools (024). These steps are refused: writing or deleting a file, a
   shell command, a tool of a connection, the browser, computer use, "send message", the manage
-  tools (036), and running a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
+  tools (037), and running a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
   as a failed step, and the turn goes on. The action log has the step with the result Refused and
   the permission level as the one who decided.
-- **Manage steps** (036) make a request that the user allows, at every level except "Read only", where
+- **Manage steps** (037) make a request that the user allows, at every level except "Read only", where
   they are refused. "Full access" does not skip the request. No rule covers them.
 - "Read only" comes before the rules. An Allow rule does not open a step that "Read only"
   refuses.
@@ -154,12 +154,12 @@ the user gets a card only when the check is sure that the user asked for the ste
 ## Working with other agents
 
 - The tool "list agents" gives the agent a list of the other agents on the server that are not
-  archived: name, role line and state. With the hand-off rule "Along the channels" (030), it gives
+  archived: name, role line and state. With the hand-off rule "Along the organizations" (030), it gives
   only the agents that the sender may send to.
 - The tool "send message" sends a text to one of them. This makes a task for that agent (see 005)
   with the source "another agent". An agent cannot send a message to itself or to an archived agent.
-  With the hand-off rule "Along the channels" (030), a send that the rule does not allow fails with
-  the reason of 030, and no task starts.
+  With the hand-off rule "Along the organizations" (030), a send that the rule does not allow fails
+  with the reason of 030, and no task starts.
 - "Send message" fails when the chain of agent messages is at its limit (see 005, "Limits of a
   task"). The sender gets the reason as a failed step. The main agent is told: when a send fails
   for this reason, do not look for another way to pass the same work on. Tell the user what

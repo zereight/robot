@@ -17,6 +17,8 @@ export interface Prefs {
   readonly closed: Readonly<Record<string, readonly string[]>>
   /** When false, finished plain tool steps fold into one line per run. */
   readonly showToolSteps: boolean
+  /** "Show the organization before an agent name" (spec 036): the switch of this phone. */
+  readonly showOrgPrefix: boolean
 }
 
 export const defaultPrefs: Prefs = {
@@ -25,6 +27,7 @@ export const defaultPrefs: Prefs = {
   notify: { reply: true, mention: true, approval: true, task_failed: true },
   closed: {},
   showToolSteps: true,
+  showOrgPrefix: true,
 }
 
 const PREFS_FILE = "prefs.json"
@@ -41,6 +44,7 @@ export const readPrefs = async (storage: PhoneStorage): Promise<Prefs> => {
     language: oneOf(raw.language, ["system", "en", "ko"], "system"),
     theme: oneOf(raw.theme, ["system", "dark", "light"], "system"),
     showToolSteps: typeof raw.showToolSteps === "boolean" ? raw.showToolSteps : true,
+    showOrgPrefix: typeof raw.showOrgPrefix === "boolean" ? raw.showOrgPrefix : true,
     notify: Object.fromEntries(
       NOTIFY_KINDS.map((k) => [k, typeof notify[k] === "boolean" ? notify[k] : true]),
     ) as Record<NotifyKind, boolean>,

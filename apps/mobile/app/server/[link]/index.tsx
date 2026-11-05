@@ -9,6 +9,7 @@ import { radius, space, text } from "../../../src/theme/palette.ts"
 import { ChannelMark } from "../../../src/ui/ChannelMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
+import { ShownText, useShownName } from "../../../src/ui/names.tsx"
 import { stateText } from "../../../src/ui/states.ts"
 import { WorkingDot } from "../../../src/ui/WorkingDot.tsx"
 
@@ -249,6 +250,13 @@ const PlaceRow = (props: {
 }) => {
   const { t, palette } = useApp()
   const { place } = props
+  // An agent shows its organization prefix before the name (spec 036). The accessible name adds
+  // the whole organization name. A channel has none.
+  const shownName = useShownName(props.linkId)
+  const shown =
+    place.kind === "agent"
+      ? shownName(place.id, place.name)
+      : { prefix: null, organization: null, name: place.name, text: place.name, label: place.name }
   // The role line of an agent shows as a badge after the name (spec 001, 011). A channel has none,
   // and a computer that does not send it yet gives no badge.
   const role = place.kind === "agent" ? place.role?.trim() : undefined
@@ -265,7 +273,7 @@ const PlaceRow = (props: {
     <Pressable
       testID={`place.${place.name}`}
       accessibilityRole="button"
-      accessibilityLabel={t("places.row", { name: place.name, details })}
+      accessibilityLabel={t("places.row", { name: shown.label, details })}
       onPress={() =>
         router.push({
           pathname: "/server/[link]/[kind]/[id]",
@@ -292,15 +300,14 @@ const PlaceRow = (props: {
       </View>
       <View style={styles.placeText}>
         <View style={styles.placeTop}>
-          <Text
+          <ShownText
+            shown={shown}
             numberOfLines={1}
             style={[
               styles.placeName,
               { color: palette.text, fontWeight: place.unread > 0 ? "700" : "500" },
             ]}
-          >
-            {place.name}
-          </Text>
+          />
           {role ? (
             // The name comes first. The slot is what is left of the line. The badge is cut with an
             // ellipsis in it, and it hides when less than 4 characters of it fit.

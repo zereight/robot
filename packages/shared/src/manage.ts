@@ -11,7 +11,7 @@ import { NEW_AGENT_EFFORT, settledEffort } from "./providers.ts"
 import { defaultSettings } from "./settings.ts"
 
 /**
- * The manage tools (spec 036): a caller makes and changes agents, channels and routines, and the
+ * The manage tools (spec 037): a caller makes and changes agents, channels and routines, and the
  * user allows each change. This file holds the pure part of them: it checks a call as the form of
  * the user does and gives back the change in full, or the reason that nothing was made.
  */
@@ -59,7 +59,7 @@ export const describeMakeAgent = (
     create.instructions || "(none)",
   ].join("\n")
 
-/** What "Read an agent" gives (spec 036): the fields a manage tool may change, in full. */
+/** What "Read an agent" gives (spec 037): the fields a manage tool may change, in full. */
 export const describeAgent = (
   agent: {
     readonly name: string
@@ -82,7 +82,7 @@ export const describeAgent = (
   ].join("\n")
 
 /**
- * Plans a call of "Make an agent" (spec 036). It reuses the checks of the settings tool, so a name,
+ * Plans a call of "Make an agent" (spec 037). It reuses the checks of the settings tool, so a name,
  * a role line, a face and a model in loose words follow the same rules as a change of the agent
  * itself (spec 002). A call that fails a check makes no request. `nameTaken` tells whether an
  * agent on the server has the name. `effortsOf` gives the effort levels of a model of an account.

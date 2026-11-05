@@ -82,8 +82,6 @@
       "name": "@robot/phone",
       "dependencies": {
         "@robot/link": "workspace:*",
-      },
-      "devDependencies": {
         "@robot/shared": "workspace:*",
       },
     },

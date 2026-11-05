@@ -14,6 +14,7 @@ import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Organization } from "./Organization.ts"
+import { Organizations } from "./Organizations.ts"
 import { OrgChart } from "./OrgChart.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
@@ -23,8 +24,9 @@ import { type ToolContext, Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
 
 // The hand-off rule (spec 030, "Who can send to whom"): the app checks each "send message" at the
-// time of the send. The acceptance setup: main agent M; "Product" with lead P; "Docs" under
-// "Product" with lead D and member A; X in no channel.
+// time of the send. The acceptance setup: main agent M; the organization "Product" with lead P;
+// "Docs" under "Product" with lead D and member A; X in no organization. A channel "Docs" holds D
+// and A too: a channel gives no right to send.
 
 const sse = (chunks: unknown[]) =>
   new Response(
@@ -106,8 +108,7 @@ type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
 const setup = async (options: { main?: boolean } = {}) => {
   const main = options.main ?? true
-  let mainId: string | null = null
-  const t = testRuntime(main ? { mainAgent: () => mainId } : {})
+  const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
     Providers.use((p) =>
@@ -140,13 +141,9 @@ const setup = async (options: { main?: boolean } = {}) => {
     agents.set(name, agent)
   }
   const agent = (name: string) => agents.get(name) as NonNullable<ReturnType<typeof agents.get>>
-  if (main) mainId = agent("M").id
-  const channel = (
-    name: string,
-    memberIds: string[],
-    leadId: string | null,
-    parentId: string | null = null,
-  ) =>
+  // The real switch "Main agent" (spec 002, flow 7), as the profile sets it.
+  if (main) await run(Agents.use((a) => a.update(agent("M").id, { isMain: true })))
+  const channel = (name: string, memberIds: string[], leadId: string | null) =>
     run(
       Channels.use((c) =>
         c.create({
@@ -155,12 +152,40 @@ const setup = async (options: { main?: boolean } = {}) => {
           topic: "",
           memberIds: memberIds.map((n) => agent(n).id),
           leadId: leadId ? agent(leadId).id : null,
+        }),
+      ),
+    )
+  const organization = (
+    name: string,
+    memberIds: string[],
+    leadId: string | null,
+    parentId: string | null = null,
+  ) =>
+    run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: local.id,
+          name,
+          memberIds: memberIds.map((n) => agent(n).id),
+          leadId: leadId ? agent(leadId).id : null,
           parentId,
         }),
       ),
     )
-  const product = await channel("Product", ["P"], "P")
-  const docs = await channel("Docs", ["D", "A"], "D", product.id)
+  const range = (orgId: string, value: "inherit" | "own" | "own_lower" | "all") =>
+    run(Organizations.use((o) => o.update(orgId, { handOffRange: value })))
+  /** A new agent, for a test that needs more than the five of the setup. */
+  const extra = async (name: string) => {
+    const made = await makeAgent(name)
+    await run(Agents.use((a) => a.update(made.id, { permission: "full" })))
+    mkdirSync(made.workspace, { recursive: true })
+    agents.set(name, made)
+    return made
+  }
+  const product = await organization("Product", ["P"], "P")
+  const docsOrg = await organization("Docs", ["D", "A"], "D", product.id)
+  // A channel with the same members. It gives no right to send (spec 030).
+  const docs = await channel("Docs", ["D", "A"], "D")
 
   const send = (name: string, message: string) =>
     run(Chat.use((c) => c.send({ agentId: agent(name).id, text: message, replyTo: null })))
@@ -173,7 +198,7 @@ const setup = async (options: { main?: boolean } = {}) => {
       return all.length > 0 && all.every((x) => !["queued", "running", "waiting"].includes(x.state))
     })
   }
-  const rule = (value: "any" | "channels") => run(Organization.use((o) => o.setHandOff(value)))
+  const rule = (value: "any" | "organizations") => run(Organization.use((o) => o.setHandOff(value)))
   /** The newest step of an agent. A reply to its message can come later and has no step. */
   const lastStep = async (name: string): Promise<ToolPart> => {
     const steps = (await messages(name))
@@ -197,7 +222,7 @@ const setup = async (options: { main?: boolean } = {}) => {
     (await tasks()).filter((x) => x.agentId === agent(name).id && x.source === "agent")
   const logLines = () => {
     try {
-      return readFileSync(join(t.dataDir, "logs", "channels.log"), "utf8")
+      return readFileSync(join(t.dataDir, "logs", "organizations.log"), "utf8")
         .split("\n")
         .filter(Boolean)
         .map((l) => JSON.parse(l) as Record<string, unknown>)
@@ -211,6 +236,12 @@ const setup = async (options: { main?: boolean } = {}) => {
     local,
     agent,
     docs,
+    channel,
+    organization,
+    product,
+    docsOrg,
+    range,
+    extra,
     send,
     call,
     tasks,
@@ -223,7 +254,7 @@ const setup = async (options: { main?: boolean } = {}) => {
 }
 
 describe('rule "Any agent" (the default)', () => {
-  test("the rule starts as Any agent; an agent in a channel sends to an agent in none", async () => {
+  test("the rule starts as Any agent; an agent in an organization sends to an agent in none", async () => {
     const s = await setup()
     expect(await s.run(Organization.use((o) => o.get))).toEqual({
       handOff: "any",
@@ -243,10 +274,10 @@ describe('rule "Any agent" (the default)', () => {
   })
 })
 
-describe('rule "Along the channels"', () => {
+describe('rule "Along the organizations"', () => {
   test("allowed sends start a task: A to D, A to M, D to P, P to D, M to A, and the reply comes back", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     for (const [from, to] of [
       ["A", "D"],
       ["A", "M"],
@@ -267,7 +298,7 @@ describe('rule "Along the channels"', () => {
 
   test("A to P fails with the first agent on the path; no task starts and the chart draws no line", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     const before = (await s.tasks()).length
     const step = await s.call("A", "send_message", { to: "P", text: "SECRET-TEXT-123" })
     expect(step.state).toBe("failed")
@@ -283,15 +314,15 @@ describe('rule "Along the channels"', () => {
     expect(reply.messages.at(-1)?.status).toBe("done")
   })
 
-  test("X in no channel to A: send it to M; with no main agent, no agent can pass it on", async () => {
+  test("X in no organization to A: send it to M; with no main agent, no agent can pass it on", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     const step = await s.call("X", "send_message", { to: "A", text: "hi" })
     expect(step.output).toBe("A is not on your path. Send it to M.")
     expect(step.reason).toEqual({ code: "hand_off_path", detail: "A", next: "M" })
 
     const none = await setup({ main: false })
-    await none.rule("channels")
+    await none.rule("organizations")
     const refused = await none.call("X", "send_message", { to: "A", text: "hi" })
     expect(refused.state).toBe("failed")
     expect(refused.output).toBe(
@@ -301,9 +332,34 @@ describe('rule "Along the channels"', () => {
     expect(await none.received("A")).toHaveLength(0)
   })
 
-  test("a refused send writes one line to the channel log, with no text of the message", async () => {
+  test("the switch 'Main agent' counts from the next send: turned off, X cannot reach A; turned on for A, X reaches A (rules 2 and 3)", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
+    const off = async (name: string) =>
+      s.run(Agents.use((a) => a.update(s.agent(name).id, { isMain: false })))
+    const on = async (name: string) =>
+      s.run(Agents.use((a) => a.update(s.agent(name).id, { isMain: true })))
+    // Rule 2: every agent may send to the main agent. Rule 3: the main agent may send to every agent.
+    const m = await s.call("X", "send_message", { to: "M", text: "one" })
+    expect(m.state).toBe("done")
+    await off("M")
+    const refused = await s.call("X", "send_message", { to: "M", text: "two" })
+    expect(refused.state).toBe("failed")
+    expect(refused.reason).toMatchObject({ code: "hand_off_none", detail: "M" })
+    // A is the main agent now: X reaches A, and M, which lost the flag, is a plain agent again.
+    await on("A")
+    const toA = await s.call("X", "send_message", { to: "A", text: "three" })
+    expect(toA.state).toBe("done")
+    const toM = await s.call("X", "send_message", { to: "M", text: "four" })
+    expect(toM.state).toBe("failed")
+    // Rule 3: A, now the main agent, sends to P, which no shared organization links to A.
+    const fromA = await s.call("A", "send_message", { to: "P", text: "five" })
+    expect(fromA.state).toBe("done")
+  })
+
+  test("a refused send writes one line to the organization log, with no text of the message", async () => {
+    const s = await setup()
+    await s.rule("organizations")
     await s.call("A", "send_message", { to: "P", text: "SECRET-TEXT-123" })
     const lines = s.logLines().filter((l) => l.event === "hand_off_refused")
     expect(lines).toHaveLength(1)
@@ -315,37 +371,37 @@ describe('rule "Along the channels"', () => {
     expect(s.logLines().filter((l) => l.event === "hand_off_refused")).toHaveLength(1)
   })
 
-  test('"list agents" holds D and M only, with the channel and the main agent, and tells that the rule is on', async () => {
+  test('"list agents" holds D and M only, with the organization and the main agent, and tells that the rule is on', async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     const step = await s.call("A", "list_agents", {})
     expect(step.output).toContain(HAND_OFF_LIST_RULE)
     const rows = step.output.split("\n").filter((l) => l.startsWith("- "))
     expect(rows).toHaveLength(2)
     expect(rows[0]).toContain("- D:")
-    expect(rows[0]).toContain("channel: Docs")
+    expect(rows[0]).toContain("organization: Docs")
     expect(rows[1]).toContain("- M:")
     expect(rows[1]).toContain("main agent")
     expect(step.output).not.toContain("- P:")
     expect(step.output).not.toContain("- X:")
   })
 
-  test("an agent in no channel lists the main agent only; with none, the list says it can send to no agent", async () => {
+  test("an agent in no organization lists the main agent only; with none, the list says it can send to no agent", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     const listed = await s.call("X", "list_agents", {})
     expect(listed.output.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(1)
     expect(listed.output).toContain("- M:")
 
     const none = await setup({ main: false })
-    await none.rule("channels")
+    await none.rule("organizations")
     const empty = await none.call("X", "list_agents", {})
     expect(empty.output).toBe(HAND_OFF_LIST_EMPTY)
   })
 
   test("the main agent lists every agent", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     const step = await s.call("M", "list_agents", {})
     const rows = step.output.split("\n").filter((l) => l.startsWith("- "))
     expect(rows.map((r) => r.slice(2, 3))).toEqual(["A", "D", "P", "X"])
@@ -353,19 +409,19 @@ describe('rule "Along the channels"', () => {
 
   test("a change of the rule counts from the next send", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     expect((await s.call("A", "send_message", { to: "P", text: "1" })).state).toBe("failed")
     await s.rule("any")
     expect((await s.call("A", "send_message", { to: "P", text: "2" })).state).toBe("done")
     expect(await s.received("P")).toHaveLength(1)
-    await s.rule("channels")
+    await s.rule("organizations")
     expect((await s.call("A", "send_message", { to: "P", text: "3" })).state).toBe("failed")
     expect(await s.received("P")).toHaveLength(1)
   })
 
   test("an archived receiver gets the older reason, before the rule is read", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     await s.run(Agents.use((a) => a.archive(s.agent("D").id)))
     const step = await s.call("A", "send_message", { to: "D", text: "hi" })
     expect(step.output).toBe("This agent is archived. Choose another agent.")
@@ -373,7 +429,7 @@ describe('rule "Along the channels"', () => {
 
   test("the reply always comes back: a receiver that the rule would refuse still answers", async () => {
     const s = await setup()
-    // A sends to X while the rule is off. X is in no channel, so under the rule X could not send
+    // A sends to X while the rule is off. X is in no organization, so under the rule X could not send
     // to A. X is still working when the user turns the rule on.
     const sent = s.send(
       "A",
@@ -381,7 +437,7 @@ describe('rule "Along the channels"', () => {
     )
     await sent
     await until(async () => (await s.received("X")).length === 1)
-    await s.rule("channels")
+    await s.rule("organizations")
     await s.quiet()
     // The reply of X is a task for A: it was not refused, and no refusal was written.
     const back = (await s.received("A")).filter((x) => x.sourceId === s.agent("X").id)
@@ -394,8 +450,8 @@ describe('rule "Along the channels"', () => {
 
   test("the rule does not touch the work of the user: a direct chat, a mention, @all and a routine", async () => {
     const s = await setup()
-    await s.rule("channels")
-    // A direct chat with an agent in no channel.
+    await s.rule("organizations")
+    // A direct chat with an agent in no organization.
     await s.send("X", "hello")
     await s.quiet()
     expect((await s.tasks()).some((x) => x.agentId === s.agent("X").id)).toBe(true)
@@ -412,7 +468,7 @@ describe('rule "Along the channels"', () => {
     await s.quiet()
     const all = await newTasks(known)
     expect(all.map((x) => x.agentId).sort()).toEqual([s.agent("A").id, s.agent("D").id].sort())
-    // A routine of an agent in no channel.
+    // A routine of an agent in no organization.
     const routine = await s.run(
       Routines.use((r) =>
         r.create({
@@ -436,11 +492,87 @@ describe('rule "Along the channels"', () => {
 
   test("a refused send counts for no limit: the chain limit is not used", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     // Many refused sends in a row leave the queue of P empty and make no task for it.
     for (let i = 0; i < 3; i++) await s.call("A", "send_message", { to: "P", text: `try ${i}` })
     expect(await s.received("P")).toHaveLength(0)
     expect((await s.tasks()).filter((x) => x.source === "agent")).toHaveLength(0)
+  })
+})
+
+describe("a channel gives no right to send, and the range of an organization does (spec 030)", () => {
+  test("a channel has A and X as members: A still cannot send to X", async () => {
+    const s = await setup()
+    await s.rule("organizations")
+    await s.channel("Chat", ["A", "X"], null)
+    const step = await s.call("A", "send_message", { to: "X", text: "hi" })
+    expect(step.state).toBe("failed")
+    expect(step.output).toBe("X is not on your path. Send it to M.")
+    expect(await s.received("X")).toHaveLength(0)
+  })
+
+  test("'Own and lower organizations' on Product: P sends to A, A sends to a member of Site, A cannot send to P", async () => {
+    const s = await setup()
+    await s.rule("organizations")
+    await s.extra("Q")
+    await s.organization("Site", ["Q"], null, s.docsOrg.id)
+    // Before the range: P cannot send to A.
+    expect((await s.call("P", "send_message", { to: "A", text: "0" })).state).toBe("failed")
+    await s.range(s.product.id, "own_lower")
+    // The range of Docs is "Inherit": it takes the value of Product.
+    const toA = await s.call("P", "send_message", { to: "A", text: "1" })
+    expect(toA.state).toBe("done")
+    expect(await s.received("A")).toHaveLength(1)
+    const toQ = await s.call("A", "send_message", { to: "Q", text: "2" })
+    expect(toQ.state).toBe("done")
+    expect(await s.received("Q")).toHaveLength(1)
+    // There is no way up. P holds the reply of A to its own message; the refused send adds no task.
+    const forP = (await s.received("P")).length
+    const toP = await s.call("A", "send_message", { to: "P", text: "3" })
+    expect(toP.state).toBe("failed")
+    expect(toP.output).toBe("P is not on your path. Send it to D.")
+    expect(await s.received("P")).toHaveLength(forP)
+    // "list agents" names the organization that holds the range.
+    const listed = await s.call("A", "list_agents", {})
+    const row = listed.output.split("\n").find((l) => l.startsWith("- Q:"))
+    expect(row).toContain("organization: Docs")
+  })
+
+  test("'All agents' on Site: a member of Site sends to X, a member of Docs still cannot", async () => {
+    const s = await setup()
+    await s.rule("organizations")
+    await s.extra("Q")
+    const site = await s.organization("Site", ["Q"], null, s.docsOrg.id)
+    await s.range(site.id, "all")
+    expect((await s.call("Q", "send_message", { to: "X", text: "1" })).state).toBe("done")
+    expect(await s.received("X")).toHaveLength(1)
+    const refused = await s.call("A", "send_message", { to: "X", text: "2" })
+    expect(refused.state).toBe("failed")
+    expect(refused.output).toBe("X is not on your path. Send it to M.")
+  })
+
+  test("'Own organization' adds no right, and a change of the range counts from the next send", async () => {
+    const s = await setup()
+    await s.rule("organizations")
+    await s.range(s.product.id, "own")
+    expect((await s.call("P", "send_message", { to: "A", text: "1" })).state).toBe("failed")
+    await s.range(s.product.id, "own_lower")
+    expect((await s.call("P", "send_message", { to: "A", text: "2" })).state).toBe("done")
+    await s.range(s.product.id, "inherit")
+    expect((await s.call("P", "send_message", { to: "A", text: "3" })).state).toBe("failed")
+    expect(await s.received("A")).toHaveLength(1)
+  })
+
+  test("a refused send writes one line to the organization log, and none to the channel log", async () => {
+    const s = await setup()
+    await s.rule("organizations")
+    await s.call("A", "send_message", { to: "P", text: "SECRET-TEXT-123" })
+    expect(s.logLines().filter((l) => l.event === "hand_off_refused")).toHaveLength(1)
+    let channelLog = ""
+    try {
+      channelLog = readFileSync(join(s.t.dataDir, "logs", "channels.log"), "utf8")
+    } catch {}
+    expect(channelLog).not.toContain("hand_off_refused")
   })
 })
 
@@ -460,7 +592,7 @@ describe("an agent on a vendor runtime (the tools that the program calls through
 
   test("the same refusal, the same list, and an allowed send starts a task", async () => {
     const s = await setup()
-    await s.rule("channels")
+    await s.rule("organizations")
     const bridge = await s.run(
       Tools.use((x) => Effect.succeed(x.bridge(context(s, "A"), () => {}))),
     )
@@ -486,7 +618,7 @@ describe("the main agent", () => {
     const told = (name: string) =>
       s.run(Organization.use((o) => Effect.succeed(o.told(s.agent(name).id))))
     expect(await told("M")).toBe("")
-    await s.rule("channels")
+    await s.rule("organizations")
     expect(await told("M")).toBe(MAIN_AGENT_HAND_OFF_RULE)
     expect(await told("A")).toBe("")
     // A turn of the main agent reads the text in its instructions.
@@ -501,36 +633,36 @@ describe("the main agent", () => {
     expect(systems.some((x) => x.includes(MAIN_AGENT_HAND_OFF_RULE))).toBe(false)
   })
 
-  test("with no main agent switch (this version), nobody is told", async () => {
+  test("with no main agent, nobody is told", async () => {
     const s = await setup({ main: false })
-    await s.rule("channels")
+    await s.rule("organizations")
     expect(await s.run(Organization.use((o) => Effect.succeed(o.told(s.agent("M").id))))).toBe("")
   })
 })
 
-describe('the part "Organization"', () => {
+describe('the part "Hand-off rules"', () => {
   test("it changes the rule once, tells the window, and keeps the value", async () => {
     const s = await setup()
     const before = s.t.events.length
-    expect(await s.rule("channels")).toEqual({ handOff: "channels", askUpTheLine: false })
+    expect(await s.rule("organizations")).toEqual({ handOff: "organizations", askUpTheLine: false })
     const events = s.t.events.slice(before).filter((e) => e.event === "organization.changed")
     expect(events).toHaveLength(1)
     expect(events[0]?.payload).toEqual({ serverId: s.local.id })
     // The same value changes nothing and tells nothing.
-    await s.rule("channels")
+    await s.rule("organizations")
     expect(s.t.events.filter((e) => e.event === "organization.changed")).toHaveLength(1)
     expect(await s.run(Organization.use((o) => o.get))).toEqual({
-      handOff: "channels",
+      handOff: "organizations",
       askUpTheLine: false,
     })
-    expect(await s.run(Organization.use((o) => Effect.succeed(o.rule())))).toBe("channels")
+    expect(await s.run(Organization.use((o) => Effect.succeed(o.rule())))).toBe("organizations")
   })
 
   test("the chart reads the rule for its legend", async () => {
     const s = await setup()
     expect((await s.run(OrgChart.use((o) => o.snapshot()))).handOffRule).toBe("any")
-    await s.rule("channels")
-    expect((await s.run(OrgChart.use((o) => o.snapshot()))).handOffRule).toBe("channels")
-    expect((await s.run(OrgChart.use((o) => o.model()))).handOffRule).toBe("channels")
+    await s.rule("organizations")
+    expect((await s.run(OrgChart.use((o) => o.snapshot()))).handOffRule).toBe("organizations")
+    expect((await s.run(OrgChart.use((o) => o.model()))).handOffRule).toBe("organizations")
   })
 })

@@ -1,3 +1,6 @@
+import type { DatabaseSync } from "node:sqlite"
+import { migrateChannelsToOrganizations, repairLinesAfterMigration } from "./orgMigration.ts"
+
 /**
  * Triggers that mark a row as changed, so sync can find it (spec 019). They only write while the
  * computer is in a sync pair. `id` is the SQL text of the sync id of the row.
@@ -1218,9 +1221,145 @@ export const migrations: readonly string[] = [
     CHECK (action IN ('queue', 'steer'));
   `,
   `
-  -- The mark "Made by" (spec 036): the name of the caller of a manage tool that made the agent, as
+  -- The switch "Main agent" of an agent (spec 002, flow 7): 0 (off) is the default, as every agent
+  -- was before this step. At most one agent on a server has 1. The app keeps this in one step: it
+  -- turns the flag off on the old main agent when it turns it on for another one. The column has
+  -- no unique index, because a sync (019) can bring two flags before the check at the end of the
+  -- sync clears the older one. An archived agent keeps its flag and counts as no main agent while
+  -- it is archived (spec 029). The flag syncs with the agent (the dirty trigger of the agent
+  -- watches every column), and an export keeps it (the archive is the database). An agent file
+  -- holds no flag (spec 002, "Agent file").
+  ALTER TABLE agent ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0 CHECK (is_main IN (0, 1));
+  `,
+  `
+  -- The organization (spec 030, S126): a group of agents with one optional lead and one optional
+  -- parent organization. It has no messages, no tasks and no archive state. The name is unique on
+  -- a server, ignoring case. \`lead_agent_id\` and \`parent_id\` have no foreign key: a sync (019) can
+  -- bring a sub-organization before its parent, and the reading of the tree sets a parent that is
+  -- gone aside. A lead that is no member counts as no lead. \`hand_off_range\` is stored now and
+  -- read in a later step; \`daily_token_limit\` is NULL while it is off. Both sync with the row. An
+  -- export keeps all of it (spec 014).
+  CREATE TABLE org_unit (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    lead_agent_id TEXT,
+    parent_id TEXT,
+    hand_off_range TEXT NOT NULL DEFAULT 'inherit'
+      CHECK (hand_off_range IN ('inherit', 'own', 'own_lower', 'all')),
+    daily_token_limit INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX org_unit_name ON org_unit (server_id, name_key);
+  -- Membership does not go up or down the tree. An archived agent stays a member (spec 030). A
+  -- deleted agent leaves every organization.
+  CREATE TABLE org_member (
+    org_id TEXT NOT NULL REFERENCES org_unit (id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (org_id, agent_id)
+  );
+  CREATE INDEX org_member_agent ON org_member (agent_id);
+  ${dirtyTriggers("org_unit", "orgunit", plainId)}
+  ${dirtyTriggers("org_member", "orgunit", (row) => `${row}.org_id`)}
+  -- The organizations in the agent list of a skill or a connection (spec 017, 018, 030): a JSON
+  -- array of { id, value } with the value 'on' or 'off'. An organization that is not in the array
+  -- has the value "Inherit". An empty array is what every row had before. An organization that is
+  -- gone stays in the array and gives nothing. Skills and connections do not sync (019). An export
+  -- keeps the column (014).
+  ALTER TABLE skill ADD COLUMN organizations TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tool_connection ADD COLUMN organizations TEXT NOT NULL DEFAULT '[]';
+  `,
+  `
+  -- The channels leave the agent lists of skills and connections (spec 017, 018, 030 "Tools"). The
+  -- step that made the organizations has copied the tool of each channel as the value "On" of its
+  -- organization, so the column of channel ids has no use. An archive made before this step is
+  -- refused by its schema number, so no file carries the column.
+  ALTER TABLE skill DROP COLUMN channels;
+  ALTER TABLE tool_connection DROP COLUMN channels;
+  `,
+  `
+  -- The daily token limit of a channel is cleared (spec 030, "Migration"). The step that made the
+  -- organizations has copied each limit to its organization, and the limit counts the tasks of
+  -- the members from every source now. The column stays in the table, because a table is not
+  -- rebuilt for one column; nothing reads it or syncs it. A task that the old limit blocked keeps
+  -- its reason under the code of organizations.
+  UPDATE channel SET daily_token_limit = NULL WHERE daily_token_limit IS NOT NULL;
+  UPDATE task SET error_code = 'org_limit' WHERE error_code = 'channel_limit';
+  `,
+  `
+  -- The hand-off rule along the organizations (spec 030, "Migration"): the value 'channels' becomes
+  -- 'organizations', and "Any agent" does not change. The check of the column names the two values,
+  -- and SQLite cannot change a check, so the table of one row is made again with the same columns.
+  -- The step that made the organizations has read the old value before this step, so a channel with
+  -- two members made one. The time of the last change and the switch "Ask up the line" stay. The
+  -- step marks nothing for sync, because both computers of a pair make the same change; the new
+  -- triggers are the same as the old ones (spec 019).
+  DROP TRIGGER sync_dirty_organization_insert;
+  DROP TRIGGER sync_dirty_organization_update;
+  DROP TRIGGER sync_dirty_organization_delete;
+  CREATE TABLE hand_off_next (
+    id TEXT PRIMARY KEY CHECK (id = 'organization'),
+    hand_off TEXT NOT NULL DEFAULT 'any' CHECK (hand_off IN ('any', 'organizations')),
+    changed_at INTEGER NOT NULL DEFAULT 0,
+    ask_up_the_line INTEGER NOT NULL DEFAULT 0 CHECK (ask_up_the_line IN (0, 1))
+  );
+  INSERT INTO hand_off_next (id, hand_off, changed_at, ask_up_the_line)
+    SELECT id, CASE hand_off WHEN 'channels' THEN 'organizations' ELSE hand_off END, changed_at,
+      ask_up_the_line
+    FROM organization;
+  DROP TABLE organization;
+  ALTER TABLE hand_off_next RENAME TO organization;
+  ${dirtyTriggers("organization", "org", plainId)}
+  `,
+  `
+  -- The parent channel is cleared (spec 030, "Migration", "What the channel loses"). The step that
+  -- made the organizations has copied each parent channel as the parent of an organization, and a
+  -- channel is a place for jobs only: it has no parent. The column stays in the table, because a
+  -- table is not rebuilt for one column; nothing reads it or syncs it.
+  UPDATE channel SET parent_channel_id = NULL WHERE parent_channel_id IS NOT NULL;
+  `,
+  `
+  -- The repair of a line after the migration (spec 030, "Migration", "Agents in channels that do not
+  -- make one line"). The step in code removes an agent from the organizations that are not on one
+  -- line with the organization that it joined first, with the channel that was made first as the
+  -- one that it joined first. A migration has no data folder, so each removal waits here until the
+  -- app starts and writes its line to the organization log (spec 014). The table is local: it has
+  -- no sync trigger, and an import does not read it.
+  CREATE TABLE org_line_note (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id TEXT NOT NULL,
+    org_name TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    agent_name TEXT NOT NULL
+  );
+  `,
+  `
+  -- The agent who wrote a reply in another agent's chat (spec 003, "Mention another agent").
+  -- Null means the chat's own agent. The id stays after that agent is deleted, so the row can
+  -- still show a removed face. It syncs with the message (019). An export holds it (014).
+  ALTER TABLE message ADD COLUMN speaker_id TEXT;
+  `,
+  `
+  -- The mark "Made by" (spec 037): the name of the caller of a manage tool that made the agent, as
   -- it was when the user allowed the request. NULL for an agent that the user made. It syncs with
   -- the agent (spec 019) and stays after later edits.
   ALTER TABLE agent ADD COLUMN made_by TEXT;
   `,
 ]
+
+/**
+ * Steps in code that run in the same transaction as the SQL step of the same index, right after it.
+ * The key is the index of the SQL step. A step here must give the same result when it runs again.
+ */
+export const dataSteps: Readonly<Record<number, (db: DatabaseSync) => void>> = {
+  // The organizations from the channels (spec 030, "Migration", S126).
+  [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_unit"))]:
+    migrateChannelsToOrganizations,
+  // The lines of the organizations that the step above made (spec 030, "Migration", S130b). It
+  // follows the steps that clear the old channel fields, so an older profile gets it too.
+  [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_line_note"))]:
+    repairLinesAfterMigration,
+}

@@ -10,12 +10,12 @@ import {
 } from "@robot/shared"
 import {
   agentLabel,
-  channelLabel,
-  channelTitle,
   countsLine,
   handoffTip,
   moreLabel,
   moreWord,
+  orgLabel,
+  orgTitle,
   type Translate,
 } from "./names.ts"
 
@@ -50,7 +50,7 @@ const model = buildChart({
     agent("Di", { state: "offline" }),
     agent("Loose"),
   ],
-  channels: [
+  orgs: [
     {
       id: "docs",
       name: "Docs",
@@ -67,16 +67,16 @@ const model = buildChart({
     { from: "Cy", to: "Ada", count: 2, newest: 7 },
   ],
 })
-const docs = model.channels[0]
-const none = model.channels[2]
+const docs = model.orgs[0]
+const none = model.orgs[2]
 const adaInDocs = docs?.nodes[0]
 
-describe("the counts of a channel node", () => {
+describe("the counts of an organization node", () => {
   test("they follow the order working, waiting for you, idle, offline, and skip zeros", () => {
     expect(countsLine(en, docs?.counts as never)).toBe(
       "1 working · 1 waiting for you · 1 idle · 1 offline",
     )
-    expect(countsLine(en, model.channels[1]?.counts as never)).toBe("1 idle")
+    expect(countsLine(en, model.orgs[1]?.counts as never)).toBe("1 idle")
   })
 
   test("they are Korean in the Korean interface", () => {
@@ -87,7 +87,7 @@ describe("the counts of a channel node", () => {
 })
 
 describe("the accessible name of an agent node", () => {
-  test("it gives the name, role line, state, Lead, task label and the other channels", () => {
+  test("it gives the name, role line, state, Lead, task label and the other organizations", () => {
     expect(adaInDocs?.name).toBe("Ada")
     expect(agentLabel(en, adaInDocs as never)).toBe(
       "Ada. Ada role. Working. Lead. Draft the release notes. Handed work to 1 agent. Got work from 2 agents",
@@ -125,25 +125,35 @@ describe("the accessible name of an agent node", () => {
   })
 })
 
-describe("the accessible name of a channel node", () => {
+describe("the accessible name of an organization node", () => {
   test("it gives the name, the number of members and the counts", () => {
-    expect(channelLabel(en, docs as never)).toBe(
+    expect(orgLabel(en, docs as never)).toBe(
       "Docs. 4 members. 1 working, 1 waiting for you, 1 idle, 1 offline",
     )
-    expect(channelLabel(en, model.channels[1] as never)).toBe("Ops. 1 member. 1 idle")
+    expect(orgLabel(en, model.orgs[1] as never)).toBe("Ops. 1 member. 1 idle")
   })
 
-  test("the node 'No channel' takes its name from the catalogue", () => {
-    expect(channelTitle(en, none as never)).toBe("No channel")
-    expect(channelTitle(ko, none as never)).toBe("채널 없음")
-    expect(channelLabel(ko, none as never)).toContain("채널 없음")
+  test("the node 'No organization' takes its name from the catalogue", () => {
+    expect(orgTitle(en, none as never)).toBe("No organization")
+    expect(orgTitle(ko, none as never)).toBe("조직 없음")
+    expect(orgLabel(ko, none as never)).toContain("조직 없음")
   })
 
-  test("the tile '+<n> more' reads the number and the name of the channel node", () => {
+  test("an organization node with no member still has a name with the number 0", () => {
+    const empty = buildChart({
+      ...EMPTY_ORG_SNAPSHOT,
+      orgs: [{ id: "e", name: "Empty", createdAt: 1, leadId: null, memberIds: [], parentId: null }],
+    }).orgs[0]
+    expect(orgLabel(en, empty as never)).toBe("Empty. 0 members")
+    expect(en("orgchart.noMembers")).toBe("No members.")
+    expect(ko("orgchart.noMembers")).toBe("멤버가 없어요.")
+  })
+
+  test("the tile '+<n> more' reads the number and the name of the organization node", () => {
     const wide = buildChart({
       ...EMPTY_ORG_SNAPSHOT,
       agents: Array.from({ length: 15 }, (_, i) => agent(`m${String(i).padStart(2, "0")}`)),
-      channels: [
+      orgs: [
         {
           id: "big",
           name: "Big",
@@ -154,7 +164,7 @@ describe("the accessible name of a channel node", () => {
         },
       ],
     })
-    const big = wide.channels[0]
+    const big = wide.orgs[0]
     expect(moreWord(en, big?.more.length ?? 0)).toBe("+3 more")
     expect(moreLabel(en, big as never)).toContain("3 more members of Big")
     expect(moreWord(ko, 3)).toBe("+3명 더")

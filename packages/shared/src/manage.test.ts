@@ -41,7 +41,7 @@ const reason = (args: Record<string, unknown>, taken: string[] = []) => {
   return result.reason
 }
 
-describe("planMakeAgent (spec 036, Make an agent)", () => {
+describe("planMakeAgent (spec 037, Make an agent)", () => {
   test("a name, a role, instructions and a model make a request", () => {
     const { create } = request({
       name: "Rita",
@@ -106,7 +106,7 @@ describe("planMakeAgent (spec 036, Make an agent)", () => {
   })
 })
 
-describe("describeAgent (spec 036, Read an agent)", () => {
+describe("describeAgent (spec 037, Read an agent)", () => {
   test("it gives the fields in full and nothing else of the agent", () => {
     const text = describeAgent(
       {

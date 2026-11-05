@@ -60,6 +60,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
+import { orgLimitStop } from "./orgLimitData.ts"
 import { SettingsStore } from "./Settings.ts"
 
 interface TaskRow {
@@ -141,7 +142,7 @@ export interface TaskInput {
   readonly failed?: { readonly code: string; readonly detail: string }
   /**
    * The task is made, and then ends at once as Blocked with this reason and never runs: the daily
-   * token limit of its channel, or of a higher channel, is used (spec 005, "Blocked"; spec 030).
+   * token limit of an organization of its agent is used (spec 005, "Blocked"; spec 030).
    * The end makes the same notice and the same record as any other blocked task.
    */
   readonly blocked?: { readonly code: string; readonly detail: string }
@@ -201,7 +202,10 @@ export interface TasksService {
   /**
    * Runs `work` for a task. An agent runs one task at a time, and at most "Agents working at once"
    * tasks run (spec 005, "Queue"). Others wait, in the order of the queue. The task is running
-   * while `work` runs, then done, failed or cancelled by how `work` ends.
+   * while `work` runs, then done, failed or cancelled by how `work` ends. When the task has its
+   * place and the daily token limit of an organization of its agent is used, it ends at once as
+   * Blocked and `work` never runs (spec 005, "Blocked"; spec 030). A task of a direct chat is not
+   * stopped, and neither is one that goes on after a restart.
    */
   run<A, E, R>(
     taskId: string,
@@ -215,13 +219,6 @@ export interface TasksService {
        * turn is cancelled, whatever this says.
        */
       readonly finish?: (value: A) => TurnEnd
-      /**
-       * Asked when the task has its place and is about to start its turn. When it gives a reason,
-       * the task ends at once as Blocked with that error and the turn never runs: the daily token
-       * limit of a channel (spec 005, "Blocked"; spec 030). A task that goes on after a restart is
-       * not asked.
-       */
-      readonly gate?: () => { readonly code: string; readonly detail: string } | null
     },
   ): Effect.Effect<A, E, R>
   /**
@@ -839,6 +836,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         switch (row.source) {
           case "chat":
           case "handover":
+          case "mention":
             return row.prompt === "(no text)" ? null : row.prompt
           case "routine":
             return routineWords(row.source_id, row.prompt)
@@ -950,7 +948,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         options?: {
           readonly resumed?: boolean
           readonly finish?: (value: A) => TurnEnd
-          readonly gate?: () => { readonly code: string; readonly detail: string } | null
         },
       ) => {
         const stopSignal = stops.get(taskId) ?? Deferred.makeUnsafe<void>()
@@ -972,10 +969,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             back: false,
             slot: !options?.resumed,
           })
-          // The daily token limit of the channel (spec 030): a task that would start now ends as
-          // Blocked, with no turn. The state never goes to running.
-          if (!options?.resumed && options?.gate) {
-            const stop = options.gate()
+          // The daily token limit of the organizations of the agent (spec 030): a task that would
+          // start now ends as Blocked, with no turn. The state never goes to running. This is the one
+          // place where a task starts, so every source passes here. A task of a direct chat is never
+          // stopped, and a task that goes on after a restart is not asked.
+          if (!options?.resumed) {
+            const stop = orgLimitStop(db, agentId, source)
             if (stop) {
               gated = stop
               return yield* Effect.interrupt
@@ -1337,7 +1336,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         // The agent works in another thread of its chat (spec 003). A handover is a message in a
         // thread, so it counts as a chat here (spec 005).
         const inChat = (source: TaskSource) =>
-          source === "chat" || source === "handover" || source === "teams"
+          source === "chat" || source === "handover" || source === "teams" || source === "mention"
         if (
           inChat(running.source) &&
           inChat(queued.source) &&
@@ -1366,6 +1365,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           case "chat":
           case "handover":
           case "teams":
+          case "mention":
             return { kind: "chat" }
           case "agent":
             return { kind: "agent" }

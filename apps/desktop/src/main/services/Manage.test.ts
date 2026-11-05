@@ -102,8 +102,7 @@ const NEW_AGENT = {
 
 /** One agent, "Ada", that is the main agent of the server when `main` is true. */
 const setup = async (permission: PermissionLevel = "ask_risky", main = true) => {
-  let mainId: string | null = null
-  const t = testRuntime({ mainAgent: () => (main ? mainId : null) })
+  const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
     Providers.use((p) =>
@@ -127,8 +126,9 @@ const setup = async (permission: PermissionLevel = "ask_risky", main = true) => 
       }),
     ),
   )
-  mainId = agent.id
-  await run(Agents.use((a) => a.update(agent.id, { permission })))
+  await run(
+    Agents.use((a) => a.update(agent.id, { permission, ...(main ? { isMain: true } : {}) })),
+  )
   mkdirSync(agent.workspace, { recursive: true })
   const send = (text: string, origin?: TaskOrigin) =>
     run(Chat.use((c) => c.send({ agentId: agent.id, text, replyTo: null }, origin)))
@@ -157,7 +157,7 @@ const setup = async (permission: PermissionLevel = "ask_risky", main = true) => 
   return { t, run, agent, local, account, send, reply, part, names, agents, sendAndSettle, answer }
 }
 
-describe('the manage tool "make_agent" of the main agent (spec 036)', () => {
+describe('the manage tool "make_agent" of the main agent (spec 037)', () => {
   test('the call asks with the whole change; Allow makes the agent with the mark "Made by"', async () => {
     const s = await setup()
     const waiting = await s.sendAndSettle(call("make_agent", NEW_AGENT))
@@ -276,7 +276,7 @@ describe('the manage tool "make_agent" of the main agent (spec 036)', () => {
   })
 })
 
-describe('the manage tool "read_agent" (spec 036)', () => {
+describe('the manage tool "read_agent" (spec 037)', () => {
   test("it reads the fields of another agent and needs no card, also at Read only", async () => {
     const s = await setup("read_only")
     await s.run(

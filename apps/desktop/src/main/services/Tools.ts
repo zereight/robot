@@ -81,6 +81,9 @@ import {
   type SettingsNote,
   sendDecision,
   sendsData,
+  skillNameKey,
+  skillPickSource,
+  type TaskSource,
   type ToolAsk,
   type TurnMark,
   UNKNOWN_TOOL_TEXT,
@@ -89,7 +92,12 @@ import {
 import { Cause, Context, Effect, Exit, Layer } from "effect"
 import type { ToolEvent, ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
-import { BRIDGE_TOOL_NAMES, type BridgeHandler, SEARCH_TOOL_NAME } from "../runtimes/bridge.ts"
+import {
+  BRIDGE_TOOL_NAMES,
+  type BridgeHandler,
+  READ_SKILL_TOOL_NAME,
+  SEARCH_TOOL_NAME,
+} from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { type SecretBody, sendWithSecret } from "../secrets/request.ts"
 import { checkedFetch } from "../web/fetch.ts"
@@ -112,6 +120,7 @@ import { realOf } from "./realPath.ts"
 import { SavedSecrets } from "./SavedSecrets.ts"
 import { Search } from "./Search.ts"
 import { SettingsStore } from "./Settings.ts"
+import { Skills } from "./Skills.ts"
 
 export interface ToolContext {
   readonly agentId: string
@@ -246,7 +255,7 @@ export interface GuardedRequest<A> {
   readonly step: GuardedStep | ManageStep
   /** A short text for the action log (spec 014). It holds no instruction and no prompt. */
   readonly target: string
-  /** The whole change in words, for the card, when `target` is too short for it (spec 036). */
+  /** The whole change in words, for the card, when `target` is too short for it (spec 037). */
   readonly card?: string
   readonly work: () => Promise<A>
   readonly usual?: () => Promise<ActionDecider>
@@ -271,13 +280,15 @@ export interface ToolsService {
   ): { decidedBy: ActionDecider; rule: RuleRef | null; check: ActionCheck | null }
   /**
    * The tools that an agent may call. Memory and knowledge tools are left out when they are off.
-   * The settings tool is only for an agent of an API provider in its direct chat (spec 002).
+   * The settings tool is only for an agent of an API provider in its direct chat (spec 002). The
+   * read-skill tool is only for a turn that picks skills (spec 017, flow 8).
    */
   defs(options: {
     memory: boolean
     knowledge: boolean
     settings?: boolean
     manage?: boolean
+    skills?: boolean
   }): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
   /**
@@ -516,6 +527,12 @@ const DEFS: Record<string, ToolDef> = {
       "query",
     ]),
   },
+  read_skill: {
+    name: READ_SKILL_TOOL_NAME,
+    description:
+      "Read the instructions of one of your skills. Give its name as the skill list shows it.",
+    schema: object({ skill: str("The name of the skill, as the skill list shows it.") }, ["skill"]),
+  },
   list_agents: {
     name: "list_agents",
     description:
@@ -691,7 +708,7 @@ const SETTINGS_DEF: ToolDef = {
 }
 
 /**
- * The manage tools of the main agent (spec 036). "Make an agent" asks the user for every call. The
+ * The manage tools of the main agent (spec 037). "Make an agent" asks the user for every call. The
  * fields are the ones of the form of a new agent that a caller may set; the user sets the rest.
  */
 const MANAGE_DEFS: readonly ToolDef[] = [
@@ -837,6 +854,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const db = yield* Database
       const memory = yield* Memory
       const search = yield* Search
+      const skills = yield* Skills
       const actionLog = yield* ActionLog
       const agentSettings = yield* AgentSettings
       const agents = yield* Agents
@@ -2107,7 +2125,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       /**
-       * "Read an agent" (spec 036): a read, so it needs no card and no log entry, also at "Read only".
+       * "Read an agent" (spec 037): a read, so it needs no card and no log entry, also at "Read only".
        */
       const readAgentTool = async (
         ctx: ToolContext,
@@ -2122,7 +2140,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       /**
-       * "Make an agent" (spec 036). A call that fails a check of the form makes no card. Otherwise
+       * "Make an agent" (spec 037). A call that fails a check of the form makes no card. Otherwise
        * the user reads the whole change on a card and allows or denies it, at every level but "Read
        * only", which refuses it. The agent shows "Made by <caller>".
        */
@@ -2202,9 +2220,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         )
         const line = (r: { id: string; name: string; role: string }, link?: string) =>
           `- ${r.name}: ${r.role || "(no role line)"} [${busy.has(r.id) ? "working" : "idle"}]${link ? ` (${link})` : ""}`
-        // With the hand-off rule "Along the channels" the list holds only the agents that the agent
-        // may send to, each with the channel that links them or "main agent" (spec 030).
-        if (organization.rule() === "channels") {
+        // With the hand-off rule "Along the organizations" the list holds only the agents that the
+        // agent may send to, each with the organization that gives the right or "main agent"
+        // (spec 030).
+        if (organization.rule() === "organizations") {
           const targets = allowedSends(organization.model(serverId), ctx.agentId)
           const byId = new Map(rows.map((r) => [r.id, r]))
           const lines = targets.flatMap((t) => {
@@ -2250,9 +2269,9 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return { output: "An agent cannot send a message to itself.", failed: true }
         if (target.archived_at !== null)
           return { output: "This agent is archived. Choose another agent.", failed: true }
-        // With the hand-off rule "Along the channels" the app checks each send now (spec 030). A
-        // refused send makes no task and counts for no limit; the step fails and the turn goes on.
-        if (organization.rule() === "channels") {
+        // With the hand-off rule "Along the organizations" the app checks each send now (spec 030).
+        // A refused send makes no task and counts for no limit; the step fails and the turn goes on.
+        if (organization.rule() === "organizations") {
           const refusal = checkHandOff(
             organization.model(server?.server_id ?? ""),
             ctx.agentId,
@@ -2265,8 +2284,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               detail: receiver,
               ...(refusal.next ? { next: refusal.next.name } : {}),
             })
-            // One line for the channel log: the sender, the receiver and the time (spec 014).
-            appendLog(platform.dataDir, "channels", {
+            // One line for the organization log: the sender, the receiver and the time (spec 014).
+            appendLog(platform.dataDir, "organizations", {
               event: "hand_off_refused",
               from: names(ctx.agentId) ?? "",
               to: receiver,
@@ -2523,6 +2542,26 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           case "browser_close":
           case "browser_ask_look":
             return await browserTool(ctx, call)
+          case "read_skill": {
+            // The skill list and its tool work in a direct chat or a thread only (spec 017, flow
+            // 8). A vendor runtime gets the tool through the bridge in every place, so the turn
+            // checks here too.
+            if (ctx.origin?.kind === "channel")
+              return { output: "Skills are not available here.", failed: true }
+            const source = ctx.taskId
+              ? db.get<{ source: string }>("SELECT source FROM task WHERE id = ?", ctx.taskId)
+                  ?.source
+              : undefined
+            if (!source || !skillPickSource(source as TaskSource))
+              return { output: "Skills are not available here.", failed: true }
+            // The name ignores case and a slash at the start, as the slash does (spec 017).
+            const wanted = skillNameKey(text(args, "skill"))
+            const found = (await Effect.runPromise(skills.forAgent(ctx.agentId))).find(
+              (s) => skillNameKey(s.name) === wanted,
+            )
+            if (!found) return { output: "This skill is not available.", failed: true }
+            return { output: found.instructions, failed: false }
+          }
           case "search_chats": {
             // A call that arrives with memory off is refused, also from a program that kept a
             // list of tools from before the user turned memory off.
@@ -2622,7 +2661,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           ...Object.values(DEFS).filter(
             (d) =>
               (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
-              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)),
+              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)) &&
+              (options.skills || d.name !== READ_SKILL_TOOL_NAME),
           ),
           ...(options.settings ? [SETTINGS_DEF] : []),
           ...(options.manage ? MANAGE_DEFS : []),
@@ -2638,7 +2678,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
                   (BRIDGE_TOOL_NAMES as readonly string[]).includes(d.name) &&
                   (d.name !== SEARCH_TOOL_NAME || memoryOn(ctx.agentId)),
               ),
-              // The main agent gets the manage tools on every runtime (spec 036).
+              // The main agent gets the manage tools on every runtime (spec 037).
               ...(isMainAgent(ctx.agentId) ? MANAGE_DEFS : []),
             ],
             call: async (name, args) => {

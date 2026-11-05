@@ -26,12 +26,19 @@ import { unzipSync } from "fflate"
 import { Agents } from "./Agents.ts"
 import { type ArchiveFile, writeZip } from "./archive.ts"
 import { Connections } from "./Connections.ts"
-import { repairChannelTree } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
+import {
+  type LineRepaired,
+  logLineRepairs,
+  logOrgRepairs,
+  type OrgRepaired,
+  repairOrgLines,
+  repairOrgTree,
+} from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { SavedSecrets } from "./SavedSecrets.ts"
@@ -484,6 +491,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
         const copy = join(work, "robot.db")
         writeFileSync(copy, dbFile)
         let counts = { agents: 0, messages: 0 }
+        let orgRepairs: OrgRepaired[] = []
+        let lineRepairs: LineRepaired[] = []
         try {
           // The archive is untrusted: it is read through SQL only, and only known tables are used.
           db.run("ATTACH DATABASE ? AS imp", copy)
@@ -508,6 +517,11 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO instruction_version SELECT * FROM imp.instruction_version")
               copyToServer("handbook_version")
               copyToServer("channel")
+              // A channel has no parent channel (spec 030, "Migration"). The archive is untrusted,
+              // so the old column is cleared here, whatever the file holds.
+              db.run(
+                "UPDATE channel SET parent_channel_id = NULL WHERE parent_channel_id IS NOT NULL",
+              )
               copyToServer("routine")
               copyToServer("workflow")
               // Skills (spec 017) move to this computer's server too.
@@ -516,10 +530,17 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO workflow_run_step SELECT * FROM imp.workflow_run_step")
               db.run("INSERT INTO routine_skip SELECT * FROM imp.routine_skip")
               db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
+              // The organizations come back with their members, lead, parent, range and limit
+              // (spec 030, 014). The archive is untrusted: a tree that breaks the rules (a loop, a
+              // fourth level) comes back repaired, and each repair has a line in the organization
+              // log. An import carries no time of change, so the tie order decides.
+              copyToServer("org_unit")
+              db.run("INSERT INTO org_member SELECT * FROM imp.org_member")
+              orgRepairs = repairOrgTree(db, { mode: "import" })
+              // Then the lines (spec 030, "One line", "Repair"). An import carries no time of
+              // change, so the tie order decides: the organization that was made later loses.
+              lineRepairs = repairOrgLines(db, { changed: new Map() })
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
-              // The archive is untrusted. A tree that breaks the rules (a loop, a fourth level) comes
-              // back repaired, with one muted line in each channel that lost its parent (spec 030).
-              repairChannelTree(db, { mode: "restore" })
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               // The models that the user turned off, and the fields of the custom models, come back
               // with their accounts (spec 006, 014).
@@ -554,9 +575,10 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
-                    agents, channels, enabled, state, failure, tools, tools_more, tools_off, created_at)
+                    agents, organizations, enabled, state, failure, tools, tools_more,
+                    tools_off, created_at)
                  SELECT id, ?, name, name_key, kind, command, args, folder, env, address, headers,
-                        agents, channels, 0, 'untested', NULL, '[]', 0, tools_off, created_at
+                        agents, organizations, 0, 'untested', NULL, '[]', 0, tools_off, created_at
                  FROM imp.tool_connection`,
                 local.id,
               )
@@ -588,7 +610,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run(
                 `INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at)
                  SELECT 'organization', hand_off, ask_up_the_line, changed_at FROM imp.organization
-                 WHERE hand_off IN ('any', 'channels') AND ask_up_the_line IN (0, 1) LIMIT 1`,
+                 WHERE hand_off IN ('any', 'organizations') AND ask_up_the_line IN (0, 1) LIMIT 1`,
               )
               // A workspace path from another computer may not work here.
               for (const a of db.all<{ id: string; workspace: string }>(
@@ -661,9 +683,12 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           rmSync(work, { recursive: true, force: true })
         }
 
+        logOrgRepairs(platform.dataDir, orgRepairs)
+        logLineRepairs(platform.dataDir, lineRepairs)
         const next = yield* settings.get
         platform.setThemeSource(next.theme)
         bus.emit("settings.changed", next)
+        bus.emit("organizations.changed", { serverId: local.id })
         bus.emit("agents.changed", { serverId: "*" })
         bus.emit("providers.changed", {})
         bus.emit("places.changed", { serverId: local.id })

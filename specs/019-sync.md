@@ -23,11 +23,12 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Agents | Face, name, role line, instructions, the switch "Read the handbook", model choice, backup model choice, archive state. |
+| Agents | Face, name, role line, instructions, the switch "Read the handbook", the switch "Main agent", model choice, backup model choice, archive state. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state, parent channel and daily token limit (030). The tools of a channel do not sync, because skills and connections do not sync. |
-| Organization (030) | The hand-off rule and the switch "Ask up the line". They are data of the agents, like the handbook. The later change wins. |
+| Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state. |
+| Organizations (030) | Name, members, lead, parent organization, hand-off range and daily token limit. The tools of an organization do not sync, because skills and connections do not sync. |
+| Hand-off rules (030) | The hand-off rule and the switch "Ask up the line". They are data of the agents, like the handbook. The later change wins. |
 | Messages | Direct chats with their threads, and channels, with tool cards, plan steps, reply chips and the rows "Compacted". |
 | Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent, with the channel of a channel note. |
@@ -58,7 +59,7 @@ service holds it.
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
 | The secret of a web hook (010) | It is in the keychain of one computer, like a saved secret. |
 | Saved logins (020) | Their values are in the keychain of one computer, like saved secrets. |
-| The decision model and the other settings of 013, except the handbook and the part "Organization" | Settings are local. The handbook and the part "Organization" are data of the agents (002, 030). |
+| The decision model and the other settings of 013, except the handbook and the part "Hand-off rules" | Settings are local. The handbook and the part "Hand-off rules" are data of the agents (002, 030). |
 | Linked devices and their keys | They are not data of the agents. |
 | The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
 | Outside programs and their keys (023) | A key reaches one computer only. |
@@ -178,6 +179,14 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   different agents with one name meet in a merge, the one that comes in gets the name of its
   origin computer in brackets, for example "Writer (MacBook 2)". The same holds for channels.
   Model accounts with the same name, vendor and address are one account.
+- **One main agent**: at most one agent on a server has the switch "Main agent" (002). When two
+  computers turn it on for two different agents while apart, the agent whose change is the later
+  one keeps it after the sync, and the other loses it on both computers. A user sees no notice.
+- **One line of organizations**: the organizations of one agent are on one line (030, "One
+  line"). When two computers add the same agent to two organizations that are not on one line while
+  apart, or one moves an organization while the other adds a member, the agent stays in the
+  organization where it was added first, and the other computer ends with the same members. The
+  open org chart shows a line about it, and a user sees no other notice.
 - **Delete**: deleting an agent or a channel deletes it on the other computer too. The delete
   dialog says so. Sync never deletes files: the workspace folder of an agent that sync removes
   stays on disk, and the change list shows its path. If one sync would delete 5 or more agents
@@ -206,7 +215,7 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   connect" off, or removing the link, stops the flow at once.
 - The tasks page lists tasks of both computers, with the name of the origin and a filter.
 - The org chart (029) stores nothing, so it adds nothing to "Syncs". Each computer draws it from
-  its own copy of agents, channels and tasks. The hand-offs count the tasks of both computers.
+  its own copy of agents, organizations and tasks. The hand-offs count the tasks of both computers.
   Two computers that are up to date draw the same chart, except for the state "offline" of an
   agent, which depends on the model accounts of each computer.
 - Sync data is not part of an export (014).

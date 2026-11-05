@@ -43,7 +43,7 @@ export interface AgentSettingsService {
     args: Readonly<Record<string, unknown>>,
   ): Effect.Effect<{ plan: SettingsPlan; text: string }, AppError>
   /**
-   * Plans a call of "Make an agent" for the caller (spec 036). It uses the checks of `plan`, with
+   * Plans a call of "Make an agent" for the caller (spec 037). It uses the checks of `plan`, with
    * the accounts, the models and the names of the server of the caller.
    */
   planNew(
@@ -51,7 +51,7 @@ export interface AgentSettingsService {
     args: Readonly<Record<string, unknown>>,
   ): Effect.Effect<MakeAgentPlan, AppError>
   /**
-   * The text of "Read an agent" (spec 036): the fields of the agent that has this name on the
+   * The text of "Read an agent" (spec 037): the fields of the agent that has this name on the
    * server of the caller, or null when no agent that is not archived has it.
    */
   describeOther(callerId: string, name: string): Effect.Effect<string | null, AppError>

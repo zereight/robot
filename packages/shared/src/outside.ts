@@ -72,7 +72,7 @@ export const GUARDED_STEPS = ["memory", "settings", "secret_request", "secret_ne
 export type GuardedStep = (typeof GUARDED_STEPS)[number]
 
 /**
- * The step of a manage tool (spec 036): a change request for an agent, a channel or a routine. It
+ * The step of a manage tool (spec 037): a change request for an agent, a channel or a routine. It
  * is not a guarded step: it asks the user at every level except "Read only", also at "Full access",
  * with or without outside content, and no rule covers it.
  */
@@ -116,7 +116,7 @@ export interface GuardInput {
  * program mark: that turn asks at every level.
  */
 export const guardDecision = (input: GuardInput): GuardVerdict => {
-  // A manage step (spec 036) ignores the rules and the outside rules: "Read only" refuses it, and
+  // A manage step (spec 037) ignores the rules and the outside rules: "Read only" refuses it, and
   // every other level asks.
   if (input.step === MANAGE_STEP) return input.level === "read_only" ? "refuse_read_only" : "ask"
   if (input.denied) return "refuse_rule"

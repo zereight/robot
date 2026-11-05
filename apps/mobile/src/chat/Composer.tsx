@@ -1,5 +1,5 @@
 import { ATTACH_BYTES, ATTACH_MAX } from "@robot/phone"
-import { type Agent, insertMention, mentionEntries, openMention } from "@robot/shared"
+import { type Agent, insertMention, mentionEntries, openMention, shownName } from "@robot/shared"
 import { useEffect, useRef, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { fileSizeText } from "../i18n/index.ts"
@@ -8,6 +8,7 @@ import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { Face } from "../ui/Face.tsx"
 import { ErrorLine } from "../ui/kit.tsx"
+import { ShownText } from "../ui/names.tsx"
 import { Sheet } from "../ui/Sheet.tsx"
 import { createSendGate, filesAfterSend, textAfterSend } from "./sending.ts"
 
@@ -27,10 +28,12 @@ export const Composer = (props: {
   /** A line that says why the box cannot send now (offline, removed), or null. */
   readonly blocked: string | null
   /**
-   * The members of a channel that can answer (not archived). With it, an `@` before the caret
-   * opens a list of them above the box (spec 004, "Mention"). Direct chats pass none.
+   * The agents an `@` can name (not archived). A channel passes its members. A direct chat
+   * passes the other agents (spec 003, 004).
    */
-  readonly mentions?: readonly Agent[] | undefined
+  readonly mentions?: readonly (Agent & { readonly organization?: string | null })[] | undefined
+  /** When false, the list has no `@all` (spec 003). A channel leaves this on. */
+  readonly everyone?: boolean
   readonly reply: { readonly name: string; readonly text: string } | null
   readonly onCancelReply: () => void
   readonly onSend: (
@@ -60,7 +63,7 @@ export const Composer = (props: {
   const openAt = members ? openMention(value, caret) : null
   const entries =
     members && openAt && !props.blocked
-      ? mentionEntries(members, openAt.query, members.length >= 2)
+      ? mentionEntries(members, openAt.query, (props.everyone ?? true) && members.length >= 2)
       : []
   const pickMention = (name: string) => {
     if (!openAt) return
@@ -174,12 +177,18 @@ export const Composer = (props: {
         >
           {entries.map((entry) => {
             const name = entry.kind === "all" ? "all" : entry.member.name
+            // With a prefix the line shows "[Docs] Ada"; the pick still puts "@Ada" in the box
+            // (spec 036, "Mention"). Without one it shows "@Ada" as before.
+            const shown =
+              entry.kind === "member" && entry.member.organization
+                ? shownName(entry.member.name, entry.member.organization, true)
+                : null
             return (
               <Pressable
                 key={entry.kind === "all" ? "@all" : entry.member.id}
                 testID={`composer.mention.${name}`}
                 accessibilityRole="button"
-                accessibilityLabel={`@${name}`}
+                accessibilityLabel={shown ? shown.label : `@${name}`}
                 onPress={() => pickMention(name)}
                 style={({ pressed }) => [
                   styles.mention,
@@ -192,7 +201,11 @@ export const Composer = (props: {
                 ) : (
                   <Face face={entry.member.face} image={entry.member.faceImage} size={24} />
                 )}
-                <Text style={[styles.mentionName, { color: palette.text }]}>@{name}</Text>
+                {shown ? (
+                  <ShownText shown={shown} style={[styles.mentionName, { color: palette.text }]} />
+                ) : (
+                  <Text style={[styles.mentionName, { color: palette.text }]}>@{name}</Text>
+                )}
                 <Text
                   numberOfLines={1}
                   style={[styles.xs, styles.grow, { color: palette.textMuted }]}

@@ -74,7 +74,7 @@ describe("guardDecision", () => {
   })
 })
 
-describe("guardDecision for a manage step (spec 036)", () => {
+describe("guardDecision for a manage step (spec 037)", () => {
   const STARTERS: readonly TurnStarter[] = ["user", "routine", "workflow", "agent", "program"]
 
   test("a manage step asks at every level except Read only, also at Full access", () => {

@@ -3,7 +3,8 @@
 ## Purpose
 
 The user saves a set of instructions once and calls it with a slash in any chat, so the user does
-not type the same long request again.
+not type the same long request again. The agent can also pick a skill by itself: it reads the names
+and short notes of its skills, and loads the full text of one only when the task needs it.
 
 ## Concepts
 
@@ -14,12 +15,16 @@ not type the same long request again.
   - The description holds up to 140 characters. It may be empty.
   - The instructions hold 1 to 20000 characters of plain text.
   - The agents: "All agents" (the default), or a list that the user picks. The list can hold
-    agents and channels. A channel in the list gives the skill to its members and to the members
-    of its lower channels (030, "Channel tools").
+    agents and organizations. An organization in the list has the value "On" or "Off", and it gives
+    or takes away the skill for its members and for the members of its lower organizations (030,
+    "Tools").
 - **Skill chip**: a small tag with the name of a skill. It sits in the message box, and later in
   the message row.
 - A **runtime skill** is a skill that an agent runtime reports (see 006). The user cannot edit
   it here. It is not a skill of this spec.
+- **Skill list for the agent**: the names and descriptions of the usable skills that have a
+  description. "Usable" means on, and for this agent (by agent or by organization, as the
+  slash list). A skill with an empty description stays for slash use only.
 
 ## Flows
 
@@ -42,6 +47,14 @@ not type the same long request again.
 7. Send: the agent reads the instructions of the skill first, then the text of the user, as one
    message. The chat row shows the text of the user with the chip above it. A click on the chip
    opens the instructions as they were sent, read only.
+8. Pick by the agent: at the start of a turn in a direct chat or a thread, the agent reads its
+   skill list. When a skill fits the task, it loads the instructions of that skill. It loads one
+   skill at a time, and only the skills that the task needs. The chat shows each loaded skill in
+   a card with its name. A click on the card opens the instructions as loaded, read only.
+   - A skill that is off, deleted, or no longer for this agent before the load is not loaded.
+     The load fails with the line "This skill is not available."
+   - The slash chip works as before. When a message holds a chip and the agent loads more
+     skills, the agent reads the chip first.
 
 ## Teach a task
 
@@ -136,6 +149,7 @@ The user can turn work that went well into a skill, and does not write the instr
 - A chip in the box, and the skill is turned off, deleted, or no longer for this agent before the
   user sends: the send is refused with the line "This skill is not available." The chip stays
   so the user can remove it.
+- No skill with a description: the agent reads no list, and the turn runs as before.
 
 ## Rules
 
@@ -160,10 +174,27 @@ The user can turn work that went well into a skill, and does not write the instr
   under "Not imported" with the reason.
 - A skill is not a secret store. The instructions go to the model provider with the message, as
   any message does.
+- The turn stores the name and a copy of the instructions of each loaded skill, as sent. A later
+  edit or delete does not change the copy.
+- Pick by the agent works in direct chats and threads only, as the slash does.
+- Reading a skill is allowed at every permission level, also Read only: it reads text that the
+  agent may already use.
+
+## Surfaces
+
+- **Ways in**: automatic, plus the slash (flows 6-7). No new button.
+- **Devices**: the computer shows the cards. The phone and a linked computer show them as stored
+  cards, read only.
+- **Runtimes**: every agent. The list is part of the turn, and the load is a tool of the app (as
+  the browser is in 026).
+- **Ways out**: turn a skill off (it leaves the list), or empty its description (slash only). No
+  new switch.
+- **Seeing the state**: one card per loaded skill, readable after a restart as part of the stored
+  turn.
+- **Data**: nothing new syncs or exports beyond the stored turn. No new words.
 
 ## Out of scope
 
-- A skill that an agent picks by itself.
 - Parameters in a skill, such as a blank to fill in.
 - Skills in channels, routines and workflows.
 - Share or import of skills as files.
@@ -205,3 +236,8 @@ The user can turn work that went well into a skill, and does not write the instr
   agent A from the archive: the confirm text says that 1 skill is deleted too. After the delete,
   the first skill is gone, the second is only for B, and the third is unchanged.
 - Archive agent A with a skill that is only for A: the skill stays.
+- Two usable skills with notes, and a stand-in model that loads one: the turn holds both names,
+  the card shows the loaded one, and the instructions of the other are never sent.
+- A skill with an empty note is not in the list, but the slash still works.
+- A skill turned off before the load fails with "This skill is not available."
+- Chip plus a pick by the agent: the chip is read first.

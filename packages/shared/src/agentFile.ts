@@ -8,7 +8,6 @@ import {
   nameKey,
 } from "./agents.ts"
 import { CHANNEL_NAME_MAX, CHANNEL_TOPIC_MAX } from "./channels.ts"
-import { validDailyLimit } from "./channelTools.ts"
 import { CHANNEL_INSTRUCTIONS_MAX, HANDBOOK_MAX } from "./handbook.ts"
 import type { NotImported } from "./importReview.ts"
 import { ROUTINE_NAME_MAX, ROUTINE_PROMPT_MAX } from "./routines.ts"
@@ -55,13 +54,6 @@ export interface AgentFileChannel {
   readonly members: readonly number[]
   /** A place in the `agents` list. One of the members, or null. */
   readonly lead: number | null
-  /**
-   * The name of the parent channel in this file, or null for a top channel (spec 002, 030).
-   * The name is as the file writes it, after the spaces at both ends are removed.
-   */
-  readonly parent: string | null
-  /** The daily token limit, or null when it is off (spec 030). */
-  readonly dailyTokenLimit: number | null
 }
 
 /** A skill of a version 2 file, as it is read. `agents` are places in the `agents` list. */
@@ -71,11 +63,6 @@ export interface AgentFileSkill {
   readonly instructions: string
   /** The agents of the file that may use the skill. At least one. */
   readonly agents: readonly number[]
-  /**
-   * The names of the channels of this file that are in the skill's list (spec 030). Empty when
-   * the skill names none, or when those channels are not in the file.
-   */
-  readonly channels: readonly string[]
 }
 
 export interface AgentFile {
@@ -249,7 +236,7 @@ const readChannel = (
   keys: readonly string[],
 ): Step<AgentFileChannel> => {
   if (!isObject(value)) return fail("agent_file_field", path)
-  const { name, topic, instructions, reviewParts, members, lead, parent, dailyTokenLimit } = value
+  const { name, topic, instructions, reviewParts, members, lead } = value
   if (
     typeof name !== "string" ||
     charLength(name.trim()) < 1 ||
@@ -268,22 +255,6 @@ const readChannel = (
     return fail("agent_file_field", `${path}.instructions`)
   if (reviewParts !== undefined && typeof reviewParts !== "boolean")
     return fail("agent_file_field", `${path}.reviewParts`)
-  // Absent or null: a top channel. A name must be a channel of this file (checked after the list).
-  if (parent !== undefined && parent !== null && typeof parent !== "string")
-    return fail("agent_file_field", `${path}.parent`)
-  const parentName = typeof parent === "string" ? parent.trim() : ""
-  // Absent or null: the limit is off. A number must be in the range of the setting (spec 030).
-  if (
-    dailyTokenLimit !== undefined &&
-    dailyTokenLimit !== null &&
-    !validDailyLimit(dailyTokenLimit)
-  )
-    return fail("agent_file_field", `${path}.dailyTokenLimit`)
-  if (
-    typeof parent === "string" &&
-    (parentName === "" || charLength(parentName) > CHANNEL_NAME_MAX)
-  )
-    return fail("agent_file_field", `${path}.parent`)
   const readMembers = readAgentNames(members, keys, `${path}.members`)
   if (!readMembers.ok) return readMembers
   let readLead: number | null = null
@@ -302,8 +273,6 @@ const readChannel = (
       reviewParts: reviewParts === true,
       members: readMembers.value,
       lead: readLead,
-      parent: parentName === "" ? null : parentName,
-      dailyTokenLimit: validDailyLimit(dailyTokenLimit) ? dailyTokenLimit : null,
     },
   }
 }
@@ -324,8 +293,6 @@ const readSkill = (value: unknown, path: string, keys: readonly string[]): Step<
   if (problem) return fail("agent_file_field", `${path}.${problem.field}`)
   const readAgents = readAgentNames(value.agents, keys, `${path}.agents`)
   if (!readAgents.ok) return readAgents
-  const readChannels = readSkillChannels(value.channels, `${path}.channels`)
-  if (!readChannels.ok) return readChannels
   return {
     ok: true,
     value: {
@@ -333,28 +300,8 @@ const readSkill = (value: unknown, path: string, keys: readonly string[]): Step<
       description: (description ?? "").trim(),
       instructions,
       agents: readAgents.value,
-      channels: readChannels.value,
     },
   }
-}
-
-/** Channel names on a skill. Absent means none. A name that is listed twice counts once. */
-const readSkillChannels = (value: unknown, path: string): Step<string[]> => {
-  if (value === undefined) return { ok: true, value: [] }
-  if (!Array.isArray(value)) return fail("agent_file_field", path)
-  const names: string[] = []
-  const seen = new Set<string>()
-  for (const [k, entry] of value.entries()) {
-    if (typeof entry !== "string") return fail("agent_file_field", `${path}[${k}]`)
-    const name = entry.trim()
-    if (name === "" || charLength(name) > CHANNEL_NAME_MAX)
-      return fail("agent_file_field", `${path}[${k}]`)
-    const key = channelNameKey(name)
-    if (seen.has(key)) continue
-    seen.add(key)
-    names.push(name)
-  }
-  return { ok: true, value: names }
 }
 
 /** Reads a list of a file that is absent or an array, with a limit on its length. */
@@ -437,20 +384,6 @@ export const parseAgentFile = (text: string): AgentFileParse => {
     if (channelKeys.has(key)) return fail("agent_file_duplicate_channel", channel.name)
     channelKeys.add(key)
   }
-  // The parent is another channel of this file, or none (spec 002, 030).
-  for (const [i, channel] of channels.value.entries()) {
-    if (channel.parent === null) continue
-    const key = channelNameKey(channel.parent)
-    if (key === channelNameKey(channel.name) || !channelKeys.has(key))
-      return fail("agent_file_field", `channels[${i}].parent`)
-  }
-  // A channel on a skill must be a channel of this file (spec 030).
-  for (const [i, skill] of skills.value.entries()) {
-    for (const [j, name] of skill.channels.entries()) {
-      if (!channelKeys.has(channelNameKey(name)))
-        return fail("agent_file_field", `skills[${i}].channels[${j}]`)
-    }
-  }
   const skillKeys = new Set<string>()
   for (const skill of skills.value) {
     const key = skillNameKey(skill.name)
@@ -487,10 +420,6 @@ export interface AgentFileChannelOut {
   readonly reviewParts: boolean
   readonly members: readonly string[]
   readonly lead: string | null
-  /** The name of the parent channel in this file. Absent or null: a top channel. */
-  readonly parent?: string | null
-  /** The daily token limit. Absent or null: the limit is off. */
-  readonly dailyTokenLimit?: number | null
 }
 
 /** A skill to write. `agents` are names of agents that the file holds. */
@@ -499,8 +428,6 @@ export interface AgentFileSkillOut {
   readonly description: string
   readonly instructions: string
   readonly agents: readonly string[]
-  /** Channel names in this file. Absent or empty: the skill names no channel. */
-  readonly channels?: readonly string[]
 }
 
 /** The parts that a file holds besides its agents. A part that is absent is not written. */
@@ -542,10 +469,6 @@ export const writeAgentFile = (
               reviewParts: c.reviewParts,
               members: c.members,
               lead: c.lead,
-              ...(c.parent ? { parent: c.parent } : {}),
-              ...(typeof c.dailyTokenLimit === "number"
-                ? { dailyTokenLimit: c.dailyTokenLimit }
-                : {}),
             })),
           }
         : {}),
@@ -556,7 +479,6 @@ export const writeAgentFile = (
               description: k.description,
               instructions: k.instructions,
               agents: k.agents,
-              ...(k.channels && k.channels.length > 0 ? { channels: k.channels } : {}),
             })),
           }
         : {}),
