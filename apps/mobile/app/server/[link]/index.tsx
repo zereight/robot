@@ -258,11 +258,19 @@ const PlaceRow = (props: {
         { backgroundColor: pressed ? palette.pressed : "transparent" },
       ]}
     >
-      {place.kind === "agent" ? (
-        <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
-      ) : (
-        <ChannelMark picture={props.channel?.picture} size={36} />
-      )}
+      <View style={styles.mark}>
+        {place.kind === "agent" ? (
+          <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
+        ) : (
+          <ChannelMark picture={props.channel?.picture} size={36} />
+        )}
+        {/* The dot sits on the face, with its ring, as on the desktop (spec 001). */}
+        {place.working ? (
+          <View style={styles.markDot}>
+            <WorkingDot ring />
+          </View>
+        ) : null}
+      </View>
       <View style={styles.placeText}>
         <View style={styles.placeTop}>
           <Text
@@ -274,7 +282,6 @@ const PlaceRow = (props: {
           >
             {place.name}
           </Text>
-          {place.working ? <WorkingDot /> : null}
           {role ? (
             // The name comes first. The slot is what is left of the line. The badge is cut with an
             // ellipsis in it, and it hides when less than 4 characters of it fit.
@@ -348,6 +355,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.m,
   },
   placeText: { flex: 1, gap: 2 },
+  // The face, picture or `#` mark of a place, with the working dot at its lower right (spec 001).
+  mark: { width: 36, height: 36 },
+  markDot: { position: "absolute", right: -4, bottom: -4 },
   placeTop: { flexDirection: "row", alignItems: "center", gap: space.s },
   placeName: { fontSize: text.m, flexShrink: 1 },
   roleSlot: { flex: 1, minWidth: 0, flexDirection: "row" },
