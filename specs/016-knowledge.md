@@ -41,7 +41,8 @@ Knowledge keeps longer, structured notes that cite where they come from.
    the last change. A link opens the linked article. A link to an article that does not exist is
    marked.
 5. Edit: the user can add, edit or delete an article, and open the sources. A source can be
-   deleted, but not edited. The user can edit articles also when knowledge is off.
+   deleted, but not edited. The delete of a source is a danger button that asks first (000,
+   "Danger buttons"). The user can edit articles also when knowledge is off.
 6. Undo: the user undoes a change from the chat line or from the change list. The article returns
    to its earlier text. A deleted article returns. Undo does not look at later changes of the same
    article: it puts the earlier text back. An undo is a new change by the user, so the user can

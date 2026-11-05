@@ -241,7 +241,7 @@ export const RulesSection = () => {
               {t("rules.edit")}
             </Button>
           </Show>
-          <Button onClick={() => void remove(rule)} data-testid="rule-delete">
+          <Button variant="danger" onClick={() => void remove(rule)} data-testid="rule-delete">
             {t("rules.delete")}
           </Button>
         </div>

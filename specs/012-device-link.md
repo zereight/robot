@@ -71,13 +71,14 @@ client shows it and sends commands.
 
 - On the server: Settings → Devices lists the linked devices that can open this computer. The
   user picks one and chooses "Remove access". That device cannot connect again until it is
-  paired again.
+  paired again. The step asks first, and its question names the device (000, "Danger buttons").
 - On the server, each linked device in that list has the switch "Can create and change agents".
   It takes effect at once, also for a connection that is open. While the two computers sync
   (019), the switch for that device shows as on and cannot be changed. A link made before this switch
   existed has it off until the user turns it on.
 - On the client: Settings → Devices lists the servers this device can open. The user picks one
-  and chooses "Remove". The link ends on both sides. The cache of that server is deleted.
+  and chooses "Remove". The link ends on both sides. The cache of that server is deleted. Both
+  steps ask first, and the question names the other computer (000, "Danger buttons").
 
 ### Name and switch
 

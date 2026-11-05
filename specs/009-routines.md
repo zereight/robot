@@ -30,6 +30,8 @@ Agents do repeat work on a schedule without the user starting it.
 2. Calendar: a week and a month view show past runs (done or failed) and future runs.
 3. Run now: starts a run at once, outside the schedule.
 4. Pause and resume: a paused routine keeps its settings and does not run.
+5. Delete: the routine goes with its runs. The button is a danger button and asks first (000,
+   "Danger buttons").
 
 ## Watch
 

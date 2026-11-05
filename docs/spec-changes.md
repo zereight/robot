@@ -251,6 +251,17 @@ S121 does not depend on S119 or S120. It only reads the open graph.
 | 014 | A request goes only to a service the user set up or to a page an agent visits. A runtime download of 006 has no exception here. Logs and exports redact secrets. | One more exception: a download that the user starts, for a vendor runtime (006) or for test devices (032). It sends no content. Test device data stays on this computer, per profile, in the data folder of the profile, and is not in an export. Only the switch is in an export. |
 | 018 | A connection is a program on this computer or a web address. Only tools are used, and the read-only mark is the only mark. | A third kind, "Built-in": a connection that the app makes for one feature, with no form and no secret, off at first, and one in this version (Test devices). A built-in connection may show a panel in a frame of the app that names the addresses the frame may reach, and a tool that only the panel calls (the action of the user: no card, no log entry, never given to an agent). For its tools the app holds a list that puts each one in a class (read, change, risky change, erase step), and the read-only mark does not count. It may add a guide for agents to a turn. |
 
+## Danger buttons: behaviour that changes
+
+| Spec | Before | Now |
+| --- | --- | --- |
+| 000 | A delete, a remove and a clear look like any other button, and only some of them ask first. | A danger button is filled with the danger colour (000, "Danger buttons"). It deletes or removes something that exists. A delete that nothing on that screen undoes asks first, in place, with a line that names what goes away and a button that keeps the data. A menu item with the same result shows its text in the danger colour. |
+| 010 | The delete of a step, of a connection, of a note and of a workflow of the list has no question. | Each asks first, in the side panel or the card, and says what goes with it (the connections of a step, the runs of a workflow). |
+| 009 | Delete of a routine removes it at once. | It asks first and says that its runs leave the calendar. |
+| 006 | "Remove" of an account and disconnect both change the row at once. | "Remove" asks first and says that its agents show "Provider not connected". Disconnect only shows in the danger colour. |
+| 012 | "Remove access" and "Remove" of a link act at once. | Each asks first and names the device and what the link takes with it. |
+| 016 | Delete of a source happens at once. | It asks first and says that the articles stay, and that "Check knowledge" then counts them as having no source. |
+
 ## Decided against
 
 - Using ACP (Agent Client Protocol) as the way to reach the savings of 026 in vendor programs.

@@ -178,6 +178,7 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
                 {
                   label: t("link.tile.remove", { name: server.name }),
                   testId: "server-tile-remove",
+                  danger: true,
                   run: () => {
                     if (server.linkId) void call("devices.server.remove", { id: server.linkId })
                   },

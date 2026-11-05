@@ -15,6 +15,7 @@ import { call } from "../lib/rpc.ts"
 import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import styles from "./knowledge.module.css"
 
@@ -46,6 +47,8 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
   const [draft, setDraft] = createSignal<Draft>()
   const [error, setError] = createSignal<ErrorText>()
   const [tick, setTick] = createSignal(0)
+  // The source that the danger button asks about (spec 000, "Danger buttons").
+  const [removingSource, setRemovingSource] = createSignal<string>()
   onCleanup(
     window.robot.on("knowledge.changed", (e) => {
       if (e.agentId === agentId()) setTick((n) => n + 1)
@@ -265,19 +268,37 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
                       >
                         {t("knowledge.source.open")}
                       </Button>
-                      <Button
-                        onClick={() =>
-                          act(() =>
-                            call("knowledge.deleteSource", {
-                              agentId: agentId(),
-                              name: source.name,
-                            }),
-                          )
+                      <Show
+                        when={removingSource() === source.name}
+                        fallback={
+                          <Button
+                            variant="danger"
+                            onClick={() => setRemovingSource(source.name)}
+                            data-testid="knowledge-source-delete"
+                          >
+                            {t("knowledge.source.delete")}
+                          </Button>
                         }
-                        data-testid="knowledge-source-delete"
                       >
-                        {t("knowledge.source.delete")}
-                      </Button>
+                        <Confirm
+                          ask={t("knowledge.source.delete.ask", { name: source.name })}
+                          confirm={t("knowledge.source.delete")}
+                          keep={t("common.keep")}
+                          onConfirm={() => {
+                            setRemovingSource(undefined)
+                            void act(() =>
+                              call("knowledge.deleteSource", {
+                                agentId: agentId(),
+                                name: source.name,
+                              }),
+                            )
+                          }}
+                          onKeep={() => setRemovingSource(undefined)}
+                          testId="knowledge-source-delete-ask"
+                          confirmTestId="knowledge-source-delete-confirm"
+                          keepTestId="knowledge-source-delete-keep"
+                        />
+                      </Show>
                     </div>
                   )}
                 </For>
@@ -368,7 +389,7 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
                           {t("skills.make")}
                         </Button>
                       </Show>
-                      <Button onClick={remove} data-testid="knowledge-delete">
+                      <Button variant="danger" onClick={remove} data-testid="knowledge-delete">
                         {t("knowledge.delete")}
                       </Button>
                     </div>

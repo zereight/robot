@@ -104,7 +104,7 @@ export const PlaceMarksLine = (props: { place: MarkPlace; marks: PlaceMarks }) =
             <div class={styles.actions}>
               <Button onClick={close}>{t("marks.cancel")}</Button>
               <Button
-                variant="primary"
+                variant="danger"
                 onClick={() => void clear()}
                 data-testid="place-marks-confirm"
               >

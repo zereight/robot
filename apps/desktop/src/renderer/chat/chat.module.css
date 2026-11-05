@@ -474,14 +474,15 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--c-text-muted);
+  color: var(--c-danger);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
 }
 
 .unreadDelete:hover {
-  color: var(--c-text);
+  color: var(--c-danger);
+  text-decoration-thickness: 2px;
 }
 
 .queueText {

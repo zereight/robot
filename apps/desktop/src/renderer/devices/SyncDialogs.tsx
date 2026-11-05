@@ -94,11 +94,7 @@ export const SyncGuardDialog = () => {
               <Button onClick={() => decide(false)} data-testid="sync-guard-keep">
                 {t("sync.guard.keep")}
               </Button>
-              <Button
-                variant="primary"
-                onClick={() => decide(true)}
-                data-testid="sync-guard-delete"
-              >
+              <Button variant="danger" onClick={() => decide(true)} data-testid="sync-guard-delete">
                 {t("sync.guard.delete")}
               </Button>
             </div>

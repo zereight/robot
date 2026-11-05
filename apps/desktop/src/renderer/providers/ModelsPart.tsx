@@ -141,6 +141,7 @@ export const ModelsPart = (props: { account: ProviderAccount }) => {
                         <Show when={m.added}>
                           <span class={styles.stateTag}>{t("providers.models.custom")}</span>
                           <Button
+                            variant="danger"
                             onClick={() =>
                               act(() =>
                                 call("providers.removeModel", { accountId: id(), model: m.id }),

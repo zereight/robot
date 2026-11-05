@@ -83,7 +83,11 @@ export const ArchiveSection = () => {
                 >
                   {t("agents.restore")}
                 </Button>
-                <Button onClick={() => void ask(agent)} data-testid="archive-delete">
+                <Button
+                  variant="danger"
+                  onClick={() => void ask(agent)}
+                  data-testid="archive-delete"
+                >
                   {t("agents.delete")}
                 </Button>
               </li>
@@ -130,7 +134,7 @@ export const ArchiveSection = () => {
             <div class={styles.actions}>
               <Button onClick={() => setConfirm(undefined)}>{t("agents.cancel")}</Button>
               <Button
-                variant="primary"
+                variant="danger"
                 onClick={() => remove(agent)}
                 data-testid="delete-confirm-button"
               >

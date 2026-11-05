@@ -1,6 +1,15 @@
 import { expect, test } from "@playwright/test"
-import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import {
+  connectMock,
+  createAgent,
+  freshUserData,
+  isDangerButton,
+  launch,
+  resizeWindow,
+  shot,
+} from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { rpc } from "./sync-helpers.ts"
 
 test("routines: create, preview, run now, calendar, pause, edit, delete", async () => {
   test.setTimeout(90_000)
@@ -58,7 +67,23 @@ test("routines: create, preview, run now, calendar, pause, edit, delete", async 
   await page.getByTestId("routine-name").fill("Evening check")
   await page.getByTestId("routine-save").click()
   await expect(page.getByTestId("routine-card")).toContainText("Evening check")
+  // Delete is a danger button and asks first: "Keep it" leaves the routine.
+  expect(await isDangerButton(page.getByTestId("routine-delete"))).toBe(true)
   await page.getByTestId("routine-delete").click()
+  await expect(page.getByTestId("routine-delete-ask")).toContainText(
+    "Delete the routine “Evening check”? Its runs leave the calendar.",
+  )
+  await shot(page, "s13-04-delete-ask")
+  // The colour of danger reads in the light theme too (spec 013).
+  await rpc(page, "settings.update", { theme: "light" })
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light")
+  expect(await isDangerButton(page.getByTestId("routine-delete-confirm"))).toBe(true)
+  await shot(page, "s13-05-delete-ask-light")
+  await rpc(page, "settings.update", { theme: "dark" })
+  await page.getByTestId("routine-delete-keep").click()
+  await expect(page.getByTestId("routine-card")).toHaveCount(1)
+  await page.getByTestId("routine-delete").click()
+  await page.getByTestId("routine-delete-confirm").click()
   await expect(page.getByTestId("routine-card")).toHaveCount(0)
   await app.close()
 })

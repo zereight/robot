@@ -41,6 +41,7 @@ import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { quietOfTaskLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { showToast } from "../ui/toast.ts"
@@ -198,6 +199,15 @@ export const WorkflowEditor = (props: {
     return s?.kind === "note" ? graph.notes.find((n) => n.id === s.id) : undefined
   }
   const numbers = () => nodeNumbers(graph.steps)
+  /** The name of a step, for the words of a question. A step that is gone has no name. */
+  const nameOf = (id: string) => graph.steps.find((s) => s.id === id)?.name ?? ""
+  /** The question of the connection in the panel (spec 000, "Danger buttons"). */
+  const edgeAsk = () => {
+    const s = selected()
+    const edge = s?.kind === "edge" ? graph.edges.find((e) => e.id === s.id) : undefined
+    if (!edge) return t("workflows.deleteEdge")
+    return t("workflows.deleteEdge.ask", { from: nameOf(edge.from), to: nameOf(edge.to) })
+  }
 
   const world = (event: { clientX: number; clientY: number }) => {
     const rect = canvas?.getBoundingClientRect()
@@ -412,8 +422,13 @@ export const WorkflowEditor = (props: {
       produce((n: Note) => Object.assign(n, patch)),
     )
 
+  // The danger buttons of the panel ask first (spec 000, "Danger buttons"). The key names the
+  // item that asks, so a question hides as soon as the user selects another item.
+  const [confirming, setConfirming] = createSignal<string>()
+
   const remove = () => {
     const s = selected()
+    setConfirming(undefined)
     if (!s || readOnly()) return
     if (s.kind === "note") setGraph("notes", (notes) => notes.filter((n) => n.id !== s.id))
     else if (s.kind === "step") {
@@ -915,9 +930,31 @@ export const WorkflowEditor = (props: {
                       fallback={<p class={styles.hint}>{t("workflows.panel.empty")}</p>}
                     >
                       <Show when={canEdit()}>
-                        <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
-                          {t("workflows.deleteEdge")}
-                        </Button>
+                        <Show
+                          when={confirming() === "edge"}
+                          fallback={
+                            <Button
+                              variant="danger"
+                              disabled={readOnly()}
+                              onClick={() => setConfirming("edge")}
+                              data-testid="wf-delete-edge"
+                            >
+                              {t("workflows.deleteEdge")}
+                            </Button>
+                          }
+                        >
+                          <Confirm
+                            ask={edgeAsk()}
+                            confirm={t("workflows.deleteEdge")}
+                            keep={t("common.keep")}
+                            onConfirm={remove}
+                            onKeep={() => setConfirming(undefined)}
+                            testId="wf-delete-edge-ask"
+                            confirmTestId="wf-delete-edge-confirm"
+                            keepTestId="wf-delete-edge-keep"
+                            disabled={readOnly()}
+                          />
+                        </Show>
                       </Show>
                     </Show>
                   }
@@ -959,9 +996,30 @@ export const WorkflowEditor = (props: {
                       </label>
                       <span class={styles.hint}>{t("workflows.note.hint")}</span>
                       <Show when={canEdit()}>
-                        <Button disabled={readOnly()} onClick={remove} data-testid="wf-note-delete">
-                          {t("workflows.note.delete")}
-                        </Button>
+                        <Show
+                          when={confirming() === `note:${n().id}`}
+                          fallback={
+                            <Button
+                              variant="danger"
+                              disabled={readOnly()}
+                              onClick={() => setConfirming(`note:${n().id}`)}
+                              data-testid="wf-note-delete"
+                            >
+                              {t("workflows.note.delete")}
+                            </Button>
+                          }
+                        >
+                          <Confirm
+                            ask={t("workflows.note.delete.ask")}
+                            confirm={t("workflows.note.delete")}
+                            keep={t("common.keep")}
+                            onConfirm={remove}
+                            onKeep={() => setConfirming(undefined)}
+                            testId="wf-note-delete-ask"
+                            confirmTestId="wf-note-delete-confirm"
+                            keepTestId="wf-note-delete-keep"
+                          />
+                        </Show>
                       </Show>
                     </div>
                   )}
@@ -1275,9 +1333,33 @@ export const WorkflowEditor = (props: {
                     )}
                   </Show>
                   <Show when={canEdit()}>
-                    <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
-                      {t("workflows.deleteStep")}
-                    </Button>
+                    <Show
+                      when={confirming() === `step:${s().id}`}
+                      fallback={
+                        <Button
+                          variant="danger"
+                          disabled={readOnly()}
+                          onClick={() => setConfirming(`step:${s().id}`)}
+                          data-testid="wf-delete"
+                        >
+                          {t("workflows.deleteStep")}
+                        </Button>
+                      }
+                    >
+                      <Confirm
+                        ask={t("workflows.deleteStep.ask", {
+                          n: numbers().get(s().id) ?? 0,
+                          name: s().name,
+                        })}
+                        confirm={t("workflows.deleteStep")}
+                        keep={t("common.keep")}
+                        onConfirm={remove}
+                        onKeep={() => setConfirming(undefined)}
+                        testId="wf-delete-ask"
+                        confirmTestId="wf-delete-confirm"
+                        keepTestId="wf-delete-keep"
+                      />
+                    </Show>
                   </Show>
                 </div>
               )}

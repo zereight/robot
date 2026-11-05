@@ -392,6 +392,7 @@ export const TeamsSection = () => {
               </Button>
               <Show when={view().signInProfileId !== null}>
                 <Button
+                  variant="danger"
                   onClick={() => {
                     setError(undefined)
                     setDialog("signOut")
@@ -625,6 +626,7 @@ export const TeamsSection = () => {
         <div class={teamStyles.field}>
           <div class={teamStyles.actions}>
             <Button
+              variant="danger"
               onClick={() => {
                 setError(undefined)
                 setDialog("remove")
@@ -684,7 +686,7 @@ export const TeamsSection = () => {
                 <div class={styles.actions}>
                   <Button onClick={() => setDialog(undefined)}>{t("teams.cancel")}</Button>
                   <Button
-                    variant="primary"
+                    variant="danger"
                     onClick={async () => {
                       if (await run(() => call("teams.signOut"))) setDialog(undefined)
                     }}
@@ -706,7 +708,7 @@ export const TeamsSection = () => {
                 <div class={styles.actions}>
                   <Button onClick={() => setDialog(undefined)}>{t("teams.cancel")}</Button>
                   <Button
-                    variant="primary"
+                    variant="danger"
                     onClick={async () => {
                       if (await run(() => call("teams.remove"))) setDialog(undefined)
                     }}
