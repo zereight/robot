@@ -11,8 +11,17 @@ import { Servers } from "./Servers.ts"
 import { listSetup, prepareTurn, runNamed, setSetupAllowed } from "./setupRun.ts"
 import { testRuntime } from "./testing.ts"
 
+/**
+ * Git for a throwaway repository. A hook starts tests with GIT_DIR set to this repository, and a
+ * bare `git` would then commit here. Drop those variables so the command stays in `cwd`.
+ */
 const git = (cwd: string, args: readonly string[]) => {
-  const result = spawnSync("git", [...args], { cwd, encoding: "utf8" })
+  const env: NodeJS.ProcessEnv = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("GIT_") && key !== "GIT_EXEC_PATH") continue
+    if (value !== undefined) env[key] = value
+  }
+  const result = spawnSync("git", [...args], { cwd, encoding: "utf8", env })
   if (result.status !== 0) throw new Error(result.stderr || result.stdout)
 }
 
@@ -295,7 +304,7 @@ describe("When the first turn starts in a linked worktree", () => {
         writeFileSync(join(main, "keep.txt"), "kept")
         commitAll(main)
         writeFileSync(join(main, "from.txt"), "secret")
-        git(main, ["worktree", "add", "-b", "part", copy])
+        git(main, ["worktree", "add", "-b", `copy-${process.pid}-a`, copy])
         expect(() => readFileSync(join(copy, "from.txt"))).toThrow()
         setSetupAllowed(dataDir, copy, true)
         expect(await prepareTurn(dataDir, copy)).toEqual([])
@@ -322,7 +331,7 @@ describe("When the first turn starts in a linked worktree", () => {
         )
         writeFileSync(join(main, "keep.txt"), "kept")
         commitAll(main)
-        git(main, ["worktree", "add", "-b", "part", copy])
+        git(main, ["worktree", "add", "-b", `copy-${process.pid}-b`, copy])
         setSetupAllowed(dataDir, copy, true)
         expect(await prepareTurn(dataDir, copy)).toEqual([{ name: "Break", code: "exit" }])
         expect(await prepareTurn(dataDir, copy)).toEqual([{ name: "Break", code: "exit" }])
