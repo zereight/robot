@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   agentMayUse,
+  type OrgToolEntry,
   orgGivers,
   orgToolEntries,
   orgToolNow,
@@ -127,7 +128,7 @@ describe("the switch of an organization in a list", () => {
 describe("whether an agent may use a skill or a connection", () => {
   const may = (
     agentIds: readonly string[] | null,
-    entries: ReturnType<typeof on>[],
+    entries: readonly OrgToolEntry[],
     agentId: string,
     memberOf: string[],
   ) => agentMayUse({ agentIds, entries }, agentId, tree, memberOf)
