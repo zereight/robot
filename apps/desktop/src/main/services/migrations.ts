@@ -1217,4 +1217,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE follow_up ADD COLUMN action TEXT NOT NULL DEFAULT 'queue'
     CHECK (action IN ('queue', 'steer'));
   `,
+  `
+  -- The mark "Made by" (spec 036): the name of the caller of a manage tool that made the agent, as
+  -- it was when the user allowed the request. NULL for an agent that the user made. It syncs with
+  -- the agent (spec 019) and stays after later edits.
+  ALTER TABLE agent ADD COLUMN made_by TEXT;
+  `,
 ]

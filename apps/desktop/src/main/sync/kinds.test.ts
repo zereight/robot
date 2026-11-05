@@ -1643,6 +1643,49 @@ describe("the handbook crosses as versions, and the newest one is the handbook (
     KINDS.agent.write(ctx, "a-old", { readHandbook: false })
     expect(KINDS.agent.read(ctx, "a-old")?.fields.readHandbook).toBe(false)
   })
+
+  test('the mark "Made by" of an agent travels; a computer of an older step has none (spec 036, 019)', async () => {
+    expect(Object.keys(KINDS.agent.fields)).toContain("madeBy")
+    expect(KINDS.agent.required).not.toContain("madeBy")
+    const agentOp = (madeBy: unknown) => ({
+      k: "agent",
+      i: "a-1",
+      o: "dev-b",
+      f: Object.fromEntries(
+        Object.entries({
+          name: "Ada",
+          role: "",
+          instructions: "",
+          face: { shape: 0, hue: 0 },
+          model: null,
+          archived: false,
+          createdAt: NOW,
+          madeBy,
+        }).map(([k, v]) => [k, { v, s: stamp }]),
+      ),
+    })
+    expect(parseOp(agentOp("Rita"), NOW)).toBeDefined()
+    expect(parseOp(agentOp(null), NOW)).toBeDefined()
+    expect(parseOp(agentOp(5), NOW)).toBeUndefined()
+    expect(parseOp(agentOp("x".repeat(41)), NOW)).toBeUndefined()
+    const rt = testRuntime({ name: "Made by" })
+    runtimes.push(rt)
+    const db = await rt.runtime.runPromise(Database.use((d) => Effect.succeed(d)))
+    const ctx = target(db, join(rt.dataDir, "madeby"))
+    const fields = {
+      name: "Made",
+      role: "",
+      instructions: "",
+      face: { shape: 0, hue: 0 },
+      model: null,
+      archived: false,
+      createdAt: NOW,
+    }
+    expect(KINDS.agent.create(ctx, "a-made", { ...fields, madeBy: "Rita" })).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-made")?.fields.madeBy).toBe("Rita")
+    expect(KINDS.agent.create(ctx, "a-own", { ...fields, name: "Own" })).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-own")?.fields.madeBy).toBeNull()
+  })
 })
 
 describe("the accounts that sync carries (spec 006, 019)", () => {

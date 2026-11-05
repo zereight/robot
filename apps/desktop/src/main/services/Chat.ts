@@ -1633,6 +1633,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   knowledge: knowledge.enabled(agentId),
                   // Changes from the chat are for agents of an API provider (spec 002).
                   settings: !isRuntime,
+                  // The manage tools are for the main agent (spec 036).
+                  manage: !isRuntime && organization.mainAgent(agent.server_id) === agentId,
                 }),
                 // The tools of the connections of the agent, and the ones it found by search.
                 ...(connected ? { moreTools: () => connected.defs() } : {}),

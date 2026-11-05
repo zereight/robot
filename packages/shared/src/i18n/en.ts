@@ -253,6 +253,7 @@ export const en = {
   "agents.workspace": "Workspace",
   "agents.workspace.on": "Workspace: on {name}",
   "agents.changedBy": "Last changed by {name}, {time}",
+  "agents.madeBy": "Made by {name}",
   "agents.readonly.hint":
     "{name} does not let this device change agents. Turn it on in Settings → Devices on that computer.",
   "agents.close": "Close",
@@ -857,6 +858,7 @@ export const en = {
   "permissions.log.kind.settings": "Change of own settings",
   "permissions.log.kind.secret_request": "Request with a saved secret",
   "permissions.log.kind.secret_new": "Request for a new secret",
+  "permissions.log.kind.manage": "Change request",
   "permissions.log.kind.file": "File",
   "permissions.log.kind.shell": "Shell command",
   "permissions.log.kind.web": "Web page",

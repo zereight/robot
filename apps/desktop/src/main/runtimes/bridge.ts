@@ -40,13 +40,19 @@ export const SEARCH_TOOL_NAME = "search_chats"
  */
 export const AGENT_TOOL_NAMES = ["list_agents", "send_message"] as const
 
-/** The tools that the app can give to a runtime, in the order of their definitions. */
+/** The tools that the app gives to every runtime, in the order of their definitions. */
 export const BRIDGE_TOOL_NAMES = [
   FOLLOW_UP_TOOL_NAME,
   ...BROWSER_TOOL_NAMES,
   SEARCH_TOOL_NAME,
   ...AGENT_TOOL_NAMES,
 ] as const
+
+/**
+ * The manage tools of the main agent (spec 036). Only the main agent gets them; the app checks it
+ * in each call, so a program that calls one for another agent gets "Unknown tool".
+ */
+export const MANAGE_TOOL_NAMES = ["read_agent", "make_agent"] as const
 
 /** The name of the server, as the vendor program shows it in the name of a tool. */
 export const BRIDGE_SERVER = "robot"
@@ -57,7 +63,7 @@ export const BRIDGE_SERVER = "robot"
  * "robot.browser_open"). Null when the tool is not one of these.
  */
 export const bridgeToolName = (shown: string): string | null => {
-  for (const name of BRIDGE_TOOL_NAMES) {
+  for (const name of [...BRIDGE_TOOL_NAMES, ...MANAGE_TOOL_NAMES]) {
     if (shown === name) return name
     if (!shown.endsWith(name)) continue
     const head = shown.slice(0, -name.length)

@@ -760,6 +760,7 @@ interface AgentRow {
   sensitive_mark: string | null
   outside_mark: string | null
   read_handbook: number
+  made_by: string | null
 }
 
 const readFace = (ctx: Ctx, file: string | null) => {
@@ -857,6 +858,8 @@ const agent: KindDef = {
     // The switch "Read the handbook" (spec 002, 019). A computer of an older step has none, and the
     // switch counts as on.
     readHandbook: { check: bool },
+    // The mark "Made by" (spec 036, 019). A computer of an older step has none.
+    madeBy: { check: nullable(str(40, 1)) },
     archived: { check: bool },
     // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
@@ -889,6 +892,7 @@ const agent: KindDef = {
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
         readHandbook: r.read_handbook === 1,
+        madeBy: r.made_by,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
@@ -922,6 +926,7 @@ const agent: KindDef = {
       permission: "ask_all",
       memory_enabled: 1,
       read_handbook: f.readHandbook === false ? 0 : 1,
+      made_by: typeof f.madeBy === "string" ? f.madeBy : null,
       archived_at: f.archived === true ? now : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
@@ -943,6 +948,7 @@ const agent: KindDef = {
     if (f.role !== undefined) columns.role = (f.role as string).trim()
     if (f.instructions !== undefined) columns.instructions = f.instructions
     if (typeof f.readHandbook === "boolean") columns.read_handbook = f.readHandbook ? 1 : 0
+    if (f.madeBy !== undefined) columns.made_by = typeof f.madeBy === "string" ? f.madeBy : null
     if (f.face !== undefined) {
       const face = f.face as { shape: number; hue: number }
       columns.face_shape = face.shape

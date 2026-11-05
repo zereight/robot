@@ -57,12 +57,17 @@ interface AgentRow {
   changed_at: number | null
   sensitive_mark: string | null
   outside_mark: string | null
+  made_by: string | null
 }
 
 export interface AgentsService {
   list(serverId: string, archived: boolean): Effect.Effect<readonly Agent[]>
   get(id: string): Effect.Effect<Agent, AppError>
-  create(input: AgentCreate): Effect.Effect<Agent, AppError>
+  /**
+   * Makes an agent. `madeBy` is the name of the caller of a manage tool that made it (spec 036);
+   * the user's own form leaves it out.
+   */
+  create(input: AgentCreate, options?: { readonly madeBy?: string }): Effect.Effect<Agent, AppError>
   /**
    * Changes the fields of an agent. A change of the instructions is kept in the history; `source`
    * says where it came from. By default it is the profile, or a linked device when one asks.
@@ -159,6 +164,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           permission: row.permission,
           memoryEnabled: row.memory_enabled === 1,
           readHandbook: row.read_handbook === 1,
+          madeBy: row.made_by,
           changedBy:
             row.changed_by !== null && row.changed_at !== null
               ? { by: row.changed_by, at: row.changed_at }
@@ -217,7 +223,10 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           return accountId === null || !providers.isRuntime(accountId)
         })
 
-      const insert = Effect.fn("Agents.insert")(function* (input: AgentCreate) {
+      const insert = Effect.fn("Agents.insert")(function* (
+        input: AgentCreate,
+        options?: { readonly madeBy?: string },
+      ) {
         const name = input.name.trim()
         if (nameTaken(input.serverId, name))
           return yield* new AppError({ code: "agent_name_taken" })
@@ -245,8 +254,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           `INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
             model_account_id, model_name, model_effort, backup_account_id, backup_model, backup_effort,
             workspace, section, place_section_id, created_at, updated_at, changed_by, changed_at, permission,
-            read_handbook)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?, ?)`,
+            read_handbook, made_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           input.serverId,
           name,
@@ -270,6 +279,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           level,
           // The switch "Read the handbook" is on at the start (spec 002).
           input.readHandbook === false ? 0 : 1,
+          options?.madeBy ?? null,
         )
         changed(input.serverId)
         return toAgent(yield* findRow(id))
