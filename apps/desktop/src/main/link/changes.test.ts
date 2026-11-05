@@ -747,7 +747,7 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(rows.filter((r) => r.kind === "moved").map((r) => r.actor)).toEqual(["user", "user"])
   })
 
-  test("it sets the daily token limit of a channel and reads the tools and the limit; it never changes the tools of a channel (spec 030, 012)", async () => {
+  test("it sets the daily token limit of a channel and reads the limit (spec 030, 012)", async () => {
     const p = await pair(true)
     const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
     const channel = value<{ id: string; dailyTokenLimit: number | null }>(

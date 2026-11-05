@@ -1528,8 +1528,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId }) => ownServer(serverId)),
       Effect.flatMap(() => OrgChart.use((o) => o.model())),
     ),
-  // The tools of a channel and its daily token limit (spec 030). A linked device reads the first
-  // three with the link only; its input is checked as strictly as any request of a client.
+  // The daily token limit of a channel (spec 030). A linked device reads it with the link only; its
+  // input is checked as strictly as any request of a client.
   "channels.limit": (input) =>
     strict(Schema.Struct({ channelId: Id }))(input).pipe(
       Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.limit(channelId))),
