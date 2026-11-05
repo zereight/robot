@@ -113,7 +113,21 @@ describe("user sections in the place list", () => {
   })
 
   test("all places of a built-in section include its user sections, in the order shown", () => {
-    expect(allPlaces(sample()).map((p) => p.name)).toEqual(["Ada", "Bo", "Eve", "Finn", "Gus"])
+    // Agents: user sections first, then the agents that are in no section.
+    expect(allPlaces(sample()).map((p) => p.name)).toEqual(["Eve", "Finn", "Gus", "Ada", "Bo"])
+    const channels: PlaceSection = {
+      id: "channels",
+      places: [place("Launch", { kind: "channel" })],
+      sections: [
+        {
+          id: "r",
+          name: "Research",
+          places: [place("Chat", { kind: "channel", sectionId: "r" })],
+        },
+      ],
+    }
+    // Channels: a place with no section stays first.
+    expect(allPlaces(channels).map((p) => p.name)).toEqual(["Launch", "Chat"])
   })
 
   test("the sum of unread counts and the working dot of a section", () => {

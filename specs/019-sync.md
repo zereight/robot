@@ -53,7 +53,7 @@ service holds it.
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
 | The view of the board: the switch "Work of agents" and the dismissed work cards (024) | They are the layout of one computer, like settings. The board shows the tasks of both computers; a dismiss hides a card on one computer only. |
-| User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |
+| User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives with no section. An agent then shows in "Unassigned". |
 | Pinned places (001) | They are part of the layout of one computer, like sections. |
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
 | The secret of a web hook (010) | It is in the keychain of one computer, like a saved secret. |

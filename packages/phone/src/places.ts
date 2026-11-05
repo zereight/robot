@@ -4,11 +4,19 @@ import type { Place, PlaceSection } from "@robot/shared"
 // Small helpers of the place list and the message lists. The app cannot load the runtime code of
 // `@robot/shared` (it needs Effect), so the few rules that it needs are here.
 
-/** Every place of a built-in section, also those in its user sections. */
-export const allPlaces = (section: PlaceSection): readonly Place[] => [
-  ...section.places,
-  ...section.sections.flatMap((s) => s.places),
-]
+/** The collapse key of "Unassigned". The same key as in the desktop list. */
+export const UNASSIGNED_SECTION_ID = "unassigned:agents"
+
+/** True when places with no section show before the user sections. Agents show them last. */
+export const loosePlacesFirst = (id: PlaceSection["id"]) => id !== "agents"
+
+/** Every place of a built-in section, in the order the list shows. */
+export const allPlaces = (section: PlaceSection): readonly Place[] => {
+  const nested = section.sections.flatMap((s) => s.places)
+  return loosePlacesFirst(section.id)
+    ? [...section.places, ...nested]
+    : [...nested, ...section.places]
+}
 
 /** What a collapsed header shows: the sum of the unread counts, and whether a place works. */
 export const summarize = (places: readonly Place[]) => ({

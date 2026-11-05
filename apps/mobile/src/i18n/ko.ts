@@ -89,6 +89,7 @@ export const ko: Record<MessageKey, string> = {
 
   "places.channels": "채널",
   "places.agents": "에이전트",
+  "places.unassigned": "미지정",
   "places.empty.channels": "아직 채널이 없어요. 컴퓨터에서 만들어 주세요.",
   "places.empty.agents": "아직 에이전트가 없어요. 컴퓨터에서 만들어 주세요.",
   "places.emptySection": "컴퓨터에서 이 섹션으로 옮겨 주세요.",

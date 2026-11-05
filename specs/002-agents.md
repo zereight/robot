@@ -23,7 +23,7 @@ An agent has:
   held because a limit is spent (see 006, "Backup model"). It starts as "None".
 - **Workspace**: a folder on the computer that belongs to this agent (see 007).
 - **Section**: the user section of the Agents list that it shows in, or none. With none, the agent
-  shows in the Agents list itself (see 001, "User sections").
+  shows in "Unassigned" (see 001, "User sections").
 - **Main agent**: a switch. At most one agent on a server is the main agent.
 - **State**: idle, working, waiting for the user, or offline (its provider is not connected).
 
