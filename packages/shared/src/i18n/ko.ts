@@ -126,6 +126,7 @@ export const ko: Record<MessageKey, string> = {
   "sections.delete.back": "돌아가기",
   "sections.moveTo": "섹션으로 이동",
   "sections.none": "섹션 없음",
+  "sections.unassigned": "미지정",
   "sections.field": "섹션",
 
   "panel.show": "활동 패널 보기",

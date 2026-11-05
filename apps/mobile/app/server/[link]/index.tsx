@@ -1,4 +1,4 @@
-import { allPlaces, summarize } from "@robot/phone"
+import { allPlaces, loosePlacesFirst, summarize, UNASSIGNED_SECTION_ID } from "@robot/phone"
 import type { Agent, Channel, Place, PlaceSection } from "@robot/shared"
 import { router, Stack, useLocalSearchParams } from "expo-router"
 import { useState } from "react"
@@ -141,7 +141,7 @@ const Section = (props: {
               {section.id === "agents" ? t("places.empty.agents") : t("places.empty.channels")}
             </Body>
           ) : null}
-          {section.places.map(row)}
+          {loosePlacesFirst(section.id) ? section.places.map(row) : null}
           {section.sections.map((user) => {
             const key = `user:${user.id}`
             const userOpen = !props.closed.includes(key)
@@ -165,6 +165,25 @@ const Section = (props: {
               </View>
             )
           })}
+          {section.id === "agents" && everything.length > 0 ? (
+            <View style={styles.userSection}>
+              <Header
+                title={t("places.unassigned")}
+                open={!props.closed.includes(UNASSIGNED_SECTION_ID)}
+                places={section.places}
+                onPress={() => props.toggle(UNASSIGNED_SECTION_ID)}
+              />
+              {!props.closed.includes(UNASSIGNED_SECTION_ID) ? (
+                section.places.length === 0 ? (
+                  <Body muted style={styles.empty}>
+                    {t("places.emptySection")}
+                  </Body>
+                ) : (
+                  section.places.map(row)
+                )
+              ) : null}
+            </View>
+          ) : null}
         </>
       ) : null}
     </View>

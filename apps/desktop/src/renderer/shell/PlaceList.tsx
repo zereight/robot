@@ -4,6 +4,7 @@ import {
   canMoveSection,
   clampPlaceListWidth,
   filterPlaces,
+  loosePlacesFirst,
   type MessageKey,
   markedParts,
   PLACE_LIST_MAX,
@@ -18,6 +19,7 @@ import {
   searchWords,
   sectionKind,
   summarize,
+  UNASSIGNED_SECTION_ID,
   type UserSectionView,
 } from "@robot/shared"
 import { ChevronDown, Ellipsis, Hash } from "lucide-solid"
@@ -753,6 +755,64 @@ export const PlaceList = (props: PlaceListProps) => {
     )
   }
 
+  /** The name box of a new section. It sits after the user sections and before "Unassigned". */
+  const newSectionBox = (kind: PlaceKind) =>
+    !readOnly() && ui.newSectionKind() === kind ? (
+      <div class={styles.userSection}>
+        <NameBox
+          label={t("sections.name")}
+          testId="section-new-input"
+          onSave={(name) => ui.createSection(kind, name)}
+          onCancel={ui.cancelNewSection}
+        />
+      </div>
+    ) : null
+
+  /** Agents with no user section. The section is last, and it is not a section the user made. */
+  const renderUnassigned = (section: PlaceSection) => {
+    if (searching() && section.places.length === 0) return null
+    const collapsed = () => ui.ui.collapsed.includes(UNASSIGNED_SECTION_ID) && !searching()
+    const summary = () => summarize(section.places)
+    const name = t("sections.unassigned")
+    return (
+      <div class={styles.userSection} data-testid="unassigned-section">
+        <div
+          class={styles.sectionTop}
+          data-drop={dropKey() === UNASSIGNED_SECTION_ID}
+          data-testid="unassigned-header"
+          {...(readOnly() ? {} : dropTarget(UNASSIGNED_SECTION_ID, "agent", null))}
+        >
+          <button
+            type="button"
+            class={styles.sectionHeader}
+            aria-expanded={!collapsed()}
+            aria-label={collapsed() ? headerName(name, summary()) : undefined}
+            onClick={() => ui.toggleSection(UNASSIGNED_SECTION_ID)}
+            data-testid="unassigned-toggle"
+          >
+            {headerContent(<span>{name}</span>, collapsed(), summary())}
+          </button>
+        </div>
+        <Presence when={!collapsed()}>
+          {() => (
+            <SectionBody>
+              <Show
+                when={section.places.length > 0}
+                fallback={
+                  <div class={styles.sectionEmpty} data-testid="unassigned-empty">
+                    {t(readOnly() ? "sections.emptyLinked" : "sections.empty")}
+                  </div>
+                }
+              >
+                <For each={section.places}>{renderRow}</For>
+              </Show>
+            </SectionBody>
+          )}
+        </Presence>
+      </div>
+    )
+  }
+
   const renderSection = (section: PlaceSection) => {
     const kind = sectionKind(section.id)
     const collapsed = () => ui.ui.collapsed.includes(section.id) && !searching()
@@ -792,23 +852,20 @@ export const PlaceList = (props: PlaceListProps) => {
                 <Show
                   when={section.places.length > 0 || section.sections.length > 0}
                   fallback={
-                    <div class={styles.sectionEmpty}>
-                      {t(`places.empty.${section.id}` as MessageKey)}
-                    </div>
+                    <>
+                      <div class={styles.sectionEmpty}>
+                        {t(`places.empty.${section.id}` as MessageKey)}
+                      </div>
+                      {newSectionBox(kind)}
+                    </>
                   }
                 >
-                  <For each={section.places}>{renderRow}</For>
+                  <Show when={loosePlacesFirst(section.id)}>
+                    <For each={section.places}>{renderRow}</For>
+                  </Show>
                   <For each={section.sections}>{(user) => renderUserSection(section.id, user)}</For>
-                </Show>
-                <Show when={!readOnly() && ui.newSectionKind() === kind}>
-                  <div class={styles.userSection}>
-                    <NameBox
-                      label={t("sections.name")}
-                      testId="section-new-input"
-                      onSave={(name) => ui.createSection(kind, name)}
-                      onCancel={ui.cancelNewSection}
-                    />
-                  </div>
+                  {newSectionBox(kind)}
+                  <Show when={section.id === "agents"}>{renderUnassigned(section)}</Show>
                 </Show>
               </SectionBody>
             )}

@@ -88,6 +88,7 @@ export const en = {
 
   "places.channels": "Channels",
   "places.agents": "Agents",
+  "places.unassigned": "Unassigned",
   "places.empty.channels": "No channels yet. Make one on the computer.",
   "places.empty.agents": "No agents yet. Make one on the computer.",
   "places.emptySection": "Move a place into this section on the computer.",

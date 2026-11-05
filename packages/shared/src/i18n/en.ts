@@ -125,6 +125,7 @@ export const en = {
   "sections.delete.back": "Back",
   "sections.moveTo": "Move to section",
   "sections.none": "No section",
+  "sections.unassigned": "Unassigned",
   "sections.field": "Section",
 
   "panel.show": "Show activity panel",

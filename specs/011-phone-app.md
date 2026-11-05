@@ -19,7 +19,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
 1. **Servers**: list of paired servers with the connection state of 012 and the total unread
    count of each. Add server opens the pairing camera.
 2. **Places**: the server's sections, agents and channels, with unread counts and working dots,
-   as on desktop. The dot breathes as it does on the desktop (001), and the breath follows the
+   as on desktop, including "Unassigned" at the bottom of Agents (001). The dot breathes as it
+   does on the desktop (001), and the breath follows the
    setting "Reduce Motion" of the system. This includes the user sections, with the same order and
    the same badge on a collapsed header. The user can open and close a section on the phone. The
    phone remembers this for itself. In this version the phone cannot make, rename, order or
