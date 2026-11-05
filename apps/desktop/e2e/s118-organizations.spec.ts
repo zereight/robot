@@ -16,7 +16,7 @@ import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers
 // Spec 030, "Flows" 1, 2, 4 and 5, "Organization tree" and the part "Tools" with the values
 // "Inherit" and "On" (S118), with 002 (the row "Organizations"), 017 and 018 (the pickers), and 012
 // (a linked computer with and without the switch "Can create and change agents"). The form opens
-// from a plain list in the settings part of the hand-off rule until the org chart (S119) opens it.
+// from the org chart (029): the button "New organization" and a click on an organization node.
 
 interface OrgInfo {
   id: string
@@ -55,14 +55,25 @@ const makeOrg = async (
     ...(parent ? { parentId: (await orgByName(page, parent))?.id } : {}),
   })
 
-const openOrgPart = async (page: Page) => {
-  await page.getByTestId("open-settings").click()
-  await page.getByTestId("settings-nav-organization").click()
-  await expect(page.getByTestId("org-list-section")).toBeVisible()
+/** Closes the settings page when it is open: the page button of the chart is behind it. */
+const closeSettingsIfOpen = async (page: Page) => {
+  const close = page.getByTestId("settings-close")
+  if (await close.isVisible().catch(() => false)) await close.click()
 }
+/** Opens the org chart: the way in to the form of an organization. */
+const openOrgPart = async (page: Page) => {
+  await closeSettingsIfOpen(page)
+  await page.getByTestId("page-orgchart").click()
+  await expect(page.getByTestId("org-page")).toBeVisible()
+}
+/** The organization node of the chart with this name. */
 const orgRow = (page: Page, name: string) =>
-  page.locator(`[data-testid=org-row][data-name='${name}']`)
+  page
+    .getByTestId("org-unit")
+    .filter({ has: page.getByTestId("org-unit-name").getByText(name, { exact: true }) })
 const dialog = (page: Page) => page.getByTestId("org-dialog")
+/** The field "Name" of the form. The chart has agent names with a similar test id. */
+const orgName = (page: Page) => page.getByTestId("org-form").getByTestId("org-name")
 const closeDialog = async (page: Page) => {
   await page.keyboard.press("Escape")
   await expect(dialog(page)).toHaveCount(0)
@@ -79,7 +90,7 @@ const fillNew = async (
 ) => {
   await page.getByTestId("org-new").click()
   await expect(dialog(page)).toBeVisible()
-  await page.getByTestId("org-name").fill(name)
+  await orgName(page).fill(name)
   for (const member of options.members ?? []) await page.getByTestId(`org-member-${member}`).check()
   if (options.lead) await page.getByTestId("org-lead").selectOption({ label: options.lead })
   if (options.parent) await page.getByTestId("org-parent").selectOption({ label: options.parent })
@@ -105,23 +116,28 @@ test("organizations: make them with the form, the tree rules show their reasons,
   try {
     for (const name of ["Ada", "Bo", "Cy"]) await createAgent(page, name)
     await openOrgPart(page)
-    await expect(page.getByTestId("org-list-empty")).toHaveText("No organizations yet.")
+    // No organization yet: the chart has the node "No organization" with the three agents.
+    await expect(page.getByTestId("org-unit")).toHaveCount(1)
 
     // --- Make "Product", "Docs" under it, and "Site" under "Docs" --------------------------
     await create(page, "Product", { members: ["Ada"], lead: "Ada" })
     await create(page, "Docs", { members: ["Bo"], parent: "Product" })
     await create(page, "Site", { members: ["Cy"], parent: "Docs" })
-    await expect(orgRow(page, "Docs").getByTestId("org-row-parent")).toHaveText("In Product")
-    await expect(orgRow(page, "Site").getByTestId("org-row-parent")).toHaveText("In Docs")
-    await expect(orgRow(page, "Product").getByTestId("org-row-parent")).toHaveCount(0)
     const product = (await orgByName(page, "Product")) as OrgInfo
+    // The chart draws the tree: a sub-organization node sits under the node of its parent.
+    await expect(orgRow(page, "Docs")).toHaveAttribute("data-parent", `o:${product.id}`)
+    await expect(orgRow(page, "Site")).toHaveAttribute(
+      "data-parent",
+      `o:${(await orgByName(page, "Docs"))?.id}`,
+    )
+    await expect(orgRow(page, "Product")).toHaveAttribute("data-parent", "")
     expect(product.leadId).toBe(await agentIdOf(page, "Ada"))
     expect((await orgByName(page, "Site"))?.parentId).toBe((await orgByName(page, "Docs"))?.id)
     await shot(page, "s118-01-list")
 
     // --- The parent field of "Product" shows "Docs" and "Site" muted with the reason ------------
     await orgRow(page, "Product").click()
-    await expect(page.getByTestId("org-name")).toHaveValue("Product")
+    await expect(orgName(page)).toHaveValue("Product")
     for (const name of ["Docs", "Site"]) {
       const option = parentOption(page, name)
       await expect(option).toHaveAttribute("disabled", "")
@@ -163,7 +179,7 @@ test("organizations: make them with the form, the tree rules show their reasons,
 
     // --- An organization with no member shows "No members." ----------------------------------
     await create(page, "Ops")
-    await expect(orgRow(page, "Ops").getByTestId("org-row-empty")).toHaveText("No members.")
+    await expect(orgRow(page, "Ops").getByTestId("org-unit-empty")).toHaveText("No members.")
 
     // --- Delete asks first. "Back" and Escape go back. ---------------------------------------
     await orgRow(page, "Site").click()
@@ -198,7 +214,7 @@ test("organizations: make them with the form, the tree rules show their reasons,
     await expect(orgRow(page, "Docs")).toHaveCount(0)
     // "Site" is a top organization now, and the members are still agents.
     await expect(orgRow(page, "Site")).toBeVisible()
-    await expect(orgRow(page, "Site").getByTestId("org-row-parent")).toHaveCount(0)
+    await expect(orgRow(page, "Site")).toHaveAttribute("data-parent", "")
     expect((await orgByName(page, "Site"))?.parentId).toBeNull()
     expect(await agentIdOf(page, "Bo")).toBeTruthy()
     expect((await orgsOf(page)).map((o) => o.name).sort()).toEqual(["Ops", "Product", "Site"])
@@ -253,7 +269,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     ])
 
     // --- The profile of the member of "Site": the row "Organizations" and "From Product" --------
-    await page.getByTestId("settings-close").click()
+    await closeSettingsIfOpen(page)
     await page.locator("[data-testid^=place-agent-]").filter({ hasText: "Cy" }).click()
     await page.getByTestId("chat-header-agent").click()
     await expect(page.getByTestId("agent-profile")).toBeVisible()
@@ -270,7 +286,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     // A click on the name opens the form. Escape closes the form and leaves the profile.
     await page.getByTestId("agent-org").click()
     await expect(dialog(page)).toBeVisible()
-    await expect(page.getByTestId("org-name")).toHaveValue("Site")
+    await expect(orgName(page)).toHaveValue("Site")
     await closeDialog(page)
     await expect(page.getByTestId("agent-profile")).toBeVisible()
     await page.keyboard.press("Escape")
@@ -323,7 +339,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     await expect(page.getByTestId("connection-form-dialog")).toHaveCount(0)
 
     // --- Delete "Product": it leaves the skill list, and the lines are gone -----------------------
-    await page.getByTestId("settings-nav-organization").click()
+    await openOrgPart(page)
     await orgRow(page, "Product").click()
     await page.getByTestId("org-delete").click()
     await expect(page.getByTestId("org-delete-lower")).toHaveText(
@@ -331,6 +347,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     )
     await page.getByTestId("org-delete-go").click()
     await expect(dialog(page)).toHaveCount(0)
+    await page.getByTestId("open-settings").click()
     await page.getByTestId("settings-nav-skills").click()
     await page.getByTestId("skill-edit").click()
     await expect(page.getByTestId("skill-org")).toHaveCount(2)
@@ -365,7 +382,7 @@ test("organizations: the form works with the keyboard at the narrowest window an
     await page.keyboard.press("Enter")
     await expect(dialog(page)).toBeVisible()
     // The focus starts in the field "Name", which has its label.
-    await expect(page.getByTestId("org-name")).toBeFocused()
+    await expect(orgName(page)).toBeFocused()
     await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible()
     await expect(page.getByRole("dialog", { name: "New organization" })).toBeVisible()
     await expect(page.getByRole("checkbox", { name: /Ada/ })).toBeVisible()
@@ -394,14 +411,15 @@ test("organizations: the form works with the keyboard at the narrowest window an
     await expect(page.getByTestId("org-member-Ada")).toBeFocused()
     await page.keyboard.press("Space")
     await expect(page.getByTestId("org-member-Ada")).toBeChecked()
-    await page.getByTestId("org-name").focus()
+    await orgName(page).focus()
     await page.keyboard.press("Enter")
     await expect(dialog(page)).toHaveCount(0)
-    // The focus goes back to the button that opened the form.
-    await expect(page.getByTestId("org-new")).toBeFocused()
+    // The chart stays open, and the focus goes to the node of the new organization (spec 029).
+    await expect(orgRow(page, "Keys")).toBeFocused()
     expect((await orgByName(page, "Keys"))?.memberIds).toEqual([await agentIdOf(page, "Ada")])
 
     // Escape closes the form without saving.
+    await page.getByTestId("org-new").focus()
     await page.keyboard.press("Enter")
     await expect(dialog(page)).toBeVisible()
     await page.keyboard.type("Never saved")
@@ -453,7 +471,7 @@ test("organizations: in Korean the form, the list, the profile row and the confi
       agentIds: [await agentIdOf(page, "Bo")],
     })
     await openOrgPart(page)
-    expect(await latinWords(page, "[data-testid=org-list-section]")).toEqual([])
+    expect(await latinWords(page, "[data-testid=org-head]")).toEqual([])
     await page.getByTestId("org-new").click()
     expect(await latinWords(page, "[data-testid=org-dialog]")).toEqual([])
     await closeDialog(page)
@@ -470,7 +488,7 @@ test("organizations: in Korean the form, the list, the profile row and the confi
     await page.keyboard.press("Escape")
     await expect(page.getByTestId("org-delete-confirm")).toHaveCount(0)
     await closeDialog(page)
-    await page.getByTestId("settings-close").click()
+    await closeSettingsIfOpen(page)
     await page.locator("[data-testid^=place-agent-]").filter({ hasText: "Ada" }).click()
     await page.getByTestId("chat-header-agent").click()
     await expect(page.getByTestId("agent-org")).toHaveText(["Product"])
@@ -575,7 +593,7 @@ test("organizations on a linked computer: with the switch it makes and edits the
     // An edit goes to the server, and the delete too. The form is not read only.
     await orgRow(one.page, "Docs").click()
     await expect(one.page.getByTestId("org-readonly")).toHaveCount(0)
-    await one.page.getByTestId("org-name").fill("Docs 2")
+    await orgName(one.page).fill("Docs 2")
     await one.page.getByTestId("org-submit").click()
     await expect(dialog(one.page)).toHaveCount(0)
     await expect
@@ -628,8 +646,8 @@ test("organizations on a linked computer without the switch: the list and the fo
     await expect(one.page.getByTestId("org-new")).toHaveCount(0)
     await orgRow(one.page, "Product").click()
     await expect(one.page.getByTestId("org-readonly")).toContainText("MacBook 2")
-    await expect(one.page.getByTestId("org-name")).toHaveValue("Product")
-    await expect(one.page.getByTestId("org-name")).toHaveAttribute("readonly", "")
+    await expect(orgName(one.page)).toHaveValue("Product")
+    await expect(orgName(one.page)).toHaveAttribute("readonly", "")
     await expect(one.page.getByTestId("org-lead")).toBeDisabled()
     await expect(one.page.getByTestId("org-parent")).toBeDisabled()
     await expect(one.page.getByTestId("org-member-Ada")).toBeDisabled()
@@ -646,7 +664,7 @@ test("organizations on a linked computer without the switch: the list and the fo
     expect(await ask(one.page, serverId, "organizations.delete", { id })).toBe("change_off")
     expect((await orgsOf(two.page)).map((o) => o.name)).toEqual(["Product"])
     // A read still works: the row "Organizations" of the profile of an agent opens the form.
-    await one.page.getByTestId("settings-close").click()
+    await closeSettingsIfOpen(one.page)
     await one.page.locator("[data-testid^=place-agent-]").filter({ hasText: "Ada" }).click()
     await one.page.getByTestId("chat-header-agent").click()
     await expect(one.page.getByTestId("agent-org")).toHaveText(["Product"])
