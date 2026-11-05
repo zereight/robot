@@ -21,7 +21,7 @@ export const isHandOffRule = (value: unknown): value is HandOffRule =>
  */
 export interface Organization {
   readonly handOff: HandOffRule
-  /** "Ask up the line": a question that the lead passes can go to higher agents (spec 030). */
+  /** "Ask up the line": a question that the lead passes can go up the organizations (spec 030). */
   readonly askUpTheLine: boolean
 }
 

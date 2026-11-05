@@ -142,7 +142,7 @@ export interface TaskInput {
   readonly failed?: { readonly code: string; readonly detail: string }
   /**
    * The task is made, and then ends at once as Blocked with this reason and never runs: the daily
-   * token limit of its channel, or of a higher channel, is used (spec 005, "Blocked"; spec 030).
+   * token limit of an organization of its agent is used (spec 005, "Blocked"; spec 030).
    * The end makes the same notice and the same record as any other blocked task.
    */
   readonly blocked?: { readonly code: string; readonly detail: string }
