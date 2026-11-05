@@ -10,7 +10,7 @@ import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, rpc, synced, turnOnSync } from "./sync-helpers.ts"
 
 // Spec 030, "One line" > "Repair" and "Migration" > "Agents in channels that do not make one line"
-// (S122b), with 019 (one line of organizations), 014 (the organization log) and 029 (the line at
+// (S130b), with 019 (one line of organizations), 014 (the organization log) and 029 (the line at
 // the bottom of the canvas): an agent that two computers added to two organizations that are not on
 // one line while apart leaves the organization that it joined last, on both computers, with a line on
 // the open chart and a line in the log. An import and the migration of two channels repair the same
@@ -172,7 +172,7 @@ for (const language of ["en", "ko"] as const) {
         await expect(
           shown[i]?.getByTestId("org-undo") as ReturnType<Page["getByTestId"]>,
         ).toHaveCount(0)
-        await shot(shown[i] as Page, `s122b-01-${language}-${i === 0 ? "one" : "two"}-notice`)
+        await shot(shown[i] as Page, `s130b-01-${language}-${i === 0 ? "one" : "two"}-notice`)
       }
       // Both computers end with the agent in "Docs" only, where she was added first, and "Ops" has
       // no lead.
@@ -191,7 +191,7 @@ for (const language of ["en", "ko"] as const) {
         .toBeNull()
       // The chart draws Ada once, in "Docs".
       await expect(one.page.getByTestId("org-unit").filter({ hasText: "Docs" })).toBeVisible()
-      await shot(one.page, `s122b-02-${language}-chart-after`)
+      await shot(one.page, `s130b-02-${language}-chart-after`)
 
       // One line in the organization log for each computer that made the removal. It holds the
       // agent, the organization and the kind, and no text.
@@ -261,7 +261,7 @@ test("two computers put Docs under Site and Site under Docs while apart: the lat
         timeout: 60_000,
       })
       .toBe("The parent of Site was cleared. The tree would have a loop.")
-    await shot(one.page, "s122b-05-tree-loop-notice")
+    await shot(one.page, "s130b-05-tree-loop-notice")
     for (const page of [one.page, two.page])
       await expect
         .poll(async () => JSON.stringify(await parentsOf(page)), { timeout: 30_000 })
@@ -281,7 +281,7 @@ test("two computers put Docs under Site and Site under Docs while apart: the lat
 
 test("an archive that holds an agent in two organizations that are not on one line comes back repaired, with a line in the log", async () => {
   test.setTimeout(180_000)
-  const work = mkdtempSync(join(tmpdir(), "robot-s122b-"))
+  const work = mkdtempSync(join(tmpdir(), "robot-s130b-"))
   const archive = join(work, "export.zip")
   const broken = join(work, "broken.zip")
   const source = await launch(freshUserData(), {
@@ -420,7 +420,7 @@ test("an archive that holds an agent in two organizations that are not on one li
     ])
     await empty.page.getByTestId("page-orgchart").click()
     await expect(empty.page.getByTestId("org-canvas")).toBeVisible()
-    await shot(empty.page, "s122b-03-import-chart")
+    await shot(empty.page, "s130b-03-import-chart")
   } finally {
     await empty.app.close().catch(() => {})
   }
@@ -521,7 +521,7 @@ test("an old database with two channels that do not make one line: the agent sta
   ])
   await page.getByTestId("page-orgchart").click()
   await expect(page.getByTestId("org-canvas")).toBeVisible()
-  await shot(page, "s122b-04-migration-chart")
+  await shot(page, "s130b-04-migration-chart")
   await app.close()
 
   // The second start repairs nothing more, and writes no second line.

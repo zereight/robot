@@ -1350,7 +1350,7 @@ describe("the step of the hand-off rule along the organizations (spec 030 'Migra
       migrations.filter((sql) => sql.includes("hand_off IN ('any', 'organizations')")),
     ).toHaveLength(1)
     expect(migrations[RULE + 1]).toContain("SET parent_channel_id = NULL")
-    // Spec 030, "Migration" (S122b): the repair of a line follows the steps that clear the old fields.
+    // Spec 030, "Migration" (S130b): the repair of a line follows the steps that clear the old fields.
     expect(migrations[RULE + 2]).toContain("CREATE TABLE org_line_note")
   })
 

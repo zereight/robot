@@ -1208,7 +1208,7 @@ export const migrations: readonly string[] = [
   ALTER TABLE agent ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0 CHECK (is_main IN (0, 1));
   `,
   `
-  -- The organization (spec 030, S118): a group of agents with one optional lead and one optional
+  -- The organization (spec 030, S126): a group of agents with one optional lead and one optional
   -- parent organization. It has no messages, no tasks and no archive state. The name is unique on
   -- a server, ignoring case. \`lead_agent_id\` and \`parent_id\` have no foreign key: a sync (019) can
   -- bring a sub-organization before its parent, and the reading of the tree sets a parent that is
@@ -1319,10 +1319,10 @@ export const migrations: readonly string[] = [
  * The key is the index of the SQL step. A step here must give the same result when it runs again.
  */
 export const dataSteps: Readonly<Record<number, (db: DatabaseSync) => void>> = {
-  // The organizations from the channels (spec 030, "Migration", S118).
+  // The organizations from the channels (spec 030, "Migration", S126).
   [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_unit"))]:
     migrateChannelsToOrganizations,
-  // The lines of the organizations that the step above made (spec 030, "Migration", S122b). It
+  // The lines of the organizations that the step above made (spec 030, "Migration", S130b). It
   // follows the steps that clear the old channel fields, so an older profile gets it too.
   [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_line_note"))]:
     repairLinesAfterMigration,
