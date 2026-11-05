@@ -7,18 +7,21 @@ import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
+import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
 
-// Ask up the line (spec 030, "Ask up the line"): a question that the lead passes goes to the lead
-// of each higher channel and then to the main agent, before it goes to the user. The stand-in model
-// tells the agent that looks by the name of the model, and the agent is told by its name too.
+// Ask up the line (spec 030, "Ask up the line"): a question that the lead passes goes to the leads
+// on the way up from the deepest organization of the member that asks, and then to the main agent,
+// before it goes to the user. The stand-in model tells the agent that looks by the name of the
+// model, and the agent is told by its name too.
 //
-// The tree: "Company" (lead Quin) > "Product" (lead Pia) > "Docs" (lead Dan, member Ann). Max is the
-// main agent. Ann asks a question in a part of "Docs".
+// The organizations: "Company" (lead Quin) > "Product" (lead Pia) > "Docs" (lead Dan, member Ann).
+// Max is the main agent. The channel "Docs" has the lead Dan and the member Ann. It has no parent:
+// a channel gives no line. Ann asks a question in a part of the channel "Docs".
 
 const sse = (text: string, usage = { prompt_tokens: 7, completion_tokens: 3 }) =>
   new Response(
@@ -195,12 +198,21 @@ interface Options {
   prompt?: string
   /** The switch "Ask up the line". On by default in these tests. */
   line?: boolean
-  /** No "Company" channel above "Product": the line is Pia and then Max. */
+  /** No "Company" organization above "Product": the line is Pia and then Max. */
   twoLevels?: boolean
   /** No main agent. */
   noMain?: boolean
-  /** The member that asks is this agent (by name) instead of Ann. */
-  asker?: "Ann" | "Pia"
+  /**
+   * The member that asks is this agent (by name) instead of Ann. Eve is in the channel and in no
+   * organization.
+   */
+  asker?: "Ann" | "Pia" | "Eve"
+  /**
+   * Ann is in "Docs" and also in "Site" (lead Sam), a sub-organization of "Docs". The lead of the
+   * channel is Lia, who leads no organization (spec 030, the acceptance of the member of two
+   * levels).
+   */
+  site?: boolean
 }
 
 const setup = async (options: Options = {}) => {
@@ -217,8 +229,7 @@ const setup = async (options: Options = {}) => {
       },
     ],
   })
-  let mainId: string | null = null
-  const t = testRuntime({ mainAgent: () => mainId })
+  const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
     Providers.use((p) =>
@@ -244,42 +255,58 @@ const setup = async (options: Options = {}) => {
         }),
       ),
     )
-  const [dan, pia, quin, max, ann] = await Promise.all([
+  const [dan, pia, quin, max, ann, eve, sam, lia] = await Promise.all([
     agent("Dan", "Leads Docs"),
     agent("Pia", "Leads Product"),
     agent("Quin", "Leads Company"),
     agent("Max", "Main agent"),
     agent("Ann", "Writes text"),
+    agent("Eve", "Writes text, in no organization"),
+    agent("Sam", "Leads Site"),
+    agent("Lia", "Leads the channel Docs"),
   ])
-  if (!options.noMain) mainId = max.id
-  const channel = (name: string, leadId: string, memberIds: string[], parentId?: string) =>
+  // The real switch "Main agent" (spec 002, flow 7), as the profile sets it.
+  if (!options.noMain) await run(Agents.use((a) => a.update(max.id, { isMain: true })))
+  const organization = (name: string, leadId: string, memberIds: string[], parentId?: string) =>
     run(
-      Channels.use((c) =>
-        c.create({
+      Organizations.use((o) =>
+        o.create({
           serverId: local.id,
           name,
-          topic: `About ${name}`,
-          instructions: `Write the answer as a list. (test ${testNo})`,
           memberIds,
           leadId,
-          ...(parentId ? { parentId } : {}),
+          parentId: parentId ?? null,
         }),
       ),
     )
-  const company = options.twoLevels ? null : await channel("Company", quin.id, [quin.id])
-  const product = await channel("Product", pia.id, [pia.id], company?.id)
-  const docs = await channel(
-    "Docs",
-    dan.id,
-    [dan.id, ann.id, ...(options.asker === "Pia" ? [pia.id] : [])],
-    product.id,
+  const company = options.twoLevels ? null : await organization("Company", quin.id, [quin.id])
+  const product = await organization("Product", pia.id, [pia.id], company?.id)
+  const docsOrg = await organization("Docs", dan.id, [dan.id, ann.id], product.id)
+  if (options.site) await organization("Site", sam.id, [sam.id, ann.id], docsOrg.id)
+  // The channel has no parent. The member Pia is in the channel only to ask in it.
+  const docs = await run(
+    Channels.use((c) =>
+      c.create({
+        serverId: local.id,
+        name: "Docs",
+        topic: "About Docs",
+        instructions: `Write the answer as a list. (test ${testNo})`,
+        memberIds: [
+          options.site ? lia.id : dan.id,
+          ann.id,
+          ...(options.asker === "Pia" ? [pia.id] : []),
+          ...(options.asker === "Eve" ? [eve.id] : []),
+        ],
+        leadId: options.site ? lia.id : dan.id,
+      }),
+    ),
   )
   if (options.line !== false) await run(Organization.use((o) => o.setAskUpTheLine(true)))
   t.shell.focused = false
   const history = () => run(Channels.use((c) => c.history(docs.id)))
   const send = (text: string) => run(Channels.use((c) => c.send(docs.id, text)))
   const tasks = () => run(Tasks.use((x) => x.list(local.id)))
-  const askerId = { Ann: ann.id, Pia: pia.id, Dan: dan.id }[asker]
+  const askerId = { Ann: ann.id, Pia: pia.id, Eve: eve.id }[asker]
   /** The question cards of the member that asks, oldest first. */
   const cards = async () =>
     (await history())
@@ -310,7 +337,15 @@ const setup = async (options: Options = {}) => {
   }
   /** The tasks that are looks of the line, by the name of the agent. */
   const lookTasks = async (name: string) => {
-    const id = { Dan: dan.id, Pia: pia.id, Quin: quin.id, Max: max.id, Ann: ann.id }[name]
+    const id = {
+      Dan: dan.id,
+      Pia: pia.id,
+      Quin: quin.id,
+      Max: max.id,
+      Ann: ann.id,
+      Sam: sam.id,
+      Lia: lia.id,
+    }[name]
     return (await tasks()).filter((x) => x.source === "question" && x.agentId === id)
   }
   return {
@@ -324,6 +359,7 @@ const setup = async (options: Options = {}) => {
     ann,
     company,
     product,
+    docsOrg,
     docs,
     history,
     send,
@@ -510,12 +546,41 @@ describe("the line goes on while agents pass", () => {
     expect(s.lines().map((l) => l.place)).toEqual([undefined, 1, 2])
   })
 
-  test("the order is the lead of each higher channel from the nearest, then the main agent", async () => {
+  test("the order is the lead of each organization on the way up from the nearest, then the main agent", async () => {
     // Everybody passes: the line is Pia (Product), Quin (Company), Max (main). Then the user.
     const s = await setup()
     await s.send("split sizes")
     await until(async () => (await s.waiting()).length === 1)
     expect(lookRequests.map((r) => r.who)).toEqual(["Dan", "Pia", "Quin", "Max"])
+    await s.answer((await s.cards())[0]?.id ?? "", "Yes")
+    await s.finished()
+  })
+
+  test("a member of two levels: the lead of Site, then Dan, then Pia, then Max is cut after the third (spec 030)", async () => {
+    // Lia leads the channel and passes. The line is Sam (Site), Dan (Docs), Pia (Product); Max is
+    // the fourth agent after the lead of the channel, so Max is skipped.
+    script.queue.Lia = [NOT_SURE]
+    const s = await setup({ twoLevels: true, site: true })
+    await s.send("split sizes")
+    await until(async () => (await s.waiting()).length === 1)
+    expect(lookRequests.map((r) => r.who)).toEqual(["Lia", "Sam", "Dan", "Pia"])
+    expect(askOf((await s.cards())[0])?.passes?.map((p) => p.name)).toEqual([
+      "Lia",
+      "Sam",
+      "Dan",
+      "Pia",
+    ])
+    await s.answer((await s.cards())[0]?.id ?? "", "Yes")
+    await s.finished()
+  })
+
+  test("a member in no organization: after the lead passes, the main agent looks (spec 030)", async () => {
+    // The asker Eve is in the channel and in no organization. A channel gives no line.
+    script.queue.Dan = [NOT_SURE]
+    const s = await setup({ asker: "Eve" })
+    await s.send("split sizes")
+    await until(async () => (await s.waiting()).length === 1)
+    expect(lookRequests.map((r) => r.who)).toEqual(["Dan", "Max"])
     await s.answer((await s.cards())[0]?.id ?? "", "Yes")
     await s.finished()
   })
@@ -554,7 +619,7 @@ describe("the line goes on while agents pass", () => {
     expect(s.lines()).toHaveLength(3)
   })
 
-  test("with no main agent and no higher channel, the lead's pass goes to the user as in 004", async () => {
+  test("with no main agent and no lead above, the lead's pass goes to the user as in 004", async () => {
     const s = await setup({ twoLevels: true, noMain: true })
     // Pia leads the parent, so she is still on the line; remove her from it by passing 'user_choice'.
     script.queue.Dan = [NOT_SURE]
@@ -958,15 +1023,15 @@ describe("who is skipped on the line", () => {
     })
   })
 
-  test("an agent that looked is not asked again, also when it leads two channels", async () => {
+  test("an agent that looked is not asked again, also when it leads two organizations", async () => {
     script.queue.Dan = [NOT_SURE]
     script.queue.Pia = [NOT_SURE]
     script.queue.Max = [NOT_SURE]
     const s = await setup()
     // Pia also leads Company.
     await s.run(
-      Channels.use((c) =>
-        c.update(s.company?.id ?? "", { memberIds: [s.quin.id, s.pia.id], leadId: s.pia.id }),
+      Organizations.use((o) =>
+        o.update(s.company?.id ?? "", { memberIds: [s.quin.id, s.pia.id], leadId: s.pia.id }),
       ),
     )
     await s.send("split sizes")
@@ -976,13 +1041,13 @@ describe("who is skipped on the line", () => {
     await s.finished()
   })
 
-  test("the main agent is also the lead of a higher channel: it looks once", async () => {
+  test("the main agent is also the lead of a higher organization: it looks once", async () => {
     script.queue.Dan = [NOT_SURE]
     script.queue.Pia = [NOT_SURE]
     const s = await setup({ twoLevels: true })
     await s.run(
-      Channels.use((c) =>
-        c.update(s.product.id, { memberIds: [s.pia.id, s.max.id], leadId: s.max.id }),
+      Organizations.use((o) =>
+        o.update(s.product.id, { memberIds: [s.pia.id, s.max.id], leadId: s.max.id }),
       ),
     )
     await s.send("split sizes")
@@ -992,10 +1057,10 @@ describe("who is skipped on the line", () => {
     await s.finished()
   })
 
-  test("a channel with no lead above gives no agent; with no main agent the lead's pass goes to the user", async () => {
+  test("an organization with no lead above gives no agent; with no main agent the lead's pass goes to the user", async () => {
     script.queue.Dan = [NOT_SURE]
     const s = await setup({ twoLevels: true, noMain: true })
-    await s.run(Channels.use((c) => c.update(s.product.id, { leadId: null })))
+    await s.run(Organizations.use((o) => o.update(s.product.id, { leadId: null })))
     await s.send("split sizes")
     await until(async () => (await s.waiting()).length === 1)
     expect(lookRequests.map((r) => r.who)).toEqual(["Dan"])

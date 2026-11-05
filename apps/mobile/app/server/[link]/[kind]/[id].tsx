@@ -1,7 +1,7 @@
 import type { PlaceKind } from "@robot/phone"
 import { type Agent, type ChannelMessage, type QuietTurn, quietOfChat } from "@robot/shared"
 import * as Clipboard from "expo-clipboard"
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
+import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   FlatList,
@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { AskCard } from "../../../../src/chat/AskCard.tsx"
 import { Composer } from "../../../../src/chat/Composer.tsx"
 import { MessageRow, type RowActions, type ShownMessage } from "../../../../src/chat/MessageRow.tsx"
-import { parentChannelOf } from "../../../../src/chat/parentLine.ts"
 import { QuietLine } from "../../../../src/chat/QuietLine.tsx"
 import { buildRows, messageText, quoteText, type Row } from "../../../../src/chat/rows.ts"
 import { setShownPlace } from "../../../../src/notices.ts"
@@ -25,6 +24,7 @@ import { useApp, useHubState, useServer } from "../../../../src/state/context.ts
 import { radius, space, text } from "../../../../src/theme/palette.ts"
 import { ChannelMark } from "../../../../src/ui/ChannelMark.tsx"
 import { Button, ErrorLine, Notice } from "../../../../src/ui/kit.tsx"
+import { useShownName } from "../../../../src/ui/names.tsx"
 import { Sheet } from "../../../../src/ui/Sheet.tsx"
 import { stateText } from "../../../../src/ui/states.ts"
 
@@ -37,39 +37,6 @@ const untilText = (locale: string, at: number) =>
       : { weekday: "short", hour: "numeric", minute: "2-digit" },
   ).format(at)
 
-/** The channel name in the header, and "In <parent>" when it has one (spec 030, 011). */
-const ChannelTitle = (props: {
-  name: string
-  picture: string | null
-  parentName: string | null
-  textColor: string
-  mutedColor: string
-  inText: string
-  openLabel: string
-  onOpenParent: () => void
-}) => (
-  <View style={styles.channelTitle} testID="channel.title">
-    {props.picture ? <ChannelMark picture={props.picture} size={28} /> : null}
-    <View style={styles.channelTitleTextBlock}>
-      <Text numberOfLines={1} style={[styles.channelTitleText, { color: props.textColor }]}>
-        {props.picture ? props.name : `#${props.name}`}
-      </Text>
-      {props.parentName ? (
-        <Pressable
-          testID="channel.parent"
-          accessibilityRole="button"
-          accessibilityLabel={props.openLabel}
-          onPress={props.onOpenParent}
-        >
-          <Text numberOfLines={1} style={[styles.parentLine, { color: props.mutedColor }]}>
-            {props.inText}
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
-  </View>
-)
-
 /** The conversation of an agent or a channel (spec 011, 003, 004). */
 export default function Conversation() {
   const params = useLocalSearchParams<{ link: string; kind: string; id: string; call?: string }>()
@@ -77,8 +44,9 @@ export default function Conversation() {
   const kind: PlaceKind = params.kind === "channel" ? "channel" : "agent"
   const id = params.id
   const { hub, t, palette, locale, errorLine } = useApp()
-  const router = useRouter()
   const view = useServer(link)
+  // The organization prefix of an agent (spec 036): the header, the quote lines and the lists.
+  const shownName = useShownName(link)
   const deviceName = useHubState().deviceName
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<Row<ShownMessage>>>(null)
@@ -125,18 +93,20 @@ export default function Conversation() {
   // The list is drawn upside down, so the newest row is at the bottom and stays in view.
   const rows = useMemo(() => buildRows(messages).reverse(), [messages])
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
-  const title = kind === "agent" ? (agent?.name ?? "") : channel ? `#${channel.name}` : ""
-  const channels = data?.channels ?? []
-  const parent = channel ? parentChannelOf(channels, channel.id) : null
-  const openParent = useCallback(() => {
-    if (!parent) return
-    router.push({
-      pathname: "/server/[link]/[kind]/[id]",
-      params: { link, kind: "channel", id: parent.id },
-    })
-  }, [link, parent, router])
-  const nameOf = (m: ShownMessage | undefined) =>
-    !m ? "" : m.author === "user" ? t("chat.you") : (agentOf(m.agentId)?.name ?? "?")
+  const title =
+    kind === "agent"
+      ? agent
+        ? shownName(agent.id, agent.name).text
+        : ""
+      : channel
+        ? `#${channel.name}`
+        : ""
+  const nameOf = (m: ShownMessage | undefined) => {
+    if (!m) return ""
+    if (m.author === "user") return t("chat.you")
+    const sender = agentOf(m.agentId)
+    return sender ? shownName(sender.id, sender.name).text : "?"
+  }
   // The turn of this place that shows no sign of life (spec 005, "Quiet line"). A channel has no
   // working line on the phone, so the first quiet part of the channel stands for it.
   const quietTurn: QuietTurn | undefined =
@@ -207,6 +177,11 @@ export default function Conversation() {
         : view.state === "update_app"
           ? t("chat.updateBox")
           : t("chat.offlineBox", { name: view.link.name })
+  /** The whole name of the organization that the prefix of an agent shows, or null. */
+  const organizationOf = (agentId: string | null) => {
+    const sender = agentOf(agentId)
+    return sender ? shownName(sender.id, sender.name).organization : null
+  }
   // The members in the order of the channel (spec 004), as on the computer.
   const members = channel
     ? channel.memberIds.flatMap((memberId) => agents.find((a) => a.id === memberId) ?? [])
@@ -222,19 +197,18 @@ export default function Conversation() {
       <Stack.Screen
         options={{
           title,
-          ...(kind === "channel" && channel && (channel.picture || parent)
+          ...(kind === "channel" && channel?.picture
             ? {
                 headerTitle: () => (
-                  <ChannelTitle
-                    name={channel.name}
-                    picture={channel.picture}
-                    parentName={parent?.name ?? null}
-                    textColor={palette.text}
-                    mutedColor={palette.textMuted}
-                    inText={parent ? t("channels.in", { parent: parent.name }) : ""}
-                    openLabel={parent ? t("channels.in.open", { parent: parent.name }) : ""}
-                    onOpenParent={openParent}
-                  />
+                  <View style={styles.channelTitle} testID="channel.title">
+                    <ChannelMark picture={channel.picture} size={28} />
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.channelTitleText, { color: palette.text }]}
+                    >
+                      {channel.name}
+                    </Text>
+                  </View>
                 ),
               }
             : {}),
@@ -307,6 +281,7 @@ export default function Conversation() {
                 message={item.message}
                 head={item.head}
                 agent={agentOf(item.message.agentId)}
+                organization={organizationOf(item.message.agentId)}
                 quoted={
                   item.message.replyTo
                     ? {
@@ -322,6 +297,7 @@ export default function Conversation() {
               {kind === "channel" && (item.message as unknown as ChannelMessage).awaiting ? (
                 <Pick
                   members={members}
+                  shownName={shownName}
                   onPick={(agentId) =>
                     void hub
                       .assign(link, id, item.message.id, agentId)
@@ -370,7 +346,13 @@ export default function Conversation() {
               : t("chat.placeholder.channel", { name: channel?.name ?? "" })
           }
           canAttach={kind === "agent"}
-          mentions={kind === "channel" ? members.filter((a) => !a.archived) : undefined}
+          mentions={
+            kind === "channel"
+              ? members
+                  .filter((a) => !a.archived)
+                  .map((a) => ({ ...a, organization: shownName(a.id, a.name).organization }))
+              : undefined
+          }
           working={!!working}
           blocked={blocked}
           reply={reply ? { name: nameOf(reply), text: quoteText(reply) } : null}
@@ -439,6 +421,7 @@ export default function Conversation() {
 /** "Who takes this job?" under a channel message that waits for a pick (spec 004). */
 const Pick = (props: {
   readonly members: readonly Agent[]
+  readonly shownName: ReturnType<typeof useShownName>
   readonly onPick: (agentId: string) => void
 }) => {
   const { t, palette } = useApp()
@@ -449,7 +432,12 @@ const Pick = (props: {
       </Text>
       <View style={styles.pickRow}>
         {props.members.map((m) => (
-          <Button key={m.id} kind="secondary" label={m.name} onPress={() => props.onPick(m.id)} />
+          <Button
+            key={m.id}
+            kind="secondary"
+            label={props.shownName(m.id, m.name).text}
+            onPress={() => props.onPick(m.id)}
+          />
         ))}
       </View>
     </View>
@@ -459,9 +447,7 @@ const Pick = (props: {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   channelTitle: { flexDirection: "row", alignItems: "center", gap: space.s, maxWidth: 240 },
-  channelTitleTextBlock: { flexShrink: 1 },
   channelTitleText: { fontSize: text.m, fontWeight: "600", flexShrink: 1 },
-  parentLine: { fontSize: text.xs },
   banner: { paddingHorizontal: space.l, paddingTop: space.s },
   content: { paddingVertical: space.m },
   empty: { textAlign: "center", padding: space.xl, fontSize: text.s },

@@ -12,9 +12,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@robot/link": "workspace:*"
-  },
-  "devDependencies": {
+    "@robot/link": "workspace:*",
     "@robot/shared": "workspace:*"
   }
 }

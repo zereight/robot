@@ -5,7 +5,7 @@ import { type OrgChartPhase, OrgFeed, unsupportedByServer } from "./orgChart.ts"
 
 const model = (tag: string): ChartModel => ({
   root: null,
-  channels: [],
+  orgs: [],
   lines: [],
   handoffsCapped: false,
   empty: tag === "empty",
@@ -32,6 +32,17 @@ describe("the org chart feed of the phone", () => {
     expect(f.answered(q, a)).toBe(true)
     expect(f.phase).toEqual({ kind: "ready", model: a })
     expect(kinds()).toEqual(["loading", "ready"])
+  })
+
+  test("a chart of channels from a server of an older step shows as unsupported", () => {
+    const { f } = feed()
+    const old = { root: null, channels: [], lines: [] } as unknown as ChartModel
+    expect(f.answered(f.begin(), old)).toBe(true)
+    expect(f.phase).toEqual({ kind: "unsupported" })
+    f.pushed(model("a"))
+    expect(f.phase.kind).toBe("ready")
+    f.pushed(old)
+    expect(f.phase).toEqual({ kind: "unsupported" })
   })
 
   test("a push replaces the model", () => {

@@ -207,7 +207,7 @@ The specs hold a default for each decision. Change the default in the spec, or t
    call limit 120 seconds; result cut at 100000 characters; guide for agents at most 20000
    characters; panel column 320 to 720 px; two test devices side by side at 1200 px or wider.
 9. **Logs on a connected phone and measurements.** They arrive with the download, so the first draft's
-   S116 to S118 shrink to the rules only. What stays for ROBot: the classes of those tools, the
+   S116 to S126 shrink to the rules only. What stays for ROBot: the classes of those tools, the
    outside content, the redaction, the limits for an agent, and the erase steps. A screen walk runs
    the start script of the project of the user, so 034 makes it a risky change.
 10. **A frame is not a panel of ROBot.** The panel of the program is a page of another product, so it

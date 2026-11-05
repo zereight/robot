@@ -10,12 +10,6 @@ import type {
   ChannelMessage,
   ChannelPatch,
 } from "./channels.ts"
-import type {
-  AgentChannelTool,
-  ChannelLimitInfo,
-  ChannelToolRow,
-  ChannelUsageRow,
-} from "./channelTools.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type { FollowUp } from "./followUp.ts"
@@ -50,7 +44,10 @@ import type {
 import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { HandOffRule, Organization } from "./organization.ts"
+import type { Org, OrgCreate, OrgPatch } from "./organizations.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
+import type { OrgLimitView, OrgUsageRow } from "./orgLimit.ts"
+import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolRow } from "./orgTools.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
@@ -721,14 +718,15 @@ export interface RpcMethods {
   /** The skills that are only for this agent. A delete of the agent deletes them too (002, 017). */
   "skills.onlyFor": { input: { agentId: string }; output: { count: number } }
   /**
-   * `agentIds` is the list of agents that may use the skill, or `null` for all agents. `channelIds`
-   * are the channels in the list (spec 017, 030); they count only when `agentIds` is a list.
+   * `agentIds` is the list of agents that may use the skill, or `null` for all agents.
+   * `organizations` are the organizations in the list (spec 017, 030); they count only when
+   * `agentIds` is a list.
    */
   "skills.create": {
     input: SkillInput & {
       serverId: string
       agentIds: readonly string[] | null
-      channelIds?: readonly string[]
+      organizations?: readonly OrgToolEntry[]
     }
     output: Skill
   }
@@ -737,7 +735,7 @@ export interface RpcMethods {
     input: SkillInput & {
       id: string
       agentIds: readonly string[] | null
-      channelIds?: readonly string[]
+      organizations?: readonly OrgToolEntry[]
     }
     output: Skill
   }
@@ -821,26 +819,37 @@ export interface RpcMethods {
   "island.dismissResult": { input: { id: number }; output: undefined }
   /** The size that the island content needs, in px. The island window takes this size. */
   "island.fit": { input: { width: number; height: number }; output: undefined }
-  /**
-   * The part "Tools of this channel" (spec 030): the skills and connections of this computer, with
-   * the switch of the channel. A linked device reads it and does not change it (spec 012).
-   */
-  "channelTools.list": { input: { channelId: string }; output: readonly ChannelToolRow[] }
-  /** Turns a skill or a connection on or off for a channel. This computer only (spec 012, 030). */
-  "channelTools.set": {
-    input: { channelId: string; kind: "skill" | "connection"; id: string; on: boolean }
-    output: readonly ChannelToolRow[]
-  }
-  /** The skills and connections that an agent has from channels: the lines "From <channel>". */
-  "channelTools.forAgent": { input: { agentId: string }; output: readonly AgentChannelTool[] }
-  /** The daily token limit of a channel and the tokens used today (spec 030). */
-  "channels.limit": { input: { channelId: string }; output: ChannelLimitInfo }
-  /** The channels with a daily token limit, with the tokens used today (spec 006, 030). */
-  "usage.channels": { input: { serverId: string }; output: readonly ChannelUsageRow[] }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
   }
+  /**
+   * Organizations (spec 030). A linked device reads the list and the tools with the link only, and
+   * makes, changes and deletes organizations only with the switch "Can create and change agents"
+   * (spec 012). The tools of an organization change on this computer only.
+   */
+  "organizations.list": { input: { serverId: string }; output: readonly Org[] }
+  /** The daily token limit of an organization with the tokens used today (spec 030). */
+  "organizations.limit": { input: { id: string }; output: OrgLimitView }
+  /** One row for each organization with a daily token limit (spec 006, 030). */
+  "usage.organizations": { input: { serverId: string }; output: readonly OrgUsageRow[] }
+  "organizations.create": { input: OrgCreate; output: Org }
+  "organizations.update": { input: { id: string; patch: OrgPatch }; output: Org }
+  "organizations.delete": { input: { id: string }; output: undefined }
+  /** The part "Tools" of the form of an organization: the skills and connections with its value. */
+  "orgTools.list": { input: { orgId: string }; output: readonly OrgToolRow[] }
+  /** Sets the value of an organization for a skill or a connection: "Inherit", "On" or "Off". */
+  "orgTools.set": {
+    input: {
+      orgId: string
+      kind: "skill" | "connection"
+      id: string
+      choice: OrgToolChoice
+    }
+    output: readonly OrgToolRow[]
+  }
+  /** The skills and connections that an agent has from organizations: the lines "From <organization>". */
+  "orgTools.forAgent": { input: { agentId: string }; output: readonly AgentOrgTool[] }
   /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
   "today.get": { input: undefined; output: TodaySnapshot }
   /** The org chart of this computer (spec 029). It reads local data only and sends nothing out. */
@@ -1022,6 +1031,25 @@ export interface RpcEvents {
   "orgChart.changed": OrgSnapshot
   /** The part "Organization" changed here, by sync, or on a linked server (spec 030). */
   "organization.changed": { serverId: string }
+  /** An organization was made, changed or deleted, here, by sync, or on a linked server (spec 030). */
+  "organizations.changed": { serverId: string }
+  /**
+   * The app cleared the parent field of an organization to repair the tree, or removed an agent from
+   * an organization to repair a line (spec 030, "Repair", "One line"). This computer only; the open
+   * org chart shows the line for a short time.
+   */
+  "organizations.repaired":
+    | { serverId: string; organizationId: string; name: string; reason: "loop" | "levels" }
+    | {
+        serverId: string
+        organizationId: string
+        /** The organization that the agent left. */
+        name: string
+        reason: "line"
+        agentName: string
+        /** The organization of the agent that is not on one line with the one that it left. */
+        otherName: string
+      }
   /**
    * The org chart of a linked server changed: its whole ready model (spec 029, 012). A server
    * pushes it to its linked devices. This computer sends it to no window of its own, so a window

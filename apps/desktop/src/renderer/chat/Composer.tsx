@@ -34,6 +34,7 @@ import {
 } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, stageFile } from "../lib/rpc.ts"
+import { AgentInLine } from "../orgs/AgentName.tsx"
 import skillStyles from "../skills/skills.module.css"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
@@ -676,9 +677,15 @@ export const Composer = (props: ComposerProps) => {
           {(quoted) => (
             <div class={styles.quote} data-testid="reply-quote">
               <span class={styles.quoteText}>
-                {t("chat.replyingTo", {
-                  name: quoted().author === "agent" ? props.agent.name : t("chat.you"),
-                })}
+                {quoted().author === "agent" ? (
+                  <AgentInLine
+                    line={(name) => t("chat.replyingTo", { name })}
+                    id={props.agent.id}
+                    name={props.agent.name}
+                  />
+                ) : (
+                  t("chat.replyingTo", { name: t("chat.you") })
+                )}
                 {": "}
                 {messageText(quoted()).slice(0, 80)}
               </span>

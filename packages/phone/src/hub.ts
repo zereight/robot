@@ -46,6 +46,7 @@ import type {
   QuietTurn,
 } from "@robot/shared"
 import { type OrgChartPhase, OrgFeed } from "./orgChart.ts"
+import { type AgentOrgs, agentOrgNames } from "./orgPrefix.ts"
 import { newest, removeMessage, upsertMessage } from "./places.ts"
 import { type PhoneStorage, readJson } from "./storage.ts"
 
@@ -82,6 +83,12 @@ export interface ServerData {
   readonly places: readonly PlaceSection[] | null
   readonly agents: readonly Agent[] | null
   readonly channels: readonly Channel[] | null
+  /**
+   * The whole name of the deepest organization of each agent (spec 036, 011): the data of the
+   * prefix "[Docs] Ada". It is held like the role line of a place, so it shows from the cache while
+   * the server is offline. Null until the phone has read it once; an older server gives none.
+   */
+  readonly agentOrgs: AgentOrgs | null
   /** The chats that were opened, by agent. */
   readonly chats: Readonly<Record<string, ChatView>>
   /** The channels that were opened, by channel. */
@@ -156,6 +163,7 @@ const EMPTY: ServerData = {
   places: null,
   agents: null,
   channels: null,
+  agentOrgs: null,
   chats: {},
   channelMessages: {},
   attention: [],
@@ -580,31 +588,35 @@ export class PhoneHub {
     const serverId = view.link.serverId
     const read = <T>(method: string, input: unknown) =>
       this.request<T>(linkId, method, input).catch(() => undefined)
-    const [places, agents, channels, attention, quiet] = await Promise.all([
+    const [places, agents, channels, organizations, attention, quiet] = await Promise.all([
       read<PlaceSection[]>("places.list", { serverId }),
       read<Agent[]>("agents.list", { serverId, archived: false }),
       read<Channel[]>("channels.list", { serverId }),
+      read<unknown>("organizations.list", { serverId }),
       read<WireNotice[]>("attention.list", undefined),
       read<QuietState>("quiet.list", undefined),
     ])
     const at = this.#options.now?.() ?? Date.now()
+    const agentOrgs = agentOrgNames(organizations)
     this.#setData(linkId, (d) => ({
       ...d,
       places: places ?? d.places,
       agents: agents ?? d.agents,
       channels: channels ?? d.channels,
+      agentOrgs: agentOrgs ?? d.agentOrgs,
       attention: attention ?? d.attention,
       quiet: quiet && Array.isArray(quiet.turns) ? { turns: quiet.turns, receivedAt: at } : d.quiet,
     }))
     if (places) this.#save(linkId, "places", () => JSON.stringify(places))
     if (agents) this.#save(linkId, "agents", () => JSON.stringify(agents))
     if (channels) this.#save(linkId, "channels", () => JSON.stringify(channels))
+    if (agentOrgs) this.#save(linkId, "agent-orgs", () => JSON.stringify(agentOrgs))
     const focus = this.#focus.get(linkId)
     if (focus) await this.#loadPlace(linkId, focus)
   }
 
   /** Reads one list again, a moment later, so a burst of events makes one request. */
-  #refreshSoon(linkId: string, what: "places" | "agents" | "channels" | "attention") {
+  #refreshSoon(linkId: string, what: "places" | "agents" | "channels" | "orgs" | "attention") {
     const key = `${linkId}\u0000${what}`
     if (this.#refreshTimers.has(key)) return
     this.#refreshTimers.set(
@@ -616,7 +628,7 @@ export class PhoneHub {
     )
   }
 
-  async #refreshOne(linkId: string, what: "places" | "agents" | "channels" | "attention") {
+  async #refreshOne(linkId: string, what: "places" | "agents" | "channels" | "orgs" | "attention") {
     const view = this.#views.get(linkId)
     if (view?.state !== "online") return
     const serverId = view.link.serverId
@@ -636,6 +648,13 @@ export class PhoneHub {
         const channels = await this.request<Channel[]>(linkId, "channels.list", { serverId })
         this.#setData(linkId, (d) => ({ ...d, channels }))
         this.#save(linkId, "channels", () => JSON.stringify(channels))
+      } else if (what === "orgs") {
+        const agentOrgs = agentOrgNames(
+          await this.request<unknown>(linkId, "organizations.list", { serverId }),
+        )
+        if (!agentOrgs) return
+        this.#setData(linkId, (d) => ({ ...d, agentOrgs }))
+        this.#save(linkId, "agent-orgs", () => JSON.stringify(agentOrgs))
       } else {
         const attention = await this.request<WireNotice[]>(linkId, "attention.list")
         this.#setData(linkId, (d) => ({ ...d, attention }))
@@ -725,6 +744,9 @@ export class PhoneHub {
       this.#refreshSoon(linkId, "agents")
     } else if (event === "channels.changed") {
       this.#refreshSoon(linkId, "channels")
+    } else if (event === "organizations.changed") {
+      // A member or a name changed: the prefixes follow at the next read (spec 036, 011).
+      this.#refreshSoon(linkId, "orgs")
     } else if (event === "tasks.changed") {
       this.#refreshSoon(linkId, "attention")
     } else if (event === "notice") {
@@ -1021,12 +1043,13 @@ export class PhoneHub {
   async #readCache(linkId: string): Promise<ServerData> {
     const dir = cacheDir(linkId)
     const storage = this.#options.storage
-    const [places, agents, channels] = await Promise.all([
+    const [places, agents, channels, agentOrgs] = await Promise.all([
       readJson<PlaceSection[] | null>(storage, `${dir}/places.json`, null),
       readJson<Agent[] | null>(storage, `${dir}/agents.json`, null),
       readJson<Channel[] | null>(storage, `${dir}/channels.json`, null),
+      readJson<AgentOrgs | null>(storage, `${dir}/agent-orgs.json`, null),
     ])
-    return { ...EMPTY, places, agents, channels }
+    return { ...EMPTY, places, agents, channels, agentOrgs }
   }
 
   #saveChat(linkId: string, agentId: string) {

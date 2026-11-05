@@ -29,7 +29,7 @@ appId: host.exp.Exponent
 - tapOn:
     id: "places.orgChart"
 
-# The root, the channel with its lead, no agent works yet.
+# The root, the organization with its lead, no agent works yet.
 - extendedWaitUntil:
     visible:
       id: "org.block.Docs"
@@ -80,7 +80,7 @@ appId: host.exp.Exponent
       id: "org.more.Team"
     timeout: 15000
 
-# "No channel" and the hand-offs.
+# "No organization" and the hand-offs.
 - scrollUntilVisible:
     element:
       id: "org.handoffs"
@@ -129,22 +129,16 @@ appId: host.exp.Exponent
     visible:
       id: "org.agent.Docs.Bo.task"
     timeout: 15000
-# A tap on the header of the channel opens the channel.
+# A tap on the header of an organization does nothing: the phone has no form of an organization.
 - tapOn:
     id: "org.block.Docs"
-- extendedWaitUntil:
-    visible:
-      id: "composer.input"
-    timeout: 30000
 - waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: phone-org-09-channel
-- tapOn:
-    point: "9%,9%"
-- extendedWaitUntil:
-    visible:
-      id: "org.block.Docs"
-    timeout: 15000
+    timeout: 1000
+- assertNotVisible:
+    id: "composer.input"
+- assertVisible:
+    id: "org.block.Docs"
+- takeScreenshot: phone-org-09-header-tap
 
 # An agent whose task waits for the user shows "Waiting for you" and the label of the task. This
 # step comes after the taps at the top of the screen: the approval makes a notice, and its banner

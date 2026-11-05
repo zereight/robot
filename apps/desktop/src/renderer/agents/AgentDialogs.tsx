@@ -10,11 +10,12 @@ import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
+import { AgentOrgs } from "./AgentOrgs.tsx"
 import styles from "./agents.module.css"
 import { BrowserProfileField } from "./BrowserProfileField.tsx"
-import { ChannelToolsLines } from "./ChannelToolsLines.tsx"
 import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
+import { OrgToolsLines } from "./OrgToolsLines.tsx"
 import { RecentWork } from "./RecentWork.tsx"
 import { RoleChip } from "./RoleField.tsx"
 import { markBorn } from "./reactions.ts"
@@ -94,6 +95,10 @@ const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
         )}
       </Show>
       {line("agents.field.instructions", props.agent.instructions, "agent-view-instructions")}
+      {/* The state of the switch "Main agent" shows when it is on, as the role does (spec 002). */}
+      <Show when={props.agent.isMain}>
+        {line("agents.field.main", t("agents.field.main.on"), "agent-view-main")}
+      </Show>
       {line(
         "agents.field.model",
         props.agent.model?.model ?? t("agents.noModel"),
@@ -228,6 +233,8 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
           />
         </Show>
         <hr class={styles.divider} />
+        {/* The organizations of the agent, also on a device that cannot change them (spec 002, 030). */}
+        <AgentOrgs agent={props.agent} />
         <div class={styles.spread}>
           <Show
             when={ui.linked()}
@@ -302,8 +309,8 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         </Show>
         {/* The last tasks of this agent. A device that cannot change the agent sees them too. */}
         <RecentWork agent={props.agent} onNavigate={props.onClose} />
-        {/* The skills and connections that this agent has from channels (spec 030). */}
-        <ChannelToolsLines agent={props.agent} />
+        {/* The skills and connections that this agent has from organizations (spec 030). */}
+        <OrgToolsLines agent={props.agent} />
       </div>
       <Show when={tab() === "knowledge"}>
         {/* Knowledge belongs to the computer that runs the agent: a client does not open it. */}

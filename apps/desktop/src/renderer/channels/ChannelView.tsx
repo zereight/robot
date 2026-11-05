@@ -4,7 +4,6 @@ import {
   type ChannelMessage,
   type ChatMessage,
   catalogues,
-  channelParent,
   EVERYONE_MENTION,
   insertMention,
   type MentionEntry,
@@ -28,21 +27,21 @@ import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { shapeOf } from "../chat/shape.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentInLine, AgentName } from "../orgs/AgentName.tsx"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useEndRequest, useReview } from "../review/Review.tsx"
 import review from "../review/review.module.css"
 import { TeamsMark } from "../settings/TeamsMark.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ChannelDialog } from "./ChannelDialog.tsx"
 import styles from "./channels.module.css"
-import { LimitLine } from "./LimitLine.tsx"
 import { MentionList } from "./MentionList.tsx"
 import { createChannelChat } from "./state.ts"
 
@@ -56,6 +55,7 @@ const removedAgent = (name: string): Agent => ({
   role: "",
   instructions: "",
   readHandbook: false,
+  isMain: false,
   face: { shape: 0, hue: 5 },
   faceImage: null,
   model: null,
@@ -74,13 +74,7 @@ const removedAgent = (name: string): Agent => ({
 export const ChannelHeader = (props: { channel: Channel }) => {
   const { t } = useApp()
   const ui = useUi()
-  const channels = useChannels()
   const [open, setOpen] = createSignal(false)
-  // The parent channel of the tree as it is now (spec 030): one that is gone counts as none.
-  const parent = () => {
-    const id = channelParent(channels.channels(), props.channel.id)
-    return id ? channels.byId(id) : undefined
-  }
   return (
     <>
       {/* The picture of the channel stands in place of the `#` (spec 004, "Picture"). */}
@@ -94,23 +88,8 @@ export const ChannelHeader = (props: { channel: Channel }) => {
       >
         <ChannelMark picture={props.channel.picture} size={24} testId="channel-header-picture" />
       </Show>
-      <span class={styles.nameBlock}>
-        <span class={styles.headerName} data-testid="channel-header-name">
-          {props.channel.name}
-        </span>
-        <Show when={parent()}>
-          {(up) => (
-            <button
-              type="button"
-              class={styles.inParent}
-              onClick={() => ui.selectPlace({ kind: "channel", id: up().id }, ui.server()?.id)}
-              aria-label={t("channels.in.open", { parent: up().name })}
-              data-testid="channel-header-parent"
-            >
-              {t("channels.in", { parent: up().name })}
-            </button>
-          )}
-        </Show>
+      <span class={styles.headerName} data-testid="channel-header-name">
+        {props.channel.name}
       </span>
       <Show when={props.channel.topic}>
         <span class={styles.divider} aria-hidden="true" />
@@ -244,6 +223,7 @@ export const ChannelView = (props: { channel: Channel }) => {
   const { t } = app
   const ui = useUi()
   const agents = useAgents()
+  const orgs = useOrgs()
   const messages = createChannelChat(props.channel.id, () =>
     ui.linked() ? ui.server()?.id : undefined,
   )
@@ -275,7 +255,11 @@ export const ChannelView = (props: { channel: Channel }) => {
   const mentionable = createMemo(() => {
     const open = mention()
     if (!open) return []
-    const available = members().filter((a) => !a.archived)
+    // Each member brings the whole name of its organization, so the list also matches it (spec
+    // 036). With the switch off `prefixOrg` is null and the organization never matches.
+    const available = members()
+      .filter((a) => !a.archived)
+      .map((a) => ({ ...a, organization: orgs.prefixOrg(a.id) }))
     // `@all` is offered when two or more members can answer (spec 004, "Everyone mention").
     return mentionEntries(available, open.query, available.length >= 2)
   })
@@ -558,7 +542,7 @@ export const ChannelView = (props: { channel: Channel }) => {
                               }
                               data-testid={`pick-${a.name}`}
                             >
-                              {a.name}
+                              <AgentName id={a.id} name={a.name} />
                             </Button>
                           )}
                         </For>
@@ -599,7 +583,6 @@ export const ChannelView = (props: { channel: Channel }) => {
         </Show>
       </div>
       <div class={chat.composer}>
-        <LimitLine channel={props.channel} />
         <Show when={ui.serverOffline()}>
           <div class={chat.composerError} role="status" data-testid="channel-offline">
             {ui.server()?.state === "not_allowed"
@@ -614,7 +597,11 @@ export const ChannelView = (props: { channel: Channel }) => {
           {(quoted) => (
             <div class={chat.quote} data-testid="channel-reply-quote">
               <span class={chat.quoteText}>
-                {t("chat.replyingTo", { name: agentFor(quoted()).name })}
+                <AgentInLine
+                  line={(name) => t("chat.replyingTo", { name })}
+                  id={agentFor(quoted()).id}
+                  name={agentFor(quoted()).name}
+                />
                 {": "}
                 {messageText(asChat(quoted())).slice(0, 80)}
               </span>

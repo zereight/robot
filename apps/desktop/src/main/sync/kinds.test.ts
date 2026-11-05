@@ -13,6 +13,7 @@ import { Channels } from "../services/Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "../services/Database.ts"
 import { Handbook } from "../services/Handbook.ts"
 import { readAskUpTheLine, readHandOffRule } from "../services/handOff.ts"
+import { Organizations } from "../services/Organizations.ts"
 import { Routines } from "../services/Routines.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -64,6 +65,25 @@ const source = async () => {
         instructions: "Write the answer as a list.",
         memberIds: [ada.id, bo.id],
         leadId: ada.id,
+      }),
+    ),
+  )
+  // An organization with a parent, a lead, a range and a limit (spec 030, 019).
+  const top = await run(
+    Organizations.use((o) =>
+      o.create({ serverId, name: "Company", memberIds: [ada.id], leadId: ada.id }),
+    ),
+  )
+  const org = await run(
+    Organizations.use((o) =>
+      o.create({
+        serverId,
+        name: "Support",
+        memberIds: [ada.id, bo.id],
+        leadId: bo.id,
+        parentId: top.id,
+        handOffRange: "own_lower",
+        dailyTokenLimit: 50_000,
       }),
     ),
   )
@@ -371,7 +391,7 @@ const source = async () => {
     ada.id,
     NOW,
   )
-  return { db, serverId, ada, bo, channel, routine, workflow }
+  return { db, serverId, ada, bo, channel, org, routine, workflow }
 }
 
 /** A database that records the text of every statement that it runs. */
@@ -1645,6 +1665,66 @@ describe("the handbook crosses as versions, and the newest one is the handbook (
   })
 })
 
+describe('the switch "Main agent" syncs with the agent (spec 002, 019)', () => {
+  test("it is a field, a computer of an older step has none, and a wrong type is refused", async () => {
+    expect(Object.keys(KINDS.agent.fields)).toContain("isMain")
+    expect(KINDS.agent.required).not.toContain("isMain")
+    const agentOp = (extra: Record<string, unknown>) => ({
+      k: "agent",
+      i: "a-1",
+      o: "dev-b",
+      f: Object.fromEntries(
+        Object.entries({
+          name: "Ada",
+          role: "",
+          instructions: "",
+          face: { shape: 0, hue: 0 },
+          model: null,
+          archived: false,
+          createdAt: NOW,
+          ...extra,
+        }).map(([k, v]) => [k, { v, s: stamp }]),
+      ),
+    })
+    expect(parseOp(agentOp({ isMain: true }), NOW)).toBeDefined()
+    expect(parseOp(agentOp({}), NOW)).toBeDefined()
+    expect(parseOp(agentOp({ isMain: "yes" }), NOW)).toBeUndefined()
+    expect(parseOp(agentOp({ isMain: 1 }), NOW)).toBeUndefined()
+  })
+
+  test("it is read and written as a field; an agent from an older computer is not the main agent", async () => {
+    const rt = testRuntime({ name: "Switch" })
+    runtimes.push(rt)
+    const run = rt.runtime.runPromise
+    const db = await run(Database.use((d) => Effect.succeed(d)))
+    const serverId = (await run(Servers.use((s) => s.local))).id
+    const ada = await run(
+      Agents.use((a) => a.create({ serverId, name: "Ada", role: "", instructions: "" })),
+    )
+    const ctx = target(db, join(rt.dataDir, "switch"))
+    expect(KINDS.agent.read(ctx, ada.id)?.fields.isMain).toBe(false)
+    await run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    expect(KINDS.agent.read(ctx, ada.id)?.fields.isMain).toBe(true)
+    KINDS.agent.write(ctx, ada.id, { isMain: false })
+    expect(KINDS.agent.read(ctx, ada.id)?.fields.isMain).toBe(false)
+    // A first copy that holds the flag makes the agent the main agent here. A copy without the field
+    // (a computer of an older step) makes a plain agent.
+    const base = {
+      name: "Old",
+      role: "",
+      instructions: "",
+      face: { shape: 0, hue: 0 },
+      model: null,
+      archived: false,
+      createdAt: NOW,
+    }
+    expect(KINDS.agent.create(ctx, "a-old", base)).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-old")?.fields.isMain).toBe(false)
+    expect(KINDS.agent.create(ctx, "a-new", { ...base, name: "New", isMain: true })).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-new")?.fields.isMain).toBe(true)
+  })
+})
+
 describe("the accounts that sync carries (spec 006, 019)", () => {
   const field = (v: unknown) => ({ v, s: stamp })
   const accountOp = (vendor: unknown, extra: Record<string, unknown> = {}) => ({
@@ -2066,7 +2146,7 @@ describe("the outside mark of a place and the program mark of a message sync (sp
   })
 })
 
-describe("the parent channel crosses with the channel (spec 030, 019)", () => {
+describe("a channel carries no parent channel and no daily token limit (spec 030, 019)", () => {
   const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
     k: kind,
     i: id,
@@ -2074,92 +2154,45 @@ describe("the parent channel crosses with the channel (spec 030, 019)", () => {
     f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
   })
 
-  test("the parent is a field of the channel; a change reaches the other computer", async () => {
+  test("the channel does not read or send the fields; the fields of a computer of an older version are checked and ignored, not refused", async () => {
     const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-parent")
+    const dir = join(testRuntime().dataDir, "kinds-legacy")
     const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.parentChannel).toBeNull()
+    // Even a column that an old database still holds is not sent.
     a.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = ?", a.channel.id)
     const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
-    expect(fields.parentChannel).toBe("up")
-    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    expect("parentChannel" in fields).toBe(false)
+    expect("dailyTokenLimit" in fields).toBe(false)
+    const older = { ...fields, parentChannel: "up", dailyTokenLimit: 50_000 }
+    expect(parseOp(op("channel", a.channel.id, older), NOW)).toBeDefined()
+    expect(
+      parseOp(op("channel", a.channel.id, { ...older, parentChannel: null }), NOW),
+    ).toBeDefined()
+    // A value of the wrong type or out of range is still refused.
     expect(
       parseOp(op("channel", a.channel.id, { ...fields, parentChannel: 3 }), NOW),
     ).toBeUndefined()
-
-    // The parent has not come yet: the row is made all the same, and the field waits for it.
+    expect(
+      parseOp(op("channel", a.channel.id, { ...fields, dailyTokenLimit: 5 }), NOW),
+    ).toBeUndefined()
+    // The row is made and changed without them; the other fields of the change still arrive.
     const b = target(openDatabase(":memory:"), dir)
-    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.parentChannel).toBe("up")
-    KINDS.channel.write(b, a.channel.id, { parentChannel: null })
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.parentChannel).toBeNull()
-  })
-
-  test("a computer of an older step sends no parent: the field stays as it is", async () => {
-    const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-parent-old")
-    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    const { parentChannel: _drop, ...older } = copy(
-      KINDS.channel.read(ctxA, a.channel.id)?.fields,
-    ) as Fields
-    expect(parseOp(op("channel", "older", older), NOW)).toBeDefined()
-    const b = target(openDatabase(":memory:"), dir)
-    expect(KINDS.channel.create(b, "older", { ...older, members: [] })).toBe(true)
-    expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBeNull()
-    b.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = 'older'")
-    KINDS.channel.write(b, "older", { topic: "New" })
-    expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBe("up")
-  })
-})
-
-describe("the daily token limit crosses with the channel (spec 030, 019)", () => {
-  const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
-    k: kind,
-    i: id,
-    o: "dev-a",
-    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
-  })
-
-  test("the limit is a field of the channel; a change reaches the other computer, a bad number does not", async () => {
-    const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-limit")
-    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.dailyTokenLimit).toBeNull()
-    a.db.run("UPDATE channel SET daily_token_limit = 50000 WHERE id = ?", a.channel.id)
-    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
-    expect(fields.dailyTokenLimit).toBe(50_000)
-    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
-    // A text, a number out of range and a fraction are refused.
-    for (const bad of ["50000", 9_999, 100_000_001, 12_345.5])
-      expect(
-        parseOp(op("channel", a.channel.id, { ...fields, dailyTokenLimit: bad }), NOW),
-        JSON.stringify(bad),
-      ).toBeUndefined()
-
-    const b = target(openDatabase(":memory:"), dir)
-    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.dailyTokenLimit).toBe(50_000)
-    KINDS.channel.write(b, a.channel.id, { dailyTokenLimit: 80_000 })
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.dailyTokenLimit).toBe(80_000)
-    // Off crosses as null.
-    KINDS.channel.write(b, a.channel.id, { dailyTokenLimit: null })
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.dailyTokenLimit).toBeNull()
-  })
-
-  test("a computer of an older step sends no limit: the field stays as it is", async () => {
-    const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-limit-old")
-    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    const { dailyTokenLimit: _drop, ...older } = copy(
-      KINDS.channel.read(ctxA, a.channel.id)?.fields,
-    ) as Fields
-    expect(parseOp(op("channel", "older", older), NOW)).toBeDefined()
-    const b = target(openDatabase(":memory:"), dir)
-    expect(KINDS.channel.create(b, "older", { ...older, members: [] })).toBe(true)
-    expect(KINDS.channel.read(b, "older")?.fields.dailyTokenLimit).toBeNull()
-    b.db.run("UPDATE channel SET daily_token_limit = 20000 WHERE id = 'older'")
-    KINDS.channel.write(b, "older", { topic: "New" })
-    expect(KINDS.channel.read(b, "older")?.fields.dailyTokenLimit).toBe(20_000)
+    expect(KINDS.channel.create(b, a.channel.id, { ...older, members: [] })).toBe(true)
+    expect(
+      b.db.get("SELECT parent_channel_id AS p FROM channel WHERE id = ?", a.channel.id),
+    ).toEqual({ p: null })
+    KINDS.channel.write(b, a.channel.id, {
+      parentChannel: "up",
+      dailyTokenLimit: 80_000,
+      topic: "New",
+    })
+    const read = KINDS.channel.read(b, a.channel.id)?.fields ?? {}
+    expect(read.topic).toBe("New")
+    expect("parentChannel" in read).toBe(false)
+    expect("dailyTokenLimit" in read).toBe(false)
+    expect(
+      b.db.get("SELECT parent_channel_id AS p FROM channel WHERE id = ?", a.channel.id),
+    ).toEqual({ p: null })
   })
 })
 
@@ -2189,12 +2222,12 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
     expect(parseOp(op("organization", { handOff: "any", askUpTheLine: "on" }), NOW)).toBeUndefined()
     // The older item has no switch: the first copy makes the row with the switch off.
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-older")
-    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
+    expect(KINDS.org.create(b, "organization", { handOff: "organizations" })).toBe(true)
     expect(readAskUpTheLine(b.db)).toBe(false)
     // A change of the switch alone leaves the rule as it is, and the reverse.
     KINDS.org.write(b, "organization", { askUpTheLine: true })
     expect(KINDS.org.read(b, "organization")?.fields).toEqual({
-      handOff: "channels",
+      handOff: "organizations",
       askUpTheLine: true,
     })
     KINDS.org.write(b, "organization", { handOff: "any" })
@@ -2210,20 +2243,33 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
 
   test("only the two known values pass the strict check", async () => {
     expect(parseOp(op("organization", { handOff: "any" }), NOW)).toBeDefined()
-    expect(parseOp(op("organization", { handOff: "channels" }), NOW)).toBeDefined()
+    expect(parseOp(op("organization", { handOff: "organizations" }), NOW)).toBeDefined()
     expect(parseOp(op("organization", { handOff: "all" }), NOW)).toBeUndefined()
     expect(parseOp(op("organization", { handOff: 1 }), NOW)).toBeUndefined()
     expect(parseOp(op("organization", { handOff: "any", other: "x" }), NOW)).toBeUndefined()
     // An id that is not the item of the profile does not name a row.
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-id")
-    expect(KINDS.org.create(b, "other", { handOff: "channels" })).toBe(false)
+    expect(KINDS.org.create(b, "other", { handOff: "organizations" })).toBe(false)
+  })
+
+  test('a computer of an older version sends "channels": it counts as "organizations" (spec 030 "Migration")', async () => {
+    expect(parseOp(op("organization", { handOff: "channels" }), NOW)).toBeDefined()
+    const b = target(openDatabase(":memory:"), "/tmp/kinds-org-legacy")
+    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
+    expect(readHandOffRule(b.db)).toBe("organizations")
+    KINDS.org.write(b, "organization", { handOff: "any" })
+    expect(readHandOffRule(b.db)).toBe("any")
+    KINDS.org.write(b, "organization", { handOff: "channels" })
+    expect(readHandOffRule(b.db)).toBe("organizations")
+    // The value never goes out: this computer sends the new name.
+    expect(KINDS.org.read(b, "organization")?.fields).toMatchObject({ handOff: "organizations" })
   })
 
   test("a change is written and read back; a deletion removes the row, and the rule is the default", async () => {
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-write")
-    KINDS.org.write(b, "organization", { handOff: "channels" })
+    KINDS.org.write(b, "organization", { handOff: "organizations" })
     expect(KINDS.org.read(b, "organization")?.fields).toEqual({
-      handOff: "channels",
+      handOff: "organizations",
       askUpTheLine: false,
     })
     KINDS.org.remove(b, "organization")
@@ -2232,14 +2278,14 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
     // A deletion from the other computer sets the defaults: the switch is off.
     expect(readAskUpTheLine(b.db)).toBe(false)
     // The row comes from a first copy again.
-    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
-    expect(readHandOffRule(b.db)).toBe("channels")
+    expect(KINDS.org.create(b, "organization", { handOff: "organizations" })).toBe(true)
+    expect(readHandOffRule(b.db)).toBe("organizations")
     // A change of the rule marks the item for sync in a sync pair.
     b.db.run(
       "INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at) VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1)",
     )
     b.db.run("DELETE FROM sync_dirty")
-    b.db.run("UPDATE organization SET hand_off = 'channels'")
+    b.db.run("UPDATE organization SET hand_off = 'any'")
     expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
       { kind: "org", id: "organization" },
     ])
@@ -2249,5 +2295,76 @@ describe("the hand-off rule and the switch 'Ask up the line' cross as one item o
     expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
       { kind: "org", id: "organization" },
     ])
+  })
+})
+
+describe("the organization crosses as its own kind (spec 030, 019)", () => {
+  const op = (id: string, fields: Record<string, unknown>) => ({
+    k: "orgunit",
+    i: id,
+    o: "dev-a",
+    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+  })
+
+  test("the members, lead, parent, range and limit are read and arrive on the other computer", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-org")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.orgunit.read(ctxA, a.org.id)?.fields) as Fields
+    expect(fields).toMatchObject({
+      name: "Support",
+      lead: a.bo.id,
+      members: [a.ada.id, a.bo.id],
+      handOffRange: "own_lower",
+      dailyTokenLimit: 50_000,
+    })
+    expect(typeof fields.parent).toBe("string")
+    expect(parseOp(op(a.org.id, fields), NOW)).toBeDefined()
+    // A wrong range, a limit out of range and a name that is too long do not pass.
+    for (const bad of [
+      { handOffRange: "everyone" },
+      { dailyTokenLimit: 9_999 },
+      { dailyTokenLimit: "50000" },
+      { name: "x".repeat(61) },
+      { members: "all" },
+    ])
+      expect(parseOp(op(a.org.id, { ...fields, ...bad }), NOW), JSON.stringify(bad)).toBeUndefined()
+
+    // The members and the lead are agents of the other computer, so they come with the agents.
+    const b = target(openDatabase(":memory:"), dir)
+    for (const agent of [a.ada, a.bo]) {
+      const f = copy(KINDS.agent.read(ctxA, agent.id)?.fields) as Fields
+      expect(KINDS.agent.create(b, agent.id, f)).toBe(true)
+    }
+    expect(KINDS.orgunit.create(b, a.org.id, fields)).toBe(true)
+    expect(KINDS.orgunit.read(b, a.org.id)?.fields).toEqual(fields)
+  })
+
+  test("a change is written, a parent that is gone counts as no parent, and a delete removes the row", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-org-write")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    KINDS.orgunit.write(ctxA, a.org.id, {
+      name: " Help ",
+      members: [a.ada.id, "gone"],
+      lead: a.ada.id,
+      parent: null,
+      handOffRange: "all",
+      dailyTokenLimit: null,
+    })
+    expect(KINDS.orgunit.read(ctxA, a.org.id)?.fields).toMatchObject({
+      name: "Help",
+      // A member that is not an agent here is left out.
+      members: [a.ada.id],
+      lead: a.ada.id,
+      parent: null,
+      handOffRange: "all",
+      dailyTokenLimit: null,
+    })
+    KINDS.orgunit.write(ctxA, a.org.id, { parent: "not-here" })
+    expect(KINDS.orgunit.read(ctxA, a.org.id)?.fields.parent).toBe("not-here")
+    KINDS.orgunit.remove(ctxA, a.org.id)
+    expect(KINDS.orgunit.read(ctxA, a.org.id)).toBeUndefined()
+    expect(a.db.get("SELECT 1 FROM org_member WHERE org_id = ?", a.org.id)).toBeUndefined()
   })
 })

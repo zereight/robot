@@ -350,6 +350,31 @@ describe("import", () => {
     expect(await app.list()).toEqual([])
   })
 
+  test("the file holds no switch 'Main agent', and an import never takes the flag from the main agent or gives it (spec 002, 'Agent file')", async () => {
+    const app = await setup()
+    const ada = await app.make("Ada")
+    await app.run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    const path = join(app.dataDir, "main.json")
+    await app.exportTo(path, [ada.id])
+    const text = readFileSync(path, "utf8")
+    expect(text.toLowerCase()).not.toContain("main")
+    expect(JSON.parse(text).agents[0]).not.toHaveProperty("isMain")
+
+    // A file that names the flag anyway is read as any other unknown field: it reaches no agent.
+    const forged = app.write(
+      "forged.json",
+      file([{ name: "Zed", role: "", instructions: "", isMain: true, main: true }]),
+    )
+    await app.importFile(path)
+    await app.importFile(forged)
+    const agents = await app.list()
+    expect(agents.map((a) => [a.name, a.isMain])).toEqual([
+      ["Ada", true],
+      ["Ada 2", false],
+      ["Zed", false],
+    ])
+  })
+
   test("import makes new agents only: an agent that exists is not changed", async () => {
     const path = await twoAgents()
     const app = await setup()
@@ -1053,196 +1078,6 @@ describe("team file: channels, skills and the handbook", () => {
     ])
     // Nothing else came: the handbook is not in this file.
     expect((await handbookOf(app)).text).toBe("")
-  })
-
-  test("the file keeps the parent channel when that channel is in the file", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    const duo = (await channelsOf(source)).find((c) => c.name === "Duo")
-    if (!duo) throw new Error("no channel")
-    await source.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: source.server.id,
-          name: "Product",
-          topic: "",
-          memberIds: [ada.id, bob.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const product = (await channelsOf(source)).find((c) => c.name === "Product")
-    if (!product) throw new Error("no channel")
-    await source.run(Channels.use((c) => c.update(duo.id, { parentId: product.id })))
-    const path = join(source.dataDir, "parents.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true })
-    const written = JSON.parse(readFileSync(path, "utf8")).channels as {
-      name: string
-      parent?: string
-    }[]
-    expect(written.map((c) => [c.name, c.parent ?? null]).sort()).toEqual([
-      ["Duo", "Product"],
-      ["Product", null],
-    ])
-
-    const app = await setup()
-    const result = await importTeam(app, path, { skills: [] })
-    expect(Exit.isSuccess(result)).toBe(true)
-    const imported = await channelsOf(app)
-    const parentName = (id: string | null) => imported.find((c) => c.id === id)?.name ?? null
-    expect(imported.map((c) => [c.name, parentName(c.parentId)]).sort()).toEqual([
-      ["Duo", "Product"],
-      ["Product", null],
-    ])
-  })
-
-  test("the file keeps a daily token limit that is on", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    const duo = (await channelsOf(source)).find((c) => c.name === "Duo")
-    if (!duo) throw new Error("no channel")
-    await source.run(Channels.use((c) => c.update(duo.id, { dailyTokenLimit: 50_000 })))
-    const path = join(source.dataDir, "limit.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true })
-    const written = JSON.parse(readFileSync(path, "utf8")).channels as {
-      name: string
-      dailyTokenLimit?: number
-    }[]
-    expect(written.map((c) => [c.name, c.dailyTokenLimit ?? null])).toEqual([["Duo", 50_000]])
-
-    const app = await setup()
-    const result = await importTeam(app, path, { skills: [] })
-    expect(Exit.isSuccess(result)).toBe(true)
-    const imported = await channelsOf(app)
-    expect(imported.map((c) => [c.name, c.dailyTokenLimit])).toEqual([["Duo", 50_000]])
-  })
-
-  test("a skill keeps the channels of its list that are in the file", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    const product = await source.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: source.server.id,
-          name: "Product",
-          topic: "",
-          memberIds: [ada.id, bob.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const trio = (await channelsOf(source)).find((c) => c.name === "Trio")
-    if (!trio) throw new Error("no channel")
-    await source.run(
-      Skills.use((k) =>
-        k.create(
-          source.server.id,
-          { name: "Release notes", description: "Notes", instructions: "Write the notes." },
-          [ada.id],
-          [product.id, trio.id],
-        ),
-      ),
-    )
-    const path = join(source.dataDir, "skill-channels.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
-    const written = JSON.parse(readFileSync(path, "utf8")).skills as {
-      name: string
-      channels?: string[]
-    }[]
-    expect(written.find((k) => k.name === "Release notes")?.channels).toEqual(["Product"])
-
-    const app = await setup()
-    const result = await importTeam(app, path)
-    expect(Exit.isSuccess(result)).toBe(true)
-    const importedChannels = await channelsOf(app)
-    const productId = importedChannels.find((c) => c.name === "Product")?.id
-    const skill = (await skillsOf(app)).find((k) => k.name === "Release notes")
-    if (!productId || !skill) throw new Error("missing")
-    expect(skill.channelIds).toEqual([productId])
-  })
-
-  test("a skill that a member may use only through a channel is in the file", async () => {
-    const source = await setup()
-    const ada = await source.make("Ada")
-    const bob = await source.make("Bob")
-    const product = await source.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: source.server.id,
-          name: "Product",
-          topic: "",
-          memberIds: [ada.id],
-          leadId: null,
-        }),
-      ),
-    )
-    await source.run(
-      Skills.use((k) =>
-        k.create(
-          source.server.id,
-          { name: "Release notes", description: "Notes", instructions: "Write the notes." },
-          [],
-          [product.id],
-        ),
-      ),
-    )
-    const adaPath = join(source.dataDir, "ada-skill.json")
-    await exportTeam(source, adaPath, [ada.id], { skills: true })
-    const adaSkills = JSON.parse(readFileSync(adaPath, "utf8")).skills as {
-      name: string
-      agents: string[]
-    }[]
-    expect(adaSkills.map((s) => [s.name, s.agents])).toEqual([["Release notes", ["Ada"]]])
-
-    const bobPath = join(source.dataDir, "bob-skill.json")
-    await exportTeam(source, bobPath, [bob.id], { skills: true })
-    const bobFile = JSON.parse(readFileSync(bobPath, "utf8")) as { skills?: { name: string }[] }
-    expect(bobFile.skills ?? []).toEqual([])
-  })
-
-  test("a parent that is not in the file is left out", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    const channels = await channelsOf(source)
-    const duo = channels.find((c) => c.name === "Duo")
-    const trio = channels.find((c) => c.name === "Trio")
-    if (!duo || !trio) throw new Error("no channel")
-    await source.run(Channels.use((c) => c.update(duo.id, { parentId: trio.id })))
-    const path = join(source.dataDir, "no-parent.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true })
-    const written = JSON.parse(readFileSync(path, "utf8")).channels as { parent?: string }[]
-    expect(written[0]?.parent).toBeUndefined()
-  })
-
-  test("a parent that is not ticked is not set", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    const duo = (await channelsOf(source)).find((c) => c.name === "Duo")
-    if (!duo) throw new Error("no channel")
-    await source.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: source.server.id,
-          name: "Product",
-          topic: "",
-          memberIds: [ada.id, bob.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const product = (await channelsOf(source)).find((c) => c.name === "Product")
-    if (!product) throw new Error("no channel")
-    await source.run(Channels.use((c) => c.update(duo.id, { parentId: product.id })))
-    const path = join(source.dataDir, "unticked.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true })
-
-    const app = await setup()
-    const preview = await app.openFile(path)
-    const duoIndex = preview?.channels.findIndex((c) => c.name === "Duo") ?? -1
-    const result = await importTeam(app, path, { channels: [duoIndex], skills: [] })
-    expect(Exit.isSuccess(result)).toBe(true)
-    const imported = await channelsOf(app)
-    expect(imported.map((c) => [c.name, c.parentId])).toEqual([["Duo", null]])
   })
 
   test("the result counts what was made", async () => {

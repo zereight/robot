@@ -6,11 +6,14 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
 // Ask up the line (spec 030, "Ask up the line"; specs 004, 005, 014, 015, 021, 024): when the
-// switch in the settings part "Organization" is on, a question that the lead passes goes to the
-// lead of each higher channel and then to the main agent, before it goes to the user.
+// switch in the settings part "Hand-off rules" is on, a question that the lead of the channel
+// passes goes to the leads on the way up from the deepest organization of the member that asks,
+// and then to the main agent, before it goes to the user. A channel gives no line.
 //
-// The channels: "Product" with the lead Pia, and its sub-channel "Docs" with the lead Dee and the
-// member Bo. Max is the main agent. Bo asks, Dee is the lead of its part.
+// The organizations: "Product" with the lead Pia, and "Docs" under it with the lead Dee and the
+// member Bo. The channel "Docs" has the lead Dee and the member Bo, and no parent. Max is the main
+// agent. Bo asks, Dee is the lead of its part. With `deep`, Bo is also in "Site" (lead Sam) under
+// "Docs", and the lead of the channel is Lia, who leads no organization.
 //
 // The stand-in model reads a word in square brackets in the question (see mock-provider.ts):
 // [upN] every agent before the place N passes with "Not sure" and the agent at place N answers
@@ -22,7 +25,11 @@ const post = async (page: Page, text: string) => {
   await page.getByTestId("channel-input").press("Enter")
 }
 
-const start = async (env: Record<string, string> = {}, on = true) => {
+const start = async (
+  env: Record<string, string> = {},
+  on = true,
+  options: { deep?: boolean; outside?: boolean } = {},
+) => {
   const mock = await startMockProvider()
   const userData = freshUserData()
   const noticeLog = join(userData, "notices.jsonl")
@@ -30,12 +37,12 @@ const start = async (env: Record<string, string> = {}, on = true) => {
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_TEST_NOTIFY_LOG: noticeLog,
     ROBOT_TEST_UNFOCUSED: "1",
-    ROBOT_TEST_MAIN_AGENT: "Max",
     ...env,
   })
   await resizeWindow(app, 1300, 900)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
-  for (const name of ["Dee", "Bo", "Pia", "Max"]) await createAgent(page, name)
+  for (const name of ["Dee", "Bo", "Pia", "Max", ...(options.deep ? ["Sam", "Lia"] : [])])
+    await createAgent(page, name)
   const server = (await rpc<{ id: string; kind: string }[]>(page, "servers.list")).find(
     (s) => s.kind === "local",
   )?.id as string
@@ -44,20 +51,27 @@ const start = async (env: Record<string, string> = {}, on = true) => {
     archived: false,
   })
   const id = (name: string) => agents.find((a) => a.name === name)?.id as string
-  const product = await rpc<{ id: string }>(page, "channels.create", {
-    serverId: server,
-    name: "Product",
-    topic: "",
-    memberIds: [id("Pia")],
-    leadId: id("Pia"),
-  })
+  // Max is the main agent: the switch in the profile (spec 002, flow 7), as the page sets it.
+  await rpc(page, "agents.update", { id: id("Max"), patch: { isMain: true } })
+  const org = (name: string, members: string[], lead: string, parentId?: string) =>
+    rpc<{ id: string }>(page, "organizations.create", {
+      serverId: server,
+      name,
+      memberIds: members.map(id),
+      leadId: id(lead),
+      ...(parentId ? { parentId } : {}),
+    })
+  const product = await org("Product", ["Pia"], "Pia")
+  // With `outside`, Bo is in no organization: the line is the main agent only.
+  const docsOrg = await org("Docs", options.outside ? ["Dee"] : ["Dee", "Bo"], "Dee", product.id)
+  if (options.deep) await org("Site", ["Sam", "Bo"], "Sam", docsOrg.id)
+  const channelLead = options.deep ? "Lia" : "Dee"
   const docs = await rpc<{ id: string }>(page, "channels.create", {
     serverId: server,
     name: "Docs",
     topic: "",
-    memberIds: [id("Dee"), id("Bo")],
-    leadId: id("Dee"),
-    parentId: product.id,
+    memberIds: [id(channelLead), id("Bo")],
+    leadId: id(channelLead),
   })
   if (on) await rpc(page, "organization.setAskUpTheLine", { on: true })
   await page.getByTestId("page-chats").click()
@@ -177,6 +191,80 @@ test("Pia passes, Max answers: both passes show; Max passes too, and the user ge
   await openToday(second.page)
   await expect(second.page.getByTestId("today-empty")).toBeVisible()
   await second.app.close()
+})
+
+test("a member of two levels: the lead of Site, then Dee, then Pia look; Max is the fourth and is skipped (spec 030 acceptance)", async () => {
+  test.setTimeout(180_000)
+  // Bo is in "Docs" and in "Site", which is under "Docs", and "Docs" is under "Product". Lia leads
+  // the channel and passes. The line is Sam (lead of Site), Dee (lead of Docs), Pia (lead of
+  // Product), and then Max. After the third agent the others are skipped. Nobody answers (up4 means
+  // that the place 4 answers, and there is none), so the user gets all four pass lines.
+  const { page, mock, looks, questionNotices } = await start({}, true, { deep: true })
+  await post(page, "split lead ASKS up4")
+  const card = page.getByTestId("ask-card")
+  await expect(card.getByTestId("ask-choice")).toHaveCount(2, { timeout: 90_000 })
+  await expect(card.getByTestId("lead-pass")).toHaveText([
+    "Lia: Not sure at 0.",
+    "Sam: Not sure at 1.",
+    "Dee: Not sure at 2.",
+    "Pia: Not sure at 3.",
+  ])
+  await shot(page, "s111-08-two-levels")
+  await expect.poll(() => looks().length).toBe(4)
+  expect(looks().map((l) => [l.event, l.place ?? 0, l.result])).toEqual([
+    ["lead_look", 0, "passed"],
+    ["line_look", 1, "passed"],
+    ["line_look", 2, "passed"],
+    ["line_look", 3, "passed"],
+  ])
+  // Max, the main agent, never looked: three agents of the line looked, and the model got three
+  // line requests only.
+  expect(
+    mock.requests.filter(
+      (r) =>
+        r.path === "/v1/chat/completions" &&
+        JSON.stringify(r.body).includes("higher in the line of a channel"),
+    ),
+  ).toHaveLength(3)
+  await expect.poll(() => questionNotices().length).toBe(1)
+  await card.getByTestId("ask-choice").filter({ hasText: "Yes" }).click()
+  await expect(summaries(page)).toHaveCount(1, { timeout: 60_000 })
+})
+
+test("a member of two levels, Pia answers at the third place: the card shows the three passes and 'Answered by Pia'", async () => {
+  test.setTimeout(180_000)
+  const { page, looks } = await start({}, true, { deep: true })
+  await post(page, "split lead ASKS up3")
+  await expect(page.getByTestId("lead-answered-by")).toHaveText("Answered by Pia", {
+    timeout: 90_000,
+  })
+  await expect(page.getByTestId("lead-pass")).toHaveText([
+    "Lia: Not sure at 0.",
+    "Sam: Not sure at 1.",
+    "Dee: Not sure at 2.",
+  ])
+  await expect(summaries(page)).toHaveCount(1, { timeout: 60_000 })
+  await expect.poll(() => looks().length).toBe(4)
+  await openToday(page)
+  await expect(page.getByTestId("today-empty")).toBeVisible()
+})
+
+test("a member in no organization: after the lead passes, Max looks at once (spec 030 acceptance)", async () => {
+  test.setTimeout(150_000)
+  // Bo is in the channel and in no organization. Dee leads the channel and "Docs". The line for Bo
+  // is Max only; the channel gives no line, and the leads of "Docs" and "Product" do not look.
+  const { page, looks } = await start({}, true, { outside: true })
+  await post(page, "split lead ASKS up1")
+  await expect(page.getByTestId("lead-answered-by")).toHaveText("Answered by Max", {
+    timeout: 60_000,
+  })
+  await expect(page.getByTestId("lead-pass")).toHaveText(["Dee: Not sure at 0."])
+  await expect(summaries(page)).toHaveCount(1, { timeout: 60_000 })
+  await expect.poll(() => looks().length).toBe(2)
+  expect(looks().map((l) => [l.event, l.place ?? 0, l.result])).toEqual([
+    ["lead_look", 0, "passed"],
+    ["line_look", 1, "answered"],
+  ])
 })
 
 test("while Pia looks: the card says so, Needs you is empty, the part reads Running, and the user wins", async () => {
@@ -321,7 +409,7 @@ test("the switch is off: a pass of the lead goes to the user, as before; turned 
   await ask.click()
   await expect(ask).toHaveAttribute("aria-checked", "true")
   await expect(page.getByTestId("organization-ask-up-now")).toContainText(
-    "can go to higher agents first",
+    "can go up the organizations first",
   )
   await shot(page, "s111-05-setting-on")
   await page.getByTestId("settings-close").click()

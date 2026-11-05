@@ -1,5 +1,6 @@
 import { cachedShare, hasUsage, type TaskUsage, type TreeUsage } from "@robot/shared"
 import { For, Show } from "solid-js"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useApp } from "../state/app.tsx"
 import styles from "./tasks.module.css"
 import { formatCost, formatCount } from "./usageText.ts"
@@ -66,7 +67,9 @@ export const TaskUsageView = (props: { usage: TaskUsage; tree: TreeUsage | null 
               <For each={tree().lines}>
                 {(line) => (
                   <li data-testid="task-tree-line" data-agent={line.agentName}>
-                    <span class={styles.usageAgent}>{line.agentName}</span>
+                    <span class={styles.usageAgent}>
+                      <AgentName id={line.agentId} name={line.agentName} />
+                    </span>
                     <Show
                       when={hasUsage(line.usage)}
                       fallback={

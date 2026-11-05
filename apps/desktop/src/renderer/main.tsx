@@ -6,6 +6,7 @@ import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
 import { ChannelsProvider } from "./state/channels.tsx"
 import { DevicesProvider } from "./state/devices.tsx"
 import { OrgChartProvider } from "./state/orgChart.tsx"
+import { OrgsProvider } from "./state/orgs.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
 import { startQuiet } from "./state/quiet.ts"
 import { TeamsProvider } from "./state/teams.tsx"
@@ -33,13 +34,15 @@ if (root) {
             <DevicesProvider>
               <AgentsProvider>
                 <ChannelsProvider>
-                  <TodayProvider>
-                    <OrgChartProvider>
-                      <TeamsProvider>
-                        <App />
-                      </TeamsProvider>
-                    </OrgChartProvider>
-                  </TodayProvider>
+                  <OrgsProvider>
+                    <TodayProvider>
+                      <OrgChartProvider>
+                        <TeamsProvider>
+                          <App />
+                        </TeamsProvider>
+                      </OrgChartProvider>
+                    </TodayProvider>
+                  </OrgsProvider>
                 </ChannelsProvider>
               </AgentsProvider>
             </DevicesProvider>

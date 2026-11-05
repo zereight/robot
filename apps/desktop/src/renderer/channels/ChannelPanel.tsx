@@ -22,6 +22,7 @@ import { Face } from "../agents/Face.tsx"
 import { ProfileButton } from "../agents/ProfileButton.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { quietOfTaskLine } from "../state/quiet.ts"
@@ -144,7 +145,9 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                   data-testid={`panel-add-pick-${agent.name}`}
                 >
                   <Face face={agent.face} image={agent.faceImage} size={20} />
-                  <span class={styles.addPickName}>{agent.name}</span>
+                  <span class={styles.addPickName}>
+                    <AgentName id={agent.id} name={agent.name} />
+                  </span>
                   <Show when={agent.role}>
                     <span class={styles.memberRole}>{agent.role}</span>
                   </Show>
@@ -169,7 +172,9 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                       {/* The face and the name open the profile of the member (spec 004). */}
                       <ProfileButton agent={a()} class={styles.cardProfile} testId="member-profile">
                         <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
-                        <span class={styles.cardName}>{a().name}</span>
+                        <span class={styles.cardName}>
+                          <AgentName id={a().id} name={a().name} />
+                        </span>
                       </ProfileButton>
                       <span class={styles.cardState} data-testid="member-state">
                         {t(stateLabel(member.state))}

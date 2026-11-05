@@ -16,7 +16,6 @@ import {
   type AgentFileSkillOut,
   type AgentModel,
   type AgentPick,
-  agentsForSkill,
   CHANNEL_INSTRUCTIONS_MAX,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
@@ -24,7 +23,6 @@ import {
   channelNameKey,
   channelsForFile,
   faceFromName,
-  givingByAgent,
   HANDBOOK_FROM_FILE,
   HANDBOOK_MAX,
   ignoredAgentFields,
@@ -172,7 +170,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           name: clip(hide(c.name).trim(), CHANNEL_NAME_MAX),
           topic: clip(hide(c.topic).trim(), CHANNEL_TOPIC_MAX),
           instructions: clip(hide(c.instructions), CHANNEL_INSTRUCTIONS_MAX),
-          parent: c.parent === null ? null : clip(hide(c.parent).trim(), CHANNEL_NAME_MAX) || null,
           secret: hidden(c.name, c.topic, c.instructions),
         }))
         const cleanedSkills = file.skills.map((k) => ({
@@ -180,9 +177,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           name: clip(skillName(hide(k.name)), SKILL_NAME_MAX),
           description: clip(hide(k.description).trim(), SKILL_DESCRIPTION_MAX),
           instructions: clip(hide(k.instructions), SKILL_INSTRUCTIONS_MAX),
-          channels: k.channels
-            .map((name) => clip(hide(name).trim(), CHANNEL_NAME_MAX))
-            .filter((name) => name !== ""),
           secret: hidden(k.name, k.description, k.instructions),
         }))
         const cleanedHandbook = clip(hide(file.handbook), HANDBOOK_MAX)
@@ -233,14 +227,10 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         const fileName = new Map(chosen.map((a, i) => [a.id, names[i] ?? a.name]))
         const picked = new Set(chosen.map((a) => a.id))
 
-        const listed = yield* channels.list(input.serverId)
-        const giving = givingByAgent(listed, [...picked])
         // "Channels of these agents": each channel whose members are all among the picked agents.
         let channelParts: AgentFileChannelOut[] | undefined
-        /** The name the file gives a channel, so a skill can name it (spec 030). */
-        const exportedChannelName = new Map<string, string>()
         if (input.channels) {
-          const found = channelsForFile(listed, picked)
+          const found = channelsForFile(yield* channels.list(input.serverId), picked)
           if (found.length > AGENT_FILE_MAX_CHANNELS)
             return yield* new AppError({
               code: "agent_file_too_many_channels",
@@ -255,31 +245,21 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             CHANNEL_NAME_MAX,
             channelNameKey,
           )
-          // The name the file gives each channel, so a parent points at that name (spec 002, 030).
-          const parentName = new Map(sorted.map((c, i) => [c.id, channelNames[i] ?? c.name]))
-          for (const [id, name] of parentName) exportedChannelName.set(id, name)
-          channelParts = sorted.map((c, i) => {
-            const parent = c.parentId ? parentName.get(c.parentId) : undefined
-            return {
-              name: channelNames[i] ?? c.name,
-              topic: clip(hide(c.topic), CHANNEL_TOPIC_MAX),
-              instructions: hide(c.instructions),
-              reviewParts: c.reviewParts,
-              members: c.memberIds.map((id) => fileName.get(id) ?? ""),
-              lead: c.leadId === null ? null : (fileName.get(c.leadId) ?? null),
-              ...(parent ? { parent } : {}),
-              ...(typeof c.dailyTokenLimit === "number"
-                ? { dailyTokenLimit: c.dailyTokenLimit }
-                : {}),
-            }
-          })
+          channelParts = sorted.map((c, i) => ({
+            name: channelNames[i] ?? c.name,
+            topic: clip(hide(c.topic), CHANNEL_TOPIC_MAX),
+            instructions: hide(c.instructions),
+            reviewParts: c.reviewParts,
+            members: c.memberIds.map((id) => fileName.get(id) ?? ""),
+            lead: c.leadId === null ? null : (fileName.get(c.leadId) ?? null),
+          }))
         }
 
         // "Skills of these agents": each skill that a picked agent may use. A skill for all
         // agents is written for the picked agents only.
         let skillParts: AgentFileSkillOut[] | undefined
         if (input.skills) {
-          const found = skillsForFile(yield* skills.list(input.serverId), picked, giving)
+          const found = skillsForFile(yield* skills.list(input.serverId), picked)
           if (found.length > AGENT_FILE_MAX_SKILLS)
             return yield* new AppError({
               code: "agent_file_too_many_skills",
@@ -295,11 +275,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             name: skillNames[i] ?? k.name,
             description: clip(hide(k.description), SKILL_DESCRIPTION_MAX),
             instructions: hide(k.instructions),
-            agents: agentsForSkill(k, chosen, giving).map((a) => fileName.get(a.id) ?? a.name),
-            channels: k.channelIds.flatMap((id) => {
-              const name = exportedChannelName.get(id)
-              return name ? [name] : []
-            }),
+            agents: chosen
+              .filter((a) => k.agentIds === null || k.agentIds.includes(a.id))
+              .map((a) => fileName.get(a.id) ?? a.name),
           }))
         }
 
@@ -565,8 +543,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           CHANNEL_NAME_MAX,
           channelNameKey,
         )
-        /** The id of each channel that this import made, by the name in the file. */
-        const madeChannel = new Map<string, string>()
         for (const [i, planned] of plan.channels.entries()) {
           const channel = loaded.channels[planned.index]
           if (!channel) continue
@@ -582,27 +558,10 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
                 leadId: planned.lead === null ? null : (created.get(planned.lead) ?? null),
               })
               channelCount++
-              madeChannel.set(channelNameKey(channel.name), row.id)
-              if (channel.reviewParts || channel.dailyTokenLimit !== null)
-                yield* channels.update(row.id, {
-                  ...(channel.reviewParts ? { reviewParts: true } : {}),
-                  ...(channel.dailyTokenLimit !== null
-                    ? { dailyTokenLimit: channel.dailyTokenLimit }
-                    : {}),
-                })
+              if (channel.reviewParts) yield* channels.update(row.id, { reviewParts: true })
             }),
           )
           if (Exit.isFailure(exit)) return yield* failed("channel", name, exit.cause)
-        }
-        // The parent is set after every channel exists. A parent that was not made stays none.
-        for (const planned of plan.channels) {
-          const channel = loaded.channels[planned.index]
-          if (!channel?.parent) continue
-          const childId = madeChannel.get(channelNameKey(channel.name))
-          const parentId = madeChannel.get(channelNameKey(channel.parent))
-          if (!childId || !parentId) continue
-          const exit = yield* Effect.exit(channels.update(childId, { parentId }))
-          if (Exit.isFailure(exit)) return yield* failed("channel", channel.name, exit.cause)
         }
         for (const planned of plan.skills) {
           const skill = loaded.skills[planned.index]
@@ -616,10 +575,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
                 instructions: skill.instructions,
               },
               planned.agents.flatMap((a) => created.get(a) ?? []),
-              skill.channels.flatMap((name) => {
-                const id = madeChannel.get(channelNameKey(name))
-                return id ? [id] : []
-              }),
             ),
           )
           if (Exit.isFailure(exit)) return yield* failed("skill", skill.name, exit.cause)
