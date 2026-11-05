@@ -110,6 +110,20 @@ test("settings: language, theme and text size apply at once and survive a restar
   await app.close()
 })
 
+test("settings: the close button sits on the left", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await page.getByTestId("open-settings").click()
+  await expect(page.getByTestId("settings")).toBeVisible()
+  const box = await page.getByTestId("settings").boundingBox()
+  const close = await page.getByTestId("settings-close").boundingBox()
+  expect(box).not.toBeNull()
+  expect(close).not.toBeNull()
+  const pageBox = box ?? { x: 0, y: 0, width: 0, height: 0 }
+  const closeBox = close ?? { x: 0, y: 0, width: 0, height: 0 }
+  expect(closeBox.x + closeBox.width / 2).toBeLessThan(pageBox.x + pageBox.width / 2)
+  await app.close()
+})
+
 test("settings: the system language is used until the user picks one", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   await expect(page.locator("html")).toHaveAttribute("lang", "ko")

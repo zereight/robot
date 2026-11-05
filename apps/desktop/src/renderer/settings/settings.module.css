@@ -58,11 +58,17 @@
   overflow-y: auto;
 }
 
+.navHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 8px 0;
+}
+
 .navTitle {
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--c-text-muted);
-  padding: 0 10px 8px;
 }
 
 .navItem {
@@ -90,12 +96,6 @@
   padding: 48px 40px 40px;
   max-width: 760px;
   user-select: text;
-}
-
-.close {
-  position: absolute;
-  top: 40px;
-  right: 24px;
 }
 
 .heading {
