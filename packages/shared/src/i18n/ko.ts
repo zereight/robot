@@ -2766,6 +2766,7 @@ export const ko: Record<MessageKey, string> = {
   "setup.delete": "삭제",
   "setup.name": "이름",
   "setup.command": "명령",
+  "setup.command.hint": "workspace에서 실행되는 셸 명령이에요. 에이전트는 읽지 않아요.",
   "setup.mark.ownCopy": "own copy의 첫 턴에",
   "setup.mark.turn": "매 턴에",
   "setup.invalid.name": "이름은 1~80자예요.",
