@@ -355,11 +355,12 @@ const scenario = async (language: "en" | "ko") => {
   await shot(page, `${tag}-07-picture-in-search`)
   await page.getByTestId("place-search").fill("")
 
-  // The org chart shows it in the node of the channel.
+  // The org chart draws organizations, not channels: it has no node and no picture for the
+  // channel (spec 029, "Out of scope").
   await page.getByTestId("page-orgchart").click()
-  const node = page.getByTestId("org-channel").filter({ hasText: "Launch" })
-  await expect(node.locator("[data-channel-picture]")).toBeVisible()
-  await shot(page, `${tag}-08-picture-in-org-chart`)
+  await expect(page.getByTestId("org-page")).toBeVisible()
+  await expect(page.getByTestId("org-unit").filter({ hasText: "Launch" })).toHaveCount(0)
+  await expect(page.getByTestId("org-page").locator("[data-channel-picture]")).toHaveCount(0)
 
   // The picture is still there after a restart.
   await app.close()
