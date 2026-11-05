@@ -110,6 +110,15 @@ export const useChecklistRows = () => {
             text: t("checklist.stepPlace", { n: stepNumber(item.stepId, steps), name: item.name }),
             action: t("checklist.pick"),
           }
+        case "stepConnect":
+          return {
+            ...base,
+            text: t("checklist.stepConnect", {
+              n: stepNumber(item.stepId, steps),
+              name: item.name,
+            }),
+            action: t("checklist.connect"),
+          }
         default:
           return { ...base, text: t("checklist.workflowOn"), action: t("checklist.turnOn") }
       }

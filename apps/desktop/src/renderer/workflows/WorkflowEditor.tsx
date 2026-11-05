@@ -26,6 +26,7 @@ import {
   type Workflow,
   type WorkflowRun,
   type WorkflowRunDetail,
+  workflowDiagram,
 } from "@robot/shared"
 import { createEffect, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
@@ -41,6 +42,7 @@ import { useChannels } from "../state/channels.tsx"
 import { quietOfTaskLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
+import { Dialog } from "../ui/Dialog.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./workflows.module.css"
 
@@ -117,6 +119,7 @@ export const WorkflowEditor = (props: {
   const [name, setName] = createSignal(props.workflow?.name ?? "")
   const [trigger, setTrigger] = createSignal<Trigger>(props.workflow?.trigger ?? { kind: "manual" })
   const [scheduleOk, setScheduleOk] = createSignal(true)
+  const [diagramOpen, setDiagramOpen] = createSignal(false)
   const [graph, setGraph] = createStore<{ steps: Step[]; edges: Edge[]; notes: Note[] }>({
     steps: props.workflow ? structuredClone([...props.workflow.steps]) : [],
     edges: props.workflow ? structuredClone([...props.workflow.edges]) : [],
@@ -546,6 +549,9 @@ export const WorkflowEditor = (props: {
           </Button>
         </Show>
         <span class={styles.spacer} />
+        <Button onClick={() => setDiagramOpen(true)} data-testid="wf-diagram">
+          {t("workflows.diagram")}
+        </Button>
         <Button
           onClick={() => setView({ ...view(), zoom: Math.max(ZOOM_MIN, view().zoom / 1.2) })}
           data-testid="wf-zoom-out"
@@ -712,9 +718,17 @@ export const WorkflowEditor = (props: {
             place="canvas"
             rows={checklistRows(
               list(),
-              { workflow: { enabled: enabled.latest ?? false, steps: graph.steps } },
+              {
+                workflow: {
+                  enabled: enabled.latest ?? false,
+                  steps: graph.steps,
+                  edges: graph.edges,
+                },
+              },
               (item) => {
-                if (item.kind === "stepAgent" || item.kind === "stepPlace") {
+                if (item.kind === "stepConnect") {
+                  setSelected({ kind: "step", id: item.stepId })
+                } else if (item.kind === "stepAgent" || item.kind === "stepPlace") {
                   setSelected({ kind: "step", id: item.stepId })
                   const field = item.kind === "stepAgent" ? "wf-step-agent" : "wf-step-channel"
                   queueMicrotask(() =>
@@ -1364,6 +1378,28 @@ export const WorkflowEditor = (props: {
           </section>
         </div>
       </div>
+      <Show when={diagramOpen()}>
+        <Dialog
+          label={t("workflows.diagram")}
+          onClose={() => setDiagramOpen(false)}
+          testId="wf-diagram-dialog"
+        >
+          <p class={styles.hint}>{t("workflows.diagram.hint")}</p>
+          <pre class={styles.diagram} data-testid="wf-diagram-text">
+            {workflowDiagram(graph.steps, graph.edges)}
+          </pre>
+          <div class={styles.actions}>
+            <Button
+              onClick={() =>
+                void call("app.copy", { text: workflowDiagram(graph.steps, graph.edges) })
+              }
+              data-testid="wf-diagram-copy"
+            >
+              {t("workflows.diagram.copy")}
+            </Button>
+          </div>
+        </Dialog>
+      </Show>
     </div>
   )
 }

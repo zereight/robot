@@ -29,7 +29,7 @@ export const WORKFLOW_FILE_MAX_BYTES = 10 * 1024 * 1024
 const GRID_X = 230
 const GRID_Y = 110
 /** A place outside this range is not a place on a canvas that a person can use. */
-const PLACE_MAX = 1_000_000
+export const PLACE_MAX = 1_000_000
 
 export type WorkflowFileTrigger =
   | { readonly kind: "manual" }
@@ -556,9 +556,18 @@ export interface WorkflowFilePreviewItem {
   readonly missingAgents: readonly string[]
   /** True when the app hid a secret in a text of this workflow. It starts not ticked. */
   readonly secretRemoved: boolean
+  /**
+   * True when a CC Workflow Studio file lost a connection at a node that became a note (spec 010).
+   * It starts not ticked.
+   */
+  readonly lostConnections: boolean
+  /** The agent steps of a CC Workflow Studio file. The file names no agent, so each needs one. */
+  readonly needAgent: number
 }
 
 export interface WorkflowFilePreview {
+  /** The form of the file. Only a CC Workflow Studio file has the field "Agent for agent steps". */
+  readonly form: "robot" | "cc"
   readonly workflows: readonly WorkflowFilePreviewItem[]
   /** What the file holds that the import does not make, with the reason. */
   readonly notImported: readonly NotImported[]
@@ -599,7 +608,9 @@ export const missingAgentNames = (
 /**
  * The workflow that an import makes from the entry of a file. `agentId` gives the id of the agent
  * that has a name (see `nameKey`), or undefined when there is none: then the step has no agent
- * ("Pick an agent"). A post step has no place ("Pick a place"), because the file holds no channel.
+ * ("Pick an agent"). `defaultAgentId` is the agent that the user picked for the steps that name no
+ * agent (a CC Workflow Studio file names none). A post step has no place ("Pick a place"),
+ * because the file holds no channel.
  * The ids of steps, connections and notes are numbers with a letter, only for this workflow.
  */
 export const toWorkflowInput = (
@@ -607,6 +618,7 @@ export const toWorkflowInput = (
   workflow: WorkflowFileWorkflow,
   name: string,
   agentId: (nameKey: string) => string | undefined,
+  defaultAgentId = "",
 ): WorkflowInput => {
   const steps = workflow.steps.map((s, i): Step => {
     const base = { id: `s${i + 1}`, name: s.name, x: s.x, y: s.y }
@@ -615,7 +627,7 @@ export const toWorkflowInput = (
         return {
           ...base,
           kind: "agent",
-          agentId: s.agent === "" ? "" : (agentId(nameKey(s.agent)) ?? ""),
+          agentId: s.agent === "" ? defaultAgentId : (agentId(nameKey(s.agent)) ?? ""),
           prompt: s.prompt,
           continueOnFailure: s.continueOnFailure,
           ...(s.effort ? { effort: s.effort } : {}),

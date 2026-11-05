@@ -685,6 +685,25 @@ describe("what an import makes", () => {
     expect(input.steps[1] && "effort" in input.steps[1]).toBe(false)
   })
 
+  test("an agent that the user picks for a step with no agent goes to that step only", () => {
+    const input = toWorkflowInput(
+      "server-1",
+      workflow(),
+      "Digest 2",
+      (key) => agents.get(key),
+      "agent-pick",
+    )
+    // "Ada" is found by name. "Ghost" is not found, and a name that is not found stays empty.
+    expect(input.steps.map((s) => (s.kind === "agent" ? s.agentId : null))).toEqual([
+      "agent-ada",
+      "",
+      "agent-pick",
+      null,
+      null,
+      null,
+    ])
+  })
+
   test("what it makes is a workflow that the app accepts", () => {
     const input = make()
     expect(Schema.is(WorkflowInput)(input)).toBe(true)

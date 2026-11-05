@@ -1419,14 +1419,22 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String, workflowIds: Schema.Array(Schema.String) }))(
       input,
     ).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.export(data)))),
+  "workflowFile.exportCc": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap((data) => WorkflowFiles.use((f) => f.exportCc(data))),
+    ),
   "workflowFile.open": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
     ),
   "workflowFile.apply": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, pick: Schema.Array(Schema.Int) }))(input).pipe(
-      Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
-    ),
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        pick: Schema.Array(Schema.Int),
+        agentId: Schema.optionalKey(Schema.String),
+      }),
+    )(input).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data)))),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
   "notifications.setMute": (input) =>
     decode(

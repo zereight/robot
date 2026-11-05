@@ -122,10 +122,13 @@ describe("ticks of the review", () => {
       { agent: true, instructions: true, routines: [false, false] },
       { agent: false, instructions: false, routines: [] },
     ])
-    expect(startWorkflowTicks([{ secretRemoved: false }, { secretRemoved: true }])).toEqual([
-      true,
-      false,
-    ])
+    expect(
+      startWorkflowTicks([
+        { secretRemoved: false, lostConnections: false },
+        { secretRemoved: true, lostConnections: false },
+        { secretRemoved: false, lostConnections: true },
+      ]),
+    ).toEqual([true, false, false])
   })
 
   test("an agent that is not ticked takes its instructions and routines with it", () => {
@@ -169,5 +172,20 @@ describe("checklist items", () => {
     expect(checklistItemDone({ kind: "workflowOn" }, { workflow: workflow("", "", true) })).toBe(
       true,
     )
+  })
+
+  test("a step that lost an input is done when a connection leads to it, or when it is gone", () => {
+    const world = (edges: readonly { readonly to: string }[]) => ({
+      workflow: {
+        enabled: false,
+        steps: [{ id: "s2", kind: "notify" as const }],
+        edges,
+      },
+    })
+    const item = { kind: "stepConnect", stepId: "s2", name: "Second" } as const
+    expect(checklistItemDone(item, world([]))).toBe(false)
+    expect(checklistItemDone(item, world([{ to: "s1" }]))).toBe(false)
+    expect(checklistItemDone(item, world([{ to: "s2" }]))).toBe(true)
+    expect(checklistItemDone({ ...item, stepId: "gone" }, world([]))).toBe(true)
   })
 })
