@@ -1290,6 +1290,13 @@ export const migrations: readonly string[] = [
   ALTER TABLE hand_off_next RENAME TO organization;
   ${dirtyTriggers("organization", "org", plainId)}
   `,
+  `
+  -- The parent channel is cleared (spec 030, "Migration", "What the channel loses"). The step that
+  -- made the organizations has copied each parent channel as the parent of an organization, and a
+  -- channel is a place for jobs only: it has no parent. The column stays in the table, because a
+  -- table is not rebuilt for one column; nothing reads it or syncs it.
+  UPDATE channel SET parent_channel_id = NULL WHERE parent_channel_id IS NOT NULL;
+  `,
 ]
 
 /**

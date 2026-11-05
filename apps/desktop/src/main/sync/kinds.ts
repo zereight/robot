@@ -414,7 +414,9 @@ const partCheck = (v: unknown): boolean => {
       // The muted line "Kept going (1 of 8)" travels with the two numbers (spec 005, 019).
       if (v.note === "kept_going")
         return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
-      // The muted line of a repaired channel tree travels with its reason (spec 030, "Repair", 019).
+      // The old muted line of a repaired channel tree travels with its reason. A version before the
+      // organizations posted it (spec 030, "Migration"); no version posts it now, but it stays in
+      // the history, and a computer that was not updated can still send one (spec 019).
       if (v.note === "tree_repaired")
         return shape(["kind", "note", "why"])(v) && oneOf(["loop", "levels"])(v.why)
       // The muted lines "The connection NAME is not available." and "Tools of the connection NAME wait
@@ -1008,7 +1010,6 @@ interface ChannelRow {
   picture: string | null
   sensitive_mark: string | null
   outside_mark: string | null
-  parent_channel_id: string | null
   created_at: number
   updated_at: number
   last_read_at: number
@@ -1026,6 +1027,18 @@ const setMembers = (ctx: Ctx, channelId: string, members: readonly string[]) => 
       position++,
     )
   }
+}
+
+/**
+ * The fields that a channel had before the organizations (spec 030, "Migration", "What the channel
+ * loses"): the parent channel and the daily token limit. They moved to the organizations. A
+ * computer of an older version still sends them with a channel. They are checked and then ignored,
+ * so its other changes of the channel still arrive. This computer never sends them. This is the
+ * one place for both.
+ */
+const LEGACY_CHANNEL_FIELDS: Readonly<Record<string, FieldDef>> = {
+  parentChannel: { check: nullable(str(100, 1)) },
+  dailyTokenLimit: { check: nullable(validDailyLimit) },
 }
 
 const channel: KindDef = {
@@ -1059,14 +1072,7 @@ const channel: KindDef = {
     // The outside content that the next turns of the channel hold, with the program mark (spec 007).
     // A computer of an older step has none.
     outside: { check: nullable(isPlaceOutside) },
-    // The parent channel (spec 030). A computer of an older step has none, and leaves the field as
-    // it is. A parent that has not come yet, or is gone, counts as no parent, so the row needs no
-    // order of its own.
-    parentChannel: { check: nullable(str(100, 1)) },
-    // The daily token limit moved to the organizations (spec 030). A computer of an older version
-    // still sends it with a channel. It is checked and then ignored, so its other changes of the
-    // channel still arrive. This computer never sends it.
-    dailyTokenLimit: { check: nullable(validDailyLimit) },
+    ...LEGACY_CHANNEL_FIELDS,
     members: {
       check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
     },
@@ -1091,7 +1097,6 @@ const channel: KindDef = {
         picture: isChannelPicture(r.picture) ? r.picture : null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
-        parentChannel: r.parent_channel_id,
         members: ctx.db
           .all<{ agent_id: string }>(
             "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
@@ -1120,7 +1125,6 @@ const channel: KindDef = {
       picture: isChannelPicture(f.picture) ? f.picture : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
-      parent_channel_id: typeof f.parentChannel === "string" ? f.parentChannel : null,
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -1146,8 +1150,6 @@ const channel: KindDef = {
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (f.outside !== undefined)
       columns.outside_mark = placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null)
-    if (f.parentChannel !== undefined)
-      columns.parent_channel_id = typeof f.parentChannel === "string" ? f.parentChannel : null
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = ctx.now()
     update(ctx.db, "channel", "id = ?", [id], columns)

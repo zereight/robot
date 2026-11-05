@@ -26,7 +26,6 @@ import { unzipSync } from "fflate"
 import { Agents } from "./Agents.ts"
 import { type ArchiveFile, writeZip } from "./archive.ts"
 import { Connections } from "./Connections.ts"
-import { repairChannelTree } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -510,6 +509,11 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO instruction_version SELECT * FROM imp.instruction_version")
               copyToServer("handbook_version")
               copyToServer("channel")
+              // A channel has no parent channel (spec 030, "Migration"). The archive is untrusted,
+              // so the old column is cleared here, whatever the file holds.
+              db.run(
+                "UPDATE channel SET parent_channel_id = NULL WHERE parent_channel_id IS NOT NULL",
+              )
               copyToServer("routine")
               copyToServer("workflow")
               // Skills (spec 017) move to this computer's server too.
@@ -526,9 +530,6 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO org_member SELECT * FROM imp.org_member")
               orgRepairs = repairOrgTree(db, { mode: "import" })
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
-              // The archive is untrusted. A tree that breaks the rules (a loop, a fourth level) comes
-              // back repaired, with one muted line in each channel that lost its parent (spec 030).
-              repairChannelTree(db, { mode: "restore" })
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               // The models that the user turned off, and the fields of the custom models, come back
               // with their accounts (spec 006, 014).

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { ChangeTime } from "./channelTree.ts"
 import {
+  type ChangeTime,
   higherOrgs,
   lowerOrgs,
   type OrgRepair,

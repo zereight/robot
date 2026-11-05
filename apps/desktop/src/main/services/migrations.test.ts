@@ -1344,12 +1344,13 @@ describe('the step of the switch "Main agent" (spec 002, 019)', () => {
 describe("the step of the hand-off rule along the organizations (spec 030 'Migration')", () => {
   const RULE = migrations.findIndex((sql) => sql.includes("hand_off IN ('any', 'organizations')"))
 
-  test("it is one step, and it is the last one", () => {
+  test("it is one step, and the step that clears the parent channel comes right after it", () => {
     expect(RULE).toBeGreaterThan(0)
     expect(
       migrations.filter((sql) => sql.includes("hand_off IN ('any', 'organizations')")),
     ).toHaveLength(1)
-    expect(RULE).toBe(migrations.length - 1)
+    expect(migrations[RULE + 1]).toContain("SET parent_channel_id = NULL")
+    expect(RULE).toBe(migrations.length - 2)
   })
 
   test('the value "Along the channels" becomes "Along the organizations"; the switch and the time stay', () => {

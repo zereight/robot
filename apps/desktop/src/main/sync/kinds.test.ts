@@ -2144,7 +2144,7 @@ describe("the outside mark of a place and the program mark of a message sync (sp
   })
 })
 
-describe("the parent channel crosses with the channel (spec 030, 019)", () => {
+describe("a channel carries no parent channel and no daily token limit (spec 030, 019)", () => {
   const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
     k: kind,
     i: id,
@@ -2152,68 +2152,45 @@ describe("the parent channel crosses with the channel (spec 030, 019)", () => {
     f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
   })
 
-  test("the parent is a field of the channel; a change reaches the other computer", async () => {
+  test("the channel does not read or send the fields; the fields of a computer of an older version are checked and ignored, not refused", async () => {
     const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-parent")
+    const dir = join(testRuntime().dataDir, "kinds-legacy")
     const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.parentChannel).toBeNull()
+    // Even a column that an old database still holds is not sent.
     a.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = ?", a.channel.id)
     const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
-    expect(fields.parentChannel).toBe("up")
-    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    expect("parentChannel" in fields).toBe(false)
+    expect("dailyTokenLimit" in fields).toBe(false)
+    const older = { ...fields, parentChannel: "up", dailyTokenLimit: 50_000 }
+    expect(parseOp(op("channel", a.channel.id, older), NOW)).toBeDefined()
+    expect(
+      parseOp(op("channel", a.channel.id, { ...older, parentChannel: null }), NOW),
+    ).toBeDefined()
+    // A value of the wrong type or out of range is still refused.
     expect(
       parseOp(op("channel", a.channel.id, { ...fields, parentChannel: 3 }), NOW),
     ).toBeUndefined()
-
-    // The parent has not come yet: the row is made all the same, and the field waits for it.
-    const b = target(openDatabase(":memory:"), dir)
-    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.parentChannel).toBe("up")
-    KINDS.channel.write(b, a.channel.id, { parentChannel: null })
-    expect(KINDS.channel.read(b, a.channel.id)?.fields.parentChannel).toBeNull()
-  })
-
-  test("a computer of an older step sends no parent: the field stays as it is", async () => {
-    const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-parent-old")
-    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    const { parentChannel: _drop, ...older } = copy(
-      KINDS.channel.read(ctxA, a.channel.id)?.fields,
-    ) as Fields
-    expect(parseOp(op("channel", "older", older), NOW)).toBeDefined()
-    const b = target(openDatabase(":memory:"), dir)
-    expect(KINDS.channel.create(b, "older", { ...older, members: [] })).toBe(true)
-    expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBeNull()
-    b.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = 'older'")
-    KINDS.channel.write(b, "older", { topic: "New" })
-    expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBe("up")
-  })
-})
-
-describe("a channel carries no daily token limit (spec 030, 019)", () => {
-  const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
-    k: kind,
-    i: id,
-    o: "dev-a",
-    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
-  })
-
-  test("the channel does not read or send the field; the field of a computer of an older version is checked and ignored, not refused", async () => {
-    const a = await source()
-    const dir = join(testRuntime().dataDir, "kinds-limit")
-    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
-    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
-    expect("dailyTokenLimit" in fields).toBe(false)
-    const older = { ...fields, dailyTokenLimit: 50_000 }
-    expect(parseOp(op("channel", a.channel.id, older), NOW)).toBeDefined()
-    // A number out of range is still refused.
     expect(
       parseOp(op("channel", a.channel.id, { ...fields, dailyTokenLimit: 5 }), NOW),
     ).toBeUndefined()
+    // The row is made and changed without them; the other fields of the change still arrive.
     const b = target(openDatabase(":memory:"), dir)
     expect(KINDS.channel.create(b, a.channel.id, { ...older, members: [] })).toBe(true)
-    KINDS.channel.write(b, a.channel.id, { dailyTokenLimit: 80_000 })
-    expect("dailyTokenLimit" in (KINDS.channel.read(b, a.channel.id)?.fields ?? {})).toBe(false)
+    expect(
+      b.db.get("SELECT parent_channel_id AS p FROM channel WHERE id = ?", a.channel.id),
+    ).toEqual({ p: null })
+    KINDS.channel.write(b, a.channel.id, {
+      parentChannel: "up",
+      dailyTokenLimit: 80_000,
+      topic: "New",
+    })
+    const read = KINDS.channel.read(b, a.channel.id)?.fields ?? {}
+    expect(read.topic).toBe("New")
+    expect("parentChannel" in read).toBe(false)
+    expect("dailyTokenLimit" in read).toBe(false)
+    expect(
+      b.db.get("SELECT parent_channel_id AS p FROM channel WHERE id = ?", a.channel.id),
+    ).toEqual({ p: null })
   })
 })
 

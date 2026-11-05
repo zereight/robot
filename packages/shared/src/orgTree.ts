@@ -3,8 +3,6 @@
 // missing parent counts as no parent. An organization has no archive state, so there is no
 // archived case. They read the organizations as stored and say what the tree is now.
 
-import type { ChangeTime, TreeRepairReason } from "./channelTree.ts"
-
 /** A tree has at most this many levels: a top organization, its sub-organizations, and theirs. */
 export const ORG_TREE_LEVELS = 3
 
@@ -173,6 +171,20 @@ export const orgParent = (orgs: readonly TreeOrg[], id: string): string | null =
   orgParents(orgs).get(id) ?? null
 
 // ------------------------------------------------------------------------------ repair
+
+/**
+ * The time of a change, in the order that both computers share (spec 019): a larger `l`, then a
+ * larger `c` is later. It is the stamp that sync keeps for each field. `n` is the computer that
+ * made the change: it names the change, but it does not make one change later than another.
+ */
+export interface ChangeTime {
+  readonly l: number
+  readonly c: number
+  readonly n: string
+}
+
+/** What the tree would have had: the words of the muted line differ. */
+export type TreeRepairReason = "loop" | "levels"
 
 /** What the repair needs of an organization, on top of what the tree needs. */
 export interface RepairOrg extends TreeOrg {

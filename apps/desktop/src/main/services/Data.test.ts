@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import type { MessagePart, RuleInput } from "@robot/shared"
+import type { RuleInput } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
@@ -715,33 +715,6 @@ describe("export and import", () => {
     ])
   })
 
-  test("the channel tree comes back: each parent channel as it was (spec 030, 014)", async () => {
-    const out = join(testPlatform().dataDir, "export-tree.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    const make = (name: string, parentId: string | null) =>
-      a.run(
-        Channels.use((c) =>
-          c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null, parentId }),
-        ),
-      )
-    const product = await make("Product", null)
-    const docs = await make("Docs", product.id)
-    await make("Site", docs.id)
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const list = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    const name = new Map(list.map((c) => [c.id, c.name]))
-    expect(list.map((c) => [c.name, c.parentId ? name.get(c.parentId) : null]).sort()).toEqual([
-      ["Docs", "Product"],
-      ["Product", null],
-      ["Site", "Docs"],
-    ])
-  })
-
   test("the switch 'Ask up the line' comes back with the archive, and the rule beside it (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-line.zip")
     const a = app({ save: out })
@@ -759,26 +732,20 @@ describe("export and import", () => {
     })
   })
 
-  test("the parent channel comes back, and the channel keeps no daily token limit (spec 030, 014)", async () => {
+  test("a channel comes back with no parent channel and no daily token limit, also from a file that holds them (spec 030, 'Migration', 014)", async () => {
     const out = join(testPlatform().dataDir, "export-channel-tools.zip")
     const a = app({ save: out })
     const local = await a.run(Servers.use((s) => s.local))
-    const product = await a.run(
-      Channels.use((c) =>
-        c.create({ serverId: local.id, name: "Product", topic: "", memberIds: [], leadId: null }),
-      ),
-    )
-    await a.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: local.id,
-          name: "Docs",
-          topic: "",
-          memberIds: [],
-          leadId: null,
-          parentId: product.id,
-        }),
-      ),
+    for (const name of ["Product", "Docs"])
+      await a.run(
+        Channels.use((c) =>
+          c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null }),
+        ),
+      )
+    // No version writes these columns now. A file made by hand holds them, as an old one did.
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run(
+      "UPDATE channel SET parent_channel_id = (SELECT id FROM channel WHERE name = 'Product'), daily_token_limit = 50000 WHERE name = 'Docs'",
     )
     await a.run(Data.use((d) => d.export()))
 
@@ -786,11 +753,17 @@ describe("export and import", () => {
     await b.run(Data.use((d) => d.import()))
     const bLocal = await b.run(Servers.use((s) => s.local))
     const channels = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    expect(channels.map((c) => [c.name, c.parentId ? "has parent" : null]).sort()).toEqual([
-      ["Docs", "has parent"],
-      ["Product", null],
-    ])
-    expect("dailyTokenLimit" in (channels[0] ?? {})).toBe(false)
+    expect(channels.map((c) => c.name).sort()).toEqual(["Docs", "Product"])
+    for (const channel of channels) {
+      expect("parentId" in channel).toBe(false)
+      expect("dailyTokenLimit" in channel).toBe(false)
+    }
+    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(
+      bDb.all(
+        "SELECT name, parent_channel_id AS p FROM channel WHERE parent_channel_id IS NOT NULL",
+      ),
+    ).toEqual([])
   })
 
   test("organizations come back with their members, lead, parent, range, limit and tool lists (spec 030, 014)", async () => {
@@ -954,168 +927,6 @@ describe("export and import", () => {
     expect(await b.run(Organization.use((o) => o.get))).toEqual({
       handOff: "organizations",
       askUpTheLine: false,
-    })
-  })
-
-  test("an archive that holds a tree with a fourth level or a loop comes back repaired, with a muted line (spec 030, Repair)", async () => {
-    const out = join(testPlatform().dataDir, "export-broken-tree.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    const make = (name: string, parentId: string | null) =>
-      a.run(
-        Channels.use((c) =>
-          c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null, parentId }),
-        ),
-      )
-    const product = await make("Product", null)
-    const docs = await make("Docs", product.id)
-    const site = await make("Site", docs.id)
-    const wiki = await make("Wiki", null)
-    const left = await make("Left", null)
-    const right = await make("Right", null)
-    // The app refuses both of these, but an archive can hold them: the data is changed by hand.
-    const db = await a.run(Database.use((d) => Effect.succeed(d)))
-    db.run("UPDATE channel SET parent_channel_id = ? WHERE id = ?", site.id, wiki.id)
-    db.run("UPDATE channel SET parent_channel_id = ? WHERE id = ?", right.id, left.id)
-    db.run("UPDATE channel SET parent_channel_id = ? WHERE id = ?", left.id, right.id)
-    // "Right" was made later than "Left" (the two were made in the same ms).
-    db.run("UPDATE channel SET created_at = 1000 WHERE id = ?", left.id)
-    db.run("UPDATE channel SET created_at = 2000 WHERE id = ?", right.id)
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const list = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    const name = new Map(list.map((c) => [c.id, c.name]))
-    // "Wiki" would be on the fourth level, so it lost its parent. Of "Left" and "Right", the one that
-    // was made later lost its parent. Nothing else changed.
-    expect(list.map((c) => [c.name, c.parentId ? name.get(c.parentId) : null]).sort()).toEqual([
-      ["Docs", "Product"],
-      ["Left", "Right"],
-      ["Product", null],
-      ["Right", null],
-      ["Site", "Docs"],
-      ["Wiki", null],
-    ])
-    const lineOf = async (id: string) =>
-      (await b.run(Channels.use((c) => c.history(id)))).map((m) => m.parts)
-    expect(await lineOf(wiki.id)).toEqual([
-      [{ kind: "note", note: "tree_repaired", why: "levels" }],
-    ])
-    expect(await lineOf(right.id)).toEqual([[{ kind: "note", note: "tree_repaired", why: "loop" }]])
-    for (const id of [product.id, docs.id, site.id, left.id]) expect(await lineOf(id)).toEqual([])
-  })
-
-  describe("an archive with a broken channel tree (spec 030, Repair)", () => {
-    // The app refuses a loop and a fourth level, so the archive is made by hand, as a restore or a
-    // sync would leave the data. The archive carries no sync records (019), so no parent change
-    // has a time: the channel made later is cleared, then the one with the later id.
-    const exportTree = async (
-      file: string,
-      names: readonly string[],
-      parents: Readonly<Record<string, string>>,
-      madeAt: Readonly<Record<string, number>> = {},
-    ) => {
-      const out = join(testPlatform().dataDir, file)
-      const a = app({ save: out })
-      const local = await a.run(Servers.use((s) => s.local))
-      const ids: Record<string, string> = {}
-      for (const name of names) {
-        ids[name] = (
-          await a.run(
-            Channels.use((c) =>
-              c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null }),
-            ),
-          )
-        ).id
-      }
-      const db = await a.run(Database.use((d) => Effect.succeed(d)))
-      for (const [name, parent] of Object.entries(parents))
-        db.run(
-          "UPDATE channel SET parent_channel_id = ? WHERE id = ?",
-          ids[parent] ?? "",
-          ids[name] ?? "",
-        )
-      for (const [name, at] of Object.entries(madeAt))
-        db.run("UPDATE channel SET created_at = ? WHERE id = ?", at, ids[name] ?? "")
-      await a.run(Data.use((d) => d.export()))
-      const b = app({ open: out })
-      await b.run(Data.use((d) => d.import()))
-      const bLocal = await b.run(Servers.use((s) => s.local))
-      const list = await b.run(Channels.use((c) => c.list(bLocal.id)))
-      const name = new Map(list.map((c) => [c.id, c.name]))
-      return {
-        ids,
-        tree: Object.fromEntries(
-          list.map((c) => [c.name, c.parentId ? (name.get(c.parentId) ?? "?") : null]),
-        ),
-        lines: async (n: string) =>
-          (await b.run(Channels.use((c) => c.history(ids[n] ?? "")))).map((m) => m.parts),
-      }
-    }
-    const loopLine: MessagePart[][] = [[{ kind: "note", note: "tree_repaired", why: "loop" }]]
-    const levelsLine: MessagePart[][] = [[{ kind: "note", note: "tree_repaired", why: "levels" }]]
-
-    test("a restore that closes a loop: Docs under Wiki, Site under Docs, Wiki under Site; the channel made last loses its parent", async () => {
-      // The acceptance scenario of "A restore that closes a loop", as an archive holds it.
-      const r = await exportTree(
-        "export-loop.zip",
-        ["Wiki", "Docs", "Site"],
-        { Docs: "Wiki", Site: "Docs", Wiki: "Site" },
-        { Docs: 1000, Site: 2000, Wiki: 3000 },
-      )
-      expect(r.tree).toEqual({ Wiki: null, Docs: "Wiki", Site: "Docs" })
-      expect(await r.lines("Wiki")).toEqual(loopLine)
-      expect(await r.lines("Docs")).toEqual([])
-      expect(await r.lines("Site")).toEqual([])
-    })
-
-    test("a loop where the channels were made at the same time: the later id loses its parent", async () => {
-      const r = await exportTree(
-        "export-loop-tie.zip",
-        ["One", "Two", "Three"],
-        { One: "Two", Two: "Three", Three: "One" },
-        { One: 5000, Two: 5000, Three: 5000 },
-      )
-      const cleared = Object.entries(r.tree)
-        .filter(([, parent]) => parent === null)
-        .map(([name]) => name)
-      expect(cleared).toHaveLength(1)
-      // The one that lost its parent has the largest id of the three.
-      const largest = Object.entries(r.ids).sort((x, y) => (x[1] < y[1] ? 1 : -1))[0]?.[0]
-      expect(cleared).toEqual([largest as string])
-      expect(await r.lines(cleared[0] as string)).toEqual(loopLine)
-      for (const other of Object.keys(r.ids).filter((n) => n !== cleared[0]))
-        expect(await r.lines(other)).toEqual([])
-    })
-
-    test("a loop with a long line under it: the loop is broken, then the fourth level that this makes", async () => {
-      // A and B are a loop. C is under A, and D is under C. B was made later, so B loses its parent.
-      // Then B > A > C > D has "D" on the fourth level, and D loses its parent too.
-      const r = await exportTree(
-        "export-loop-levels.zip",
-        ["A", "B", "C", "D", "Lone"],
-        { A: "B", B: "A", C: "A", D: "C" },
-        { A: 1000, B: 2000, C: 3000, D: 4000, Lone: 5000 },
-      )
-      expect(r.tree).toEqual({ A: "B", B: null, C: "A", D: null, Lone: null })
-      expect(await r.lines("B")).toEqual(loopLine)
-      expect(await r.lines("D")).toEqual(levelsLine)
-      for (const other of ["A", "C", "Lone"]) expect(await r.lines(other)).toEqual([])
-    })
-
-    test("two fourth levels in an archive: each cleared channel shows its line, once", async () => {
-      const r = await exportTree("export-levels.zip", ["P", "A", "B", "X", "Y"], {
-        A: "P",
-        B: "A",
-        X: "B",
-        Y: "B",
-      })
-      expect(r.tree).toEqual({ P: null, A: "P", B: "A", X: null, Y: null })
-      expect(await r.lines("X")).toEqual(levelsLine)
-      expect(await r.lines("Y")).toEqual(levelsLine)
-      for (const other of ["P", "A", "B"]) expect(await r.lines(other)).toEqual([])
     })
   })
 

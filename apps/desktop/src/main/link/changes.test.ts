@@ -496,26 +496,23 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       codeOf(await p.ask("channels.update", { id: channel.id, patch: { reviewParts: true } })),
     ).toBe("invalid_input")
 
-    // The parent channel (spec 030, 012): set at the start and changed, with the rules of the tree.
-    const site = value<{ id: string; parentId: string | null }>(
-      await p.ask("channels.create", {
-        serverId: p.serverId,
-        name: "Site",
-        topic: "",
-        memberIds: [a.id],
-        leadId: null,
-        parentId: channel.id,
-      }),
-    )
-    expect(site.parentId).toBe(channel.id)
+    // A channel has no parent channel (spec 004, 030). A client that names one is refused, as it is
+    // for any other field that it may not set (spec 012).
     expect(
-      codeOf(await p.ask("channels.update", { id: channel.id, patch: { parentId: site.id } })),
-    ).toBe("parent_loop")
+      codeOf(
+        await p.ask("channels.create", {
+          serverId: p.serverId,
+          name: "Site",
+          topic: "",
+          memberIds: [a.id],
+          leadId: null,
+          parentId: channel.id,
+        }),
+      ),
+    ).toBe("invalid_input")
     expect(
-      value<{ parentId: string | null }>(
-        await p.ask("channels.update", { id: site.id, patch: { parentId: null } }),
-      ).parentId,
-    ).toBeNull()
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { parentId: null } })),
+    ).toBe("invalid_input")
     // The picture of a channel (spec 004, 012): a square PNG of at most 256 px, with the switch.
     const bytes = new Uint8Array(100)
     bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])

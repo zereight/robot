@@ -1084,13 +1084,13 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         await send(p)
       }
 
-      // ------------------------------------------------------------------ the channel tree
-      // The tree, and the one main agent (spec 002), are checked after the sync has applied all the
-      // changes that it has, not between the batches of one sync (spec 030, "Repair"). A set of changes that makes a valid tree can cross
-      // in two batches, and the first one alone can show a loop that the second one removes. A batch
-      // does not say if more follow, so the check waits until no batch has come for a short time.
-      // The tree on the screen is safe in that time: the reading of the tree sets a broken line
-      // aside (`treeParents`).
+      // ------------------------------------------------------------------ the trees
+      // The organization tree, and the one main agent (spec 002), are checked after the sync has
+      // applied all the changes that it has, not between the batches of one sync (spec 030,
+      // "Repair"). A set of changes that makes a valid tree can cross in two batches, and the first
+      // one alone can show a loop that the second one removes. A batch does not say if more follow,
+      // so the check waits until no batch has come for a short time. The tree on the screen is safe
+      // in that time: the reading of the tree sets a broken line aside (`orgParents`).
       let repairDue = false
       let repairTimer: ReturnType<typeof setTimeout> | undefined
       const repairNow = () => {
@@ -1100,7 +1100,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         // A first copy is checked when it is whole (`finishCopy`): it holds the channels in parts.
         if (pairRow()?.phase === "copying") return
         repairDue = false
-        touched([...engine.repairTree(), ...engine.repairOrgs(), ...engine.repairMain()])
+        touched([...engine.repairOrgs(), ...engine.repairMain()])
       }
       /** The check is due. Each batch that comes in the meantime moves it back. */
       const repairSoon = () => {
@@ -1120,12 +1120,12 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
 
       const finishCopy = () => {
         engine.settleInitial()
-        // The channels came in parts, so the tree is checked now that the copy is whole (spec 030,
-        // "Repair").
+        // The organizations came in parts, so the tree is checked now that the copy is whole (spec
+        // 030, "Repair").
         if (repairTimer) clearTimeout(repairTimer)
         repairTimer = undefined
         repairDue = false
-        const repaired = [...engine.repairTree(), ...engine.repairOrgs(), ...engine.repairMain()]
+        const repaired = [...engine.repairOrgs(), ...engine.repairMain()]
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
         touched(repaired)

@@ -184,15 +184,15 @@ describe("the migration of channels (spec 030, Migration)", () => {
     expect(db.prepare("SELECT organizations FROM skill WHERE id = 'sk2'").get()).toEqual({
       organizations: "[]",
     })
-    // The channels keep their members and, until S121, their parent. The daily token limit is
-    // cleared: it is in the organization (spec 030, "Migration", "What the channel loses").
+    // The channels keep their members. The parent channel and the daily token limit are cleared:
+    // they are in the organization (spec 030, "Migration", "What the channel loses").
     expect(
       db
         .prepare(
           "SELECT parent_channel_id AS p, daily_token_limit AS l FROM channel WHERE id = 'Docs'",
         )
         .get(),
-    ).toEqual({ p: "Product", l: null })
+    ).toEqual({ p: null, l: null })
     expect(
       db.prepare("SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = 'Docs'").get(),
     ).toEqual({ n: 2 })
@@ -406,5 +406,80 @@ describe("the step that clears the daily token limit of channels (spec 030, 'Mig
     migrate(db)
     migrate(db)
     expect(db.prepare("SELECT daily_token_limit AS n FROM channel").get()).toEqual({ n: null })
+  })
+})
+
+describe("the step that clears the parent channel (spec 030, 'Migration', 'What the channel loses')", () => {
+  const CLEAR = migrations.findIndex((sql) => sql.includes("SET parent_channel_id = NULL"))
+
+  test("it comes after the step that makes the organizations, and drops or deletes nothing", () => {
+    expect(CLEAR).toBeGreaterThan(STEP)
+    expect(migrations.filter((sql) => sql.includes("SET parent_channel_id = NULL"))).toHaveLength(1)
+    expect(migrations[CLEAR]).not.toMatch(/DROP |DELETE FROM/i)
+  })
+
+  test("an old database: the organizations hold the tree first, then the channels have no parent", () => {
+    const db = before((d) => {
+      for (const a of ["P", "D", "S"]) agent(d, a)
+      channel(d, "Product", { members: ["P"], lead: "P", created: 1 })
+      channel(d, "Docs", { parent: "Product", members: ["D"], lead: "D", created: 2 })
+      channel(d, "Site", { parent: "Docs", members: ["S"], lead: "S", created: 3 })
+      channel(d, "Chat", { members: ["P", "D"], created: 4 })
+      d.exec(
+        "INSERT INTO channel_message (id, channel_id, author, parts, status, created_at) VALUES ('m1', 'Docs', 'user', '[]', 'done', 5)",
+      )
+    })
+    migrateThrough(db, STEP)
+    const parents = () =>
+      db.prepare("SELECT name, parent_channel_id AS p FROM channel ORDER BY name").all()
+    // The organizations copy the tree, and the channels still hold it.
+    expect(orgs(db).map((o) => [o.name, o.parent])).toEqual([
+      ["Docs", "org-Product"],
+      ["Product", null],
+      ["Site", "org-Docs"],
+    ])
+    expect(parents()).toEqual([
+      { name: "Chat", p: null },
+      { name: "Docs", p: "Product" },
+      { name: "Product", p: null },
+      { name: "Site", p: "Docs" },
+    ])
+
+    migrate(db)
+
+    // No channel has a parent. The column stays (no table is rebuilt), nothing reads it.
+    expect(parents()).toEqual([
+      { name: "Chat", p: null },
+      { name: "Docs", p: null },
+      { name: "Product", p: null },
+      { name: "Site", p: null },
+    ])
+    expect(columns(db, "channel")).toContain("parent_channel_id")
+    // The organizations keep the tree. The channels keep their members and their messages.
+    expect(orgs(db).map((o) => [o.name, o.parent])).toEqual([
+      ["Docs", "org-Product"],
+      ["Product", null],
+      ["Site", "org-Docs"],
+    ])
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM channel_message WHERE channel_id = 'Docs'").get(),
+    ).toEqual({ n: 1 })
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = 'Chat'").get(),
+    ).toEqual({ n: 2 })
+    expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
+  })
+
+  test("it gives the same result when it runs again on a database that has it", () => {
+    const db = before((d) => {
+      for (const a of ["P", "D"]) agent(d, a)
+      channel(d, "Product", { members: ["P"], created: 1 })
+      channel(d, "Docs", { parent: "Product", members: ["D"], created: 2 })
+    })
+    migrate(db)
+    migrate(db)
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM channel WHERE parent_channel_id IS NOT NULL").get(),
+    ).toEqual({ n: 0 })
   })
 })

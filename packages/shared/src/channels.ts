@@ -31,11 +31,6 @@ export interface Channel {
   /** "Review parts": a part of a plan that ends well waits for the user (spec 004). Off at first. */
   readonly reviewParts: boolean
   /**
-   * The parent channel as stored (spec 030), or null for a top channel. A parent that is gone or
-   * archived counts as none: `channelParent` gives the parent of the tree as it is now.
-   */
-  readonly parentId: string | null
-  /**
    * "The lead answers questions": a question of a member in a part goes to the lead first (spec
    * 004, "Questions of members"). On by default. A channel with no lead shows it off with a muted
    * line; the stored value stays, and the rule needs a lead anyway.
@@ -65,8 +60,6 @@ export const ChannelCreate = Schema.Struct({
   memberIds: Schema.Array(Schema.String),
   leadId: Schema.NullOr(Schema.String),
   sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  /** The parent channel (spec 030). Absent or null: a top channel. */
-  parentId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type ChannelCreate = typeof ChannelCreate.Type
 
@@ -78,7 +71,6 @@ export const ChannelPatch = Schema.Struct({
   leadId: Schema.optionalKey(ChannelCreate.fields.leadId),
   sectionId: ChannelCreate.fields.sectionId,
   reviewParts: Schema.optionalKey(Schema.Boolean),
-  parentId: ChannelCreate.fields.parentId,
   leadAnswers: Schema.optionalKey(Schema.Boolean),
 })
 export type ChannelPatch = typeof ChannelPatch.Type
@@ -98,8 +90,6 @@ export const ClientChannelCreate = Schema.Struct({
   instructions: ChannelCreate.fields.instructions,
   memberIds: ClientMemberIds,
   leadId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))),
-  /** A client with "Can create and change agents" can set the parent channel (spec 012, 030). */
-  parentId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
 })
 export type ClientChannelCreate = typeof ClientChannelCreate.Type
 
@@ -111,7 +101,6 @@ export const ClientChannelPatch = Schema.Struct({
   instructions: ChannelCreate.fields.instructions,
   memberIds: Schema.optionalKey(ClientMemberIds),
   leadId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
-  parentId: ClientChannelCreate.fields.parentId,
   // A linked device with the switch "Can create and change agents" changes it (spec 004, 012).
   leadAnswers: Schema.optionalKey(Schema.Boolean),
 })

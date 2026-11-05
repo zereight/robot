@@ -143,12 +143,7 @@ const setup = async (options: { main?: boolean } = {}) => {
   const agent = (name: string) => agents.get(name) as NonNullable<ReturnType<typeof agents.get>>
   // The real switch "Main agent" (spec 002, flow 7), as the profile sets it.
   if (main) await run(Agents.use((a) => a.update(agent("M").id, { isMain: true })))
-  const channel = (
-    name: string,
-    memberIds: string[],
-    leadId: string | null,
-    parentId: string | null = null,
-  ) =>
+  const channel = (name: string, memberIds: string[], leadId: string | null) =>
     run(
       Channels.use((c) =>
         c.create({
@@ -157,7 +152,6 @@ const setup = async (options: { main?: boolean } = {}) => {
           topic: "",
           memberIds: memberIds.map((n) => agent(n).id),
           leadId: leadId ? agent(leadId).id : null,
-          parentId,
         }),
       ),
     )
