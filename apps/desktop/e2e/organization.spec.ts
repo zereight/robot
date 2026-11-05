@@ -5,7 +5,7 @@ import { rpc } from "./sync-helpers.ts"
 
 // The settings part "Organization" (spec 030, 013): the hand-off rule, "Any agent" by default.
 // With "Along the channels" a send of one agent to another that no channel links fails with a
-// reason, makes no task, and the legend of the org chart says that hand-offs follow the channels.
+// reason, makes no task, and the legend of the org chart says that hand-offs follow the organizations.
 
 test("organization: the hand-off rule is set in settings and kept after a restart", async () => {
   test.setTimeout(90_000)
@@ -65,7 +65,7 @@ test("organization: with Along the channels a send that no channel links is refu
   // The legend of the org chart says nothing of the rule while the rule is "Any agent".
   await page.getByTestId("page-orgchart").click()
   await expect(page.getByTestId("org-legend")).toBeVisible()
-  await expect(page.getByTestId("org-legend-channels")).toHaveCount(0)
+  await expect(page.getByTestId("org-legend-rule")).toHaveCount(0)
 
   // Turn the rule on in the settings. The legend shows the line at once.
   await page.getByTestId("open-settings").click()
@@ -75,7 +75,9 @@ test("organization: with Along the channels a send that no channel links is refu
     page.getByTestId("organization-hand-off").locator('label[data-value="channels"] input'),
   ).toBeChecked()
   await page.getByTestId("settings-close").click()
-  await expect(page.getByTestId("org-legend-channels")).toHaveText("Hand-offs follow the channels.")
+  await expect(page.getByTestId("org-legend-rule")).toHaveText(
+    "Hand-offs follow the organizations.",
+  )
 
   // Ada and Cy share no channel, and no main agent exists: the send fails, and no agent can pass
   // it on. The step shows the reason, and the turn of Ada goes on to its end.
@@ -100,7 +102,7 @@ test("organization: with Along the channels a send that no channel links is refu
 
   // The words are Korean in the Korean interface: the legend and the reason of the step.
   await rpc(page, "settings.update", { language: "ko" })
-  await expect(page.getByTestId("org-legend-channels")).toHaveText("전달은 채널을 따라가요.")
+  await expect(page.getByTestId("org-legend-rule")).toHaveText("전달은 조직을 따라가요.")
   await page.getByTestId("page-chats").click()
   await expect(page.getByTestId("tool-card").last().getByTestId("tool-reason")).toHaveText(
     "Cy는 보낼 수 있는 경로에 없고, 대신 전달해 줄 에이전트도 없어요. 사용자에게 알리세요.",
