@@ -63,6 +63,19 @@ export const handOffRange = (
 }
 
 /**
+ * The range that an organization under `parentId` takes when its own value is "Inherit": the range
+ * of the parent. No parent, or a parent that does not exist: "Own organization", from no
+ * organization. The form reads it for the parent that is chosen in the form.
+ */
+export const handOffRangeUnder = (
+  orgs: readonly RangeOrg[],
+  parentId: string | null,
+): { readonly value: ResolvedRange; readonly from: string | null } =>
+  parentId === null || !orgs.some((o) => o.id === parentId)
+    ? { value: "own", from: null }
+    : handOffRange(orgs, parentId)
+
+/**
  * What the muted line "Now: <value> from <organization>" under "Inherit" shows (spec 030,
  * "Access"): the range that the higher organizations give. The value of the organization itself
  * does not count, because the line shows only when that value is "Inherit".
@@ -70,10 +83,8 @@ export const handOffRange = (
 export const handOffRangeNow = (
   orgs: readonly RangeOrg[],
   id: string,
-): { readonly value: ResolvedRange; readonly from: string | null } => {
-  const parent = orgParents(orgs).get(id) ?? null
-  return parent === null ? { value: "own", from: null } : handOffRange(orgs, parent)
-}
+): { readonly value: ResolvedRange; readonly from: string | null } =>
+  handOffRangeUnder(orgs, orgParents(orgs).get(id) ?? null)
 
 // ---------------------------------------------------------------------------------------------
 // Who may send to whom

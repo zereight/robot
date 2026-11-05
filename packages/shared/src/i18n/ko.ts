@@ -2801,18 +2801,18 @@ export const ko: Record<MessageKey, string> = {
   "usage.col.limit": "한도",
   "error.invalid_daily_limit": "하루 토큰 한도는 10,000에서 100,000,000 사이의 정수로 입력하세요.",
   "error.org_limit": "{detail}의 하루 토큰 한도를 모두 사용했어요.",
-  "settings.section.organization": "조직",
+  "settings.section.organization": "전달 규칙",
   "organization.hint":
     "이 서버의 에이전트가 함께 일하는 방식이에요. 전달 규칙은 에이전트가 메시지를 보낼 수 있는 상대를 정해요.",
   "organization.handOff": "전달 규칙",
   "organization.handOff.hint":
     "내가 주는 일은 바뀌지 않아요. 일대일 채팅, 채널 일, 멘션, 루틴, 워크플로, 보드 카드는 전과 같이 가요.",
   "organization.handOff.any": "아무 에이전트에게",
-  "organization.handOff.channels": "채널을 따라",
+  "organization.handOff.organizations": "조직을 따라",
   "organization.handOff.now.any": "모든 에이전트가 다른 모든 에이전트에게 메시지를 보낼 수 있어요.",
-  "organization.handOff.now.channels":
-    "에이전트는 같은 채널의 에이전트와 메인 에이전트에게 메시지를 보낼 수 있어요. 리드는 상위 채널의 리드와 하위 채널의 리드에게도 보낼 수 있어요. 메인 에이전트는 모든 에이전트에게 보낼 수 있어요.",
-  "organization.remote": "{name}의 “조직” 설정이에요.",
+  "organization.handOff.now.organizations":
+    "에이전트는 같은 조직의 에이전트와 메인 에이전트에게 메시지를 보낼 수 있어요. 리드는 상위 조직의 리드와 하위 조직의 리드에게도 보낼 수 있어요. 조직의 전달 범위가 더 넓힐 수 있어요. 메인 에이전트는 모든 에이전트에게 보낼 수 있어요. 채널은 보낼 권리를 주지 않아요.",
+  "organization.remote": "{name}의 “전달 규칙” 설정이에요.",
   "organization.readonly":
     "연결된 컴퓨터는 이 설정을 읽기만 하고 바꾸지 않아요. {name}에서 바꿔 주세요.",
   "organization.offline":
@@ -2854,6 +2854,16 @@ export const ko: Record<MessageKey, string> = {
   "orgs.dailyLimit.hint":
     "하루 10,000에서 100,000,000 토큰까지예요. 이 조직과 하위 조직 구성원의 작업을 자정부터 자정까지 합산해요. 한도에 닿으면 그 에이전트의 새 작업은 막혀요. 일대일 채팅은 막히지 않아요.",
   "orgs.limit.near": "하루 토큰 한도의 80%를 사용했어요.",
+  "orgs.range": "전달 범위",
+  "orgs.range.hint":
+    "전달 규칙이 “조직을 따라”일 때, 이 조직의 멤버가 일을 보낼 수 있는 상대예요. 변경은 다음 전달부터 적용돼요.",
+  "orgs.range.inherit": "상속",
+  "orgs.range.own": "자기 조직",
+  "orgs.range.own_lower": "자기 조직과 하위 조직",
+  "orgs.range.all": "모든 에이전트",
+  "orgs.range.now": "지금: {value}, {organization}에서 받음",
+  "orgs.range.now.top": "지금: {value}",
+  "orgs.range.anyRule": "전달 규칙이 ‘아무 에이전트에게’예요. 전달 범위는 효과가 없어요.",
   "orgs.access": "권한",
   "orgs.access.new": "먼저 조직을 저장하세요. 그러면 여기서 도구를 정할 수 있어요.",
   "orgs.tools": "도구",

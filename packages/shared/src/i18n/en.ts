@@ -2822,18 +2822,18 @@ export const en = {
   "error.invalid_daily_limit":
     "Use a whole number from 10,000 to 100,000,000 for the daily token limit.",
   "error.org_limit": "The daily token limit of {detail} is used.",
-  "settings.section.organization": "Organization",
+  "settings.section.organization": "Hand-off rules",
   "organization.hint":
     "How the agents of this server work together. The hand-off rule says who an agent may send a message to.",
   "organization.handOff": "Hand-off rule",
   "organization.handOff.hint":
     "The work that you give does not change: a direct chat, a job for a channel, a mention, a routine, a workflow and a card of the board go as before.",
   "organization.handOff.any": "Any agent",
-  "organization.handOff.channels": "Along the channels",
+  "organization.handOff.organizations": "Along the organizations",
   "organization.handOff.now.any": "Every agent can send a message to every other agent.",
-  "organization.handOff.now.channels":
-    "An agent can send a message to the agents of its channels and to the main agent. A lead can also send to the lead of the parent channel and to the lead of a sub-channel. The main agent can send to every agent.",
-  "organization.remote": "This is the part “Organization” of {name}.",
+  "organization.handOff.now.organizations":
+    "An agent can send a message to the members of its organizations and to the main agent. A lead can also send to the lead of the parent organization and to the lead of a sub-organization. The hand-off range of an organization can add more. The main agent can send to every agent. A channel gives no right to send.",
+  "organization.remote": "This is the part “Hand-off rules” of {name}.",
   "organization.readonly":
     "A linked computer reads this part and does not change it. Change it on {name}.",
   "organization.offline": "{name} is offline. Open this page when it is online again.",
@@ -2874,6 +2874,16 @@ export const en = {
   "orgs.dailyLimit.hint":
     "From 10,000 to 100,000,000 tokens a day. The tasks of the members of this organization and of its lower organizations count, from midnight to midnight. At the limit, new work of those agents is blocked. A direct chat is never blocked.",
   "orgs.limit.near": "80% of the daily token limit is used.",
+  "orgs.range": "Hand-off range",
+  "orgs.range.hint":
+    "To whom a member of this organization may send work when the hand-off rule is “Along the organizations”. A change counts from the next send.",
+  "orgs.range.inherit": "Inherit",
+  "orgs.range.own": "Own organization",
+  "orgs.range.own_lower": "Own and lower organizations",
+  "orgs.range.all": "All agents",
+  "orgs.range.now": "Now: {value} from {organization}",
+  "orgs.range.now.top": "Now: {value}",
+  "orgs.range.anyRule": "The hand-off rule is 'Any agent'. The range has no effect.",
   "orgs.access": "Access",
   "orgs.access.new": "Save the organization first. Then you can set its tools here.",
   "orgs.tools": "Tools",

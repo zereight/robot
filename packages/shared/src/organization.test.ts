@@ -10,6 +10,7 @@ import {
   handOffLink,
   handOffRange,
   handOffRangeNow,
+  handOffRangeUnder,
   handOffRefusalText,
   isHandOffRule,
   MAIN_AGENT_HAND_OFF_RULE,
@@ -204,6 +205,20 @@ describe("the range of an organization", () => {
     const set = deep({ Product: "own_lower", Docs: "all" })
     expect(handOffRangeNow(set.orgs, "Site")).toEqual({ value: "all", from: "Docs" })
     expect(handOffRangeNow(set.orgs, "Docs")).toEqual({ value: "own_lower", from: "Product" })
+  })
+})
+
+describe("the range under a parent", () => {
+  test("the line 'Now' of a form reads the range that a chosen parent gives", () => {
+    const model = deep({ Product: "own_lower", Docs: "all" })
+    expect(handOffRangeUnder(model.orgs, "Product")).toEqual({
+      value: "own_lower",
+      from: "Product",
+    })
+    expect(handOffRangeUnder(model.orgs, "Docs")).toEqual({ value: "all", from: "Docs" })
+    expect(handOffRangeUnder(model.orgs, "Site")).toEqual({ value: "all", from: "Docs" })
+    // No parent: a top organization with "Inherit" has "Own organization".
+    expect(handOffRangeUnder(model.orgs, null)).toEqual({ value: "own", from: null })
   })
 })
 

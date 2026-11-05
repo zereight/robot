@@ -8,7 +8,7 @@ import { Segmented, Switch } from "../ui/controls.tsx"
 import settings from "./settings.module.css"
 
 /**
- * Settings, Organization (spec 013, 030): the hand-off rule, "Any agent" or "Along the channels",
+ * Settings, Hand-off rules (spec 013, 030): the hand-off rule, "Any agent" or "Along the organizations",
  * and the switch "Ask up the line" (off at first). A change counts from the next send, or the next
  * pass of a lead. The part syncs with the other computer (spec 019). A linked computer reads the
  * part of its server and does not change it, with the switch "Can create and change agents" or

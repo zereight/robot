@@ -1,4 +1,5 @@
 import { nameKey } from "./agents.ts"
+import type { HandOffRange } from "./organizations.ts"
 import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolValue } from "./orgTools.ts"
 import { lowerOrgs, type OrgParentRefusal, orgParentRefusal, type TreeOrg } from "./orgTree.ts"
 
@@ -48,6 +49,8 @@ export interface OrgFormValues {
   readonly leadId: string | null
   /** The parent as the tree reads it now. */
   readonly parentId: string | null
+  /** The hand-off range (spec 030). A form that holds none leaves the field alone. */
+  readonly handOffRange?: HandOffRange
 }
 
 export interface OrgFormPatch {
@@ -55,6 +58,7 @@ export interface OrgFormPatch {
   memberIds?: readonly string[]
   leadId?: string | null
   parentId?: string | null
+  handOffRange?: HandOffRange
 }
 
 const sameList = (a: readonly string[], b: readonly string[]) =>
@@ -73,6 +77,8 @@ export const orgPatchOf = (was: OrgFormValues, now: OrgFormValues): OrgFormPatch
   const lead = now.leadId !== null && now.memberIds.includes(now.leadId) ? now.leadId : null
   if (lead !== was.leadId) patch.leadId = lead
   if (now.parentId !== was.parentId) patch.parentId = now.parentId
+  if (now.handOffRange !== undefined && now.handOffRange !== was.handOffRange)
+    patch.handOffRange = now.handOffRange
   return patch
 }
 

@@ -85,6 +85,19 @@ describe("orgPatchOf", () => {
     })
   })
 
+  test("sends the hand-off range only when it changed (spec 030, 'Hand-off range')", () => {
+    const withRange = { ...was, handOffRange: "inherit" as const }
+    expect(orgPatchOf(withRange, { ...withRange })).toEqual({})
+    expect(orgPatchOf(withRange, { ...withRange, handOffRange: "own_lower" })).toEqual({
+      handOffRange: "own_lower",
+    })
+    expect(orgPatchOf({ ...withRange, handOffRange: "all" }, { ...withRange })).toEqual({
+      handOffRange: "inherit",
+    })
+    // A form that holds no range leaves the field alone.
+    expect(orgPatchOf(was, { ...was })).toEqual({})
+  })
+
   test("a name that differs only by spaces is not a change", () => {
     expect(orgPatchOf(was, { ...was, name: " Docs " })).toEqual({})
   })
