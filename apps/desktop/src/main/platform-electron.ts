@@ -6,6 +6,7 @@ import {
   ISLAND_BAR_WIDTH,
   ISLAND_CARD_WIDTH,
   type IslandShape,
+  type IslandWidth,
   islandBarWidth,
   PAGE_INPUT_CHANNEL,
   SCREEN_INPUT_CHANNEL,
@@ -873,7 +874,20 @@ let islandShapeNow: IslandShape = "hidden"
 let islandNotch: Notch | null = null
 
 /** The width of the bar on the screen that shows now: the notch plus a wing at each side. */
-const islandBarWidthNow = () => islandBarWidth(islandNotch?.width ?? 0)
+const islandBarWidthNow = () => islandBarWidth(islandNotch?.width ?? 0, undefined, islandWidthNow)
+
+/** The width choice of the bar (spec 015, "Island bar width"). */
+let islandWidthNow: IslandWidth = "compact"
+
+/** A new width choice shows at once. A card that is open keeps the width of its content. */
+const setIslandWidth = (width: IslandWidth) => {
+  if (width === islandWidthNow) return
+  const before = islandBarWidthNow()
+  islandWidthNow = width
+  if (!island || island.isDestroyed() || islandShapeNow !== "bar") return
+  const now = island.getBounds()
+  if (now.width === before) placeIsland(island, { width: islandBarWidthNow(), height: now.height })
+}
 
 /**
  * The island is for macOS. A test run has no island unless the test asks for it, on any system,
@@ -1242,6 +1256,7 @@ export const electronPlatform = (): PlatformService => {
       mainWindow.focus()
     },
     setIslandShape,
+    setIslandWidth,
     fitIsland,
     browser: pageOf,
     teams: () => {

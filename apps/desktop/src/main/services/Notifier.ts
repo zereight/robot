@@ -246,6 +246,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
       }
       const refresh = () => {
         const state = island()
+        platform.setIslandWidth(current().islandWidth)
         platform.setIslandShape(islandShape(state))
         bus.emit("island.state", state)
       }

@@ -292,7 +292,8 @@ export const handlers: Handlers = {
         return yield* new AppError({ code: "decision_not_set_up" })
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
-      if (patch.island !== undefined) yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
+      if (patch.island !== undefined || patch.islandWidth !== undefined)
+        yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
       return next
     }),
   "settings.pickWorkspaceRoot": () =>

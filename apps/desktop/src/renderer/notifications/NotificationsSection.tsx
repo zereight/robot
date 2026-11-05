@@ -1,5 +1,6 @@
 import {
   ISLAND_MODES,
+  ISLAND_WIDTHS,
   type MessageKey,
   MUTE_CHOICES,
   type Mute,
@@ -95,6 +96,17 @@ export const NotificationsSection = () => {
           }))}
           onChange={(island) => app.update({ island })}
           testId="notify-island"
+        />
+        <h2 class={styles.title}>{t("settings.notify.islandWidth")}</h2>
+        <Segmented
+          label={t("settings.notify.islandWidth")}
+          value={app.settings.islandWidth}
+          options={ISLAND_WIDTHS.map((value) => ({
+            value,
+            label: t(`settings.notify.islandWidth.${value}` as MessageKey),
+          }))}
+          onChange={(islandWidth) => app.update({ islandWidth })}
+          testId="notify-island-width"
         />
       </Show>
 

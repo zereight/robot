@@ -237,6 +237,7 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     showWindow: () => {
       shell.shown++
     },
+    setIslandWidth: () => {},
     setIslandShape: (shape) => {
       shell.shapes.push(shape)
     },
