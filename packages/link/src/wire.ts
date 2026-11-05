@@ -131,8 +131,6 @@ export const CLIENT_METHODS = [
   // The skills that an agent may use now, for the command list of the message box (spec 003, 017).
   // A client gets the name and the description, never the instructions.
   "skills.forAgent",
-  // The daily token limit of a channel (spec 030, 012). A client reads it and changes nothing with it.
-  "channels.limit",
   // The organizations of the server, the part "Tools" of an organization, and the lines "From
   // <organization>" of a profile (spec 030, 012). A client reads them and changes none of them with
   // these; to make, edit or delete an organization it needs the switch (see `CHANGE_METHODS`).

@@ -9,7 +9,6 @@ import type {
   ChannelMessage,
   ChannelPatch,
 } from "./channels.ts"
-import type { ChannelLimitInfo, ChannelUsageRow } from "./channelTools.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type { Handbook, HandbookVersion } from "./handbook.ts"
@@ -795,10 +794,6 @@ export interface RpcMethods {
   "island.dismissResult": { input: { id: number }; output: undefined }
   /** The size that the island content needs, in px. The island window takes this size. */
   "island.fit": { input: { width: number; height: number }; output: undefined }
-  /** The daily token limit of a channel and the tokens used today (spec 030). */
-  "channels.limit": { input: { channelId: string }; output: ChannelLimitInfo }
-  /** The channels with a daily token limit, with the tokens used today (spec 006, 030). */
-  "usage.channels": { input: { serverId: string }; output: readonly ChannelUsageRow[] }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]

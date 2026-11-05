@@ -122,7 +122,6 @@ import {
   type TurnStarter,
   toldAboutBlocked,
   toolNameOf,
-  validDailyLimit,
   verdictText,
   type WindowLine,
   withAssignment,
@@ -257,7 +256,6 @@ interface ChannelRow {
   sensitive_mark: string | null
   outside_mark: string | null
   parent_channel_id: string | null
-  daily_token_limit: number | null
 }
 
 interface MessageRow {
@@ -356,7 +354,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -415,7 +413,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
           parentId: row.parent_channel_id,
-          dailyTokenLimit: row.daily_token_limit,
           picture:
             db.get<{ picture: string | null }>("SELECT picture FROM channel WHERE id = ?", row.id)
               ?.picture ?? null,
@@ -2765,12 +2762,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         bus.emit("channels.changed", { channelId: channel.id })
       }
 
-      /** The daily token limit (spec 030): off, or a whole number from 10,000 to 100,000,000. */
-      const checkDailyLimit = (limit: number | null) =>
-        limit === null || validDailyLimit(limit)
-          ? Effect.succeed(limit)
-          : Effect.fail(new AppError({ code: "invalid_daily_limit" }))
-
       const create = Effect.fn("Channels.create")(function* (input: ChannelCreate) {
         const name = input.name.trim()
         const topic = input.topic.trim()
@@ -2784,13 +2775,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const id = randomUUID()
         const parentId = input.parentId ?? null
         yield* checkParent(input.serverId, id, parentId)
-        const dailyTokenLimit = yield* checkDailyLimit(input.dailyTokenLimit ?? null)
         const now = Date.now()
         db.transaction(() => {
           db.run(
             `INSERT INTO channel (id, server_id, name, name_key, topic, instructions, lead_agent_id,
-              place_section_id, parent_channel_id, daily_token_limit, created_at, updated_at, last_read_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              place_section_id, parent_channel_id, created_at, updated_at, last_read_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
@@ -2800,7 +2790,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             input.leadId,
             sectionId,
             parentId,
-            dailyTokenLimit,
             now,
             now,
             now,
@@ -2851,11 +2840,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         // rules allowed stays allowed, or the tree shows it as none.
         const parentId = patch.parentId !== undefined ? patch.parentId : row.parent_channel_id
         if (parentId !== row.parent_channel_id) yield* checkParent(row.server_id, id, parentId)
-        // The daily token limit (spec 030). A limit that is already stored needs no new check.
-        const dailyTokenLimit =
-          patch.dailyTokenLimit !== undefined && patch.dailyTokenLimit !== row.daily_token_limit
-            ? yield* checkDailyLimit(patch.dailyTokenLimit)
-            : row.daily_token_limit
         // A member that works in this channel stays until its part ends or the user stops it.
         for (const removed of current.memberIds.filter((m) => !memberIds.includes(m))) {
           const busy = db.get(
@@ -2870,7 +2854,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           db.run(
             `UPDATE channel SET name = ?, name_key = ?, topic = ?, instructions = ?, lead_agent_id = ?,
               place_section_id = ?, review_parts = ?, parent_channel_id = ?, lead_answers = ?,
-              daily_token_limit = ?, updated_at = ? WHERE id = ?`,
+              updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
@@ -2881,7 +2865,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             patch.reviewParts === undefined ? row.review_parts : patch.reviewParts ? 1 : 0,
             parentId,
             patch.leadAnswers === undefined ? row.lead_answers : patch.leadAnswers ? 1 : 0,
-            dailyTokenLimit,
             Date.now(),
             id,
           )
@@ -3266,7 +3249,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel
+                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

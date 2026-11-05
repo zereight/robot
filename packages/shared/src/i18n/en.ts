@@ -2821,8 +2821,8 @@ export const en = {
     "From 10,000 to 100,000,000 tokens a day. The tasks of this channel and of its lower channels count, from midnight to midnight. At the limit, new work of the channel is blocked.",
   "channels.limit.near": "80% of the daily token limit is used.",
   "channels.limit.over": "The daily token limit of {channel} is used.",
-  "usage.channels": "Daily token limit of channels",
-  "usage.col.channel": "Channel",
+  "usage.orgs": "Daily token limit of organizations",
+  "usage.col.org": "Organization",
   "usage.col.usedToday": "Used today",
   "usage.col.limit": "Limit",
   "error.invalid_daily_limit":

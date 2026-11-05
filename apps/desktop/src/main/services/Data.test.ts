@@ -759,20 +759,13 @@ describe("export and import", () => {
     })
   })
 
-  test("the daily token limit of a channel comes back (spec 030, 014)", async () => {
+  test("the parent channel comes back, and the channel keeps no daily token limit (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-channel-tools.zip")
     const a = app({ save: out })
     const local = await a.run(Servers.use((s) => s.local))
     const product = await a.run(
       Channels.use((c) =>
-        c.create({
-          serverId: local.id,
-          name: "Product",
-          topic: "",
-          memberIds: [],
-          leadId: null,
-          dailyTokenLimit: 50_000,
-        }),
+        c.create({ serverId: local.id, name: "Product", topic: "", memberIds: [], leadId: null }),
       ),
     )
     await a.run(
@@ -793,10 +786,11 @@ describe("export and import", () => {
     await b.run(Data.use((d) => d.import()))
     const bLocal = await b.run(Servers.use((s) => s.local))
     const channels = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    expect(channels.map((c) => [c.name, c.dailyTokenLimit]).sort()).toEqual([
-      ["Docs", null],
-      ["Product", 50_000],
+    expect(channels.map((c) => [c.name, c.parentId ? "has parent" : null]).sort()).toEqual([
+      ["Docs", "has parent"],
+      ["Product", null],
     ])
+    expect("dailyTokenLimit" in (channels[0] ?? {})).toBe(false)
   })
 
   test("organizations come back with their members, lead, parent, range, limit and tool lists (spec 030, 014)", async () => {
