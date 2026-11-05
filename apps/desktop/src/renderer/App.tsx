@@ -129,18 +129,6 @@ export const App = () => {
                 icon={<Ellipsis size={16} />}
                 testId="agents-menu"
                 items={[
-                  {
-                    label: t("sections.view.mine"),
-                    checked: ui.ui.agentView === "sections",
-                    onSelect: () => ui.setAgentView("sections"),
-                    testId: "agents-menu-view-sections",
-                  },
-                  {
-                    label: t("sections.view.organization"),
-                    checked: ui.ui.agentView === "organization",
-                    onSelect: () => ui.setAgentView("organization"),
-                    testId: "agents-menu-view-organization",
-                  },
                   // The menus of agent files and user sections belong to this computer: a client
                   // has none (012).
                   ...(ui.linked()
@@ -164,6 +152,18 @@ export const App = () => {
                           testId: "agents-menu-new-section",
                         },
                       ]),
+                  {
+                    label: t("sections.view.mine"),
+                    checked: ui.ui.agentView === "sections",
+                    onSelect: () => ui.setAgentView("sections"),
+                    testId: "agents-menu-view-sections",
+                  },
+                  {
+                    label: t("sections.view.organization"),
+                    checked: ui.ui.agentView === "organization",
+                    onSelect: () => ui.setAgentView("organization"),
+                    testId: "agents-menu-view-organization",
+                  },
                 ]}
               />
               {/* A client creates agents on a server only when the server lets it (012). */}

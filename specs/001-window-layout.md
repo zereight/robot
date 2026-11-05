@@ -162,7 +162,9 @@ is on at first.
   them, the section "No organization" holds the agents that are in no organization. It is always
   last. It shows when Agents holds an agent. When none of them shows in it, it shows a short muted
   line. When Agents holds no agent, the list shows the empty line and no section. The user cannot
-  rename it, and the user can collapse it.
+  rename it, and the user can collapse it. The agents inside a section keep the order that
+  "My sections" shows them in: the agents of the user sections first, then the agents of
+  "Unassigned".
 - **Header**: it looks like the header of a user section: a chevron and the name, muted, 12 px
   further in, and the places 12 px further in too. The name of an organization section is the name
   of the organization. It is text of the user and is not translated. A long name is cut with "…",
@@ -181,7 +183,8 @@ is on at first.
   is one of the texts it matches. A section with a match opens, also when it is collapsed.
 - **What belongs to the device**: the choice of view, and the open or closed state of each
   organization section. They belong to the open profile (022) on this computer. They do not sync.
-- **Linked computer**: the view groups the agents by the organizations of that computer (012).
+- **Linked computer**: the view groups the agents by the organizations of that computer (012). The
+  menu of the Agents header shows on a linked computer too, and it holds only the choice of view.
 - **Phone**: the phone has no choice of view in this version. It shows "My sections" (011).
 - **Cost**: the sections come from data that the app has. They add no request to a model, no task
   and no sync.

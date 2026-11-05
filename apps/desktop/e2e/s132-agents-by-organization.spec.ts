@@ -83,6 +83,9 @@ const blocks = (page: Page) =>
     ].map((node) => node.dataset.testid ?? ""),
   )
 
+/** The prefixes in the place list. The header of a chat can show one too. */
+const prefixes = (page: Page) => page.getByTestId("place-list").getByTestId("org-prefix")
+
 const pickView = async (page: Page, view: "sections" | "organization") => {
   await page.getByTestId("agents-menu").click()
   await page.getByTestId(`agents-menu-view-${view}`).click()
@@ -116,9 +119,9 @@ test("agents by organization: the view, the order, no prefix, read only, rename,
   // Ada is in Docs. Bo is in Docs and in API, which is under Docs, so the deepest is API.
   await makeOrg(page, "Docs", ["Ada", "Bo"])
   await makeOrg(page, "API", ["Bo"], "Docs")
-  await expect(page.getByTestId("org-prefix")).toHaveCount(2)
+  await expect(prefixes(page)).toHaveCount(2)
   await expect(page.getByTestId("org-section")).toHaveCount(0)
-  await expect(page.getByTestId("unassigned-section")).toHaveCount(0)
+  expect(await blocks(page)).toEqual(["user-section", "unassigned-section"])
 
   // The choice that is on has a mark, and "My sections" is on at first.
   await page.getByTestId("agents-menu").click()
@@ -143,7 +146,7 @@ test("agents by organization: the view, the order, no prefix, read only, rename,
     ])
   expect(await noOrgNames(page)).toEqual(["Cy"])
   expect(await blocks(page)).toEqual(["org-section", "org-section", "no-org-section"])
-  await expect(page.getByTestId("org-prefix")).toHaveCount(0)
+  await expect(prefixes(page)).toHaveCount(0)
   await expect(row(page, "Ada")).toHaveAttribute("draggable", "false")
   await shot(page, "s132-01-by-organization")
 
@@ -188,7 +191,8 @@ test("agents by organization: the view, the order, no prefix, read only, rename,
     ])
   await updateOrg(page, "Manuals", { memberIds: [await agentId(page, "Bo")] })
   await expect.poll(() => orgBlocks(page)).toEqual([["API", ["Bo"]]])
-  await expect.poll(() => noOrgNames(page)).toEqual(["Ada", "Cy"])
+  // Cy sits in the user section "Research", so it comes before Ada, as in "My sections".
+  await expect.poll(() => noOrgNames(page)).toEqual(["Cy", "Ada"])
 
   // The filter matches the organization name: only "API" shows, with Bo.
   await updateOrg(page, "Manuals", {
@@ -213,7 +217,7 @@ test("agents by organization: the view, the order, no prefix, read only, rename,
   await expect(
     page.getByTestId("user-section").locator('[data-place-row][data-place-name="Cy"]'),
   ).toBeVisible()
-  await expect(page.getByTestId("org-prefix")).toHaveCount(2)
+  await expect(prefixes(page)).toHaveCount(2)
   await shot(page, "s132-02-my-sections")
 
   await app.close()
