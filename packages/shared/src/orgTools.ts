@@ -156,6 +156,15 @@ export interface OrgToolRow {
    * row shows the tool as on, read only.
    */
   readonly all: boolean
+  /**
+   * The muted line "Now: <value> from <organization>" under "Inherit": the value that the nearest
+   * entry above gives, and the organization that holds it. `null` when the row has its own value,
+   * is for "All agents", or no organization above gives a value ("Now: none").
+   */
+  readonly now: {
+    readonly value: OrgToolValue
+    readonly organization: { readonly id: string; readonly name: string }
+  } | null
 }
 
 /** A skill or a connection that an agent has from organizations, for the lines "From <organization>". */

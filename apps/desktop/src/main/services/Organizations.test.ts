@@ -276,6 +276,28 @@ describe("tools", () => {
       expect(await w.from(w.ada)).toEqual(["Site"])
     })
 
+    test("a row under 'Inherit' says 'Now' with the value and the organization that give it", async () => {
+      const w = await world()
+      const now = async (org: { id: string }) =>
+        (await w.s.run(Organizations.use((o) => o.tools(org.id)))).find((r) => r.id === w.notes.id)
+          ?.now
+      expect(await now(w.site)).toBeNull()
+      await w.set(w.product, "on")
+      expect(await now(w.site)).toEqual({
+        value: "on",
+        organization: { id: w.product.id, name: "Product" },
+      })
+      await w.set(w.docs, "off")
+      expect(await now(w.site)).toEqual({
+        value: "off",
+        organization: { id: w.docs.id, name: "Docs" },
+      })
+      // The top organization has nothing above it. A row with its own value says no 'Now'.
+      expect(await now(w.product)).toBeNull()
+      await w.set(w.site, "on")
+      expect(await now(w.site)).toBeNull()
+    })
+
     test("a member that leaves Site loses the skill in its next turn", async () => {
       const w = await world()
       await w.set(w.product, "on")

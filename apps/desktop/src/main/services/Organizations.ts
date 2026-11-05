@@ -10,6 +10,7 @@ import {
   type OrgToolRow,
   orgNameProblem,
   orgParentRefusal,
+  orgToolNow,
   validDailyLimit,
   withOrgSwitch,
 } from "@robot/shared"
@@ -336,20 +337,32 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
           serverId,
         )
 
-      const toolRows = (serverId: string, orgId: string): OrgToolRow[] =>
-        (["skill", "connection"] as const).flatMap((kind) =>
+      const toolRows = (serverId: string, orgId: string): OrgToolRow[] => {
+        const tree = orgTreeOf(db, serverId)
+        const names = new Map(readOrgs(db, serverId).map((o) => [o.id, o.name] as const))
+        return (["skill", "connection"] as const).flatMap((kind) =>
           rowsOf(kind, serverId).map((row) => {
             const all = row.agents === null
-            const entry = orgEntriesOf(row).find((e) => e.id === orgId)
+            const entries = orgEntriesOf(row)
+            const entry = entries.find((e) => e.id === orgId)
+            // The line "Now" is for a row that takes the value from above (spec 030, "Access").
+            const above = all || entry ? null : orgToolNow(tree, entries, orgId)
             return {
               kind,
               id: row.id,
               name: row.name,
               choice: all ? ("on" as const) : (entry?.value ?? ("inherit" as const)),
               all,
+              now: above
+                ? {
+                    value: above.value,
+                    organization: { id: above.from, name: names.get(above.from) ?? "" },
+                  }
+                : null,
             }
           }),
         )
+      }
 
       const tools = (orgId: string) =>
         need(orgId).pipe(Effect.map((row) => toolRows(row.server_id, orgId)))
