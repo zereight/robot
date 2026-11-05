@@ -47,6 +47,7 @@ export const sections = [
   "decision",
   "handbook",
   "organization",
+  "setup",
   "teams",
   "devices",
   "notifications",

@@ -91,7 +91,13 @@ import { SkillDrafts } from "./services/SkillDrafts.ts"
 import { Skills } from "./services/Skills.ts"
 import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
-import { listSetup, runNamed, setSetupAllowed } from "./services/setupRun.ts"
+import {
+  listSetup,
+  readSetupFile,
+  runNamed,
+  setSetupAllowed,
+  writeSetupFile,
+} from "./services/setupRun.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
 import { TeamsLink } from "./services/TeamsLink.ts"
@@ -1686,6 +1692,37 @@ export const handlers: Handlers = {
         Effect.gen(function* () {
           const agent = yield* Agents.use((a) => a.get(agentId))
           return setSetupAllowed((yield* Platform).dataDir, agent.workspace, on)
+        }),
+      ),
+    ),
+  "setup.file": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return readSetupFile(agent.workspace)
+        }),
+      ),
+    ),
+  "setup.save": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        replace: Schema.Boolean,
+        actions: Schema.Array(
+          Schema.Struct({
+            name: Schema.String,
+            command: Schema.String,
+            onOwnCopy: Schema.Boolean,
+            onTurnStart: Schema.Boolean,
+          }),
+        ),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, actions, replace }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return writeSetupFile((yield* Platform).dataDir, agent.workspace, actions, replace)
         }),
       ),
     ),

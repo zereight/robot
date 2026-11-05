@@ -8,7 +8,14 @@ import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
-import { listSetup, prepareTurn, runNamed, setSetupAllowed } from "./setupRun.ts"
+import {
+  listSetup,
+  prepareTurn,
+  readSetupFile,
+  runNamed,
+  setSetupAllowed,
+  writeSetupFile,
+} from "./setupRun.ts"
 import { testRuntime } from "./testing.ts"
 
 /**
@@ -376,6 +383,177 @@ describe("When a turn of a chat starts", () => {
       await t.send("hello")
       await t.settled()
       expect(() => readFileSync(join(t.agent.workspace, "ran.txt"), "utf8")).toThrow()
+    })
+  })
+})
+
+describe("When the editor reads a workspace", () => {
+  describe("with no file", () => {
+    it("should name the file it would make", async () => {
+      await withDirs(async (dir) => {
+        expect(readSetupFile(dir)).toEqual({
+          path: join(dir, "robot.json"),
+          exists: false,
+          unreadable: false,
+          actions: [],
+        })
+      })
+    })
+  })
+
+  describe("with the file at the root of the repository", () => {
+    it("should name the shared file", async () => {
+      await withDirs(async (dir) => {
+        initRepo(dir)
+        writeFileSync(
+          join(dir, "robot.json"),
+          JSON.stringify({ setupActions: [{ name: "Mark", command: "true" }] }),
+        )
+        commitAll(dir)
+        const pkg = join(dir, "pkg")
+        mkdirSync(pkg)
+        expect(readSetupFile(pkg)).toEqual({
+          path: join(dir, "robot.json"),
+          exists: true,
+          unreadable: false,
+          actions: [{ name: "Mark", command: "true", onOwnCopy: false, onTurnStart: false }],
+        })
+      })
+    })
+  })
+
+  describe("with a file that is not a list", () => {
+    it("should be unreadable", async () => {
+      await withDirs(async (dir) => {
+        writeFileSync(join(dir, "robot.json"), "{")
+        expect(readSetupFile(dir)).toEqual({
+          path: join(dir, "robot.json"),
+          exists: true,
+          unreadable: true,
+          actions: [],
+        })
+      })
+    })
+  })
+})
+
+describe("When the editor saves", () => {
+  describe("with no file", () => {
+    it("should make it in the workspace", async () => {
+      await withDirs(async (dir, dataDir) => {
+        const result = writeSetupFile(
+          dataDir,
+          dir,
+          [{ name: "Mark", command: "printf x > made.txt", onOwnCopy: false, onTurnStart: true }],
+          false,
+        )
+        expect(result.status).toBe("saved")
+        if (result.status !== "saved") return
+        expect(result.list.actions.map((action) => action.name)).toEqual(["Mark"])
+        expect(await runNamed(dir, "Mark")).toEqual({ status: "ran" })
+        expect(readFileSync(join(dir, "made.txt"), "utf8")).toBe("x")
+      })
+    })
+  })
+
+  describe("with a changed command", () => {
+    it("should clear the allow", async () => {
+      await withDirs(async (dir, dataDir) => {
+        writeFileSync(
+          join(dir, "robot.json"),
+          JSON.stringify({
+            setupActions: [{ name: "Mark", command: "true", onTurnStart: true }],
+          }),
+        )
+        expect(setSetupAllowed(dataDir, dir, true).allowed).toBe(true)
+        const result = writeSetupFile(
+          dataDir,
+          dir,
+          [{ name: "Mark", command: "true now", onOwnCopy: false, onTurnStart: true }],
+          false,
+        )
+        expect(result.status).toBe("saved")
+        if (result.status !== "saved") return
+        expect(result.list.allowed).toBe(false)
+        expect(await prepareTurn(dataDir, dir)).toEqual([])
+      })
+    })
+  })
+
+  describe("with a file that holds other fields", () => {
+    it("should keep those fields", async () => {
+      await withDirs(async (dir, dataDir) => {
+        writeFileSync(
+          join(dir, "robot.json"),
+          JSON.stringify({ other: 1, setupActions: [{ name: "Old", command: "true" }] }),
+        )
+        const result = writeSetupFile(
+          dataDir,
+          dir,
+          [{ name: "New", command: "true", onOwnCopy: false, onTurnStart: false }],
+          false,
+        )
+        expect(result.status).toBe("saved")
+        const parsed: unknown = JSON.parse(readFileSync(join(dir, "robot.json"), "utf8"))
+        expect(parsed).toEqual({
+          other: 1,
+          setupActions: [{ name: "New", command: "true", onOwnCopy: false, onTurnStart: false }],
+        })
+      })
+    })
+  })
+
+  describe("with a file that is not a list", () => {
+    it("should refuse until the user confirms the replace", async () => {
+      await withDirs(async (dir, dataDir) => {
+        writeFileSync(join(dir, "robot.json"), "{")
+        expect(
+          writeSetupFile(
+            dataDir,
+            dir,
+            [{ name: "New", command: "true", onOwnCopy: false, onTurnStart: false }],
+            false,
+          ),
+        ).toEqual({ status: "unreadable" })
+        expect(readFileSync(join(dir, "robot.json"), "utf8")).toBe("{")
+        const result = writeSetupFile(
+          dataDir,
+          dir,
+          [{ name: "New", command: "true", onOwnCopy: false, onTurnStart: false }],
+          true,
+        )
+        expect(result.status).toBe("saved")
+        if (result.status !== "saved") return
+        expect(result.list.actions.map((action) => action.name)).toEqual(["New"])
+      })
+    })
+  })
+
+  describe("with a row with no name", () => {
+    it("should refuse and leave the file unchanged", async () => {
+      await withDirs(async (dir, dataDir) => {
+        writeFileSync(
+          join(dir, "robot.json"),
+          JSON.stringify({ setupActions: [{ name: "Old", command: "true" }] }),
+        )
+        expect(
+          writeSetupFile(
+            dataDir,
+            dir,
+            [{ name: "", command: "true", onOwnCopy: false, onTurnStart: false }],
+            false,
+          ),
+        ).toEqual({ status: "invalid" })
+        expect(listSetup(dataDir, dir).actions.map((action) => action.name)).toEqual(["Old"])
+      })
+    })
+  })
+
+  describe("with a workspace that is gone", () => {
+    it("should be missing", async () => {
+      await withDirs(async (dir, dataDir) => {
+        expect(writeSetupFile(dataDir, join(dir, "gone"), [], false).status).toBe("missing")
+      })
     })
   })
 })

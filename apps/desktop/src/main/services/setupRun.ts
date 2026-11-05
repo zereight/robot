@@ -8,15 +8,19 @@ import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import {
+  formatSetupFile,
   parseSetupFile,
   SETUP_FILE_MAX_BYTES,
   SETUP_FILE_NAME,
   SETUP_TIMEOUT_MS,
   type SetupAction,
+  type SetupActionInput,
   type SetupFailCode,
   type SetupFailure,
+  type SetupFileView,
   type SetupList,
   type SetupRunResult,
+  type SetupSaveResult,
   setupCanon,
   setupInfo,
 } from "@robot/shared"
@@ -320,6 +324,56 @@ function listOf(dataDir: string, loaded: Loaded): SetupList {
 /** The menu for the chat header. */
 export function listSetup(dataDir: string, workspace: string): SetupList {
   return listOf(dataDir, load(workspace))
+}
+
+/** The file the editor shows: the shared file, or the file a save would make. */
+export function readSetupFile(workspace: string): SetupFileView {
+  const found = findSetupFile(workspace)
+  if (!found)
+    return {
+      path: join(resolve(workspace), SETUP_FILE_NAME),
+      exists: false,
+      unreadable: false,
+      actions: [],
+    }
+  const read = readSetupText(found)
+  if ("unreadable" in read) return { path: found, exists: true, unreadable: true, actions: [] }
+  const parsed = parseSetupFile(read.text)
+  if (!parsed.ok) return { path: found, exists: true, unreadable: true, actions: [] }
+  return { path: found, exists: true, unreadable: false, actions: setupInfo(parsed.actions) }
+}
+
+/**
+ * Writes the list from the editor. A save to a workspace with no file makes it there. An
+ * unreadable file is replaced only after the user has confirmed it. A save that changes the
+ * list clears the allow, because the allow follows the text.
+ */
+export function writeSetupFile(
+  dataDir: string,
+  workspace: string,
+  actions: readonly SetupActionInput[],
+  replace: boolean,
+): SetupSaveResult {
+  const dir = resolve(workspace)
+  if (!isDir(dir)) return { status: "missing" }
+  const found = findSetupFile(workspace)
+  let existing: string | undefined
+  if (found) {
+    const read = readSetupText(found)
+    if ("unreadable" in read || !parseSetupFile(read.text).ok) {
+      if (!replace) return { status: "unreadable" }
+    } else {
+      existing = read.text
+    }
+  }
+  const formatted = formatSetupFile(existing, actions)
+  if (!formatted.ok) return { status: "invalid" }
+  try {
+    writeFileSync(found ?? join(dir, SETUP_FILE_NAME), formatted.text)
+  } catch {
+    return { status: "missing" }
+  }
+  return { status: "saved", list: listSetup(dataDir, workspace) }
 }
 
 /** Allows or stops automatic runs of the list that is in the workspace now. */

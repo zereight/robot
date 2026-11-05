@@ -26,6 +26,7 @@ import { OrgChartPage } from "./orgchart/OrgChartPage.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { RoutinesView } from "./routines/RoutinesPage.tsx"
 import { ConnectionsSection } from "./settings/ConnectionsSection.tsx"
+import { SetupActionsSection } from "./settings/SetupActionsSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { closeSkillForm, SkillFormDialog, skillForm } from "./skills/SkillForm.tsx"
 import { SkillsSection } from "./skills/SkillsSection.tsx"
@@ -202,6 +203,7 @@ export const App = () => {
           notifications: () => <NotificationsSection />,
           connections: () => <ConnectionsSection />,
           skills: () => <SkillsSection />,
+          setup: () => <SetupActionsSection />,
         }}
       />
       <Presence when={newAgent()}>
