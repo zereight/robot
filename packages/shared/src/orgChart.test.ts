@@ -7,6 +7,7 @@ import {
   cutLabel,
   EMPTY_ORG_SNAPSHOT,
   findAgent,
+  isOrgModel,
   litBy,
   NO_ORG_KEY,
   ORG_HANDOFF_LINES_MAX,
@@ -562,5 +563,13 @@ describe("the hand-off rule", () => {
     expect(buildChart({ ...some, handOffRule: "channels" }).handOffRule).toBe("channels")
     expect(buildChart({ ...some, handOffRule: "any" }).handOffRule).toBeUndefined()
     expect(buildChart(some).handOffRule).toBeUndefined()
+  })
+})
+
+describe("a model from a linked server", () => {
+  test("a model of organizations is told from a model of channels of an older step", () => {
+    expect(isOrgModel(buildChart(EMPTY_ORG_SNAPSHOT))).toBe(true)
+    expect(isOrgModel({ root: null, channels: [], lines: [] })).toBe(false)
+    expect(isOrgModel(null)).toBe(false)
   })
 })

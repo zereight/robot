@@ -495,3 +495,11 @@ export const litBy = (model: ChartModel, key: string) => {
 /** The state counts of an organization node as pairs, in the order working, waiting, idle, offline, without zeros. */
 export const countList = (counts: StateCounts) =>
   ORG_STATES.flatMap((state) => (counts[state] > 0 ? [{ state, count: counts[state] }] : []))
+
+/**
+ * True when a model from a linked server draws organizations. A server of an older step sends a
+ * model of channels (no `orgs`); the client then shows "Open this on <server name>." as for a
+ * server that does not know the request (spec 012, "Messages").
+ */
+export const isOrgModel = (model: unknown): model is ChartModel =>
+  typeof model === "object" && model !== null && Array.isArray((model as ChartModel).orgs)
