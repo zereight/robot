@@ -920,6 +920,9 @@ describe("the events of a watch (spec 038)", () => {
     await s.tick(t0)
     await s.tick(t0 + 5 * MIN)
     expect(await s.run(Events.use((e) => e.list(s.local.id)))).toHaveLength(0)
+  })
+})
+
 describe("a routine of an organization (spec 030)", () => {
   test("the agent of the routine must be a member of the organization", async () => {
     const s = await setup()
