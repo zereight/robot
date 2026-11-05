@@ -187,4 +187,5 @@ start a handover (003) and does not make a skill from work (017). It shows the m
   lead, and the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer
   off, the screen says so and shows no list (029).
 - Turn off "Show tool steps" in Settings: a reply with finished steps shows one folded line per
-  run, and a tap opens the cards. A step that waits still shows as its own card.
+  run, and a tap opens the cards. A step that waits still shows as its own card. A reply that
+  thinks before each of its steps shows one thought line, and its steps fold as one run.

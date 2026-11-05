@@ -96,3 +96,37 @@ test("tool steps: the switch folds finished steps into one line", async () => {
   await expect(page.getByTestId("tools-folded-line")).toHaveText("2 tool steps")
   await shot(page, "tool-fold-04-dark-folded")
 })
+
+test("tool steps: a reply that thinks before every step shows one thought and one run", async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockProvider()
+  const userData = freshUserData()
+  const { page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+
+  // A thinking model takes four steps, and it thinks before each one, as such a model does.
+  await send(page, "THINKSTEPS 4")
+  await settled(page)
+  const reply = page.locator("[data-testid=message][data-author=agent]").last()
+  await expect(reply.getByTestId("tool-card")).toHaveCount(4)
+  await expect(reply.getByTestId("thinking")).toHaveCount(1)
+  await shot(page, "tool-fold-05-thought-cards")
+
+  // Off: the four steps fold as one run, and the thought stays one line above it.
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-appearance").click()
+  await page.getByTestId("setting-show-tool-steps").click()
+  await expect(page.getByTestId("setting-show-tool-steps")).toHaveAttribute("aria-checked", "false")
+  await page.getByTestId("settings-close").click()
+  await expect(reply.getByTestId("tools-folded-line")).toHaveText("4 tool steps")
+  await expect(reply.getByTestId("thinking")).toHaveCount(1)
+  await shot(page, "tool-fold-06-thought-folded")
+
+  // The one thought line lists every thought of the turn, in order.
+  await reply.getByTestId("thinking").locator("summary").click()
+  await expect(reply.getByTestId("thinking").locator("p")).toHaveText(
+    "Step 1. Step 2. Step 3. Step 4.",
+  )
+  await shot(page, "tool-fold-07-thought-open")
+})

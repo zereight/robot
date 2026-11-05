@@ -543,6 +543,8 @@ const longWork = (body: ChatBody) => {
   const last = body.messages.at(-1)
   if (!body.tools || last?.role !== "user") return []
   const text = String(last.content)
+  // A thinking model at work: one step, then the next request thinks again (see the reply).
+  if (text.includes("THINKSTEPS")) return [{ name: "list_files", args: "{}" }]
   if (text.includes("ENDLESS")) return [{ name: "list_files", args: "{}" }]
   if (text.includes("PINGPONG") && body.tools.some((t) => t.function?.name === "send_message")) {
     const to = /from the agent (\w+)/.exec(text)?.[1] ?? /PINGPONG with (\w+)/.exec(text)?.[1]
@@ -685,6 +687,11 @@ const openAiReply = async (
   const calls = toolCalls(body)
   if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
+    // The first step of a thinking model: it thinks before it calls (see "THINKSTEPS" below).
+    if (String(body.messages.at(-1)?.content ?? "").includes("THINKSTEPS"))
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "Step 1." } }] })}\n\n`,
+      )
     for (const [index, call] of calls.entries()) {
       const first = { index, id: `call_${index + 1}`, function: { name: call.name, arguments: "" } }
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
@@ -743,6 +750,22 @@ const openAiReply = async (
     if (lastAsk.includes("FAILTOOL") && !failedAfterTool.has(lastAsk)) {
       failedAfterTool.add(lastAsk)
       return json(res, 500, { error: { message: "mock server error" } })
+    }
+    // "THINKSTEPS <n>": the model thinks before every step, and takes n steps, as a thinking
+    // model with a tool does. Each step is a round of (thought, call), so that a test can see how
+    // a reply with many rounds shows.
+    const steps = /THINKSTEPS (\d+)/.exec(lastAsk)?.[1]
+    if (steps && answered < Number(steps)) {
+      res.writeHead(200, { "content-type": "text/event-stream" })
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: `Step ${answered + 1}.` } }] })}\n\n`,
+      )
+      const id = `think_${++loopCalls}`
+      const first = { index: 0, id, function: { name: "list_files", arguments: "" } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
+      const rest = { index: 0, function: { arguments: "{}" } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
+      return res.end("data: [DONE]\n\n")
     }
     res.writeHead(200, { "content-type": "text/event-stream" })
     const output = String(finished.content)

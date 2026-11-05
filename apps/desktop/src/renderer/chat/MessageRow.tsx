@@ -32,6 +32,7 @@ import {
   type SkillPart,
   type ToolAsk,
   type ToolPart,
+  thoughtIsLive,
 } from "@robot/shared"
 import {
   BookOpen,
@@ -1432,10 +1433,7 @@ const PartView = (props: {
     <Match when={props.part.kind === "thinking"}>
       <Thinking
         text={(props.part as Extract<MessagePart, { kind: "thinking" }>).text}
-        live={
-          props.message.status === "streaming" &&
-          props.message.parts[props.message.parts.length - 1] === props.part
-        }
+        live={thoughtIsLive(props.message)}
       />
     </Match>
     <Match

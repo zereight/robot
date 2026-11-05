@@ -530,8 +530,24 @@ export type PartSegment =
   | { readonly kind: "tools"; readonly parts: readonly ToolPart[] }
 
 /**
- * Groups runs of finished plain tool steps when `fold` is true, so a chat shows one line per
- * run. With `fold` false every part is its own row.
+ * All thoughts of a reply as one part, in the place of its first thought, or the same parts when
+ * the reply has no thought. One line holds every thought, so that a reply that thinks before each
+ * step shows one thought and one run of steps, not one pair for each round (spec 003, 011: one
+ * line that lists every thought of the turn, in order).
+ */
+const oneThoughtLine = (parts: readonly MessagePart[]): readonly MessagePart[] => {
+  const first = parts.findIndex((p) => p.kind === "thinking")
+  if (first < 0) return parts
+  const thoughts = parts.flatMap((p) => (p.kind === "thinking" ? [p.text] : []))
+  const line: MessagePart = { kind: "thinking", text: thoughts.join("\n\n") }
+  const before = parts.slice(0, first)
+  const after = parts.slice(first).filter((p) => p.kind !== "thinking")
+  return [...before, line, ...after]
+}
+
+/**
+ * The rows of a message: its parts, and the runs of finished plain tool steps folded when `fold`
+ * is true, so a chat shows one line per run. With `fold` false every part is its own row.
  */
 type MutableSegment = { kind: "part"; part: MessagePart } | { kind: "tools"; parts: ToolPart[] }
 
@@ -539,9 +555,10 @@ export const groupParts = (
   parts: readonly MessagePart[],
   fold: boolean,
 ): readonly PartSegment[] => {
-  if (!fold) return parts.map((part): PartSegment => ({ kind: "part", part }))
+  const rows = oneThoughtLine(parts)
+  if (!fold) return rows.map((part): PartSegment => ({ kind: "part", part }))
   const out: MutableSegment[] = []
-  for (const part of parts) {
+  for (const part of rows) {
     const last = out[out.length - 1]
     if (isFoldableTool(part) && last?.kind === "tools") last.parts.push(part)
     else if (isFoldableTool(part)) out.push({ kind: "tools", parts: [part] })
@@ -549,6 +566,10 @@ export const groupParts = (
   }
   return out
 }
+
+/** True while the model still thinks: the reply streams and its last part is a thought. */
+export const thoughtIsLive = (message: Pick<ChatMessage, "status" | "parts">): boolean =>
+  message.status === "streaming" && message.parts.at(-1)?.kind === "thinking"
 
 /** The catalogue key of a folded run: one step reads in the singular ("1 tool step"). */
 export const foldedToolsKey = (

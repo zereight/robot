@@ -6,6 +6,7 @@ import {
   type MessagePart,
   type PartSegment,
   shownName,
+  thoughtIsLive,
 } from "@robot/shared"
 import { memo, type ReactNode, useState } from "react"
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native"
@@ -274,7 +275,7 @@ const Part = (props: {
         >
           <Text style={[styles.small, { color: palette.textMuted, fontStyle: "italic" }]}>
             {open ? "▾ " : "▸ "}
-            {message.status === "streaming" ? t("chat.thinking") : t("chat.thought")}
+            {thoughtIsLive(message) ? t("chat.thinking") : t("chat.thought")}
           </Text>
           {open ? (
             <Text selectable style={[styles.small, { color: palette.textMuted }]}>
