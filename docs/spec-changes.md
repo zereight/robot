@@ -207,6 +207,8 @@ These are in the code today and the specs now say something else.
 | S116 | Test devices, part 2: the card of a device step with no "Always allow", the erase steps that ask at every level, the one call at a time, the time limit, outside content, the sensitive read of app data, the action log entry, Stop, and the rules that a file left by the program stays in the folder of the profile and in no export. | 031, 007, 014 |
 | S117 | Test devices, part 3: the limits for an agent in a log session and a measurement, the redaction before a value leaves the test device, the numbers-only rule, the erase steps of app data, the screen map of a folder, the screen walk as a risky change, the analysis of a performance file with its program "Not installed" case, and "Send to chat" and "Investigate" as messages of the user. | 032, 033, 014, 007 |
 | S118 | Follow-up: the tool "wait until" with its reason and delay, the table of follow-ups, the turn that starts at the time as a task with the source "follow-up", the label of the task, the 12-hour drop after the app was off, the delete of a follow-up, the limit of 20 per agent, the queue rank of a background source, and the row of "Next 24 hours". Built: the whole slice on the computer. Built too: the delete of a follow-up from the details of its task (the delete asks first, and no task starts), and the working line that says the agent looks again for a turn of the source "follow-up" (003). A linked computer can list and delete the follow-ups of the computer that runs them. Not built: the same working line on a linked window (it does not read the thread list of the server) and on the phone (011 has no working line). A follow-up works in a direct chat only; a call in a channel, a routine or a workflow step fails with its reason and the turn goes on. | 005, 007, 021, 003, 013 |
+| S119 | CC Workflow Studio import: "Import workflows" takes the file of that tool in the bare and the wrapped form, makes one new workflow that is off, turns prompt and sub-agent nodes into agent steps with no agent and if/else nodes into conditions in the mode "Ask a model", turns every other node into a pink note, drops the connections of those nodes and shows "Connect" on a step that lost an input, keeps the place of a node in a group, fills `{{name}}` from `variables`, refuses 31 steps, a loop, a self-connection, a connection to a missing node and a condition with a missing branch, the review screen of 014 with "Agent for agent steps", "Connections were lost" and the extra rows of "Not imported", the secret rule, and the file mapping of `docs/cc-wf-studio-format.md` | 010, 014 |
+| S120 | CC Workflow Studio export: the choice "Export for CC Workflow Studio" for one workflow, the start node and the end node, sub-agent, if/else and question nodes with their ports, the connections around a post step and a notify step, the cuts to the limits of that tool, the secret rule, the list "Not exported", and the import of the written file with the same steps | 010 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -232,6 +234,8 @@ S106 does not depend on the other slices. It only reads agents, channels and tas
 S108 to S112 come from spec 030 and follow S106. S108 changes no data and can go first. S109 adds the parent channel; its items "Put under…" and "Move to the top" on the chart need S108. S110 and S111 need S109 for the path through higher channels, but each works with top channels alone. S111 needs the pass of the lead of S74. S112 does not depend on S110 or S111, and its limit of a parent channel needs S109. The usage of a task (S61) must exist for the daily token limit.
 
 S115 to S117 follow each other, and S115 needs S32 for the connection. S115 is the largest piece and the one that decides whether the plan works at all: it holds the download, the server, the class list and the frame. Do it first and alone, and stop if the frame cannot reach the server through the app. S116 and S117 add rules only, so each is a smaller pull request. The decisions in `docs/mobile-devices-review.md` must be answered before S115 starts.
+
+S119 and S120 do not depend on each other. Do S119 first: it reads real files and shows a fault in the table of `docs/cc-wf-studio-format.md` early. S120 reuses the secret rule and the file names of S119 and needs no change to sync, files or the data of the app. Both read and write by their own code. No package of that project is added, because its extension is under AGPL-3.0 (see AGENTS.md).
 
 ## Test devices (M34): behaviour that changes
 
@@ -298,3 +302,14 @@ S115 to S117 follow each other, and S115 needs S32 for the connection. S115 is t
   kind, the target and the result of a step. S78 shows only the kind and the result of a step.
   Open for a later change if the plan of `docs/memory-evaluation.md` shows that the group "Failed
   attempt" needs more.
+- A canvas of CC Workflow Studio inside ROBot, a link to its server (MCP), a watch on its file, and
+  a package of that project. Not in this version (010). The import and the export are one-time moves
+  of a file. The extension of that project is under AGPL-3.0, which ROBot cannot take, so ROBot
+  reads the public file form with its own code (`docs/cc-wf-studio-format.md`). Open for a later
+  change.
+- A step in ROBot for the question node, the switch, the skill, the connection to a tool, the Codex
+  call and the session checkpoint of CC Workflow Studio. Not in this version (010). They become
+  notes. A question node with answers is not the same as an approval step, which has no answers to
+  choose from.
+- A run of a CC Workflow Studio file by ROBot without an import, and a write of its skills and
+  agents (`.claude/`, `.codex/`) from a ROBot workflow. Not in this version (010).

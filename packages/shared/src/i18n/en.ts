@@ -1791,6 +1791,12 @@ export const en = {
   "importReview.routine": "Routine “{name}”",
   "importReview.routine.paused": "Starts paused",
   "importReview.secret": "A secret was removed",
+  "importReview.lost": "Connections were lost",
+  "importReview.needAgent": "{count} agent steps need an agent.",
+  "importReview.notImported.node": "{owner}: {type} “{name}”",
+  "importReview.notImported.cut": "{owner}, “{name}”: text",
+  "importReview.reason.no_step": "ROBot has no step for this node. It is a note now.",
+  "importReview.reason.text_cut": "ROBot cut this text to its limit.",
   "importReview.missing": "Agents not found: {names}",
   "importReview.notImported.title": "Not imported",
   "importReview.notImported.empty": "The file holds nothing that ROBot cannot make.",
@@ -1838,6 +1844,8 @@ export const en = {
   "checklist.workflowOn": "Turn on the workflow. Its schedule does not run while it is off.",
   "checklist.turnOn": "Turn on",
   "checklist.pick": "Pick",
+  "checklist.stepConnect": "Connect step {n} “{name}”. Its input was lost.",
+  "checklist.connect": "Connect",
   "checklist.done": "Done",
   "error.agent_file_format": "This file is not an agent file.",
   "error.agent_file_version":
@@ -1910,6 +1918,7 @@ export const en = {
   "error.provider_busy": "The model is busy. Try again later.",
   "workflowFile.menu": "Workflow files",
   "workflowFile.menu.export": "Export workflows…",
+  "workflowFile.menu.exportCc": "Export for CC Workflow Studio…",
   "workflowFile.menu.importFile": "Import workflows…",
   "workflowFile.close": "Close",
   "workflowFile.export.title": "Export workflows",
@@ -1920,12 +1929,33 @@ export const en = {
   "workflowFile.export.limit": "A file holds at most 20 workflows.",
   "workflowFile.export.submit": "Export…",
   "workflowFile.exported": "Saved {count} workflows to {path}",
+  "workflowFile.cc.title": "Export for CC Workflow Studio",
+  "workflowFile.cc.hint":
+    "Pick one workflow. CC Workflow Studio opens the file. That tool has no place for some parts of a workflow, and the list after the export names them.",
+  "workflowFile.cc.saved": "Saved to {path}",
+  "workflowFile.notExported.title": "Not exported",
+  "workflowFile.notExported.step": "Step {step} “{name}”",
+  "workflowFile.notExported.trigger": "Trigger: {trigger}",
+  "workflowFile.notExported.notes": "{count} notes",
+  "workflowFile.notExported.stepSettings":
+    "Agent, effort or “Continue on failure” of {count} steps",
+  "workflowFile.notExported.cut": "Step {step} “{name}”: text",
+  "workflowFile.notExported.reason.step":
+    "CC Workflow Studio has no node for this step. The steps around it stay joined.",
+  "workflowFile.notExported.reason.trigger": "The file holds no trigger.",
+  "workflowFile.notExported.reason.notes": "The file holds no notes.",
+  "workflowFile.notExported.reason.stepSettings": "The file holds none of these.",
+  "workflowFile.notExported.reason.cut": "The text was cut to the limit of CC Workflow Studio.",
   "workflowFile.import.title": "Import workflows",
   "workflowFile.import.renamed": "Name in the file: {name}",
   "workflowFile.import.counts": "{steps} steps, {notes} notes",
   "workflowFile.import.off":
     "Every imported workflow is off. Turn it on when its trigger should work.",
   "workflowFile.import.submit": "Import {count} workflows",
+  "workflowFile.import.agent": "Agent for agent steps",
+  "workflowFile.import.agent.none": "None",
+  "workflowFile.import.agent.hint":
+    "The file names no agent. The agent you pick runs every agent step. With none, each step shows “Pick an agent”.",
   "workflowFile.import.stopped":
     "The import stopped at {name}. {made} workflows were made and stay. Reason: {reason}",
   "workflowFile.graph.too_many_steps":

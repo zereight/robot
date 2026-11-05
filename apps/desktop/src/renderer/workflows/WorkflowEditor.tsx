@@ -712,9 +712,17 @@ export const WorkflowEditor = (props: {
             place="canvas"
             rows={checklistRows(
               list(),
-              { workflow: { enabled: enabled.latest ?? false, steps: graph.steps } },
+              {
+                workflow: {
+                  enabled: enabled.latest ?? false,
+                  steps: graph.steps,
+                  edges: graph.edges,
+                },
+              },
               (item) => {
-                if (item.kind === "stepAgent" || item.kind === "stepPlace") {
+                if (item.kind === "stepConnect") {
+                  setSelected({ kind: "step", id: item.stepId })
+                } else if (item.kind === "stepAgent" || item.kind === "stepPlace") {
                   setSelected({ kind: "step", id: item.stepId })
                   const field = item.kind === "stepAgent" ? "wf-step-agent" : "wf-step-channel"
                   queueMicrotask(() =>

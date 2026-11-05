@@ -22,6 +22,7 @@ import { Presence } from "../ui/Presence.tsx"
 import { WorkflowEditor } from "./WorkflowEditor.tsx"
 import {
   describeFileError,
+  ExportCcDialog,
   ExportWorkflowsDialog,
   ImportWorkflowsDialog,
   WorkflowFileProblemDialog,
@@ -70,6 +71,7 @@ const WorkflowList = (props: {
     })
   })
   const [exporting, setExporting] = createSignal(false)
+  const [exportingCc, setExportingCc] = createSignal(false)
   const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
   const [fileProblem, setFileProblem] = createSignal<ErrorText>()
   const [starting, setStarting] = createSignal(false)
@@ -139,6 +141,11 @@ const WorkflowList = (props: {
                     testId: "wf-menu-export",
                   },
                   {
+                    label: t("workflowFile.menu.exportCc"),
+                    onSelect: () => setExportingCc(true),
+                    testId: "wf-menu-export-cc",
+                  },
+                  {
                     label: t("workflowFile.menu.importFile"),
                     onSelect: () => void startImport(),
                     testId: "wf-menu-import-file",
@@ -148,6 +155,9 @@ const WorkflowList = (props: {
           }
         />
       </div>
+      <Presence when={exportingCc()}>
+        {() => <ExportCcDialog workflows={workflows()} onClose={() => setExportingCc(false)} />}
+      </Presence>
       <Presence when={exporting()}>
         {() => (
           <ExportWorkflowsDialog workflows={workflows()} onClose={() => setExporting(false)} />

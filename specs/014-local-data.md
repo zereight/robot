@@ -131,20 +131,29 @@ anything. The user sees each part that the file holds and picks what to keep.
     starts paused.
   - A part whose text had a secret that the app hid (see "Secrets in text" in the file formats)
     is not ticked. It shows the mark "A secret was removed".
+  - A workflow of a CC Workflow Studio file that lost a connection at a node that became a note
+    (see 010) is not ticked. It shows the mark "Connections were lost".
 - An agent file can also hold channels, skills and a handbook (002). The screen lists them after
   the agents, each with a tick box. Channels and skills are ticked, and they say which agents they
   need. The handbook is not ticked, and the screen says that it replaces the handbook of this
   server. Skills are made off.
 - An agent that is not ticked takes its instructions and routines with it. Instructions that are
   not ticked leave the new agent with empty instructions.
+- A file of CC Workflow Studio (010) goes through the same screen. The screen lists its one
+  workflow with a tick box, the number of its steps, and the number of its notes. The file names
+  no agent, so the line of agent names is the number of agent steps that need an agent. The screen
+  has the field "Agent for agent steps": a list of the agents that are not archived, with the
+  choice "None" at the start. An agent that the user picks is the agent of every agent step of
+  the workflow.
 - The screen has a part "Not imported". It lists what the file holds that ROBot does not make,
   each with the reason, for example a field that this version does not know, or a post step that
-  has no place.
+  has no place. For a file of CC Workflow Studio it also lists each node that became a note.
 - The screen shows the counts that it will make, for example "2 agents, 1 routine (paused)". The
   import button is off when nothing is ticked.
 - After the import, the chat of each new agent shows one message from the app, not from the
   agent: a checklist of what still needs the user. For example a paused routine ("Turn on"), or a
-  workflow step that needs an agent or a place ("Pick"). Each item opens the place where the user
+  workflow step that needs an agent or a place ("Pick"), or a step that lost an input
+  ("Connect"). Each item opens the place where the user
   does it. An item ticks itself when it is done. A new workflow shows the same checklist at the
   top of its canvas. A new item with nothing to do makes no checklist.
 - The review changes nothing in the rules of the file formats. A file that the formats refuse is
@@ -167,3 +176,8 @@ anything. The user sees each part that the file holds and picks what to keep.
   with "A secret was removed".
 - Import a workflow file with a post step: "Not imported" names the place of the step, and the
   canvas of the new workflow shows the checklist item "Pick".
+- Import a CC Workflow Studio file with a question node between two prompt nodes: the review shows
+  the workflow not ticked, with "Connections were lost", and "Not imported" names the question
+  node. Tick it and import: the canvas shows a pink note, and the checklist item "Connect" for the
+  second prompt step. Pick the agent "Reviewer" in "Agent for agent steps" and import again: no
+  item "Pick" shows.
