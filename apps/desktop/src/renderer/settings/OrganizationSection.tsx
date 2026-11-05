@@ -69,7 +69,7 @@ export const OrganizationSection = () => {
           </p>
         }
       >
-        <div class={settings.row} data-testid="organization-hand-off-row">
+        <div class={`${settings.row} ${settings.rowWrap}`} data-testid="organization-hand-off-row">
           <div>
             <div class={settings.label}>{t("organization.handOff")}</div>
             <div class={settings.hint}>{t("organization.handOff.hint")}</div>

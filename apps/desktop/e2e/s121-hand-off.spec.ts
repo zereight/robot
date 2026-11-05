@@ -172,6 +172,30 @@ test("hand-off: the field 'Hand-off range' has four values, the line 'Now', and 
     const options = page.getByTestId("organization-hand-off").locator("label")
     await expect(options).toHaveText(["Any agent", "Along the organizations"])
     await expect(page.getByTestId("organization-ask-up-row")).toBeVisible()
+    // The narrowest window: the part has no sideways scroll, and its rows stay inside the window.
+    await resizeWindow(app, 480, 700)
+    await page
+      .getByTestId("organization-hand-off")
+      .locator('label[data-value="organizations"]')
+      .click()
+    await expect(page.getByTestId("organization-hand-off-now")).toContainText(
+      "members of its organizations",
+    )
+    const rowBox = (await page.getByTestId("organization-hand-off-row").boundingBox()) as {
+      x: number
+      width: number
+    }
+    expect(rowBox.x).toBeGreaterThanOrEqual(0)
+    expect(rowBox.x + rowBox.width).toBeLessThanOrEqual(480)
+    // The control stays inside the window too: it goes under the text.
+    const controlBox = (await page.getByTestId("organization-hand-off").boundingBox()) as {
+      x: number
+      width: number
+    }
+    expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(480)
+    await shot(page, "s121-00-part-narrow")
+    await page.getByTestId("organization-hand-off").locator('label[data-value="any"]').click()
+    await resizeWindow(app, 1300, 900)
 
     // The form of "Docs": the range is "Inherit" at first. The rule is "Any agent", so the form
     // says that the range has no effect.
