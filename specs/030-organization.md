@@ -165,8 +165,12 @@ An agent can be a member of more than one organization only when all of them are
 
 ## Access
 
-Each organization holds three items of access. Access goes down the tree: a member gets the access
-of each organization that it is a member of, and of the higher organizations of those.
+Each organization holds three items of access. Tools and the daily token limit go down the tree: a
+member gets the tools of each organization that it is a member of, and of the higher organizations
+of those, and every limit of those organizations holds for it. The hand-off range does not go up to
+a member of a lower organization: a member counts only for the organizations that it is a member
+of, each with its own value, or with the value that it takes from its parent when it is "Inherit"
+(see "Who can send to whom").
 
 - **Tools** and **Hand-off range** have the value "Inherit" by default. "Inherit" means: take the
   value of the parent organization. A lower organization can set its own value, and that value then
@@ -259,8 +263,9 @@ holds:
    of that organization or of one of its lower organizations.
 6. S is a member of an organization whose range is "All agents".
 
-The range of an organization is its value of "Hand-off range" (see "Access"). "Own organization" is
-the range that rule 1 gives, so it adds no right.
+The range of an organization is its value of "Hand-off range" (see "Access"). Rules 5 and 6 read
+the organizations that S is a member of, and not the higher organizations of those. "Own
+organization" is the range that rule 1 gives, so it adds no right.
 
 More rules:
 
