@@ -15,6 +15,7 @@ import {
   parentLineReasons,
 } from "@robot/shared"
 import { createMemo, createResource, createSignal, For, Show, untrack } from "solid-js"
+import { NewAgentDialog } from "../agents/AgentDialogs.tsx"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -24,10 +25,13 @@ import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
+import { useOwnedWorkflows } from "../workflows/useOwner.ts"
 import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
 import { OrgLimitField } from "./OrgLimit.tsx"
 import { OrgRange } from "./OrgRange.tsx"
 import { OrgToolsPart } from "./OrgTools.tsx"
+import { OwnedWorkflows } from "./OwnedWorkflows.tsx"
 import styles from "./orgs.module.css"
 
 /** The value of `id` that opens the form of a new organization. */
@@ -89,6 +93,10 @@ export const OrgDialog = (props: {
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
+  // The box "New agent" of the field "Members" (spec 030, flow 6).
+  const [making, setMaking] = createSignal(false)
+  // The workflows that this organization owns: the row of the form and the line of the delete confirm.
+  const owned = useOwnedWorkflows(() => (org ? { kind: "organization", id: org.id } : undefined))
 
   const readOnly = () => !ui.canChange()
 
@@ -393,6 +401,12 @@ export const OrgDialog = (props: {
               </Show>
             </span>
           </Show>
+          {/* An agent that is made here exists at once and joins the members of this form. */}
+          <Show when={!readOnly()}>
+            <Button onClick={() => setMaking(true)} data-testid="org-member-new-agent">
+              {t("orgs.members.newAgent")}
+            </Button>
+          </Show>
         </fieldset>
         <label class={styles.field}>
           <span class={styles.label}>{t("orgs.lead")}</span>
@@ -453,6 +467,18 @@ export const OrgDialog = (props: {
           </select>
           <span class={styles.hint}>{t("orgs.parent.hint")}</span>
         </label>
+        <Show when={org}>
+          {(o) => (
+            <OwnedWorkflows
+              owner={{ kind: "organization", id: o().id }}
+              fieldClass={`${styles.field} ${styles.bare}`}
+              legendClass={styles.label}
+              testId="org-workflows"
+              itemTestId="org-workflow"
+              onOpen={props.onClose}
+            />
+          )}
+        </Show>
         <fieldset class={styles.field} data-testid="org-access">
           <legend class={styles.label}>{t("orgs.access")}</legend>
           <Show
@@ -547,6 +573,16 @@ export const OrgDialog = (props: {
                     )}
                   </p>
                 </Show>
+                <Show when={owned().length > 0}>
+                  <p data-testid="org-delete-workflows">
+                    {t(
+                      owned().length === 1
+                        ? "orgs.delete.workflows.one"
+                        : "orgs.delete.workflows.other",
+                      { count: owned().length },
+                    )}
+                  </p>
+                </Show>
                 <p class={styles.hint}>{t("orgs.delete.confirm")}</p>
                 <div class={styles.actions}>
                   <Button
@@ -581,6 +617,21 @@ export const OrgDialog = (props: {
           </Show>
         </div>
       </form>
+      <Presence when={making()}>
+        {() => (
+          <NewAgentDialog
+            stay
+            onClose={() => setMaking(false)}
+            onCreated={async (agent) => {
+              // The list of agents shows the new agent before the form ticks it, and a search that
+              // hides it is cleared. The agent is a member only when the form is saved.
+              await agents.refetch()
+              setQuery("")
+              setMembers((list) => [...list, agent.id])
+            }}
+          />
+        )}
+      </Presence>
     </Dialog>
   )
 }

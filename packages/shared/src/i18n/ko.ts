@@ -1361,6 +1361,16 @@ export const ko: Record<MessageKey, string> = {
   "workflows.owner.hint":
     "조직의 워크플로우 단계에는 그 조직의 멤버와 다른 조직의 리드만 참석할 수 있어요. 에이전트가 소유한 워크플로우에는 그 에이전트만 참석해요.",
   "workflows.step.notParticipant": "참석자 아님",
+  "workflows.owner.row": "워크플로우",
+  "workflows.owner.open": "{name} 열기",
+  "orgs.members.newAgent": "새 에이전트",
+  "orgs.delete.workflows.one": "워크플로우 1개는 소유자 없이 남아요. 모든 에이전트가 쓸 수 있어요.",
+  "orgs.delete.workflows.other":
+    "워크플로우 {count}개는 소유자 없이 남아요. 모든 에이전트가 쓸 수 있어요.",
+  "agents.delete.workflows.one":
+    "{name}이(가) 소유한 워크플로우 1개는 소유자 없이 남아요. 모든 에이전트가 쓸 수 있어요.",
+  "agents.delete.workflows.many":
+    "{name}이(가) 소유한 워크플로우 {count}개는 소유자 없이 남아요. 모든 에이전트가 쓸 수 있어요.",
   "workflows.trigger.manual": "수동",
   "workflows.trigger.schedule": "일정",
   "workflows.trigger.channel": "채널 메시지",

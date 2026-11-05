@@ -84,8 +84,8 @@ An agent has:
     each skill and connection that the agent has from an organization shows the line "From
     <organization>" (see 030). A deleted agent leaves every organization.
 13. Workflows: the profile has a row "Workflows" with the workflows that the agent owns (see 010,
-    "Owner and participants"). A click on a name opens the workflow on the Workflows page. An agent
-    with no workflow shows no row.
+    "Owner and participants"). A click on a name closes the profile and shows the card of the
+    workflow on the Workflows page. An agent with no workflow shows no row.
 14. Make an agent from an organization: the form of an organization (030) opens the form of
     flow 1 over itself. The agent is made as in flow 1, but the app does not open its direct chat.
 

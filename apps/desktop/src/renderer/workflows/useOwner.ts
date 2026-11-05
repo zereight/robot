@@ -1,5 +1,5 @@
 import { type Workflow, type WorkflowOwner, workflowParticipants } from "@robot/shared"
-import { createMemo, createResource } from "solid-js"
+import { createMemo, createResource, onCleanup } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useOrgs } from "../state/orgs.tsx"
@@ -37,5 +37,35 @@ export const useOwnerNames = (workflows: () => readonly Workflow[]) => {
     if (owner === null) return ""
     if (owner.kind === "organization") return orgs.byId(owner.id)?.name ?? ""
     return agents.byId(owner.id)?.name ?? archived().find((a) => a.id === owner.id)?.name ?? ""
+  }
+}
+
+/**
+ * The workflows that one organization or one agent owns, by name (spec 010). It reads the server on
+ * screen unless `serverId` names another, and it follows the list. Nothing is read for no owner.
+ */
+export const useOwnedWorkflows = (
+  owner: () => WorkflowOwner | undefined,
+  serverId?: () => string | undefined,
+) => {
+  const ui = useUi()
+  const server = serverId ?? (() => ui.server()?.id)
+  const [list, { refetch }] = createResource(
+    () => (owner() ? server() : undefined),
+    (id) => call("workflows.list", { serverId: id }).catch(() => [] as readonly Workflow[]),
+    { initialValue: [] as readonly Workflow[] },
+  )
+  onCleanup(
+    window.robot.on("workflows.changed", ({ serverId: changed }) => {
+      if (changed === server()) void refetch()
+    }),
+  )
+  return () => {
+    const own = owner()
+    return own
+      ? list()
+          .filter((w) => w.owner?.kind === own.kind && w.owner.id === own.id)
+          .toSorted((a, b) => a.name.localeCompare(b.name))
+      : []
   }
 }

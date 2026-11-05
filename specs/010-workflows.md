@@ -91,8 +91,8 @@ this spec.
   that the filter of the page names. The field is read-only while the workflow runs.
 - **See the owner**: the Workflows page has a filter "Owner" (All, None, an organization, an
   agent), and each card shows the name of its owner. The form of an organization (030) and the
-  profile of an agent (002) have a row "Workflows" with the workflows that they own. A click opens
-  the workflow.
+  profile of an agent (002) have a row "Workflows" with the workflows that they own. A click closes
+  the box and shows the card of the workflow on the page, whatever the filter "Owner" says.
 - **When the owner is gone**: an organization or an agent that is deleted leaves its workflows
   with the owner "None". The workflows, their runs and their steps stay. The confirm of the
   delete says how many workflows then have no owner and that any agent can work in them (030, 002).
@@ -449,7 +449,7 @@ a new issue. ROBot runs no service on the internet for this (000).
 - Delete "Docs" from its form: the confirm says that one workflow then has no owner. After the
   delete, "Weekly" shows no owner, its runs stay, and its agent list shows every agent.
 - Filter the page by the owner "Docs": only the workflows of "Docs" show. Open the form of
-  "Docs": the row "Workflows" lists them, and a click opens one on the page.
+  "Docs": the row "Workflows" lists them, and a click shows the card of one on the page.
 - Export "Weekly" to a file and import it: the new workflow is off and has no owner.
 - Sync two computers: the owner of "Weekly" shows on both. A linked client without the switch
   "Can create and change agents" sees the field "Owner" read-only.

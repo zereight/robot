@@ -77,8 +77,9 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
    the lead. The button works in the form of a new organization and in the form of an organization
    that exists. A new agent is in no other organization, so it never breaks "One line".
 7. See the workflows of an organization: the form has a row "Workflows" with the workflows that
-   the organization owns (010, "Owner and participants"). A click on a name opens the workflow on
-   the Workflows page. The row shows only when the organization owns a workflow.
+   the organization owns (010, "Owner and participants"). A click on a name closes the form and
+   shows the card of the workflow on the Workflows page, as a click on a workflow of the Today
+   page does (021). The row shows only when the organization owns a workflow.
 
 ## Goal
 
@@ -716,7 +717,7 @@ The first start of this version changes the data of each profile once.
 - The button "New agent" adds an agent who is in no organization, so "One line" never refuses the
   save because of it.
 - The organization "Docs" owns the workflows "Weekly" and "Digest". The row "Workflows" of its form
-  lists both. A click on "Weekly" opens it on the Workflows page. Delete "Docs": the confirm says
+  lists both. A click on "Weekly" shows its card on the Workflows page. Delete "Docs": the confirm says
   that two workflows have no owner then, and after the delete both workflows show no owner.
 - An organization with no workflow shows no row "Workflows" in its form and no line about workflows
   in its delete confirm.

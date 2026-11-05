@@ -1373,6 +1373,16 @@ export const en = {
   "workflows.owner.hint":
     "Only the members of an organization and the leads of the other organizations can work in a step of its workflow. An agent that owns a workflow is its only participant.",
   "workflows.step.notParticipant": "Not a participant",
+  "workflows.owner.row": "Workflows",
+  "workflows.owner.open": "Open {name}",
+  "orgs.members.newAgent": "New agent",
+  "orgs.delete.workflows.one": "1 workflow has no owner then. Any agent can work in it.",
+  "orgs.delete.workflows.other":
+    "{count} workflows have no owner then. Any agent can work in them.",
+  "agents.delete.workflows.one":
+    "1 workflow that {name} owns has no owner then. Any agent can work in it.",
+  "agents.delete.workflows.many":
+    "{count} workflows that {name} owns have no owner then. Any agent can work in them.",
   "workflows.trigger.manual": "Manual",
   "workflows.trigger.schedule": "Schedule",
   "workflows.trigger.channel": "Channel message",

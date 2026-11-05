@@ -87,6 +87,8 @@ const WorkflowList = (props: {
     const target = openTarget()
     const list = workflows()
     if (target?.kind !== "workflow" || workflows.loading) return
+    // The card must be on screen, so a filter of the owner does not hide it.
+    setOwnerFilter(ALL)
     if (list.some((w) => w.id === target.id)) {
       queueMicrotask(() => {
         if (flashRow(`[data-workflow-id="${target.id}"]`)) takeTarget("workflow")
