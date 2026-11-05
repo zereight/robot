@@ -30,7 +30,7 @@ import {
   shell,
   WebContentsView,
 } from "electron"
-import { type Notch, notchReader } from "./notch.ts"
+import { islandBounds, type Notch, notchReader } from "./notch.ts"
 import { appendLog, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
@@ -866,8 +866,6 @@ const ISLAND_SIZE: Record<Exclude<IslandShape, "hidden">, { width: number; heigh
 }
 /** The window never gets a size outside this, whatever the page asks for. */
 const ISLAND_LIMIT = { width: [120, 960], height: [20, 560] } as const
-/** A menu bar this tall or taller means that the screen may have a camera notch. */
-const NOTCH_MENU_BAR_MIN = 30
 let island: BrowserWindow | undefined
 let islandShapeNow: IslandShape = "hidden"
 /** Where the camera notch of the screen is, or null when the screen has none (spec 015). */
@@ -898,19 +896,7 @@ const islandAllowed = () =>
 
 /** Puts the island window at the top centre of the screen, with the size of its content. */
 const placeIsland = (win: BrowserWindow, size: { width: number; height: number }) => {
-  const display = screen.getPrimaryDisplay()
-  const { bounds } = display
-  // The island joins the camera notch, so that the bar sits around it. A screen without a notch
-  // keeps the island under the menu bar.
-  const menuBar = display.workArea.y - bounds.y
-  const notchHeight = islandNotch?.height ?? 0
-  const joinsNotch = notchHeight > 0 && menuBar >= NOTCH_MENU_BAR_MIN
-  const next = {
-    x: Math.round(bounds.x + (bounds.width - size.width) / 2),
-    y: joinsNotch ? bounds.y : bounds.y + menuBar,
-    width: size.width,
-    height: Math.max(size.height, joinsNotch ? notchHeight : 0),
-  }
+  const next = islandBounds(screen.getPrimaryDisplay(), islandNotch, size)
   const now = win.getBounds()
   if (
     now.x !== next.x ||
@@ -930,6 +916,9 @@ const onceNotch = notchReader()
 
 /** The event that tells the island page where the camera notch is (spec 015). */
 const ISLAND_NOTCH_EVENT = "island.notch"
+
+/** The island windows that got the notch, so that a window is told one time. */
+const windowsToldNotch = new WeakSet<BrowserWindow>()
 
 const setIslandShape = (shape: IslandShape) => {
   if (!islandAllowed()) return
@@ -992,11 +981,16 @@ const setIslandShape = (shape: IslandShape) => {
   // that the notch needs (spec 015). A card that is open by then keeps the width of its content.
   void onceNotch().then((notch) => {
     if (island !== win || win.isDestroyed() || islandShapeNow === "hidden") return
-    if (islandNotch?.width === notch?.width) return
+    // Each window is told one time. The start of the app stores the notch too, and that may come
+    // first, so the stored value says nothing about what this window and its page know.
+    if (windowsToldNotch.has(win)) return
+    windowsToldNotch.add(win)
     islandNotch = notch
     win.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, notch)
-    // The bar was placed at 340 px when the notch was not known yet.
+    // The window was placed when the notch was not known yet: the bar at 340 px, and the bar or a
+    // card under the menu bar. A card keeps the size of its content, and only its place changes.
     if (islandShapeNow === "bar") placeIsland(win, size())
+    else placeIsland(win, win.getBounds())
   })
 }
 
