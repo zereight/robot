@@ -1,6 +1,6 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
 import { Context, Effect, Layer } from "effect"
-import { migrations } from "./migrations.ts"
+import { dataSteps, migrations } from "./migrations.ts"
 
 export type Row = Record<string, SQLInputValue>
 type Params = readonly SQLInputValue[]
@@ -51,6 +51,7 @@ export const migrate = (db: DatabaseSync) => {
     db.exec("BEGIN")
     try {
       db.exec(migrations[version] ?? "")
+      dataSteps[version]?.(db)
       db.exec(`PRAGMA user_version = ${version + 1}`)
       db.exec("COMMIT")
     } catch (error) {

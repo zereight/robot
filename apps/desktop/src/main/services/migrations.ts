@@ -1,3 +1,6 @@
+import type { DatabaseSync } from "node:sqlite"
+import { migrateChannelsToOrganizations } from "./orgMigration.ts"
+
 /**
  * Triggers that mark a row as changed, so sync can find it (spec 019). They only write while the
  * computer is in a sync pair. `id` is the SQL text of the sync id of the row.
@@ -1204,4 +1207,55 @@ export const migrations: readonly string[] = [
   -- holds no flag (spec 002, "Agent file").
   ALTER TABLE agent ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0 CHECK (is_main IN (0, 1));
   `,
+  `
+  -- The organization (spec 030, S118): a group of agents with one optional lead and one optional
+  -- parent organization. It has no messages, no tasks and no archive state. The name is unique on
+  -- a server, ignoring case. \`lead_agent_id\` and \`parent_id\` have no foreign key: a sync (019) can
+  -- bring a sub-organization before its parent, and the reading of the tree sets a parent that is
+  -- gone aside. A lead that is no member counts as no lead. \`hand_off_range\` is stored now and
+  -- read in a later step; \`daily_token_limit\` is NULL while it is off. Both sync with the row. An
+  -- export keeps all of it (spec 014).
+  CREATE TABLE org_unit (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    lead_agent_id TEXT,
+    parent_id TEXT,
+    hand_off_range TEXT NOT NULL DEFAULT 'inherit'
+      CHECK (hand_off_range IN ('inherit', 'own', 'own_lower', 'all')),
+    daily_token_limit INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX org_unit_name ON org_unit (server_id, name_key);
+  -- Membership does not go up or down the tree. An archived agent stays a member (spec 030). A
+  -- deleted agent leaves every organization.
+  CREATE TABLE org_member (
+    org_id TEXT NOT NULL REFERENCES org_unit (id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (org_id, agent_id)
+  );
+  CREATE INDEX org_member_agent ON org_member (agent_id);
+  ${dirtyTriggers("org_unit", "orgunit", plainId)}
+  ${dirtyTriggers("org_member", "orgunit", (row) => `${row}.org_id`)}
+  -- The organizations in the agent list of a skill or a connection (spec 017, 018, 030): a JSON
+  -- array of { id, value } with the value 'on' or 'off'. An organization that is not in the array
+  -- has the value "Inherit". An empty array is what every row had before. An organization that is
+  -- gone stays in the array and gives nothing. Skills and connections do not sync (019). An export
+  -- keeps the column (014).
+  ALTER TABLE skill ADD COLUMN organizations TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tool_connection ADD COLUMN organizations TEXT NOT NULL DEFAULT '[]';
+  `,
 ]
+
+/**
+ * Steps in code that run in the same transaction as the SQL step of the same index, right after it.
+ * The key is the index of the SQL step. A step here must give the same result when it runs again.
+ */
+export const dataSteps: Readonly<Record<number, (db: DatabaseSync) => void>> = {
+  // The organizations from the channels (spec 030, "Migration", S118).
+  [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_unit"))]:
+    migrateChannelsToOrganizations,
+}
