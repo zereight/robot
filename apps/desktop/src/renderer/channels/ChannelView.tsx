@@ -44,7 +44,6 @@ import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ChannelDialog } from "./ChannelDialog.tsx"
 import styles from "./channels.module.css"
-import { LimitLine } from "./LimitLine.tsx"
 import { MentionList } from "./MentionList.tsx"
 import { createChannelChat } from "./state.ts"
 
@@ -602,7 +601,6 @@ export const ChannelView = (props: { channel: Channel }) => {
         </div>
       </Show>
       <div class={chat.composer}>
-        <LimitLine channel={props.channel} />
         <Show when={ui.serverOffline()}>
           <div class={chat.composerError} role="status" data-testid="channel-offline">
             {ui.server()?.state === "not_allowed"

@@ -2875,6 +2875,11 @@ export const en = {
   "orgs.parent.loop": "This is a sub-organization of this organization.",
   "orgs.parent.levels": "The tree would have more than 3 levels.",
   "orgs.parent.option": "{name} — {reason}",
+  "orgs.dailyLimit": "Daily token limit",
+  "orgs.dailyLimit.placeholder": "Tokens a day",
+  "orgs.dailyLimit.hint":
+    "From 10,000 to 100,000,000 tokens a day. The tasks of the members of this organization and of its lower organizations count, from midnight to midnight. At the limit, new work of those agents is blocked. A direct chat is never blocked.",
+  "orgs.limit.near": "80% of the daily token limit is used.",
   "orgs.access": "Access",
   "orgs.access.new": "Save the organization first. Then you can set its tools here.",
   "orgs.tools": "Tools",

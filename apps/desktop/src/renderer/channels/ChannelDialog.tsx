@@ -27,7 +27,6 @@ import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./channels.module.css"
-import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
 
 /** Makes a channel, or changes the name, topic, members and lead of one. */
 export const ChannelDialog = (props: { channel?: Channel; onClose: () => void }) => {
@@ -72,13 +71,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     props.channel && parentId() === channelParent(channels.channels(), props.channel.id)
       ? {}
       : { parentId: parentId() }
-  // The daily token limit (spec 030): off by default. On, it takes a whole number in a range.
-  const was = props.channel?.dailyTokenLimit ?? null
-  const [limitOn, setLimitOn] = createSignal(was !== null)
-  const [limitText, setLimitText] = createSignal(textOfLimit(was))
-  const limitValid = () => limitFieldValid(limitOn(), limitText())
-  /** The limit to send: only when the user changed it. */
-  const limitField = () => limitPatch(was, limitOn(), limitText())
   const [leadAnswers, setLeadAnswers] = createSignal(props.channel?.leadAnswers ?? true)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -118,8 +110,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     charLength(name().trim()) >= 1 &&
     charLength(name().trim()) <= CHANNEL_NAME_MAX &&
     charLength(topic().trim()) <= CHANNEL_TOPIC_MAX &&
-    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX &&
-    limitValid()
+    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX
   // Members that the search hides stay chosen: the choice lives in `members`, not in the list.
   const shown = createMemo(() => filterAgents(agents.agents(), query()))
   const toggle = (agent: Agent) => {
@@ -156,7 +147,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             leadAnswers: leadAnswers(),
             ...sectionField(),
             ...parentField(),
-            ...limitField(),
           },
         })
       } else {
@@ -171,7 +161,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           leadId: leadId(),
           ...sectionField(),
           ...(parentId() ? { parentId: parentId() } : {}),
-          ...limitField(),
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -370,39 +359,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </span>
           </span>
         </label>
-        <div class={styles.field} data-testid="channel-daily-limit">
-          <span class={styles.label}>{t("channels.dailyLimit")}</span>
-          <div class={styles.limitRow}>
-            <Switch
-              label={t("channels.dailyLimit")}
-              checked={limitOn()}
-              onChange={setLimitOn}
-              testId="channel-limit-switch"
-            />
-            <Show when={limitOn()}>
-              <input
-                class={`${styles.input} ${styles.limitInput}`}
-                inputmode="numeric"
-                value={limitText()}
-                placeholder={t("channels.dailyLimit.placeholder")}
-                aria-label={t("channels.dailyLimit")}
-                aria-invalid={!limitValid()}
-                onInput={(e) => setLimitText(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  // Enter in the field sends the form, as in any other field.
-                  if (e.key === "Escape") e.stopPropagation()
-                }}
-                data-testid="channel-limit"
-              />
-            </Show>
-          </div>
-          <span class={styles.hint}>{t("channels.dailyLimit.hint")}</span>
-          <Show when={limitOn() && !limitValid()}>
-            <span class={styles.hint} role="alert" data-testid="channel-limit-error">
-              {t("error.invalid_daily_limit")}
-            </span>
-          </Show>
-        </div>
         {/* The picture of a channel that exists. A client sets it with the switch (spec 012). */}
         <Show when={props.channel}>
           <div class={styles.field}>

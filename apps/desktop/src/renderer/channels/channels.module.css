@@ -489,14 +489,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* The daily token limit: the switch, then the number. */
-.limitRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.limitInput {
-  width: 12ch;
-  font-variant-numeric: tabular-nums;
-}

@@ -130,6 +130,16 @@
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
+/* The daily token limit: the switch, then the number. */
+.limitRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.limitInput {
+  width: 12ch;
+  font-variant-numeric: tabular-nums;
+}
 .error {
   color: var(--c-danger);
   font-size: var(--text-xs);

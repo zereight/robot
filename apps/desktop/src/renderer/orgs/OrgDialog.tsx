@@ -19,6 +19,8 @@ import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
+import { OrgLimitField } from "./OrgLimit.tsx"
 import { OrgToolsPart } from "./OrgTools.tsx"
 import styles from "./orgs.module.css"
 
@@ -63,11 +65,15 @@ export const OrgDialog = (props: {
     leadId: storedLead,
     parentId: org ? untrack(() => orgs.parentOf(org.id)) : null,
   }
+  // The daily token limit (spec 030): off by default. On, it takes a whole number in a range.
+  const wasLimit = org?.dailyTokenLimit ?? null
 
   const [name, setName] = createSignal(was.name)
   const [members, setMembers] = createSignal<string[]>([...was.memberIds])
   const [leadId, setLeadId] = createSignal<string | null>(was.leadId)
   const [parentId, setParentId] = createSignal<string | null>(was.parentId)
+  const [limitOn, setLimitOn] = createSignal(wasLimit !== null)
+  const [limitText, setLimitText] = createSignal(textOfLimit(wasLimit))
   const [query, setQuery] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -114,9 +120,10 @@ export const OrgDialog = (props: {
   const reasonKey = (refusal: "loop" | "levels") =>
     refusal === "loop" ? "orgs.parent.loop" : "orgs.parent.levels"
 
+  const limitValid = () => limitFieldValid(limitOn(), limitText())
   const valid = () => {
     const length = charLength(name().trim())
-    return length >= 1 && length <= ORG_NAME_MAX
+    return length >= 1 && length <= ORG_NAME_MAX && limitValid()
   }
 
   const submit = async (event: SubmitEvent) => {
@@ -132,8 +139,11 @@ export const OrgDialog = (props: {
           leadId: leadId(),
           parentId: parentId(),
         })
+        // The limit is sent only when the user changed it.
+        const changes = { ...patch, ...limitPatch(wasLimit, limitOn(), limitText()) }
         // Nothing changed: nothing to send.
-        if (Object.keys(patch).length > 0) await call("organizations.update", { id: org.id, patch })
+        if (Object.keys(changes).length > 0)
+          await call("organizations.update", { id: org.id, patch: changes })
       } else {
         const serverId = ui.server()?.id
         if (!serverId) return
@@ -143,6 +153,7 @@ export const OrgDialog = (props: {
           memberIds: members(),
           leadId: leadId() !== null && members().includes(leadId() as string) ? leadId() : null,
           ...(parentId() ? { parentId: parentId() } : {}),
+          ...limitPatch(null, limitOn(), limitText()),
         }
         const made = await call("organizations.create", input)
         props.onSaved?.(made)
@@ -350,6 +361,16 @@ export const OrgDialog = (props: {
           >
             {(o) => <OrgToolsPart orgId={o().id} />}
           </Show>
+          <OrgLimitField
+            orgId={org?.id}
+            orgName={org?.name ?? name()}
+            on={limitOn()}
+            text={limitText()}
+            valid={limitValid()}
+            readOnly={readOnly()}
+            onSwitch={setLimitOn}
+            onText={setLimitText}
+          />
         </fieldset>
         <Show when={error()}>
           {(err) => (

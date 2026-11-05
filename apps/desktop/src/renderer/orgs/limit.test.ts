@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import type { ChannelLimitInfo } from "@robot/shared"
-import { limitFieldValid, limitLineOf, limitPatch, limitText, parseLimit } from "./limit.ts"
+import { limitFieldValid, limitPatch, limitText, parseLimit } from "./limit.ts"
 
-// The box of the daily token limit and the muted line above the message box (spec 030).
+// The box of the field "Daily token limit" of an organization (spec 030).
 
 describe("the box of the field", () => {
   test("it takes a whole number, with commas and spaces", () => {
@@ -42,37 +41,5 @@ describe("what the form sends", () => {
     expect(limitPatch(null, true, "20,000")).toEqual({ dailyTokenLimit: 20_000 })
     expect(limitPatch(50_000, true, "100,000")).toEqual({ dailyTokenLimit: 100_000 })
     expect(limitPatch(50_000, false, "50000")).toEqual({ dailyTokenLimit: null })
-  })
-})
-
-describe("the muted line above the message box", () => {
-  const info = (
-    state: ChannelLimitInfo["state"],
-    stoppedBy: ChannelLimitInfo["stoppedBy"] = null,
-  ) => ({ limit: 50_000, used: 41_000, state, stoppedBy }) satisfies ChannelLimitInfo
-
-  test("no line while the limit is off or the channel used less than 80%", () => {
-    expect(limitLineOf({ limit: null, used: 900_000, state: "ok", stoppedBy: null })).toBeNull()
-    expect(limitLineOf(info("ok"))).toBeNull()
-  })
-
-  test("at 80% the line has no name", () => {
-    expect(limitLineOf(info("near"))).toEqual({ key: "channels.limit.near" })
-  })
-
-  test("at the limit the line names the channel whose limit is used, also a higher channel", () => {
-    expect(limitLineOf(info("over", { id: "d", name: "Docs" }))).toEqual({
-      key: "channels.limit.over",
-      channel: "Docs",
-    })
-    // The limit of the parent is used, and this channel is under 80% of its own: it is stopped.
-    expect(limitLineOf(info("ok", { id: "p", name: "Product" }))).toEqual({
-      key: "channels.limit.over",
-      channel: "Product",
-    })
-  })
-
-  test("a limit that is used wins over the line at 80%", () => {
-    expect(limitLineOf(info("near", { id: "p", name: "Product" }))?.key).toBe("channels.limit.over")
   })
 })

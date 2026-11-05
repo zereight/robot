@@ -2855,6 +2855,11 @@ export const ko: Record<MessageKey, string> = {
   "orgs.parent.loop": "이 조직의 하위 조직이에요.",
   "orgs.parent.levels": "트리가 3단계를 넘게 돼요.",
   "orgs.parent.option": "{name} — {reason}",
+  "orgs.dailyLimit": "하루 토큰 한도",
+  "orgs.dailyLimit.placeholder": "하루 토큰 수",
+  "orgs.dailyLimit.hint":
+    "하루 10,000에서 100,000,000 토큰까지예요. 이 조직과 하위 조직 구성원의 작업을 자정부터 자정까지 합산해요. 한도에 닿으면 그 에이전트의 새 작업은 막혀요. 일대일 채팅은 막히지 않아요.",
+  "orgs.limit.near": "하루 토큰 한도의 80%를 사용했어요.",
   "orgs.access": "권한",
   "orgs.access.new": "먼저 조직을 저장하세요. 그러면 여기서 도구를 정할 수 있어요.",
   "orgs.tools": "도구",
