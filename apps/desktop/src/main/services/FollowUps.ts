@@ -3,8 +3,10 @@ import {
   FOLLOW_UPS_PER_AGENT_MAX,
   FOLLOW_UPS_PER_LOOK_MAX,
   type FollowUp,
+  type FollowUpAction,
   followUpAt,
   followUpDue,
+  storedFollowUpAction,
   validFollowUpMinutes,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -18,8 +20,9 @@ import { AppError } from "./errors.ts"
  */
 export interface FollowUpRunner {
   /**
-   * Starts one turn of the agent in its direct chat or one of its threads: a new task with the
-   * source "follow-up", and no message of the user. It fails when the queue of the agent is full.
+   * Handles one due follow-up (spec 005). A steer that can join the running turn of that
+   * conversation does that. Every other follow-up starts a new task with the source "follow-up".
+   * The task fails to start when the queue of the agent is full.
    */
   start(followUp: FollowUp, now: number): Effect.Effect<void, AppError>
 }
@@ -35,6 +38,7 @@ export interface FollowUpsService {
     readonly taskId: string
     readonly reason: string
     readonly minutes: number
+    readonly action: FollowUpAction
   }): Effect.Effect<FollowUp, AppError>
   /** The follow-ups that wait, oldest first. With `taskId`, only those of that task. */
   list(agentId: string, taskId?: string): Effect.Effect<readonly FollowUp[]>
@@ -60,6 +64,7 @@ interface Row {
   thread_id: string | null
   task_id: string
   reason: string
+  action: string
   at: number
   created_at: number
 }
@@ -71,6 +76,7 @@ const toFollowUp = (r: Row): FollowUp => ({
   threadId: r.thread_id,
   taskId: r.task_id,
   reason: r.reason,
+  action: storedFollowUpAction(r.action),
   at: r.at,
   createdAt: r.created_at,
 })
@@ -163,13 +169,14 @@ export class FollowUps extends Context.Service<FollowUps, FollowUpsService>()(
             const now = Date.now()
             const id = crypto.randomUUID()
             db.run(
-              `INSERT INTO follow_up (id, agent_id, thread_id, task_id, reason, at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO follow_up (id, agent_id, thread_id, task_id, reason, action, at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.agentId,
               input.threadId,
               input.taskId,
               reason,
+              input.action,
               followUpAt(now, input.minutes),
               now,
             )

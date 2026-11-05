@@ -148,7 +148,7 @@ test("follow-up: the user deletes it from the task details", async () => {
   await shot(page, "s118-05-follow-up-in-detail")
   await page.getByTestId("task-follow-up-delete").click()
   await expect(page.getByTestId("task-follow-up-ask")).toHaveText(
-    "Delete this? No task starts for it.",
+    "Delete this? Nothing starts for it.",
   )
   await shot(page, "s118-06-delete-asks")
   await page.getByTestId("task-follow-up-cancel").click()
@@ -163,7 +163,7 @@ test("follow-up: the user deletes it from the task details", async () => {
   await page.getByTestId("task-open").first().click()
   await page.getByTestId("task-follow-up-delete").click()
   await expect(page.getByTestId("task-follow-up-ask")).toHaveText(
-    "지울까요? 그러면 태스크는 시작되지 않아요.",
+    "지울까요? 그러면 아무것도 시작되지 않아요.",
   )
   await shot(page, "s118-07-delete-asks-korean")
   await page.getByTestId("task-follow-up-confirm").click()

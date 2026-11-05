@@ -29,6 +29,8 @@ import {
   endOfTurn,
   type FilePart,
   FOLLOW_UP_REPLIES,
+  type FollowUpAction,
+  followUpDelivery,
   followUpLabel,
   followUpPrompt,
   type HandoverOffReason,
@@ -1537,8 +1539,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               // workflow step have no follow-up: their own way to run work again is the answer.
               ...(source === "chat" || source === "follow_up"
                 ? {
-                    onFollowUp: (callId: string, reason: string, minutes: number) =>
-                      followUpOf(callId, reason, minutes, {
+                    onFollowUp: (
+                      callId: string,
+                      reason: string,
+                      minutes: number,
+                      action: FollowUpAction,
+                    ) =>
+                      followUpOf(callId, reason, minutes, action, {
                         agentId,
                         threadId: place.threadId,
                         taskId: task.id,
@@ -1968,6 +1975,30 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         turn.waiting.push({ id: row.id, text: turnText(row) })
         for (const ready of [...turn.watchers]) ready()
       })
+
+      /**
+       * Puts a follow-up into the running turn (spec 005). It does not answer a question card.
+       * It returns false when that turn has ended, so the caller starts a task instead.
+       */
+      const joinNote = (place: Place, turn: LiveTurn, text: string) =>
+        Effect.sync(() => {
+          if (live.get(keyOf(place)) !== turn) return false
+          const row = insertMessage(
+            place.agentId,
+            "user",
+            text,
+            null,
+            null,
+            [],
+            null,
+            { to: turn.replyId, readAt: null },
+            null,
+            place.threadId,
+          )
+          turn.waiting.push({ id: row.id, text: turnText(row) })
+          for (const ready of [...turn.watchers]) ready()
+          return true
+        })
 
       /** True when a message that the user sends now joins the running turn of the agent. */
       const joinable = (place: Place) =>
@@ -3097,11 +3128,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         _callId: string,
         reason: string,
         minutes: number,
+        action: FollowUpAction,
         where: { agentId: string; threadId: string | null; taskId: string },
       ) => {
         let failure: string | null = null
         Effect.runSync(
-          followUps.add({ ...where, reason, minutes }).pipe(
+          followUps.add({ ...where, reason, minutes, action }).pipe(
             Effect.catch((error: AppError) =>
               Effect.sync(() => {
                 failure =
@@ -3117,20 +3149,32 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       // the tools get their messenger: the chat is built after the follow-ups.
       followUps.setRunner({
         start: (followUp, now) =>
-          send(
-            {
-              agentId: followUp.agentId,
-              text: followUpPrompt(followUp.reason, followUp.at, now),
-              replyTo: null,
-              threadId: followUp.threadId,
-            },
-            {
-              source: "follow_up",
-              sourceId: followUp.agentId,
-              prompt: followUpPrompt(followUp.reason, followUp.at, now),
-              label: followUpLabel(followUp.reason),
-            },
-          ).pipe(Effect.asVoid),
+          Effect.gen(function* () {
+            const place: Place = { agentId: followUp.agentId, threadId: followUp.threadId }
+            const key = keyOf(place)
+            const turn = live.get(key)
+            // A compact is no turn, and a turn from Teams must not take this note (spec 003, 005).
+            const delivery = followUpDelivery(followUp.action, {
+              runningHere: turn !== undefined && !turn.fromTeams && !manual.has(key),
+              acceptsInput: holdOf(followUp.agentId) === null,
+            })
+            const text = followUpPrompt(followUp.reason, followUp.at, now)
+            if (delivery === "join" && turn && (yield* joinNote(place, turn, text))) return
+            yield* send(
+              {
+                agentId: followUp.agentId,
+                text,
+                replyTo: null,
+                threadId: followUp.threadId,
+              },
+              {
+                source: "follow_up",
+                sourceId: followUp.agentId,
+                prompt: text,
+                label: followUpLabel(followUp.reason),
+              },
+            ).pipe(Effect.asVoid)
+          }),
       })
 
       return Chat.of({

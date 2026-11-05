@@ -109,6 +109,9 @@ The user can change the course of a turn without stopping it.
     "Answered in the chat" and the agent goes on with the message as its answer.
   - A message that the agent did not read when the turn ends (for example after Stop) starts the
     next turn, as one message in the order that the user sent them.
+  - A follow-up with the action "steer" joins the turn by these rules (005). It does not answer
+    a question card. While a question card waits, the agent reads it after the user answers the
+    card, or after Stop.
 - **Wait in a queue**: the message waits in a short queue above the message box. The user can
   remove or edit a queued message before it is sent. Each queued message has "Send now", which
   sends it into the current turn as with "Join the current turn".

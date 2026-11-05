@@ -14,6 +14,9 @@ export const FOLLOW_UP_LATE_MAX = 12 * 60 * 60 * 1000
 /** How many late follow-ups start in one look. */
 export const FOLLOW_UPS_PER_LOOK_MAX = 50
 
+/** What the app does when a follow-up is due (spec 005). Omit means a new turn. */
+export type FollowUpAction = "queue" | "steer"
+
 /** A follow-up that waits for its time. */
 export interface FollowUp {
   readonly id: string
@@ -25,9 +28,53 @@ export interface FollowUp {
   readonly taskId: string
   /** One line: what the agent wants to look at. */
   readonly reason: string
-  /** When the task starts, in ms. */
+  /** "queue" starts a new turn. "steer" joins the running turn of this chat when it can. */
+  readonly action: FollowUpAction
+  /** When the follow-up is handled, in ms. */
   readonly at: number
   readonly createdAt: number
+}
+
+/**
+ * The action of a "wait until" call. No action means a new turn. Any other value is refused.
+ */
+export const followUpAction = (raw: unknown): FollowUpAction | null => {
+  if (raw === undefined) return "queue"
+  if (raw === "queue" || raw === "steer") return raw
+  return null
+}
+
+/** The action stored on a row. An unknown value is a new turn, which is the default. */
+export const storedFollowUpAction = (raw: unknown): FollowUpAction =>
+  raw === "steer" ? "steer" : "queue"
+
+/** Where a due follow-up goes (spec 005). */
+export type FollowUpDelivery = "join" | "task"
+
+/**
+ * A steer follow-up joins the running turn of that conversation only when the program accepts
+ * input during a turn. Every other case starts a new turn, as "queue" does.
+ */
+export const followUpDelivery = (
+  action: FollowUpAction,
+  place: { readonly runningHere: boolean; readonly acceptsInput: boolean },
+): FollowUpDelivery =>
+  action === "steer" && place.runningHere && place.acceptsInput ? "join" : "task"
+
+/** The label of the action in the details of the task that made the follow-up. */
+export const followUpActionKey = (
+  action: FollowUpAction,
+): "tasks.followUp.queue" | "tasks.followUp.steer" => {
+  switch (action) {
+    case "queue":
+      return "tasks.followUp.queue"
+    case "steer":
+      return "tasks.followUp.steer"
+    default: {
+      const unreachable: never = action
+      return unreachable
+    }
+  }
 }
 
 /**
@@ -138,7 +185,15 @@ export const FOLLOW_UP_REPLIES = {
   place: "A follow-up works in a direct chat. This place has no follow-up.",
   /** The agent holds 20 follow-ups already. */
   full: `This agent has ${FOLLOW_UPS_PER_AGENT_MAX} follow-ups that wait. Try again later.`,
+  /** The action is not queue or steer. */
+  action: "The action must be queue or steer.",
   /** The follow-up is recorded. */
-  recorded: (minutes: number, reason: string) =>
-    `Recorded. A new turn starts in ${minutesText(minutes * 60_000)} to look at: ${reason}. End your turn now.`,
+  recorded: (minutes: number, reason: string, action: FollowUpAction) => {
+    const wait = `a new turn starts in ${minutesText(minutes * 60_000)} to look at: ${reason}`
+    const line =
+      action === "steer"
+        ? `Recorded. If this chat is working then, this joins that turn. Otherwise ${wait}.`
+        : `Recorded. A new turn starts in ${minutesText(minutes * 60_000)} to look at: ${reason}.`
+    return `${line} End your turn now.`
+  },
 } as const
