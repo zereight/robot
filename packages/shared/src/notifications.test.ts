@@ -6,10 +6,15 @@ import {
   attentionText,
   firstLine,
   formatRunTime,
+  ISLAND_BAR_WIDTH,
+  ISLAND_PADDING,
+  ISLAND_WORKING_MAX,
   type IslandAttention,
   type IslandResult,
   type IslandState,
+  islandBarWidth,
   islandShape,
+  islandWingWidth,
   isMuted,
   isResultKind,
   mentionsUser,
@@ -204,4 +209,53 @@ test("mentions of the user", () => {
   expect(mentionsUser("@User please check")).toBe(true)
   expect(mentionsUser("mail me@you.com")).toBe(false)
   expect(mentionsUser("@Bo go")).toBe(false)
+})
+
+describe("When the island bar has a camera notch", () => {
+  describe("with a notch on the screen", () => {
+    test("is the notch plus a wing at each side of it, and the padding", () => {
+      expect(islandBarWidth(185)).toBe(185 + islandWingWidth() * 2 + ISLAND_PADDING * 2)
+    })
+
+    test("is wider than the bar of a screen with no notch", () => {
+      expect(islandBarWidth(185)).toBeGreaterThan(ISLAND_BAR_WIDTH)
+    })
+
+    test("grows wider with a wider notch", () => {
+      expect(islandBarWidth(220)).toBeGreaterThan(islandBarWidth(185))
+    })
+
+    test("keeps 340 px for a notch that the two wings already fit in", () => {
+      // 340 - 2 * 98 - 2 * 14 is 116, so a notch narrower than that keeps the usual width.
+      expect(islandBarWidth(100)).toBe(ISLAND_BAR_WIDTH)
+    })
+
+    test("is a whole number of px, for the window", () => {
+      expect(Number.isInteger(islandBarWidth(185))).toBe(true)
+      expect(Number.isInteger(islandBarWidth(184.6))).toBe(true)
+    })
+  })
+
+  describe("with no notch on the screen", () => {
+    test("keeps 340 px", () => {
+      expect(islandBarWidth(0)).toBe(ISLAND_BAR_WIDTH)
+    })
+
+    test("treats a width below zero as no notch", () => {
+      expect(islandBarWidth(-10)).toBe(ISLAND_BAR_WIDTH)
+    })
+  })
+})
+
+describe("When the island bar holds faces", () => {
+  describe("with one agent to three agents", () => {
+    test("gives the faces at least the place of the mark", () => {
+      for (let shown = 1; shown <= ISLAND_WORKING_MAX; shown++)
+        expect(islandWingWidth(shown)).toBeGreaterThanOrEqual(islandWingWidth(0))
+    })
+
+    test("does not grow past the three faces that the bar shows", () => {
+      expect(islandWingWidth(9)).toBe(islandWingWidth(ISLAND_WORKING_MAX))
+    })
+  })
 })

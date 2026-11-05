@@ -263,7 +263,7 @@ implementer made to continue. A spec author answers by changing the spec.
 | 015 | The pointer is on the island while no agent works. | Nothing opens. The card opens only when at least one agent works. |
 | 015 | The card was opened by the pointer, and the user clicks the bar. | The card closes, and stays closed until the pointer has left and comes back. |
 | 015 | In which order do the rows show? | In the order in which the agents began to work. |
-| 015 | How big is the island window? | 340 px wide as a bar, 460 px wide as a card. The height is the height of the content, up to 560 px. The island page measures its content and tells the window. |
+| 015 | How big is the island window? | As a bar, as wide as its content needs and never narrower than the camera notch plus the place for the mark and for the faces; 340 px on a screen with no notch. As a card, 460 px wide. The height is the height of the content, up to 560 px. The island page measures its content and tells the window. |
 | 015 | Does the island follow a change of language or of reduce motion while it is open? | Yes. The island page reads the settings again when they change. |
 | 015 | The spec says "an approval or a question" shows a summary of at most 90 characters, and a question 160. How many lines do they use? | An approval summary uses up to 2 lines, a question up to 3 lines. Longer text is cut by the character limit first. |
 | 015 | The rule "after an app restart, a task that still waits asks for attention again" is not part of S33. The app marks work that was running at a restart as failed ("The app stopped"). | Not changed in S33. A later slice has to decide how a restart can bring a waiting task back. |

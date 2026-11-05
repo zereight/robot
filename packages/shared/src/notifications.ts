@@ -230,7 +230,61 @@ export interface IslandState {
   readonly result: IslandResult | null
 }
 
+/** How many faces the bar shows. More working agents than this show a count. */
 export const ISLAND_WORKING_MAX = 3
+
+/** The island bar on a screen with no camera notch. */
+export const ISLAND_BAR_WIDTH = 340
+/** The width of the island card: the detail card, the attention card and the result card. */
+export const ISLAND_CARD_WIDTH = 460
+/** The width of the app mark. */
+export const ISLAND_MARK_WIDTH = 28
+/** The width of one face, with the rim that parts it from its neighbour. */
+export const ISLAND_FACE_WIDTH = 26
+/** How much of a face the next one covers. The faces overlap, so three take less than three. */
+export const ISLAND_FACE_STEP = 20
+/** The gap between the faces and the count. */
+export const ISLAND_COUNT_GAP = 8
+/**
+ * The room that the count takes at its widest. The count is the number of agents that work, and
+ * at most 8 run at once, so two digits hold it with room to spare. The bar is built for three.
+ */
+export const ISLAND_COUNT_WIDTH = 24
+/** The space at each side of the bar. It is the padding of `.island` in `island.css`. */
+export const ISLAND_PADDING = 14
+
+/** The place that the mark needs inside a wing of the notch. */
+const markWing = ISLAND_MARK_WIDTH
+
+/** The place that the faces of `shown` agents and the count need inside a wing of the notch. */
+const facesWing = (shown: number) =>
+  ISLAND_FACE_WIDTH +
+  (Math.max(Math.min(shown, ISLAND_WORKING_MAX), 1) - 1) * ISLAND_FACE_STEP +
+  ISLAND_COUNT_GAP +
+  ISLAND_COUNT_WIDTH
+
+/**
+ * The place that a wing of the notch needs for the content that it holds: the mark at the left,
+ * the faces with the count at the right. Each group is centred in its wing, and the two wings are
+ * the same width, so this is the wider of the two groups.
+ */
+export const islandWingWidth = (shown: number = ISLAND_WORKING_MAX): number =>
+  Math.max(markWing, facesWing(shown))
+
+/**
+ * The width of the island bar (spec 015). The window and the camera notch are both centred on the
+ * screen, so the bar is the notch plus a wing at each side of it, and nothing of the island sits
+ * behind the notch. The padding at the two sides of the bar is outside the wings. A screen with
+ * no notch keeps 340 px.
+ */
+export const islandBarWidth = (notchWidth: number, shown: number = ISLAND_WORKING_MAX): number => {
+  if (!(notchWidth > 0)) return ISLAND_BAR_WIDTH
+  return Math.max(
+    ISLAND_BAR_WIDTH,
+    Math.ceil(notchWidth) + islandWingWidth(shown) * 2 + ISLAND_PADDING * 2,
+  )
+}
+
 export const ISLAND_ROWS_MAX = 5
 export const ISLAND_SUMMARY_MAX = 90
 export const ISLAND_QUESTION_MAX = 160

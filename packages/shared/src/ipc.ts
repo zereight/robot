@@ -1065,6 +1065,11 @@ export interface RpcEvents {
   "workflows.run": { runId: string }
   "island.state": IslandState
   /**
+   * Where the camera notch of the screen is, or null when the screen has none (spec 015). The
+   * island page centres the mark and the faces in the two wings of the notch with it.
+   */
+  "island.notch": { width: number; height: number } | null
+  /**
    * A turn became quiet, or went on, or ended (spec 005, "Quiet line"): all turns that are quiet
    * now, with their seconds at this moment. A window counts on from there. It does not come each
    * second.
