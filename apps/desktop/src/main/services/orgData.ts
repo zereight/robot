@@ -20,6 +20,7 @@ export interface OrgRow {
   parent_id: string | null
   hand_off_range: HandOffRange
   daily_token_limit: number | null
+  goal: string | null
   created_at: number
 }
 
@@ -46,6 +47,7 @@ export const toOrg = (db: DatabaseService, row: OrgRow): Org => {
     parentId: row.parent_id,
     handOffRange: row.hand_off_range,
     dailyTokenLimit: row.daily_token_limit,
+    goal: row.goal ?? "",
     createdAt: row.created_at,
   }
 }

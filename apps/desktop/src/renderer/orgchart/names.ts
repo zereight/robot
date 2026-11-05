@@ -5,6 +5,8 @@ import {
   type ChartOrg,
   countList,
   type MessageKey,
+  type OutcomeCounts,
+  outcomeList,
   type StateCounts,
 } from "@robot/shared"
 
@@ -30,6 +32,15 @@ export const countsLine = (t: Translate, counts: StateCounts) =>
     .map(({ state, count }) => countWord(t, state, count))
     .join(" · ")
 
+/**
+ * "12 done · 2 blocked · 9 met · 1 not met": the work of the members in the last 7 days
+ * (spec 029, "Organization node"). Empty when every count is 0.
+ */
+export const outcomeLine = (t: Translate, counts: OutcomeCounts) =>
+  outcomeList(counts)
+    .map(({ word, count }) => t(`orgchart.outcome.${word}` as MessageKey, { count }))
+    .join(" · ")
+
 export const membersWord = (t: Translate, count: number) =>
   count === 1 ? t("orgchart.members.one") : t("orgchart.members", { count })
 
@@ -39,12 +50,14 @@ export const orgTitle = (t: Translate, org: ChartOrg) =>
 
 export const moreWord = (t: Translate, count: number) => t("orgchart.more", { count })
 
-/** The accessible name of an organization node: the name, the number of members and the counts. */
+/** The accessible name of an organization node: the name, the goal, the members, the counts and the outcome. */
 export const orgLabel = (t: Translate, org: ChartOrg) =>
   [
     orgTitle(t, org),
+    org.goalFull ?? "",
     membersWord(t, org.memberCount),
     countsLine(t, org.counts).replaceAll(" · ", ", "),
+    outcomeLine(t, org.outcome).replaceAll(" · ", ", "),
   ]
     .filter((part) => part !== "")
     .join(". ")

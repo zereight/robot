@@ -15,6 +15,8 @@ export const ORG_HANDOFF_DAYS = 7
 export const ORG_HANDOFF_WINDOW_MS = ORG_HANDOFF_DAYS * 24 * 60 * 60 * 1000
 /** The label of a running task is cut at this many characters. */
 export const ORG_LABEL_MAX = 90
+/** The goal of an organization is cut at this many characters on its node (spec 029). */
+export const ORG_GOAL_LINE_MAX = 120
 /** A state of an agent, in the order that the counts of an organization node use. */
 export const ORG_STATES = [
   "working",
@@ -47,6 +49,8 @@ export interface OrgAgent {
 export interface OrgChartOrg {
   readonly id: string
   readonly name: string
+  /** Why the organization exists, in the words of the user (spec 030, "Goal"). Empty at the start. */
+  readonly goal?: string
   readonly createdAt: number
   /** The lead, or null. A lead that is archived or not a member counts as no lead. */
   readonly leadId: string | null
@@ -64,6 +68,50 @@ export interface OrgHandoff {
   readonly newest: number
 }
 
+/**
+ * The work of one agent that ended in the window of 7 days (spec 029, "Organization node"). The
+ * chart adds these up for the members that an organization node draws.
+ */
+export interface OrgOutcome {
+  readonly agentId: string
+  /** Tasks that ended as done. */
+  readonly done: number
+  /** Tasks that ended as blocked. */
+  readonly blocked: number
+  /** Verdicts "Met" of parts of a channel (spec 004, 005). */
+  readonly met: number
+  /** Verdicts "Not met" of parts of a channel. */
+  readonly notMet: number
+}
+
+/** The counts of an organization node's outcome line, in the order of the words. */
+export interface OutcomeCounts {
+  readonly done: number
+  readonly blocked: number
+  readonly met: number
+  readonly notMet: number
+}
+
+export const NO_OUTCOME: OutcomeCounts = { done: 0, blocked: 0, met: 0, notMet: 0 }
+
+/** The four words of the outcome line, in the order that the node shows them (spec 029). */
+export const OUTCOME_WORDS = ["done", "blocked", "met", "not_met"] as const
+export type OutcomeWord = (typeof OUTCOME_WORDS)[number]
+
+const OUTCOME_OF_WORD: Readonly<Record<OutcomeWord, keyof OutcomeCounts>> = {
+  done: "done",
+  blocked: "blocked",
+  met: "met",
+  not_met: "notMet",
+}
+
+/** The outcome counts as pairs, without zeros, in the order done, blocked, met, not met. */
+export const outcomeList = (counts: OutcomeCounts) =>
+  OUTCOME_WORDS.flatMap((word) => {
+    const count = counts[OUTCOME_OF_WORD[word]]
+    return count > 0 ? [{ word, count }] : []
+  })
+
 /** What the server reads for the chart. */
 export interface OrgSnapshot {
   /** The main agent, or null. With none (or an archived one) the root is "You". */
@@ -71,6 +119,11 @@ export interface OrgSnapshot {
   readonly agents: readonly OrgAgent[]
   readonly orgs: readonly OrgChartOrg[]
   readonly handoffs: readonly OrgHandoff[]
+  /**
+   * The work that ended in the window of 7 days, for each agent (spec 029, "Organization node").
+   * Absent counts as none, so a snapshot of an older step reads as it did.
+   */
+  readonly outcomes?: readonly OrgOutcome[]
   /** The hand-off rule (spec 030). Absent counts as "Any agent", as for a server of an older step. */
   readonly handOffRule?: HandOffRule
 }
@@ -128,6 +181,10 @@ export interface ChartOrg {
   /** Null for the organization node "No organization": the window writes its name from the catalogue. */
   readonly orgId: string | null
   readonly name: string
+  /** The goal of the organization, cut with "…" for the node, or null when it has none (spec 030). */
+  readonly goal: string | null
+  /** The whole goal, for the note and the accessible name of the node. Null when there is none. */
+  readonly goalFull: string | null
   readonly memberCount: number
   readonly counts: StateCounts
   /** The agent nodes that are drawn: the lead first, then the others by name. At most 12. */
@@ -136,6 +193,11 @@ export interface ChartOrg {
   readonly leadKey: string | null
   /** The members that are not drawn. Empty when all are drawn. */
   readonly more: readonly ChartOverflow[]
+  /**
+   * The work of the drawn members that ended in the last 7 days (spec 029, "Organization node").
+   * The node shows one line of counts, or none when every count is 0.
+   */
+  readonly outcome: OutcomeCounts
   /**
    * The key of the organization node of the parent organization (spec 030), or null for a top
    * organization node and for "No organization": those hang from the root.
@@ -182,6 +244,12 @@ export const cutLabel = (text: string, max = ORG_LABEL_MAX): string => {
   const line = text.replace(/\s+/g, " ").trim()
   const chars = [...line]
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : line
+}
+
+/** The goal of an organization as one line for its node, or null when it has none (spec 029). */
+export const goalLine = (goal: string): string | null => {
+  const line = cutLabel(goal, ORG_GOAL_LINE_MAX)
+  return line === "" ? null : line
 }
 
 const lower = (text: string) => text.toLowerCase()
@@ -271,6 +339,21 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
   const main = snapshot.mainAgentId ? agents.get(snapshot.mainAgentId) : undefined
   const orgs = orgsOf(snapshot)
 
+  // The outcome of each agent, for the line under the header of an organization node (spec 029).
+  const outcomeByAgent = new Map((snapshot.outcomes ?? []).map((o) => [o.agentId, o] as const))
+  const outcomeOf = (members: readonly OrgAgent[]): OutcomeCounts => {
+    const out = { done: 0, blocked: 0, met: 0, notMet: 0 }
+    for (const m of members) {
+      const o = outcomeByAgent.get(m.id)
+      if (!o) continue
+      out.done += o.done
+      out.blocked += o.blocked
+      out.met += o.met
+      out.notMet += o.notMet
+    }
+    return out
+  }
+
   // Which agents are in an organization node. The others go to "No organization".
   const inOrg = new Set(orgs.flatMap((o) => o.memberIds))
   const loose = snapshot.agents.filter((a) => !inOrg.has(a.id)).sort(byName)
@@ -280,6 +363,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     readonly key: string
     readonly orgId: string | null
     readonly name: string
+    readonly goal: string
     readonly leadId: string | null
     readonly members: readonly OrgAgent[]
     readonly parentKey: string | null
@@ -294,6 +378,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       key: `o:${o.id}`,
       orgId: o.id,
       name: o.name,
+      goal: o.goal ?? "",
       leadId: lead?.id ?? null,
       members: lead ? [lead, ...rest] : rest,
       parentKey: o.parentId ? `o:${o.parentId}` : null,
@@ -305,6 +390,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       key: NO_ORG_KEY,
       orgId: null,
       name: "",
+      goal: "",
       leadId: null,
       members: loose,
       parentKey: null,
@@ -356,6 +442,9 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       key: g.key,
       orgId: g.orgId,
       name: g.name,
+      // The node shows one line, and the note and the accessible name hold the whole goal.
+      goal: goalLine(g.goal),
+      goalFull: g.goal.trim() === "" ? null : g.goal,
       memberCount: g.members.length,
       counts,
       nodes,
@@ -366,6 +455,8 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
         face: m.face,
         state: m.state,
       })),
+      // The outcome covers the members that the node draws, as the spec says (spec 029).
+      outcome: outcomeOf(drawn),
       parentKey: g.parentKey,
       level: g.level,
     }
@@ -503,3 +594,45 @@ export const countList = (counts: StateCounts) =>
  */
 export const isOrgModel = (model: unknown): model is ChartModel =>
   typeof model === "object" && model !== null && Array.isArray((model as ChartModel).orgs)
+
+// ---------------------------------------------------------------------------------------------
+// The search of the page (spec 029, "Search and the list")
+// ---------------------------------------------------------------------------------------------
+
+const has = (text: string | null | undefined, query: string) =>
+  text !== null && text !== undefined && text.toLocaleLowerCase().includes(query)
+
+/**
+ * The nodes that the typed text of the search matches, as the keys of the model (spec 029,
+ * "Search and the list"). An empty text matches nothing, and the page then shows a chart with no
+ * dim. The search looks at the name of an organization, its goal, and the name and role line of an
+ * agent; for an organization it also matches when one of its members matches, so a matched agent
+ * stays under its organization node.
+ *
+ * It gives no positions and removes nothing: the caller dims the nodes that the result does not
+ * hold, and the layout of the whole chart stays.
+ */
+export const orgSearchHits = (model: ChartModel, text: string): Set<string> => {
+  const q = text.trim().toLocaleLowerCase()
+  const hits = new Set<string>()
+  if (q === "") return hits
+  for (const org of model.orgs) {
+    const own = has(org.name, q) || has(org.goalFull, q)
+    const members = org.nodes.filter((n) => has(n.name, q) || has(n.role, q))
+    if (!own && members.length === 0) continue
+    // The organization node stays lit for a matched member, so a matched agent is never shown
+    // without the chart that holds it. An organization that matches by its own text keeps all of
+    // its members, as the node does.
+    hits.add(org.key)
+    for (const node of own ? org.nodes : members) hits.add(node.key)
+  }
+  // The root matches through the agent that it holds, and it stays lit for a hit under it, so a
+  // matched agent is not shown without the chart that holds it.
+  const rootHit = model.root !== null && (has(model.root.name, q) || has(model.root.role, q))
+  if (rootHit && model.root) hits.add(model.root.key)
+  return hits
+}
+
+/** True when the search found nothing: the page shows the whole chart dimmed and one muted line. */
+export const orgSearchEmpty = (model: ChartModel, text: string): boolean =>
+  text.trim() !== "" && orgSearchHits(model, text).size === 0

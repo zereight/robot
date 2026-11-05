@@ -13,9 +13,10 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 
 ## Concepts
 
-- **Organization**: a name (1 to 60 characters, unique, the check ignores case), members (agents),
-  one optional lead, a parent organization (empty by default), and access (see "Access"). It has no
-  messages, no tasks and no workspace. A profile (022) holds at most 100 organizations.
+- **Organization**: a name (1 to 60 characters, unique, the check ignores case), a goal (see
+  "Goal"), members (agents), one optional lead, a parent organization (empty by default), and
+  access (see "Access"). It has no messages, no tasks and no workspace. A profile (022) holds at
+  most 100 organizations.
   - **Member**: an agent can be a member of more than one organization, but only of organizations
     that are on one line (see "One line"). Membership does not go up or down the tree. An agent that
     is archived stays a member, and every rule below skips it while it is archived.
@@ -49,8 +50,8 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 ## Flows
 
 1. Create: on the org chart (029) the user presses "New organization". The form opens with the
-   fields Name, Members, Lead and Parent organization, and the part "Access". The user saves. The
-   new organization shows on the chart within 1 second, also when it has no member.
+   fields Name, Goal, Members, Lead and Parent organization, and the part "Access". The user saves.
+   The new organization shows on the chart within 1 second, also when it has no member.
 2. Edit: the user opens the form with a click on an organization node, or with "Edit organization…"
    on its menu (029). The form holds the same fields, and a button "Delete organization".
 3. Change the teams on the chart: members, the lead and the parent organization also change with the
@@ -65,6 +66,96 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 5. See the organizations of an agent: the profile of an agent (002) has a row "Organizations". A
    click on a name opens the form. The profile also lists each skill and connection that the agent
    has from an organization, with the line "From <organization>".
+
+## Goal
+
+An organization says why it exists, in one text. The goal is what its members read before their own
+instructions, in the place where the handbook is read (002, "Handbook").
+
+- **The field**: "Goal" in the form of an organization. 0 to 400 characters, empty at the start. It
+  holds plain text, with line breaks. It is text of the user and is not translated. A goal that is
+  empty gives nothing to any agent.
+- **What a member reads**: an agent gets the goal of each organization that it is a member of, before
+  its own instructions. The goal of a higher organization is not read; it is not a member of that one.
+  An agent in two organizations gets both goals, the higher organization first.
+- **The order**: the handbook (002), then the goals of the organizations of the agent from the top
+  organization down, then the instructions of the agent, then the instructions of the channel (004).
+  The rule of the later text wins holds as it does for the handbook: an instruction of the agent wins
+  over a goal. The app tells the agent this order.
+- **When it counts**: a change of the goal counts from the next turn, as a change of the handbook
+  does. A turn that runs keeps the text that it started with.
+- **On the page**: an organization node on the org chart (029) shows the goal under its name, in
+  body text, one line cut with "…". The whole goal shows in a note when the pointer rests on it, and
+  it is part of the accessible name of the node. A goal that is empty shows no line.
+- **Length**: a goal that is longer than 400 characters is refused with the reason in words.
+- **Secrets**: a goal that looks like a secret is refused on save, with the reason, as the handbook
+  is (014).
+- **Devices**: the computer and a linked computer with the switch "Can create and change agents"
+  change the goal. Without the switch the field is read only. The phone reads the goal of an
+  organization in its list (029, "Phone") and changes nothing.
+- **Migration**: the goal of an organization that the migration makes from a channel is empty.
+
+## Retrospective
+
+An organization can look at its own work and propose a change, and the user decides whether to keep
+it.
+
+- **Ways in**: the menu of an organization node on the org chart (029) has "Look back…". It needs
+  the switch "Can create and change agents" on a linked computer, as every edit of the chart does.
+- **What it reads**: the work of the members that the node draws, in the last 7 days, as the
+  outcome line of 029 counts it: for each task that ended as done, blocked or failed, its label; for
+  each part of a channel, its verdict and the reason of a "Not met". It reads **no** prompt, no
+  message text, no thinking, no tool output and no file content, so the request cannot carry
+  outside content by accident.
+- **What it gives**: one to three proposals. Each one is one of two kinds:
+  - **Instructions**: a new text for the instructions of one agent (002), with the whole text.
+  - **Skill**: a new skill (017) with a name, a description and its instructions, for one agent.
+  A proposal names the evidence it rests on, in one line, as counts: "3 of 5 parts with the verdict
+  Not met". It never explains what a model thinks.
+- **What happens then**: each proposal opens the form of its kind, filled in, and the user saves it
+  or closes it. **Nothing is saved before the user saves.** A retrospective makes no change request
+  (037) and no change: it fills a form and stops.
+- **One request**: the look back is one request to the model account of the lead, or of the first
+  member by name when the organization has no lead. It makes no task and no message, and it holds no
+  slot in the queue. A token used by the request does not count in the daily token limit, because
+  the app has no task to count it against (see `docs/spec-questions.md`).
+- **Limits**: one look back at a time for each organization. The button is off while one runs. A
+  look back fails with the reason in words when the organization has no member, when no model
+  account of the member is connected, or when the answer holds no proposal.
+- **Why not a change request**: a proposal is a text that the user reads and saves. An agent that
+  changed its own instructions would escape the rule of 000 that an agent gets better only through
+  things that the user can see and edit.
+
+- **The repair in the form**: the form of an organization shows one muted line above the button
+  "Delete organization" when the organization log holds a repair of this organization in the last
+  30 days: "Last repair: <date> — the tree would have a loop." or, for a removal of a member, "Last
+  repair: <date> — <agent> left, off one line." A repair makes no notification (see "Repair"), so
+  this line is where the user finds it after the fact. The log keeps the last 90 days (014), and the
+  line reads the same log.
+
+## A routine of an organization
+
+The work that repeats belongs to a team, not only to one agent. A routine can name an organization.
+
+- **The field**: "Organization" in the form of a routine, a choice of the organizations of this
+  computer and "None". "None" is the default, so every routine of today is unchanged.
+- **Who runs it**: the agent of the routine, as before. It must be a member of the organization that
+  the routine names, or the save is refused with the reason "Add <agent> to <organization> first."
+  The app does **not** make the lead the runner, and a change of the lead does not move a routine:
+  a job that silently changes hands is worse than a job the user files again.
+- **What the organization gives**: the daily token limit of the organization counts the runs of the
+  routine, because it counts the tasks of its members from every source (see "Daily token limit").
+  A routine whose agent leaves the organization keeps its runs and loses the limit, and the form
+  says so until the user picks another organization.
+- **Where it shows**: the routine form has the field. The list of routines shows the organization
+  as a chip beside the name, as a place shows its role badge (001). The form of an organization
+  shows the number of routines of this organization, as a muted line, with a click that opens the
+  list of routines.
+- **Limits**: a deleted organization leaves every routine with "None", and no routine changes its
+  agent. The limit of 50 routines of a server (009) counts every routine, with an organization or
+  not.
+- **Sync (019)**: the field syncs with the routine, as its other fields do. The routines that an
+  agent file holds (002) carry no organization.
 
 ## Organization tree
 
@@ -404,10 +495,10 @@ The first start of this version changes the data of each profile once.
   hand-off rule back to "Any agent". "Ask up the line" off. The daily token limit off. A member,
   the lead or the parent changed on the chart has Undo (029). A delete asks first (flow 4) and has
   no Undo, because an organization holds no work, only these settings.
-- **Seeing the state**: the tree, the lead mark and the counts on the org chart; the line of the
-  rule in the legend of the chart (029); the reason of a refused send in the step; the pass lines
-  on a question card; "From <organization>" and "Organizations" in the agent profile; the line of
-  80% in the form; the blocked parts; the usage page. All hold after a restart.
+- **Seeing the state**: the tree, the goal, the lead mark, the counts and the outcome on the org
+  chart; the line of the rule in the legend of the chart (029); the reason of a refused send in the
+  step; the pass lines on a question card; "From <organization>" and "Organizations" in the agent
+  profile; the line of 80% in the form; the blocked parts; the usage page. All hold after a restart.
 - **Words**: Organization, Parent organization, Sub-organization, Top organization, On one line,
   Deepest organization, Access, Inherit,
   Hand-off range, Hand-off rules, Hand-off rule, Any agent, Along the organizations, Ask up the
@@ -415,7 +506,7 @@ The first start of this version changes the data of each profile once.
 
 ## Data
 
-- **Sync (019)**: an organization syncs with its name, members, lead, parent organization,
+- **Sync (019)**: an organization syncs with its name, goal, members, lead, parent organization,
   hand-off range and daily token limit. The hand-off rule and "Ask up the line" sync as data of the
   agents, like the handbook (002): a change on one computer counts on the other after it syncs, and
   the later change wins. The organizations in the agent lists of skills and connections do not sync,
@@ -439,13 +530,15 @@ The first start of this version changes the data of each profile once.
   gives to a whole organization.
 - Archive and restore of an organization. An organization holds no work, so a delete with a confirm
   is enough.
-- A picture, a topic or a section for an organization.
+- A picture or a section for an organization. The goal is not a picture and not a section.
 - A rule of its own for each agent. The hand-off rule is one rule for the profile.
 - A token limit for an agent, a week or a month, or a cost in money.
 - A model, an effort, a permission level or a workspace that an organization gives to its members.
 - A reporting line on an agent, or a field "reports to" (029).
 - Approvals that go up the line. Only the user answers an approval.
-- Reviews of the work of an agent, scores, and counts of verdicts on the chart.
+- A retrospective that saves by itself, and a proposal that changes a permission level, a
+  workspace, a model or an organization.
+- Reviews of the work of an agent, and scores. The chart shows the counts of 029, not a grade.
 - Organizations in an agent file.
 - A member of organizations that are not on one line (see "One line").
 - A choice of the organization that the prefix of 036 shows.
@@ -457,6 +550,24 @@ The first start of this version changes the data of each profile once.
   with "This is a sub-organization of this organization." A fourth organization under "Site" is
   refused with "The tree would have more than 3 levels."
 - A new organization with no member shows as a node with the muted line "No members."
+- Goal: set the goal of "Docs" to "Ship the Docs site." The node "Docs" on the chart shows that line
+  under its name, and a member of "Docs" answers a message in its direct chat with the goal in its
+  turn. Add "Write only in English." to the instructions of that agent: the instruction wins. An
+  agent that is in no organization reads the goal of none.
+- A goal of 401 characters is refused with the reason in words. An empty goal gives the agent
+  nothing, and the node shows no goal line.
+- Retrospective: an organization "Docs" whose members have 5 parts with the verdict "Not met" and 1
+  with "Met". The menu of its node has "Look back…". After the answer, one to three proposals show.
+  A proposal of the kind "Instructions" opens the profile of its agent with the new text in the
+  field, and nothing is saved until the user saves it. A proposal of the kind "Skill" opens the skill
+  form filled in. Close every form without saving: the profile of the agent and the list of skills
+  are the same as before.
+- The request of a retrospective holds the labels and the verdicts, and no message, no prompt, no
+  thinking and no tool output.
+- An organization with no member: "Look back…" is refused with the reason in words and no request is
+  made.
+- An agent is a member of "Product" and of "Docs" under it: its turn holds the goal of "Product"
+  before the goal of "Docs", and the goal of "Docs" before its own instructions.
 - Make an organization named "product": it is refused, because the name is taken (the check
   ignores case).
 - Delete "Product" that has the sub-organization "Docs", and no parent: the confirm says "1

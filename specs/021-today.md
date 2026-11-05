@@ -54,6 +54,22 @@ the plan limit is reached (006). The row stays until a turn of that account succ
 limit, it also ends when the reset time has passed. When the user disconnects an account, it shows
 no row.
 
+## Filter by organization
+
+- The header of the page has one choice, "Organization", with "All" first and then the
+  organizations of this computer in the order of their names, ignoring case.
+- The filter keeps the rows whose agent is a member of that organization. A row with no agent leaves
+  the page under a filter: a model account with a problem, the Teams link, and a routine or a
+  workflow that names no agent. A row whose agent is in the organization stays, also when its task
+  ran in a channel.
+- The groups do not change: the same four groups, in the same order, with the same rows otherwise.
+  An empty group hides as it does without a filter, and "Needs you" shows the muted line.
+- The badge of the page button and the count of "Needs you" do not change with the filter: they
+  count what waits for the user on this computer, not what the filter shows (see "Rules").
+- The choice belongs to this device, as the view of the place list does (001). A restart keeps it.
+  A linked server has no page, so it has no filter.
+- With a filter that keeps no row at all, the page shows one muted line "Nothing in <organization>."
+
 ## Rules
 
 - "Went wrong", "Done today" and "Next 24 hours" list only work that ran, or will run, on this

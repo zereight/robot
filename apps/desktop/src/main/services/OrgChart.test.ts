@@ -133,6 +133,8 @@ const setup = async (options: { connected?: boolean } = {}) => {
       sourceId?: string | null
       state?: string
       created?: number
+      finished?: number | null
+      verdict?: string | null
       mark?: string | null
       origin?: string | null
       label?: string
@@ -142,8 +144,8 @@ const setup = async (options: { connected?: boolean } = {}) => {
     const id = `task-${++n}`
     db.run(
       `INSERT INTO task (id, agent_id, prompt, label, source, source_id, retry_of, state, created_at,
-         started_at, origin, agent_message)
-       VALUES (?, ?, 'p', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         started_at, finished_at, verdict, origin, agent_message)
+       VALUES (?, ?, 'p', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       agentId,
       extra.label ?? `Label ${id}`,
@@ -153,6 +155,8 @@ const setup = async (options: { connected?: boolean } = {}) => {
       extra.state ?? "done",
       extra.created ?? NOW - MINUTE,
       extra.created ?? NOW - MINUTE,
+      extra.finished === undefined ? (extra.created ?? NOW - MINUTE) : extra.finished,
+      extra.verdict ?? null,
       extra.origin ?? null,
       extra.mark === undefined ? "send" : extra.mark,
     )
@@ -177,7 +181,7 @@ const setup = async (options: { connected?: boolean } = {}) => {
   const org = (
     name: string,
     memberIds: string[],
-    extra: { leadId?: string | null; parentId?: string | null } = {},
+    extra: { leadId?: string | null; parentId?: string | null; goal?: string } = {},
   ) =>
     run(
       Organizations.use((o) =>
@@ -195,6 +199,7 @@ describe("agents, organizations and states", () => {
       agents: [],
       orgs: [],
       handoffs: [],
+      outcomes: [],
       handOffRule: "any",
     })
     expect(buildChart(await s.snapshot()).empty).toBe(true)
@@ -286,6 +291,7 @@ describe("agents, organizations and states", () => {
     const docs = await s.org("Docs", [cy.id, ada.id, bo.id], {
       leadId: ada.id,
       parentId: product.id,
+      goal: "Ship the Docs site.",
     })
     // The order of the rows is the order of the time of making; the model sorts by name.
     const orgs = [...(await s.snapshot()).orgs].sort((x, y) => x.name.localeCompare(y.name))
@@ -293,6 +299,8 @@ describe("agents, organizations and states", () => {
       {
         id: docs.id,
         name: "Docs",
+        // The goal travels with the organization (spec 030, "Goal").
+        goal: "Ship the Docs site.",
         createdAt: expect.any(Number),
         leadId: ada.id,
         memberIds: [cy.id, ada.id, bo.id],
@@ -301,6 +309,7 @@ describe("agents, organizations and states", () => {
       {
         id: product.id,
         name: "Product",
+        goal: "",
         createdAt: expect.any(Number),
         leadId: null,
         memberIds: [],
@@ -554,5 +563,54 @@ describe("the ready model for a linked computer and the phone (spec 029, 012)", 
     // The linked devices were never told, so they get it.
     expect(s.toLinked).toHaveLength(1)
     expect(s.toLinked[0]?.orgs[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
+  })
+})
+
+describe("the outcome of the members of an organization", () => {
+  test("done and blocked tasks, and the verdicts of the parts, count by the time they ended", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.org("Docs", [ada.id])
+    s.task(ada.id, { state: "done" })
+    s.task(ada.id, { state: "done" })
+    s.task(ada.id, { state: "blocked" })
+    s.task(ada.id, { state: "done", verdict: "met" })
+    s.task(ada.id, { state: "done", verdict: "not_met" })
+    // A task of 8 days ago is out of the window, by the time it ended.
+    s.task(ada.id, { state: "done", created: NOW - 8 * DAY, finished: NOW - 8 * DAY })
+    // A task that started 8 days ago and ended 2 days ago is in the window: the window reads the
+    // time it ended (spec 029, "Organization node").
+    s.task(ada.id, { state: "done", created: NOW - 8 * DAY, finished: NOW - 2 * DAY })
+    // A task that has not ended does not count.
+    s.task(ada.id, { state: "running", finished: null })
+    const { outcomes } = await s.snapshot()
+    expect(outcomes).toEqual([{ agentId: ada.id, done: 5, blocked: 1, met: 1, notMet: 1 }])
+  })
+
+  test("a task of another computer, and of an archived agent, do not count", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    const bo = await s.agent("Bo")
+    await s.org("Docs", [ada.id])
+    s.task(ada.id, { state: "done" })
+    // A task of the other computer of a sync pair: the work of this one does not read it.
+    s.task(bo.id, { state: "done", origin: "other" })
+    await s.run(Agents.use((a) => a.archive(bo.id)))
+    const { outcomes } = await s.snapshot()
+    expect(outcomes).toEqual([{ agentId: ada.id, done: 1, blocked: 0, met: 0, notMet: 0 }])
+  })
+
+  test("the page shows the counts of a node, and a change of the work keeps the view", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.org("Docs", [ada.id])
+    s.task(ada.id, { state: "done" })
+    const model = buildChart(await s.snapshot())
+    expect(model.orgs[0]?.outcome).toEqual({ done: 1, blocked: 0, met: 0, notMet: 0 })
+    // A count of a digit more is a change of the outcome line, and it moves no node: the layout
+    // reads the structure only (spec 029, "Layout").
+    expect(buildChart(await s.snapshot()).orgs[0]?.nodes.map((n) => n.key)).toEqual(
+      model.orgs[0]?.nodes.map((n) => n.key),
+    )
   })
 })

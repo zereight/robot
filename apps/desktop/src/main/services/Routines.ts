@@ -87,6 +87,7 @@ interface Row {
   created_at: number
   runs_on: string | null
   token_limit: number | null
+  org_id: string | null
   unsaved_import: number
 }
 
@@ -206,6 +207,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           watch,
           model: modelOf(r),
           tokenLimit: r.token_limit,
+          orgId: r.org_id,
           place: placeOf(r),
           enabled: r.enabled === 1,
           createdAt: r.created_at,
@@ -221,6 +223,27 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       }
       const row = (id: string) => db.get<Row>(`${SELECT} WHERE r.id = ?`, id)
       const changed = (serverId: string) => bus.emit("routines.changed", { serverId })
+
+      /**
+       * The rule of an organization that a routine names (spec 030, "A routine of an
+       * organization"): the agent of the routine is a member of it. A removal is refused, because
+       * the agent would run a job of a team that it has left.
+       */
+      const checkOrg = (orgId: string | null | undefined, agentId: string) =>
+        Effect.suspend(() => {
+          if (orgId === null || orgId === undefined) return Effect.void
+          if (!db.get("SELECT 1 AS x FROM org_unit WHERE id = ?", orgId))
+            return Effect.fail(new AppError({ code: "org_not_found" }))
+          if (
+            !db.get(
+              "SELECT 1 AS x FROM org_member WHERE org_id = ? AND agent_id = ?",
+              orgId,
+              agentId,
+            )
+          )
+            return Effect.fail(new AppError({ code: "routine_not_member" }))
+          return Effect.void
+        })
 
       const checkInput = (
         agentId: string,
@@ -639,14 +662,15 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               return yield* new AppError({ code: "routines_full", detail: String(ROUTINES_MAX) })
             const trigger = triggerOf(input as { schedule?: Schedule; watch?: Watch })
             yield* checkInput(input.agentId, trigger, input.place)
+            yield* checkOrg(input.orgId ?? null, input.agentId)
             const id = randomUUID()
             const now = Date.now()
             const model = input.model ?? null
             if (input.tokenLimit != null && !validTokenLimit(input.tokenLimit))
               return yield* new AppError({ code: "invalid_token_limit" })
             db.run(
-              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at, token_limit, unsaved_import)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at, token_limit, org_id, unsaved_import)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.agentId,
@@ -663,6 +687,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               now,
               now,
               input.tokenLimit ?? null,
+              input.orgId ?? null,
               // A routine that an agent file made counts its prompt as words of the user after the
               // user saves its form once (spec 007, 009).
               options?.fromFile ? 1 : 0,
@@ -682,6 +707,10 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             const place = patch.place ?? placeOf(current)
             const agentId = patch.agentId ?? current.agent_id
             yield* checkInput(agentId, trigger, place)
+            // A new organization, or a new agent, must hold the rule of the spec.
+            const orgId = patch.orgId === undefined ? current.org_id : patch.orgId
+            if (patch.orgId !== undefined || patch.agentId !== undefined)
+              yield* checkOrg(orgId, agentId)
             const model = patch.model === undefined ? modelOf(current) : patch.model
             const tokenLimit =
               patch.tokenLimit === undefined ? current.token_limit : patch.tokenLimit
@@ -692,7 +721,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             db.run(
               `UPDATE routine SET agent_id = ?, name = ?, prompt = ?, schedule = ?, watch = ?, channel_id = ?, enabled = ?,
                  model_account_id = ?, model_name = ?, model_effort = ?, last_checked_at = ?, updated_at = ?,
-                 token_limit = ?, unsaved_import = ? WHERE id = ?`,
+                 token_limit = ?, org_id = ?, unsaved_import = ? WHERE id = ?`,
               agentId,
               patch.name?.trim() ?? current.name,
               patch.prompt ?? current.prompt,
@@ -707,6 +736,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               now,
               now,
               tokenLimit,
+              patch.orgId === undefined ? current.org_id : patch.orgId,
               // The form of the routine was saved once: the prompt counts as words of the user.
               patch.prompt !== undefined ? 0 : current.unsaved_import,
               id,

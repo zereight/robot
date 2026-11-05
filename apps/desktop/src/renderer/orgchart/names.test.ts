@@ -16,6 +16,7 @@ import {
   moreWord,
   orgLabel,
   orgTitle,
+  outcomeLine,
   type Translate,
 } from "./names.ts"
 
@@ -82,6 +83,50 @@ describe("the counts of an organization node", () => {
   test("they are Korean in the Korean interface", () => {
     expect(countsLine(ko, docs?.counts as never)).toBe(
       "작업 중 1 · 확인 대기 1 · 대기 1 · 오프라인 1",
+    )
+  })
+})
+
+describe("the outcome line of an organization node", () => {
+  const outcomeModel = buildChart({
+    ...EMPTY_ORG_SNAPSHOT,
+    agents: [agent("Ada"), agent("Bob")],
+    orgs: [
+      {
+        id: "docs",
+        name: "Docs",
+        createdAt: 1,
+        leadId: "Ada",
+        memberIds: ["Ada", "Bob"],
+        parentId: null,
+      },
+      { id: "ops", name: "Ops", createdAt: 2, leadId: null, memberIds: ["Bob"], parentId: null },
+    ],
+    outcomes: [
+      { agentId: "Ada", done: 12, blocked: 2, met: 9, notMet: 1 },
+      { agentId: "Bob", done: 0, blocked: 0, met: 0, notMet: 0 },
+    ],
+  })
+
+  test("it gives done, blocked, met and not met, and skips a zero", () => {
+    expect(outcomeLine(en, outcomeModel.orgs[0]?.outcome as never)).toBe(
+      "12 done · 2 blocked · 9 met · 1 not met",
+    )
+  })
+
+  test("a node with no task of the window shows no line", () => {
+    expect(outcomeLine(en, outcomeModel.orgs[1]?.outcome as never)).toBe("")
+  })
+
+  test("it is Korean in the Korean interface", () => {
+    expect(outcomeLine(ko, outcomeModel.orgs[0]?.outcome as never)).toBe(
+      "완료 12 · 막힘 2 · 충족 9 · 미충족 1",
+    )
+  })
+
+  test("the accessible name of the node holds the outcome", () => {
+    expect(orgLabel(en, outcomeModel.orgs[0] as never)).toBe(
+      "Docs. 2 members. 2 idle. 12 done, 2 blocked, 9 met, 1 not met",
     )
   })
 })

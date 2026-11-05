@@ -43,6 +43,26 @@ const KNOWN_UNUSED: readonly string[] = [
   "memory.check.started",
   "memory.history.undone",
   "memory.move.failed",
+  // The words of spec 038 that the tab Events does not read yet (S139 added the keys, and the
+  // check came after it). They belong to two parts of the spec that are not built: the "Why" line
+  // that names the routine or the workflow that took a call, and the panel "Check where this goes"
+  // of a trigger form. The tab reads `events.detail.why` through one helper, and the main process
+  // fills `why` with its own keys (`events.why.routineTime` and its family), so these thirteen are
+  // text that a screen will read when those parts are built. The check was written after them, so
+  // `main` was red on it before this branch existed.
+  "events.duplicate",
+  "events.duplicateTask",
+  "events.skipped.workflow",
+  "events.test.agent",
+  "events.test.noAgent",
+  "events.test.noPlace",
+  "events.test.prompt",
+  "events.test.step",
+  "events.test.workflowOff",
+  "events.waitingReason",
+  "events.why.filter",
+  "events.why.routine",
+  "events.why.workflow",
   "orgs.syncs",
   "providers.title",
   "settings.data.folder.hint",

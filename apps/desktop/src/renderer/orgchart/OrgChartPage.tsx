@@ -1,11 +1,14 @@
 import {
   type AgentState,
+  buildOrgList,
   type ChartAgent,
   type ChartModel,
   type ChartOrg,
   copyKey,
   litBy,
   NO_ORG_KEY,
+  orgSearchEmpty,
+  orgSearchHits,
   ROOT_KEY,
 } from "@robot/shared"
 import { Ellipsis, Minus, Plus, User } from "lucide-solid"
@@ -29,6 +32,7 @@ import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useOrgChart } from "../state/orgChart.tsx"
+import { takeOrgFilter } from "../state/orgFilter.ts"
 import { setProfileTarget } from "../state/profileTarget.ts"
 import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
@@ -46,8 +50,10 @@ import {
   moreWord,
   orgLabel,
   orgTitle,
+  outcomeLine,
   stateWord,
 } from "./names.ts"
+import { OrgListView } from "./OrgListView.tsx"
 import styles from "./orgchart.module.css"
 import { extent, fitView, type Insets, type View, wheelFactor, ZOOM_STEP, zoomAt } from "./view.ts"
 
@@ -61,13 +67,20 @@ const sameKeys = (a: string[], b: string[]) =>
   a.length === b.length && a.every((k, i) => k === b[i])
 
 /**
- * What decides the positions: the nodes in order, the leads, the tiles, and the lines with the
- * number of digits of their counts. A change of state, of a label or of a count with the same
- * digits moves nothing, so it does not lay the chart out again.
+ * What decides the positions: the nodes in order, the leads, the tiles, whether each organization
+ * node has a goal (which takes one more line), and the lines with the number of digits of their
+ * counts. A change of state, of a label, of the words of a goal or of a count with the same digits
+ * moves nothing, so it does not lay the chart out again.
  */
 const structureKey = (model: ChartModel) =>
   JSON.stringify([
-    model.orgs.map((c) => [c.key, c.leadKey, c.more.length > 0, c.nodes.map((n) => n.key)]),
+    model.orgs.map((c) => [
+      c.key,
+      c.leadKey,
+      c.more.length > 0,
+      c.goal !== null,
+      c.nodes.map((n) => n.key),
+    ]),
     model.lines.map((l) => [l.id, l.from, l.to, String(l.count ?? "").length]),
   ])
 
@@ -181,14 +194,40 @@ export const OrgChartPage = () => {
     }
     return litBy(m, key)
   })
+  // The search of the page (spec 029, "Search and the list"). It dims and never removes, so the
+  // layout of the whole chart stays: no node, zoom or view moves.
+  // The search opens with the text of a hit of the place list, and then belongs to the user
+  // (spec 029, "Ways in").
+  const [query, setQuery] = createSignal(takeOrgFilter() ?? "")
+  const search = createMemo(() => {
+    const m = model()
+    return m ? orgSearchHits(m, query()) : new Set<string>()
+  })
+  /** The line stays lit when both of its ends are lit (spec 029). */
+  const lineHit = (from: string, to: string) => {
+    const hits = search()
+    return hits.size === 0 || (hits.has(from) && hits.has(to))
+  }
+  /** True when the search found nothing: the whole chart dims and one muted line shows. */
+  const searchEmpty = createMemo(() => {
+    const m = model()
+    return m ? orgSearchEmpty(m, query()) : false
+  })
   // During a drag nothing dims, so that every ring shows clearly.
   const nodeDim = (key: string) => {
     if (edit.dragging()) return false
+    // A search that found nothing dims the whole chart, so the user sees that nothing matched.
+    if (searchEmpty()) return true
+    const hits = search()
+    if (hits.size > 0 && !hits.has(key)) return true
     const l = lit()
     return l !== undefined && !l.nodes.has(key)
   }
   const lineDim = (id: string) => {
     if (edit.dragging()) return false
+    if (searchEmpty()) return true
+    const line = model()?.lines.find((x) => x.id === id)
+    if (line && !lineHit(line.from, line.to)) return true
     const l = lit()
     return l !== undefined && !l.lines.has(id)
   }
@@ -705,6 +744,14 @@ export const OrgChartPage = () => {
                 {orgTitle(t, c())}
               </span>
             </span>
+            {/* Why the organization exists (spec 030, "Goal"). One line, the whole goal in a note. */}
+            <Show when={c().goal}>
+              {(line) => (
+                <span class={styles.goal} title={c().goalFull ?? ""} data-testid="org-unit-goal">
+                  {line()}
+                </span>
+              )}
+            </Show>
             <Show
               when={c().memberCount > 0}
               fallback={
@@ -719,6 +766,12 @@ export const OrgChartPage = () => {
                   <span aria-hidden="true">·</span>
                   <span data-testid="org-unit-states">{countsLine(t, c().counts)}</span>
                 </Show>
+              </span>
+            </Show>
+            {/* The work of the drawn members in the last 7 days (spec 029, "Organization node"). */}
+            <Show when={outcomeLine(t, c().outcome) !== ""}>
+              <span class={styles.outcome} data-testid="org-unit-outcome">
+                {outcomeLine(t, c().outcome)}
               </span>
             </Show>
           </button>
@@ -829,10 +882,50 @@ export const OrgChartPage = () => {
       <Show when={model()}>
         {(m) => (
           <>
-            {/* The header line: the legend of the lines and the button "New organization". */}
+            {/* The header line: the search, the legend of the lines, the choice of the view and
+                the button "New organization". */}
             <div class={styles.head} data-testid="org-head">
               <Show when={!m().empty}>
+                <input
+                  class={styles.search}
+                  type="search"
+                  value={query()}
+                  placeholder={t("orgchart.search")}
+                  aria-label={t("orgchart.search")}
+                  onInput={(e) => setQuery(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    // Escape clears the search, as it does in the place list (spec 001).
+                    if (e.key !== "Escape") return
+                    e.preventDefault()
+                    setQuery("")
+                  }}
+                  data-testid="org-search"
+                />
                 <Legend capped={m().handoffsCapped} follows={m().handOffRule === "organizations"} />
+                <fieldset
+                  class={styles.viewChoice}
+                  aria-label={t("orgchart.view")}
+                  data-testid="org-view-choice"
+                >
+                  <button
+                    type="button"
+                    class={styles.viewButton}
+                    aria-pressed={ui.ui.orgView !== "list"}
+                    onClick={() => ui.setOrgView("chart")}
+                    data-testid="org-view-chart"
+                  >
+                    {t("orgchart.view.chart")}
+                  </button>
+                  <button
+                    type="button"
+                    class={styles.viewButton}
+                    aria-pressed={ui.ui.orgView === "list"}
+                    onClick={() => ui.setOrgView("list")}
+                    data-testid="org-view-list"
+                  >
+                    {t("orgchart.view.list")}
+                  </button>
+                </fieldset>
               </Show>
               <Show when={edit.canEdit()}>
                 <span class={styles.headButton}>
@@ -842,6 +935,12 @@ export const OrgChartPage = () => {
                 </span>
               </Show>
             </div>
+            {/* Nothing found: the whole chart dims, and one muted line says so (spec 029). */}
+            <Show when={searchEmpty()}>
+              <p class={styles.searchNote} role="status" data-testid="org-search-empty">
+                {t("orgchart.search.empty")}
+              </p>
+            </Show>
             <Show
               when={!m().empty}
               fallback={
@@ -859,188 +958,202 @@ export const OrgChartPage = () => {
                 </div>
               }
             >
-              <section
-                ref={setCanvas}
-                class={styles.viewport}
-                tabindex="-1"
-                aria-label={t("page.orgchart")}
-                aria-description={
-                  edit.canEdit()
-                    ? `${t("orgchart.canvas.hint")} ${t("orgchart.edit.hint")}`
-                    : t("orgchart.canvas.hint")
-                }
-                data-dragging={dragging()}
-                data-drag-node={edit.dragging() !== undefined}
-                data-testid="org-canvas"
-                onKeyDown={onKeyDown}
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerCancel={onPointerUp}
-                onFocusIn={onFocusIn}
-                onFocusOut={onFocusOut}
-              >
-                <div
-                  class={styles.surface}
-                  data-animate={animate()}
-                  data-testid="org-surface"
-                  data-zoom={view().zoom.toFixed(3)}
-                  data-x={view().x.toFixed(1)}
-                  data-y={view().y.toFixed(1)}
-                  style={{
-                    transform: `translate(${view().x}px, ${view().y}px) scale(${view().zoom})`,
-                  }}
-                >
-                  <svg
-                    class={styles.lines}
-                    width={(layout()?.bounds.x ?? 0) + (layout()?.bounds.w ?? 0)}
-                    height={(layout()?.bounds.y ?? 0) + (layout()?.bounds.h ?? 0)}
-                    aria-hidden="true"
+              {/* The list of the same chart (spec 029, "Search and the list"). It is the builder
+                  of the phone, so the two views never disagree. */}
+              <Show
+                when={ui.ui.orgView === "list"}
+                fallback={
+                  <section
+                    ref={setCanvas}
+                    class={styles.viewport}
+                    tabindex="-1"
+                    aria-label={t("page.orgchart")}
+                    aria-description={
+                      edit.canEdit()
+                        ? `${t("orgchart.canvas.hint")} ${t("orgchart.edit.hint")}`
+                        : t("orgchart.canvas.hint")
+                    }
+                    data-dragging={dragging()}
+                    data-drag-node={edit.dragging() !== undefined}
+                    data-testid="org-canvas"
+                    onKeyDown={onKeyDown}
+                    onPointerDown={onPointerDown}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={onPointerUp}
+                    onPointerCancel={onPointerUp}
+                    onFocusIn={onFocusIn}
+                    onFocusOut={onFocusOut}
                   >
-                    <defs>
-                      <marker
-                        id="org-arrow-lead"
-                        markerUnits="userSpaceOnUse"
-                        markerWidth="10"
-                        markerHeight="10"
-                        refX="10"
-                        refY="5"
-                        orient="auto"
+                    <div
+                      class={styles.surface}
+                      data-animate={animate()}
+                      data-testid="org-surface"
+                      data-zoom={view().zoom.toFixed(3)}
+                      data-x={view().x.toFixed(1)}
+                      data-y={view().y.toFixed(1)}
+                      style={{
+                        transform: `translate(${view().x}px, ${view().y}px) scale(${view().zoom})`,
+                      }}
+                    >
+                      <svg
+                        class={styles.lines}
+                        width={(layout()?.bounds.x ?? 0) + (layout()?.bounds.w ?? 0)}
+                        height={(layout()?.bounds.y ?? 0) + (layout()?.bounds.h ?? 0)}
+                        aria-hidden="true"
                       >
-                        <path class={styles.arrowLead} d="M0 0 L10 5 L0 10 z" />
-                      </marker>
-                      <marker
-                        id="org-arrow-handoff"
-                        markerUnits="userSpaceOnUse"
-                        markerWidth="10"
-                        markerHeight="10"
-                        refX="10"
-                        refY="5"
-                        orient="auto"
-                      >
-                        <path class={styles.arrowHandoff} d="M0 0 L10 5 L0 10 z" />
-                      </marker>
-                    </defs>
-                    <For each={lineKeys()}>
-                      {(id) => {
-                        const line = () => placedLines().get(id)
-                        return (
-                          <Show when={line()}>
-                            {(l) => (
-                              <g data-testid="org-line" data-id={id} data-kind={l().kind}>
-                                <path
-                                  class={styles.line}
-                                  data-kind={l().kind}
-                                  data-dim={lineDim(id)}
-                                  d={pathOf(l().points)}
-                                  marker-end={
-                                    l().kind === "lead"
-                                      ? "url(#org-arrow-lead)"
-                                      : l().kind === "handoff"
-                                        ? "url(#org-arrow-handoff)"
-                                        : undefined
-                                  }
-                                />
-                                <Show when={l().kind === "handoff"}>
-                                  <path
-                                    class={styles.hit}
-                                    d={pathOf(l().points)}
-                                    data-testid="org-line-hit"
-                                    onPointerEnter={(event) => showTip(id, event)}
-                                    onPointerMove={(event) => showTip(id, event)}
-                                    onPointerLeave={() => setTip(undefined)}
-                                  />
-                                </Show>
-                              </g>
+                        <defs>
+                          <marker
+                            id="org-arrow-lead"
+                            markerUnits="userSpaceOnUse"
+                            markerWidth="10"
+                            markerHeight="10"
+                            refX="10"
+                            refY="5"
+                            orient="auto"
+                          >
+                            <path class={styles.arrowLead} d="M0 0 L10 5 L0 10 z" />
+                          </marker>
+                          <marker
+                            id="org-arrow-handoff"
+                            markerUnits="userSpaceOnUse"
+                            markerWidth="10"
+                            markerHeight="10"
+                            refX="10"
+                            refY="5"
+                            orient="auto"
+                          >
+                            <path class={styles.arrowHandoff} d="M0 0 L10 5 L0 10 z" />
+                          </marker>
+                        </defs>
+                        <For each={lineKeys()}>
+                          {(id) => {
+                            const line = () => placedLines().get(id)
+                            return (
+                              <Show when={line()}>
+                                {(l) => (
+                                  <g data-testid="org-line" data-id={id} data-kind={l().kind}>
+                                    <path
+                                      class={styles.line}
+                                      data-kind={l().kind}
+                                      data-dim={lineDim(id)}
+                                      d={pathOf(l().points)}
+                                      marker-end={
+                                        l().kind === "lead"
+                                          ? "url(#org-arrow-lead)"
+                                          : l().kind === "handoff"
+                                            ? "url(#org-arrow-handoff)"
+                                            : undefined
+                                      }
+                                    />
+                                    <Show when={l().kind === "handoff"}>
+                                      <path
+                                        class={styles.hit}
+                                        d={pathOf(l().points)}
+                                        data-testid="org-line-hit"
+                                        onPointerEnter={(event) => showTip(id, event)}
+                                        onPointerMove={(event) => showTip(id, event)}
+                                        onPointerLeave={() => setTip(undefined)}
+                                      />
+                                    </Show>
+                                  </g>
+                                )}
+                              </Show>
+                            )
+                          }}
+                        </For>
+                      </svg>
+                      <For each={nodeKeys()}>
+                        {(key) => (
+                          <Switch>
+                            <Match when={kindOf(key) === "root"}>
+                              <Show when={m().root} fallback={<YouNode />}>
+                                <AgentNode nodeKey={key} />
+                              </Show>
+                            </Match>
+                            <Match when={kindOf(key) === "org"}>
+                              <OrgNode nodeKey={key} />
+                            </Match>
+                            <Match when={kindOf(key) === "more"}>
+                              <MoreTile nodeKey={key} />
+                            </Match>
+                            <Match when={true}>
+                              <AgentNode nodeKey={key} />
+                            </Match>
+                          </Switch>
+                        )}
+                      </For>
+                      <For each={lineKeys()}>
+                        {(id) => (
+                          <Show when={placedLines().get(id)?.label}>
+                            {(rect) => (
+                              <span
+                                class={styles.count}
+                                style={{
+                                  left: `${rect().x}px`,
+                                  top: `${rect().y}px`,
+                                  width: `${rect().w}px`,
+                                  height: `${rect().h}px`,
+                                }}
+                                data-dim={lineDim(id)}
+                                data-id={id}
+                                data-testid="org-line-count"
+                                aria-hidden="true"
+                                onPointerEnter={(event) => showTip(id, event)}
+                                onPointerMove={(event) => showTip(id, event)}
+                                onPointerLeave={() => setTip(undefined)}
+                              >
+                                {modelLines().get(id)?.count ?? ""}
+                              </span>
                             )}
                           </Show>
-                        )
-                      }}
-                    </For>
-                  </svg>
-                  <For each={nodeKeys()}>
-                    {(key) => (
-                      <Switch>
-                        <Match when={kindOf(key) === "root"}>
-                          <Show when={m().root} fallback={<YouNode />}>
-                            <AgentNode nodeKey={key} />
-                          </Show>
-                        </Match>
-                        <Match when={kindOf(key) === "org"}>
-                          <OrgNode nodeKey={key} />
-                        </Match>
-                        <Match when={kindOf(key) === "more"}>
-                          <MoreTile nodeKey={key} />
-                        </Match>
-                        <Match when={true}>
-                          <AgentNode nodeKey={key} />
-                        </Match>
-                      </Switch>
-                    )}
-                  </For>
-                  <For each={lineKeys()}>
-                    {(id) => (
-                      <Show when={placedLines().get(id)?.label}>
-                        {(rect) => (
-                          <span
-                            class={styles.count}
-                            style={{
-                              left: `${rect().x}px`,
-                              top: `${rect().y}px`,
-                              width: `${rect().w}px`,
-                              height: `${rect().h}px`,
-                            }}
-                            data-dim={lineDim(id)}
-                            data-id={id}
-                            data-testid="org-line-count"
-                            aria-hidden="true"
-                            onPointerEnter={(event) => showTip(id, event)}
-                            onPointerMove={(event) => showTip(id, event)}
-                            onPointerLeave={() => setTip(undefined)}
-                          >
-                            {modelLines().get(id)?.count ?? ""}
-                          </span>
                         )}
-                      </Show>
-                    )}
-                  </For>
-                  <For each={nodeKeys()}>{(key) => <NodeMenuButton nodeKey={key} />}</For>
-                </div>
-                <edit.NoticeLine />
-                <edit.DropArea />
-                <div
-                  ref={controls}
-                  class={styles.controls}
-                  data-control=""
-                  data-testid="org-controls"
-                >
-                  <IconButton
-                    label={t("orgchart.zoomOut")}
-                    onClick={() => zoomBy(1 / ZOOM_STEP)}
-                    data-testid="org-zoom-out"
-                  >
-                    <Minus size={16} />
-                  </IconButton>
-                  <IconButton
-                    label={t("orgchart.zoomIn")}
-                    onClick={() => zoomBy(ZOOM_STEP)}
-                    data-testid="org-zoom-in"
-                  >
-                    <Plus size={16} />
-                  </IconButton>
-                  <button
-                    type="button"
-                    class={styles.fit}
-                    onClick={() => {
-                      own = true
-                      fit(true)
-                    }}
-                    data-testid="org-fit"
-                  >
-                    {t("orgchart.fit")}
-                  </button>
-                </div>
-              </section>
+                      </For>
+                      <For each={nodeKeys()}>{(key) => <NodeMenuButton nodeKey={key} />}</For>
+                    </div>
+                    <edit.NoticeLine />
+                    <edit.DropArea />
+                    <div
+                      ref={controls}
+                      class={styles.controls}
+                      data-control=""
+                      data-testid="org-controls"
+                    >
+                      <IconButton
+                        label={t("orgchart.zoomOut")}
+                        onClick={() => zoomBy(1 / ZOOM_STEP)}
+                        data-testid="org-zoom-out"
+                      >
+                        <Minus size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={t("orgchart.zoomIn")}
+                        onClick={() => zoomBy(ZOOM_STEP)}
+                        data-testid="org-zoom-in"
+                      >
+                        <Plus size={16} />
+                      </IconButton>
+                      <button
+                        type="button"
+                        class={styles.fit}
+                        onClick={() => {
+                          own = true
+                          fit(true)
+                        }}
+                        data-testid="org-fit"
+                      >
+                        {t("orgchart.fit")}
+                      </button>
+                    </div>
+                  </section>
+                }
+              >
+                <OrgListView
+                  list={buildOrgList(m())}
+                  dim={search()}
+                  onAgent={(agentId) => openProfile(agentId)}
+                  onOrg={(orgId) => edit.openOrg(orgId)}
+                />
+              </Show>
             </Show>
           </>
         )}

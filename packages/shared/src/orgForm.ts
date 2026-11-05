@@ -60,6 +60,8 @@ export const orgDeleteSubCount = (orgs: readonly TreeOrg[], id: string): number 
 /** The fields of the form that the tree and the service read. */
 export interface OrgFormValues {
   readonly name: string
+  /** The goal (spec 030, "Goal"). A form that holds none leaves the field alone. */
+  readonly goal?: string
   readonly memberIds: readonly string[]
   readonly leadId: string | null
   /** The parent as the tree reads it now. */
@@ -70,6 +72,7 @@ export interface OrgFormValues {
 
 export interface OrgFormPatch {
   name?: string
+  goal?: string
   memberIds?: readonly string[]
   leadId?: string | null
   parentId?: string | null
@@ -88,6 +91,9 @@ export const orgPatchOf = (was: OrgFormValues, now: OrgFormValues): OrgFormPatch
   const patch: OrgFormPatch = {}
   const name = now.name.trim()
   if (name !== was.name) patch.name = name
+  // The goal is compared as the service stores it: without the spaces at both ends.
+  if (now.goal !== undefined && now.goal.trim() !== (was.goal ?? "").trim())
+    patch.goal = now.goal.trim()
   if (!sameList(was.memberIds, now.memberIds)) patch.memberIds = now.memberIds
   const lead = now.leadId !== null && now.memberIds.includes(now.leadId) ? now.leadId : null
   if (lead !== was.leadId) patch.leadId = lead

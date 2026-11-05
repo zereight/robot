@@ -9,6 +9,7 @@ import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
+import { Organizations } from "./Organizations.ts"
 import { Places } from "./Places.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
@@ -230,6 +231,40 @@ describe("Chat", () => {
     // The text that the model gets is the text of the turn: it holds the instructions.
     expect(system).toContain("Be brief.")
     expect(system).not.toContain("Researcher")
+  })
+
+  test("the goal of an organization reaches the turn, before the own instructions (spec 030, Goal)", async () => {
+    const t = await setup()
+    await t.run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: t.local.id,
+          name: "Docs",
+          goal: "Ship the Docs site.",
+          memberIds: [t.agent.id],
+          leadId: null,
+        }),
+      ),
+    )
+    await t.send("hello")
+    await t.settled()
+    const system = systems.at(-1) ?? ""
+    expect(system).toContain("Ship the Docs site.")
+    // The goal comes before the instructions of the agent, and the agent reads the order.
+    expect(system.indexOf("Ship the Docs site.")).toBeLessThan(system.indexOf("Be brief."))
+    expect(system).toContain('the goal of the organization "Docs"')
+  })
+
+  test("an organization with no goal adds nothing to the turn", async () => {
+    const t = await setup()
+    await t.run(
+      Organizations.use((o) =>
+        o.create({ serverId: t.local.id, name: "Docs", memberIds: [t.agent.id], leadId: null }),
+      ),
+    )
+    await t.send("hello")
+    await t.settled()
+    expect(systems.at(-1) ?? "").not.toContain('the organization "Docs"')
   })
 
   test("stop keeps the partial reply marked stopped; the next send works", async () => {

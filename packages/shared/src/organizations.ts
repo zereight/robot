@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 import { charLength, nameKey } from "./agents.ts"
+import { ORG_GOAL_MAX } from "./handbook.ts"
+import { orgParents } from "./orgTree.ts"
 
 // The organization (spec 030): a group of agents with a lead, a parent organization and access.
 // This file holds the shape of an organization, the rules of its name, the shapes that a form and
@@ -36,12 +38,16 @@ export interface Org {
   readonly handOffRange: HandOffRange
   /** The daily token limit (10,000 to 100,000,000), or null when it is off (the default). */
   readonly dailyTokenLimit: number | null
+  /** Why the organization exists, 0 to 400 characters (spec 030, "Goal"). Empty at the start. */
+  readonly goal: string
   readonly createdAt: number
 }
 
 export const OrgCreate = Schema.Struct({
   serverId: Schema.String,
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(ORG_NAME_MAX * 2)),
+  /** Absent: empty. The service checks the length (spec 030, "Goal"). */
+  goal: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(ORG_GOAL_MAX * 2))),
   memberIds: Schema.Array(Schema.String),
   leadId: Schema.NullOr(Schema.String),
   /** Absent or null: a top organization. */
@@ -55,6 +61,7 @@ export type OrgCreate = typeof OrgCreate.Type
 
 export const OrgPatch = Schema.Struct({
   name: Schema.optionalKey(OrgCreate.fields.name),
+  goal: OrgCreate.fields.goal,
   memberIds: Schema.optionalKey(OrgCreate.fields.memberIds),
   leadId: Schema.optionalKey(OrgCreate.fields.leadId),
   parentId: OrgCreate.fields.parentId,
@@ -76,6 +83,7 @@ const ClientId = Schema.String.check(Schema.isMaxLength(100))
 export const ClientOrgCreate = Schema.Struct({
   serverId: ClientId,
   name: OrgCreate.fields.name,
+  goal: OrgCreate.fields.goal,
   memberIds: ClientIds,
   leadId: Schema.NullOr(ClientId),
   parentId: Schema.optionalKey(Schema.NullOr(ClientId)),
@@ -86,6 +94,7 @@ export type ClientOrgCreate = typeof ClientOrgCreate.Type
 
 export const ClientOrgPatch = Schema.Struct({
   name: Schema.optionalKey(OrgCreate.fields.name),
+  goal: OrgCreate.fields.goal,
   memberIds: Schema.optionalKey(ClientIds),
   leadId: Schema.optionalKey(Schema.NullOr(ClientId)),
   parentId: ClientOrgCreate.fields.parentId,
@@ -152,6 +161,51 @@ export const orgsOfAgent = <O extends Pick<Org, "id" | "memberIds">>(
   orgs: readonly O[],
   agentId: string,
 ): O[] => orgs.filter((o) => o.memberIds.includes(agentId))
+
+/**
+ * The goals that an agent reads before its own instructions (spec 030, "Goal"): the goal of each
+ * organization that it is a member of, from the top organization down. An organization with an empty
+ * goal gives nothing. A member is in organizations that are on one line (spec 030), so the order is
+ * the order of that line. The result is the same for the same data, in any order.
+ */
+export const orgGoalsOfAgent = (
+  orgs: readonly Org[],
+  agentId: string,
+): { readonly name: string; readonly text: string }[] => {
+  const mine = orgsOfAgent(orgs, agentId)
+  if (mine.length === 0) return []
+  const parents = orgParents(orgs)
+  const levelOf = (id: string): number => {
+    let level = 1
+    for (let at = parents.get(id) ?? null; at !== null; at = parents.get(at) ?? null) level++
+    return level
+  }
+  return mine
+    .map((o) => ({ org: o, level: levelOf(o.id) }))
+    .sort((a, b) => a.level - b.level || (a.org.name < b.org.name ? -1 : 1))
+    .flatMap(({ org }) => (org.goal.trim() === "" ? [] : [{ name: org.name, text: org.goal }]))
+}
+
+/** How far back the form looks for a repair (spec 030, "The repair in the form"). */
+export const REPAIR_LINE_DAYS = 30
+/** The lines of the organization log that the form reads. The log holds 90 days (spec 014). */
+export const REPAIR_LINE_TAIL = 500
+
+/**
+ * The newest repair of an organization (spec 030, "The repair in the form"): the parent field of an
+ * organization was cleared, or an agent left because its organizations were not on one line.
+ */
+export interface OrgRepairLine {
+  readonly at: number
+  readonly kind: "tree" | "line"
+  /** For the tree: "loop" or "levels". Empty for a removal. */
+  readonly reason: string
+  /** For a removal: the name of the agent that left. Empty for a repair of the tree. */
+  readonly agent: string
+}
+
+/** True when a goal is longer than an organization may hold (spec 030, "Goal"). */
+export const goalTooLong = (text: string) => charLength(text) > ORG_GOAL_MAX
 
 // ---------------------------------------------------------------------------------------------
 // The migration (spec 030, "Migration")
@@ -229,6 +283,8 @@ export const planOrgMigration = (
       leadId: c.leadId !== null && c.memberIds.includes(c.leadId) ? c.leadId : null,
       parentId: c.parentId !== null && known.has(c.parentId) ? migratedOrgId(c.parentId) : null,
       handOffRange: "inherit",
+      // The goal of an organization that the migration makes is empty (spec 030, "Goal").
+      goal: "",
       dailyTokenLimit: c.dailyTokenLimit,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,

@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test"
 import {
   activeMembers,
   effectiveLead,
+  goalTooLong,
   type MigrationChannel,
   migratedOrgId,
   numberedOrgName,
   ORG_NAME_MAX,
+  orgGoalsOfAgent,
   orgNameProblem,
   orgsOfAgent,
   planOrgMigration,
@@ -174,5 +176,53 @@ describe("the migration of channels (spec 030, Migration)", () => {
       ["a", "Ops 2"],
       ["b", "Ops"],
     ])
+  })
+})
+
+describe("the goals that an agent reads (spec 030, Goal)", () => {
+  const org = (
+    id: string,
+    goal: string,
+    parentId: string | null = null,
+    memberIds: string[] = ["a"],
+  ) => ({
+    id,
+    serverId: "s",
+    name: id,
+    goal,
+    memberIds,
+    leadId: null,
+    parentId,
+    handOffRange: "inherit" as const,
+    dailyTokenLimit: null,
+    createdAt: 1,
+  })
+
+  test("the goal of each organization of the agent, from the top organization down", () => {
+    // Written out of order on purpose: the result must not depend on the order of the list.
+    const orgs = [
+      org("Site", "Site goal", "Docs"),
+      org("Product", "Product goal"),
+      org("Docs", "Docs goal", "Product"),
+    ]
+    expect(orgGoalsOfAgent(orgs, "a").map((g) => g.name)).toEqual(["Product", "Docs", "Site"])
+  })
+
+  test("an empty goal gives nothing, and an agent in no organization reads none", () => {
+    expect(orgGoalsOfAgent([org("Docs", "   ")], "a")).toEqual([])
+    expect(orgGoalsOfAgent([org("Docs", "Docs goal")], "z")).toEqual([])
+  })
+
+  test("the goal of a higher organization is not given to a member of a lower one", () => {
+    const orgs = [
+      org("Product", "Product goal", null, ["b"]),
+      org("Docs", "Docs goal", "Product", ["a"]),
+    ]
+    expect(orgGoalsOfAgent(orgs, "a")).toEqual([{ name: "Docs", text: "Docs goal" }])
+  })
+
+  test("a goal longer than 400 characters is refused", () => {
+    expect(goalTooLong("x".repeat(400))).toBe(false)
+    expect(goalTooLong("x".repeat(401))).toBe(true)
   })
 })

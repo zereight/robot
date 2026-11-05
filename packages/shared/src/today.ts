@@ -622,3 +622,28 @@ export const visibleGroups = (
         more: Math.max(0, g.rows.length - limit),
       }
     })
+
+// ---------------------------------------------------------------------------------------------
+// The filter by organization (spec 021, "Filter by organization")
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The rows of each group that belong to the agents of one organization (spec 021). The filter looks
+ * at the agent of a row, so a row without an agent (a model account, the Teams link, a routine that
+ * names no agent) is out of it. The caller folds the result back into a snapshot, so the page draws
+ * the same groups with fewer rows.
+ */
+export const todayForOrganization = (
+  snapshot: TodaySnapshot,
+  agentIds: ReadonlySet<string>,
+): TodaySnapshot => ({
+  ...snapshot,
+  groups: snapshot.groups.map((g) => ({
+    ...g,
+    rows: g.rows.filter((r) => r.agentId !== null && agentIds.has(r.agentId)),
+  })),
+})
+
+/** True when the filter removed every row of every group: the page says so in one line. */
+export const todayFilterEmpty = (snapshot: TodaySnapshot): boolean =>
+  snapshot.groups.every((g) => g.unreadable || g.rows.length === 0)

@@ -6,6 +6,8 @@ import {
   type TodayKind,
   type TodayOpen,
   type TodayRow,
+  todayFilterEmpty,
+  todayForOrganization,
   visibleGroups,
 } from "@robot/shared"
 import {
@@ -21,13 +23,14 @@ import {
   OctagonX,
   ShieldAlert,
 } from "lucide-solid"
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, type JSX, on, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { openThread } from "../chat/threads.ts"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { setFocusMessage } from "../state/focus.ts"
+import { useOrgs } from "../state/orgs.tsx"
 import { setOpenTarget } from "../state/target.ts"
 import { useToday } from "../state/today.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -105,10 +108,26 @@ export const TodayPage = () => {
   const { t } = useApp()
   const today = useToday()
   const ui = useUi()
+  const orgs = useOrgs()
   const [shown, setShown] = createSignal<Partial<Record<TodayGroupId, number>>>({})
-  const view = createMemo(() => {
+  // The filter by organization (spec 021, "Filter by organization"). A row without an agent leaves
+  // the page under a filter, and the badge of the page button does not change with it.
+  const chosenOrg = () => orgs.byId(ui.ui.todayOrg ?? "")
+  const filtered = createMemo(() => {
     const snapshot = today.snapshot()
+    if (!snapshot) return undefined
+    const org = chosenOrg()
+    if (!org) return snapshot
+    return todayForOrganization(snapshot, new Set(org.memberIds))
+  })
+  const view = createMemo(() => {
+    const snapshot = filtered()
     return snapshot ? visibleGroups(snapshot, shown()) : []
+  })
+  /** True when the filter removed every row: the page says so in one line. */
+  const nothingUnderFilter = createMemo(() => {
+    const snapshot = filtered()
+    return snapshot !== undefined && chosenOrg() !== undefined && todayFilterEmpty(snapshot)
   })
 
   /** A click opens the place at the card, the task, the routine, the workflow or the account. */
@@ -139,6 +158,39 @@ export const TodayPage = () => {
 
   return (
     <div class={`${shell.page} ${styles.page}`} data-testid="today-page">
+      {/* The choice of the organization, for the device (spec 021, "Filter by organization"). */}
+      <label class={styles.filter}>
+        <span class={styles.muted}>{t("today.filter")}</span>
+        <select
+          class={styles.filterSelect}
+          ref={(el) => {
+            // The organizations come from a store that fills after the first draw. A select whose
+            // value names an option that is not there yet drops the value, so it is set again when
+            // the options change, and the choice of this device is kept after a restart (spec 021).
+            createEffect(
+              on(
+                () => [ui.ui.todayOrg, orgs.orgs().length] as const,
+                () => {
+                  el.value = ui.ui.todayOrg ?? ""
+                },
+              ),
+            )
+          }}
+          value={ui.ui.todayOrg ?? ""}
+          onChange={(e) =>
+            ui.setTodayOrg(e.currentTarget.value === "" ? null : e.currentTarget.value)
+          }
+          data-testid="today-org"
+        >
+          <option value="">{t("today.filter.all")}</option>
+          <For each={orgs.orgs()}>{(o) => <option value={o.id}>{o.name}</option>}</For>
+        </select>
+      </label>
+      <Show when={nothingUnderFilter()}>
+        <p class={styles.muted} data-testid="today-filter-empty">
+          {t("today.filter.empty", { organization: chosenOrg()?.name ?? "" })}
+        </p>
+      </Show>
       <For each={view()}>
         {(entry) => (
           <section

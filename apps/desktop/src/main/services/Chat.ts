@@ -59,6 +59,7 @@ import {
   newTurnMark,
   nextPause,
   type OutsideSource,
+  orgGoalsOfAgent,
   outsideOfCall,
   outsideOfParts,
   type PermissionLevel,
@@ -117,6 +118,7 @@ import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
+import { readOrgs } from "./orgData.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
@@ -1572,6 +1574,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const system = [
               composeInstructions({
                 handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
+                // The goals of the organizations of the agent, from the top down (spec 030, "Goal").
+                // They are read now, so a change counts from this turn on (spec 002, "Handbook").
+                orgs: orgGoalsOfAgent(readOrgs(db, agent.server_id), agentId),
                 own: agent.instructions,
               }),
               `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,

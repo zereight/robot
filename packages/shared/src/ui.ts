@@ -45,6 +45,13 @@ export const WORKFLOW_HANDLE_WIDTH = 6
 export const AgentView = Schema.Literals(["sections", "organization"])
 export type AgentView = typeof AgentView.Type
 
+/**
+ * The view of the org chart (spec 029, "Search and the list"): the canvas, or the list of the
+ * phone. It belongs to this device, as the view of Agents does.
+ */
+export const OrgView = Schema.Literals(["chart", "list"])
+export type OrgView = typeof OrgView.Type
+
 /** Window layout state that the app keeps between runs. */
 export const UiState = Schema.Struct({
   serverId: Schema.NullOr(Schema.String),
@@ -55,6 +62,13 @@ export const UiState = Schema.Struct({
   collapsed: Schema.Array(Schema.String),
   /** The view of Agents in the place list. */
   agentView: AgentView,
+  /** The view of the org chart: the canvas, or the list. */
+  orgView: OrgView,
+  /**
+   * The organization whose rows the Today page shows (spec 021, "Filter by organization"), or null
+   * for "All". It belongs to this device.
+   */
+  todayOrg: Schema.NullOr(Schema.String),
   activityPanel: Schema.Boolean,
   placeListWidth: Schema.Number.check(
     Schema.isBetween({ minimum: PLACE_LIST_MIN, maximum: PLACE_LIST_MAX }),
@@ -77,6 +91,8 @@ export const defaultUiState: UiState = {
   places: {},
   collapsed: [],
   agentView: "sections",
+  orgView: "chart",
+  todayOrg: null,
   activityPanel: true,
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,

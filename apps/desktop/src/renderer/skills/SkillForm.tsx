@@ -32,6 +32,19 @@ export type SkillFormOpen =
   | { readonly kind: "blank" }
   | { readonly kind: "work"; readonly source: SkillSourceRef }
   | { readonly kind: "edit"; readonly skill: Skill }
+  /**
+   * A proposal of a retrospective (spec 030, "Retrospective"): the form opens filled in, for one
+   * agent, and nothing is saved until the user saves it.
+   */
+  | {
+      readonly kind: "proposal"
+      readonly proposal: {
+        readonly name: string
+        readonly description: string
+        readonly instructions: string
+      }
+      readonly agentId: string | undefined
+    }
 
 const [formOpen, setFormOpen] = createSignal<SkillFormOpen>()
 
@@ -43,6 +56,14 @@ export const openSkillForm = () => setFormOpen({ kind: "blank" })
 export const editSkill = (skill: Skill) => setFormOpen({ kind: "edit", skill })
 /** Opens the form of a new skill and fills it with a draft from a task, an article or an item. */
 export const makeSkillFromWork = (source: SkillSourceRef) => setFormOpen({ kind: "work", source })
+/**
+ * Opens the form of a new skill filled in by a proposal of a retrospective (spec 030). Nothing is
+ * saved until the user saves it.
+ */
+export const openSkillProposal = (
+  proposal: { name: string; description: string; instructions: string },
+  agentId: string | undefined,
+) => setFormOpen({ kind: "proposal", proposal, agentId })
 export const closeSkillForm = () => setFormOpen(undefined)
 
 const FIELDS = ["name", "description", "instructions", "agents"] as const
@@ -62,11 +83,20 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const orgs = useOrgs()
   const work = props.open.kind === "work" ? props.open.source : undefined
   const edited = props.open.kind === "edit" ? props.open.skill : undefined
-  const [name, setName] = createSignal(edited?.name ?? "")
-  const [description, setDescription] = createSignal(edited?.description ?? "")
-  const [instructions, setInstructions] = createSignal(edited?.instructions ?? "")
-  const [all, setAll] = createSignal(edited ? edited.agentIds === null : true)
-  const [chosen, setChosen] = createSignal<readonly string[]>(edited?.agentIds ?? [])
+  // A proposal of a retrospective fills the same fields, for one agent (spec 030).
+  const proposal = props.open.kind === "proposal" ? props.open.proposal : undefined
+  const [name, setName] = createSignal(edited?.name ?? proposal?.name ?? "")
+  const [description, setDescription] = createSignal(
+    edited?.description ?? proposal?.description ?? "",
+  )
+  const [instructions, setInstructions] = createSignal(
+    edited?.instructions ?? proposal?.instructions ?? "",
+  )
+  const [all, setAll] = createSignal(edited ? edited.agentIds === null : proposal === undefined)
+  const [chosen, setChosen] = createSignal<readonly string[]>(
+    edited?.agentIds ??
+      (props.open.kind === "proposal" && props.open.agentId ? [props.open.agentId] : []),
+  )
   // The organizations of the list with their value "On" or "Off" (spec 017, 030). One that is gone
   // is left out. An organization that is not in the map has "Inherit".
   const [orgValues, setOrgValues] = createSignal<ReadonlyMap<string, OrgToolValue>>(

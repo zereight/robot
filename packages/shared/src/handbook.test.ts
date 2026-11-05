@@ -104,3 +104,52 @@ describe("the order of the texts of a turn", () => {
     expect(text).toContain("Handbook:\nLine one\nLine two\n\nYour own instructions:\nBe brief.")
   })
 })
+
+describe("the goal of an organization in a turn (spec 030, Goal)", () => {
+  test("it comes after the handbook and before the own instructions, and the text tells the order", () => {
+    const text = composeInstructions({
+      handbook: "Answer in Korean.",
+      orgs: [{ name: "Docs", text: "Ship the Docs site." }],
+      own: "Be brief.",
+    })
+    expect(text).toContain("Your instructions come in 3 texts")
+    expect(text).toContain(
+      'in this order: the handbook, the goal of the organization "Docs" and your own instructions',
+    )
+    const at = ["Handbook:", 'Goal of the organization "Docs":', "Your own instructions:"].map(
+      (label) => text.indexOf(label),
+    )
+    expect(at.every((n) => n >= 0)).toBe(true)
+    expect(at).toEqual([...at].sort((a, b) => a - b))
+  })
+
+  test("an agent of two organizations reads both goals, in the order that it gives them", () => {
+    const text = composeInstructions({
+      handbook: "",
+      orgs: [
+        { name: "Product", text: "Ship the product." },
+        { name: "Docs", text: "Ship the Docs site." },
+      ],
+      own: "Be brief.",
+    })
+    expect(text.indexOf("Ship the product.")).toBeLessThan(text.indexOf("Ship the Docs site."))
+  })
+
+  test("an empty goal is left out, and a turn with goals only adds no handbook line", () => {
+    const text = composeInstructions({
+      handbook: "",
+      orgs: [
+        { name: "Docs", text: "   " },
+        { name: "Ops", text: "Keep the site up." },
+      ],
+      own: "Be brief.",
+    })
+    expect(text).not.toContain('the organization "Docs"')
+    expect(text).toContain('Goal of the organization "Ops":\nKeep the site up.')
+    expect(text.indexOf("Handbook:")).toBe(-1)
+  })
+
+  test("with no organization the text is the same as before", () => {
+    expect(composeInstructions({ handbook: "", orgs: [], own: "Be brief." })).toBe("Be brief.")
+  })
+})

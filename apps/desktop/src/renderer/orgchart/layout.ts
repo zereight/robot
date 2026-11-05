@@ -64,11 +64,18 @@ export const metrics = (unit: number) => {
   const cells = (px: number) => Math.ceil(px / CELL)
   // A node has an odd number of cells on each side, so the middle of a side is the middle of a cell.
   const odd = (n: number) => (n % 2 === 0 ? n + 1 : n)
+  // An odd number of cells, kept even so that it adds to an odd one and the sum stays odd.
+  const even = (n: number) => (n % 2 === 1 ? n + 1 : n)
   return {
     agentW: odd(cells(15.5 * unit)),
     agentH: odd(cells(6.8 * unit)),
     headW: odd(cells(21 * unit)),
-    headH: odd(cells(4.6 * unit)),
+    // The name, the counts and the outcome of the node (spec 029, "Organization node"): three lines.
+    headH: odd(cells(6.4 * unit)),
+    /** One more line, for the goal of an organization that has one (spec 030, "Goal"). It is an
+     * even number of cells, so that an odd header plus a goal line stays odd: the middle of a side
+     * of an organization node must be the middle of a cell (see "ports"). */
+    goalH: even(cells(1.9 * unit)),
     /** The lane between two columns, and at the left and right of a organization node. */
     gutter: 4,
     /** From the header of a organization node to its lead or its first row. */
@@ -135,6 +142,10 @@ const placeGroup = (org: ChartOrg, m: Metrics, rowMaxCells: number): Group => {
   // An odd width puts the middle of the header and of the lead on the middle of a cell.
   if (w % 2 === 0) w += 1
 
+  // An organization with a goal takes one more line, for the goal (spec 030, "Goal"). The height
+  // stays an odd number of cells: the ports of a node sit in the middle of a side, and the middle
+  // of an odd span is the middle of a cell. `goalH` is even, so an odd `headH` plus it is odd.
+  const headH = org.goal === null ? m.headH : m.headH + m.goalH
   const boxes: Box[] = [
     {
       key: org.key,
@@ -143,11 +154,11 @@ const placeGroup = (org: ChartOrg, m: Metrics, rowMaxCells: number): Group => {
       x: (w - m.headW) / 2,
       y: 0,
       w: m.headW,
-      h: m.headH,
+      h: headH,
     },
   ]
-  let y = m.headH + m.headGap
-  let busY = m.headH + 2
+  let y = headH + m.headGap
+  let busY = headH + 2
   if (lead) {
     boxes.push({
       key: lead.key,

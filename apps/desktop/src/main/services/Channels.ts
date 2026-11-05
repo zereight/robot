@@ -83,6 +83,7 @@ import {
   nudgeRefusal,
   ORG_LIMIT_CODE,
   type OutsideSource,
+  orgGoalsOfAgent,
   outsideOfCall,
   type ParsedPlan,
   type PartChip,
@@ -577,15 +578,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         return turns
       }
 
-      // The handbook, then the instructions of the agent, then the instructions of the channel. The
-      // member and the lead both get them, in every turn of the channel (spec 002, 004). The fast
-      // pick and the check of the lead are requests of the app and get none of them.
+      // The handbook, then the goals of the organizations of the agent, then the instructions of the
+      // agent, then the instructions of the channel (spec 002, 004, 030, "Goal"). The member and the
+      // lead both get them, in every turn of the channel. The fast pick and the check of the lead are
+      // requests of the app and get none of them.
       // The agent also reads its memory: its general items and its notes for this channel, the ones
       // that relate to the new message (spec 008). A note for another channel is not read here.
-      /** The handbook, the own instructions and the instructions of the channel, in that order. */
+      /** The handbook, the goals, the own instructions and the instructions of the channel, in that order. */
       const instructionsOf = (channel: ChannelRow, agent: AgentRow) =>
         composeInstructions({
           handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
+          // Read now, so a change of a goal counts from this turn on (spec 030, "Goal").
+          orgs: orgGoalsOfAgent(readOrgs(db, agent.server_id), agent.id),
           own: agent.instructions,
           channel: { name: channel.name, text: channel.instructions },
         })

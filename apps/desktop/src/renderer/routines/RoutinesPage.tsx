@@ -36,6 +36,7 @@ import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
@@ -105,6 +106,12 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   const [name, setName] = createSignal(props.routine?.name ?? "")
   const [prompt, setPrompt] = createSignal(props.routine?.prompt ?? "")
   const [agentId, setAgentId] = createSignal(props.routine?.agentId ?? agents.agents()[0]?.id ?? "")
+  // The organizations of this computer, for the field "Organization" (spec 030).
+  const orgs = useOrgs()
+  const [orgId, setOrgId] = createSignal<string>(props.routine?.orgId ?? "")
+  /** The agent of the routine is a member of the chosen organization: the rule of the spec. */
+  const orgRuleHolds = () =>
+    orgId() === "" || (orgs.byId(orgId())?.memberIds ?? []).includes(agentId())
   const [place, setPlace] = createSignal(
     props.routine?.place.kind === "channel" ? props.routine.place.channelId : "agent",
   )
@@ -163,6 +170,7 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
     agentId() &&
     triggerValid() &&
     (!ownModel() || model() !== null) &&
+    orgRuleHolds() &&
     !busy()
 
   /**
@@ -224,6 +232,7 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
       ...(trigger() === "watch" && w ? { watch: w } : { schedule: schedule() }),
       place: place() === "agent" ? { kind: "agent" } : { kind: "channel", channelId: place() },
       model: ownModel() ? model() : null,
+      orgId: orgId() === "" ? null : orgId(),
       // A program that reports no tokens cannot use the limit: the field is off and sends none.
       tokenLimit: limitOff()
         ? null
@@ -298,6 +307,25 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
               {(a: Agent) => <option value={a.id}>{shownText(a.id, a.name)}</option>}
             </For>
           </select>
+        </label>
+        {/* The organization that the routine belongs to (spec 030, "A routine of an
+            organization"). Its daily token limit counts the runs. */}
+        <label class={styles.field}>
+          <span>{t("routines.field.org")}</span>
+          <select
+            class={styles.input}
+            value={orgId()}
+            onChange={(e) => setOrgId(e.currentTarget.value)}
+            data-testid="routine-org"
+          >
+            <option value="">{t("routines.field.org.none")}</option>
+            <For each={orgs.orgs()}>{(o) => <option value={o.id}>{o.name}</option>}</For>
+          </select>
+          <Show when={!orgRuleHolds()}>
+            <span class={styles.hint} data-testid="routine-org-rule">
+              {t("error.routine_not_member")}
+            </span>
+          </Show>
         </label>
         <label class={styles.field}>
           <span>{t("routines.field.prompt")}</span>
@@ -619,6 +647,8 @@ export const RoutinesView = () => {
   const { t } = useApp()
   const app = useApp()
   const ui = useUi()
+  // The organizations, for the chip of a routine (spec 030).
+  const orgs = useOrgs()
   const format = useFormat()
   const words = useScheduleWords()
   const intervalWords = useIntervalWords()
@@ -739,7 +769,18 @@ export const RoutinesView = () => {
                 data-enabled={r.enabled}
               >
                 <div class={styles.cardMain}>
-                  <strong>{r.name}</strong>
+                  <span class={styles.cardTitle}>
+                    <strong>{r.name}</strong>
+                    {/* The organization that the routine belongs to (spec 030). It reads as the
+                        role badge of a place, a chip under the name. */}
+                    <Show when={r.orgId}>
+                      {(id) => (
+                        <span class={styles.orgChip} data-testid="routine-org-chip">
+                          {orgs.byId(id())?.name ?? ""}
+                        </span>
+                      )}
+                    </Show>
+                  </span>
                   <span class={styles.hint}>
                     {r.agentName} ·{" "}
                     {r.watch

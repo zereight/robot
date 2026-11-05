@@ -6,6 +6,7 @@ import {
   type OrgAgent,
   type OrgChartOrg,
   type OrgHandoff,
+  type OrgOutcome,
   type OrgSnapshot,
   type OrgTask,
   type RpcEvent,
@@ -128,15 +129,17 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           .all<{
             id: string
             name: string
+            goal: string | null
             lead_agent_id: string | null
             created_at: number
             parent_id: string | null
           }>(
-            "SELECT id, name, lead_agent_id, created_at, parent_id FROM org_unit ORDER BY created_at, id",
+            "SELECT id, name, goal, lead_agent_id, created_at, parent_id FROM org_unit ORDER BY created_at, id",
           )
           .map((o) => ({
             id: o.id,
             name: o.name,
+            goal: o.goal ?? "",
             createdAt: o.created_at,
             leadId: o.lead_agent_id,
             memberIds: members.get(o.id) ?? [],
@@ -158,10 +161,51 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           )
           .map((h) => ({ from: h.from_id, to: h.to_id, count: h.n, newest: h.newest }))
 
-        // The oldest hand-off in the window leaves it at this time.
+        // The work that ended in the window, for the line under the header of an organization node
+        // (spec 029, "Organization node"). "Done" and "Blocked" are states; the verdicts are of the
+        // parts of a channel. A task counts by the time it ended.
+        const outcomes: OrgOutcome[] = db
+          .all<{
+            agent_id: string
+            done: number
+            blocked: number
+            met: number
+            not_met: number
+          }>(
+            `SELECT t.agent_id AS agent_id,
+               SUM(CASE WHEN t.state = 'done' THEN 1 ELSE 0 END) AS done,
+               SUM(CASE WHEN t.state = 'blocked' THEN 1 ELSE 0 END) AS blocked,
+               SUM(CASE WHEN t.verdict = 'met' THEN 1 ELSE 0 END) AS met,
+               SUM(CASE WHEN t.verdict = 'not_met' THEN 1 ELSE 0 END) AS not_met
+             FROM task t JOIN agent a ON a.id = t.agent_id
+             WHERE t.origin IS NULL AND a.archived_at IS NULL
+               AND COALESCE(t.finished_at, t.created_at) >= ?
+               AND (t.state IN ('done', 'blocked') OR t.verdict IS NOT NULL)
+             GROUP BY t.agent_id
+             ORDER BY t.agent_id`,
+            since,
+          )
+          .map((o) => ({
+            agentId: o.agent_id,
+            done: o.done,
+            blocked: o.blocked,
+            met: o.met,
+            notMet: o.not_met,
+          }))
+
+        // The oldest hand-off and the oldest task of the window leave it at this time.
         const oldest = db.get<{ at: number | null }>(
-          `SELECT MIN(created_at) AS at FROM task
-           WHERE agent_message = 'send' AND source = 'agent' AND created_at >= ?`,
+          `SELECT MIN(at) AS at FROM (
+             SELECT MIN(created_at) AS at FROM task
+             WHERE agent_message = 'send' AND source = 'agent' AND created_at >= ?
+             UNION ALL
+             SELECT MIN(COALESCE(t.finished_at, t.created_at)) AS at
+             FROM task t JOIN agent a ON a.id = t.agent_id
+             WHERE t.origin IS NULL AND a.archived_at IS NULL
+               AND COALESCE(t.finished_at, t.created_at) >= ?
+               AND (t.state IN ('done', 'blocked') OR t.verdict IS NOT NULL)
+           )`,
+          since,
           since,
         )?.at
         const change =
@@ -175,6 +219,7 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
             agents,
             orgs,
             handoffs,
+            outcomes,
             handOffRule: readHandOffRule(db),
           },
           change,

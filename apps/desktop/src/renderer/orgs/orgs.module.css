@@ -59,6 +59,15 @@
 .memberSearch {
   margin-top: 6px;
 }
+
+/* The goal of an organization (spec 030, "Goal"): body text in a box that grows, and no resize by
+   hand, so the form keeps its height. */
+.goal {
+  min-height: 3.6em;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.55;
+}
 /* The box keeps one height for any search: a list, a short list and "no match" fill the same room. */
 .memberBox {
   position: relative;
@@ -225,4 +234,38 @@
   border-radius: var(--radius-s);
   color: var(--c-text-muted);
   font-size: var(--text-xs);
+}
+
+/* The proposals of a retrospective (spec 030, "Retrospective"): a list of one to three, each with
+   the evidence that it rests on and the button that opens the form of its kind. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+}
+
+.proposalHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.proposalName {
+  font-size: var(--text-s);
+  font-weight: 500;
+  color: var(--c-text);
 }

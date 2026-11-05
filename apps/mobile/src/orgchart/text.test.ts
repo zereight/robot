@@ -36,11 +36,13 @@ const block = (extra: Partial<OrgBlock> = {}): OrgBlock => ({
   key: "o:x",
   orgId: "x",
   name: "Docs",
+  goal: null,
   memberCount: 5,
   counts: [
     { state: "working", count: 2 },
     { state: "idle", count: 3 },
   ],
+  outcome: [],
   rows: [],
   more: [],
   level: 1,

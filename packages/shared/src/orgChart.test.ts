@@ -10,13 +10,18 @@ import {
   isOrgModel,
   litBy,
   NO_ORG_KEY,
+  NO_OUTCOME,
   ORG_HANDOFF_LINES_MAX,
   ORG_LABEL_MAX,
   ORG_NODES_MAX,
   type OrgAgent,
   type OrgChartOrg,
   type OrgHandoff,
+  type OrgOutcome,
   type OrgSnapshot,
+  orgSearchEmpty,
+  orgSearchHits,
+  outcomeList,
   ROOT_KEY,
 } from "./orgChart.ts"
 
@@ -571,5 +576,130 @@ describe("a model from a linked server", () => {
     expect(isOrgModel(buildChart(EMPTY_ORG_SNAPSHOT))).toBe(true)
     expect(isOrgModel({ root: null, channels: [], lines: [] })).toBe(false)
     expect(isOrgModel(null)).toBe(false)
+  })
+})
+
+describe("the outcome of an organization node", () => {
+  const outcome = (agentId: string, extra: Partial<OrgOutcome> = {}): OrgOutcome => ({
+    agentId,
+    done: 0,
+    blocked: 0,
+    met: 0,
+    notMet: 0,
+    ...extra,
+  })
+
+  test("the counts of the drawn members add up, in the order of the words", () => {
+    const model = buildChart(
+      snap({
+        agents: [agent("a"), agent("b")],
+        orgs: [org("Docs", ["a", "b"])],
+        outcomes: [
+          outcome("a", { done: 12, blocked: 2, met: 9, notMet: 1 }),
+          outcome("b", { done: 3, blocked: 1 }),
+        ],
+      }),
+    )
+    const [docs] = model.orgs
+    expect(docs?.outcome).toEqual({ done: 15, blocked: 3, met: 9, notMet: 1 })
+    expect(outcomeList(docs?.outcome ?? NO_OUTCOME)).toEqual([
+      { word: "done", count: 15 },
+      { word: "blocked", count: 3 },
+      { word: "met", count: 9 },
+      { word: "not_met", count: 1 },
+    ])
+  })
+
+  test("a node with no task of the window has an outcome of zeros", () => {
+    const model = buildChart(snap({ agents: [agent("a")], orgs: [org("Docs", ["a"])] }))
+    expect(model.orgs[0]?.outcome).toEqual(NO_OUTCOME)
+    expect(outcomeList(NO_OUTCOME)).toEqual([])
+  })
+
+  test("a snapshot of an older step without outcomes reads as no work", () => {
+    const model = buildChart(snap({ agents: [agent("a")], orgs: [org("Docs", ["a"])] }))
+    expect(model.orgs[0]?.outcome).toEqual(NO_OUTCOME)
+  })
+
+  test("an agent of two organizations counts in both, as its copies do", () => {
+    const model = buildChart(
+      snap({
+        agents: [agent("a")],
+        orgs: [org("Product", ["a"]), org("Docs", ["a"], { parentId: "Product" })],
+        outcomes: [outcome("a", { done: 5 })],
+      }),
+    )
+    expect(model.orgs.every((o) => o.outcome.done === 5)).toBe(true)
+  })
+
+  test("a member behind the tile more does not count, because the node does not draw it", () => {
+    const many = Array.from({ length: ORG_NODES_MAX + 1 }, (_, i) => agent(`a${i}`))
+    const model = buildChart(
+      snap({
+        agents: many,
+        orgs: [
+          org(
+            "Docs",
+            many.map((a) => a.id),
+          ),
+        ],
+        outcomes: many.map((a) => outcome(a.id, { done: 1 })),
+      }),
+    )
+    const [docs] = model.orgs
+    expect(docs?.nodes).toHaveLength(ORG_NODES_MAX)
+    expect(docs?.outcome.done).toBe(ORG_NODES_MAX)
+  })
+
+  test("the node No organization counts the tasks of its members", () => {
+    const model = buildChart(
+      snap({ agents: [agent("a")], outcomes: [outcome("a", { done: 4, notMet: 2 })] }),
+    )
+    expect(model.orgs[0]?.key).toBe(NO_ORG_KEY)
+    expect(model.orgs[0]?.outcome).toEqual({ done: 4, blocked: 0, met: 0, notMet: 2 })
+  })
+})
+
+describe("the search of the page (spec 029, Search and the list)", () => {
+  const model = buildChart(
+    snap({
+      agents: [agent("ada", { role: "Writer" }), agent("bo", { role: "Checker" }), agent("cy")],
+      orgs: [org("Docs", ["ada", "bo"], { goal: "Ship the Docs site." }), org("Ops", ["cy"])],
+    }),
+  )
+
+  test("an empty text matches nothing, so the page shows no dim", () => {
+    expect(orgSearchHits(model, "").size).toBe(0)
+    expect(orgSearchHits(model, "   ").size).toBe(0)
+    expect(orgSearchEmpty(model, "")).toBe(false)
+  })
+
+  test("the name of an organization matches it with its members", () => {
+    const hits = orgSearchHits(model, "doc")
+    expect(hits.has("o:Docs")).toBe(true)
+    expect(hits.has(copyKey("o:Docs", "ada"))).toBe(true)
+    expect(hits.has("o:Ops")).toBe(false)
+  })
+
+  test("the goal of an organization matches it", () => {
+    expect(orgSearchHits(model, "site").has("o:Docs")).toBe(true)
+  })
+
+  test("the name and the role line of an agent match, and its organization stays lit", () => {
+    const hits = orgSearchHits(model, "checker")
+    expect(hits.has(copyKey("o:Docs", "bo"))).toBe(true)
+    // The organization node stays lit, so a matched agent is not shown without the chart.
+    expect(hits.has("o:Docs")).toBe(true)
+    // The other member of that organization does not match on its own.
+    expect(hits.has(copyKey("o:Docs", "ada"))).toBe(false)
+  })
+
+  test("a text that matches nothing empties the chart, and one that matches does not", () => {
+    expect(orgSearchEmpty(model, "zzz")).toBe(true)
+    expect(orgSearchEmpty(model, "doc")).toBe(false)
+  })
+
+  test("the search is blind to the case", () => {
+    expect(orgSearchHits(model, "DOCS").has("o:Docs")).toBe(true)
   })
 })

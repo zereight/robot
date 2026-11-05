@@ -4,9 +4,11 @@ import {
   filterAgents,
   type HandOffRange,
   memberLineConflict,
+  ORG_GOAL_MAX,
   ORG_NAME_MAX,
   type Org,
   type OrgCreate,
+  type OrgRepairLine,
   orgDeleteSubCount,
   orgParentOptions,
   orgPatchOf,
@@ -53,7 +55,8 @@ export const OrgDialog = (props: {
   /** The organization that a save made: the org chart puts the focus on its node (spec 029). */
   onSaved?: (org: Org) => void
 }) => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const ui = useUi()
   const agents = useAgents()
   const orgs = useOrgs()
@@ -65,6 +68,7 @@ export const OrgDialog = (props: {
     org && org.leadId !== null && org.memberIds.includes(org.leadId) ? org.leadId : null
   const was = {
     name: org?.name ?? "",
+    goal: org?.goal ?? "",
     memberIds: org?.memberIds ?? [],
     leadId: storedLead,
     parentId: org ? untrack(() => orgs.parentOf(org.id)) : null,
@@ -74,6 +78,7 @@ export const OrgDialog = (props: {
   const wasLimit = org?.dailyTokenLimit ?? null
 
   const [name, setName] = createSignal(was.name)
+  const [goal, setGoal] = createSignal(was.goal)
   const [members, setMembers] = createSignal<string[]>([...was.memberIds])
   const [leadId, setLeadId] = createSignal<string | null>(was.leadId)
   const [parentId, setParentId] = createSignal<string | null>(was.parentId)
@@ -86,6 +91,20 @@ export const OrgDialog = (props: {
   const [confirmDelete, setConfirmDelete] = createSignal(false)
 
   const readOnly = () => !ui.canChange()
+
+  // The newest repair of this organization in the log, for the muted line of the form (spec 030).
+  const [repair, setRepair] = createSignal<OrgRepairLine | null>(null)
+  void (async () => {
+    if (!org) return
+    try {
+      setRepair(await call("organizations.lastRepair", { id: org.id }))
+    } catch {
+      // The line is a help, not a part of the form: a read that fails shows nothing.
+    }
+  })()
+  /** The date of a repair in the language of the interface, as a day and a time. */
+  const dateText = (at: number) =>
+    new Intl.DateTimeFormat(app.locale(), { dateStyle: "medium", timeStyle: "short" }).format(at)
 
   // An archived agent stays a member (spec 030). The form lists it, marked, so the user can remove
   // it. Only the archived agents that are members are offered.
@@ -148,9 +167,11 @@ export const OrgDialog = (props: {
   const agentName = (id: string | undefined) => lineAgents().find((a) => a.id === id)?.name ?? ""
 
   const limitValid = () => limitFieldValid(limitOn(), limitText())
+  // The goal holds 0 to 400 characters (spec 030, "Goal"). The field counts what is left.
+  const goalLeft = () => ORG_GOAL_MAX - charLength(goal())
   const valid = () => {
     const length = charLength(name().trim())
-    return length >= 1 && length <= ORG_NAME_MAX && limitValid()
+    return length >= 1 && length <= ORG_NAME_MAX && goalLeft() >= 0 && limitValid()
   }
 
   const submit = async (event: SubmitEvent) => {
@@ -162,6 +183,7 @@ export const OrgDialog = (props: {
       if (org) {
         const patch = orgPatchOf(was, {
           name: name(),
+          goal: goal(),
           memberIds: members(),
           leadId: leadId(),
           parentId: parentId(),
@@ -178,6 +200,7 @@ export const OrgDialog = (props: {
         const input: OrgCreate = {
           serverId,
           name: name().trim(),
+          ...(goal().trim() !== "" ? { goal: goal().trim() } : {}),
           memberIds: members(),
           leadId: leadId() !== null && members().includes(leadId() as string) ? leadId() : null,
           ...(parentId() ? { parentId: parentId() } : {}),
@@ -253,6 +276,24 @@ export const OrgDialog = (props: {
             onInput={(e) => setName(e.currentTarget.value)}
             data-testid="org-name"
           />
+        </label>
+        {/* Why the organization exists (spec 030, "Goal"). Its members read it before their own
+            instructions. */}
+        <label class={styles.field}>
+          <span class={styles.label}>{t("orgs.goal")}</span>
+          <textarea
+            class={`${styles.input} ${styles.goal}`}
+            value={goal()}
+            rows={3}
+            readOnly={readOnly()}
+            aria-invalid={goalLeft() < 0}
+            aria-describedby="org-goal-hint"
+            onInput={(e) => setGoal(e.currentTarget.value)}
+            data-testid="org-goal"
+          />
+          <span class={styles.hint} id="org-goal-hint" data-testid="org-goal-hint">
+            {t("orgs.goal.hint", { left: goalLeft() })}
+          </span>
         </label>
         <fieldset class={styles.field}>
           <legend class={styles.label}>{t("orgs.members")}</legend>
@@ -442,6 +483,23 @@ export const OrgDialog = (props: {
             onText={setLimitText}
           />
         </fieldset>
+        {/* A repair of this organization makes no notification (spec 030, "Repair"), so the form
+            is where the user finds it after the fact. */}
+        <Show when={repair()}>
+          {(line) => (
+            <p class={styles.hint} data-testid="org-last-repair">
+              {line().kind === "tree"
+                ? t("orgs.lastRepair.tree", {
+                    date: dateText(line().at),
+                    reason:
+                      line().reason === "levels"
+                        ? t("orgs.lastRepair.levels")
+                        : t("orgs.lastRepair.loop"),
+                  })
+                : t("orgs.lastRepair.line", { date: dateText(line().at), agent: line().agent })}
+            </p>
+          )}
+        </Show>
         <Show when={error()}>
           {(err) => (
             <div class={styles.error} role="alert" data-testid="org-error">

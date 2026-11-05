@@ -84,6 +84,7 @@ const source = async () => {
         parentId: top.id,
         handOffRange: "own_lower",
         dailyTokenLimit: 50_000,
+        goal: "Answer the customer in one reply.",
       }),
     ),
   )
@@ -2360,6 +2361,8 @@ describe("the organization crosses as its own kind (spec 030, 019)", () => {
       members: [a.ada.id, a.bo.id],
       handOffRange: "own_lower",
       dailyTokenLimit: 50_000,
+      // The goal of the organization crosses with it (spec 030, "Goal").
+      goal: "Answer the customer in one reply.",
     })
     expect(typeof fields.parent).toBe("string")
     expect(parseOp(op(a.org.id, fields), NOW)).toBeDefined()
@@ -2370,6 +2373,8 @@ describe("the organization crosses as its own kind (spec 030, 019)", () => {
       { dailyTokenLimit: "50000" },
       { name: "x".repeat(61) },
       { members: "all" },
+      { goal: "x".repeat(401) },
+      { goal: 7 },
     ])
       expect(parseOp(op(a.org.id, { ...fields, ...bad }), NOW), JSON.stringify(bad)).toBeUndefined()
 
