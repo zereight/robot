@@ -126,17 +126,20 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
       string,
       string
     >
-    const docs = await rpc<OrgInfo>(page, "organizations.create", {
-      serverId: server,
-      name: "Docs",
-      memberIds: [ids.Ada, ids.Bo, ids.Cy],
-      leadId: ids.Ada,
-    })
+    // "Docs" is under "Ops", so an agent can be in both (spec 030, "One line"). The Option drag
+    // adds Bo to "Ops" and Bo stays in "Docs": they must be on one line (spec 029).
     const ops = await rpc<OrgInfo>(page, "organizations.create", {
       serverId: server,
       name: "Ops",
       memberIds: [ids.Dee],
       leadId: null,
+    })
+    const docs = await rpc<OrgInfo>(page, "organizations.create", {
+      serverId: server,
+      name: "Docs",
+      memberIds: [ids.Ada, ids.Bo, ids.Cy],
+      leadId: ids.Ada,
+      parentId: ops.id,
     })
     const bo = ids.Bo as string
     const cy = ids.Cy as string
@@ -347,17 +350,19 @@ test("edit on the org chart of a linked computer with the switch Can create and 
       string,
       string
     >
-    const docs = await rpc<OrgInfo>(two.page, "organizations.create", {
-      serverId: serverTwo,
-      name: "Docs",
-      memberIds: [ids.Ada, ids.Bo],
-      leadId: ids.Ada,
-    })
+    // Ada is in both, so "Docs" is under "Ops" (spec 030, "One line").
     const ops = await rpc<OrgInfo>(two.page, "organizations.create", {
       serverId: serverTwo,
       name: "Ops",
       memberIds: [ids.Ada],
       leadId: null,
+    })
+    const docs = await rpc<OrgInfo>(two.page, "organizations.create", {
+      serverId: serverTwo,
+      name: "Docs",
+      memberIds: [ids.Ada, ids.Bo],
+      leadId: ids.Ada,
+      parentId: ops.id,
     })
     await openDevices(two.page)
     await setName(two.page, "MacBook 2")
@@ -579,6 +584,8 @@ test("edit on the org chart: the drop area No organization, a still view, edge s
       name: "Tmp",
       memberIds: [ids.Dee],
       leadId: null,
+      // Dee is in "Ops", so "Tmp" is under it (spec 030, "One line").
+      parentId: ops.id,
     })
     await orgNode(page, tmp.id).click({ button: "right" })
     await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
