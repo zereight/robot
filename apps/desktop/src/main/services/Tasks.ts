@@ -836,6 +836,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         switch (row.source) {
           case "chat":
           case "handover":
+          case "mention":
             return row.prompt === "(no text)" ? null : row.prompt
           case "routine":
             return routineWords(row.source_id, row.prompt)
@@ -1335,7 +1336,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         // The agent works in another thread of its chat (spec 003). A handover is a message in a
         // thread, so it counts as a chat here (spec 005).
         const inChat = (source: TaskSource) =>
-          source === "chat" || source === "handover" || source === "teams"
+          source === "chat" || source === "handover" || source === "teams" || source === "mention"
         if (
           inChat(running.source) &&
           inChat(queued.source) &&
@@ -1364,6 +1365,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           case "chat":
           case "handover":
           case "teams":
+          case "mention":
             return { kind: "chat" }
           case "agent":
             return { kind: "agent" }

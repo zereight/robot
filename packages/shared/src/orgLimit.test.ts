@@ -134,7 +134,14 @@ describe("which tasks the limit can stop", () => {
   test("a task of a direct chat is never stopped; every other source can be", () => {
     for (const source of ["chat", "handover", "teams", "memory_check"] as const)
       expect(limitStopsSource(source)).toBe(false)
-    for (const source of ["channel", "routine", "workflow", "agent", "question"] as const)
+    for (const source of [
+      "channel",
+      "routine",
+      "workflow",
+      "agent",
+      "question",
+      "mention",
+    ] as const)
       expect(limitStopsSource(source)).toBe(true)
   })
 })

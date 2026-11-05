@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it, test } from "bun:test"
+import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type MessagePart, messageText, type TaskProgress, taskTimes } from "@robot/shared"
 import { Effect, Exit, Layer, ManagedRuntime } from "effect"
@@ -942,6 +943,112 @@ describe("When the provider is busy", () => {
       const reply = (await t.history()).messages[1]
       expect(busyNotes(reply?.parts ?? []).map((part) => part.n)).toEqual([1])
       expect(reply?.status).toBe("done")
+    })
+  })
+})
+
+const otherAgent = async (t: Awaited<ReturnType<typeof setup>>, name: string) => {
+  const model = t.agent.model
+  if (!model) throw new Error("no model")
+  return t.run(
+    Agents.use((a) =>
+      a.create({
+        serverId: t.local.id,
+        name,
+        role: "",
+        instructions: "Be brief.",
+        model,
+      }),
+    ),
+  )
+}
+
+describe("When a direct chat names another agent", () => {
+  describe("with @Name", () => {
+    it("should put that agent's reply in this chat and not in their own chat", async () => {
+      const t = await setup()
+      const bo = await otherAgent(t, "Bo")
+      await t.send("@Bo look")
+      await until(async () => {
+        const messages = (await t.history()).messages
+        const guest = messages.find((m) => m.speakerId === bo.id)
+        return guest?.status === "done"
+      })
+      const own = await t.run(Chat.use((c) => c.history(bo.id)))
+      expect(own.messages).toEqual([])
+      const guest = (await t.history()).messages.find((m) => m.speakerId === bo.id)
+      expect(guest?.status).toBe("done")
+    })
+
+    it("should give the named agent the message that named them", async () => {
+      const t = await setup()
+      await otherAgent(t, "Bo")
+      const from = asked.length
+      await t.send("@Bo look")
+      await until(async () => asked.slice(from).some((text) => text.includes("@Bo look")))
+      expect(asked.slice(from).some((text) => text.includes("@Bo look"))).toBe(true)
+    })
+
+    it("should still let the chat's own agent answer", async () => {
+      const t = await setup()
+      const bo = await otherAgent(t, "Bo")
+      await t.send("@Bo look")
+      await until(async () => {
+        const messages = (await t.history()).messages
+        const host = messages.find((m) => m.author === "agent" && m.speakerId === undefined)
+        const guest = messages.find((m) => m.speakerId === bo.id)
+        return host?.status === "done" && guest?.status === "done"
+      })
+      const host = (await t.history()).messages.find(
+        (m) => m.author === "agent" && m.speakerId === undefined,
+      )
+      expect(host?.status).toBe("done")
+      const tasks = await t.run(Tasks.use((x) => x.list(t.local.id)))
+      expect(tasks.some((task) => task.agentId === bo.id && task.source === "mention")).toBe(true)
+    })
+
+    it("should put an attached file where the named agent can read it", async () => {
+      const t = await setup()
+      const bo = await otherAgent(t, "Bo")
+      const file = join(t.agent.workspace, "note.txt")
+      writeFileSync(file, "see this")
+      await t.run(
+        Chat.use((c) =>
+          c.send({ agentId: t.agent.id, text: "@Bo look", replyTo: null, files: [file] }),
+        ),
+      )
+      await until(async () =>
+        (await t.history()).messages.some((m) => m.speakerId === bo.id && m.status === "done"),
+      )
+      expect(existsSync(join(bo.workspace, "attachments", "note.txt"))).toBe(true)
+    })
+
+    it("should stop a named agent that is still writing in this chat", async () => {
+      const t = await setup()
+      const bo = await otherAgent(t, "Bo")
+      await t.send("@Bo go slow")
+      await until(async () =>
+        (await t.history()).messages.some((m) => m.speakerId === bo.id && m.status === "streaming"),
+      )
+      await t.run(Chat.use((c) => c.stop(t.agent.id)))
+      await until(async () => (await t.history()).messages.every((m) => m.status !== "streaming"))
+      const statuses = (await t.history()).messages
+        .filter((m) => m.author === "agent")
+        .map((m) => m.status)
+      expect(statuses).toEqual(["stopped", "stopped"])
+    })
+  })
+
+  describe("with the chat's own name", () => {
+    it("should stay one turn of that agent", async () => {
+      const t = await setup()
+      await t.send("@Ada hi")
+      await t.settled()
+      const messages = (await t.history()).messages
+      expect(messages.map((m) => [m.author, m.speakerId ?? null])).toEqual([
+        ["user", null],
+        ["agent", null],
+      ])
     })
   })
 })

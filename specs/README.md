@@ -10,7 +10,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 000 | [Product](000-product.md) | Draft |
 | 001 | [Window layout: server rail, place list with user sections, conversation, activity panel](001-window-layout.md) | Draft |
 | 002 | [Agents: create, starters, face, name, role, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
-| 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context](003-direct-chat.md) | Draft |
+| 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context, mentions](003-direct-chat.md) | Draft |
 | 004 | [Channels: several agents, one job, lead agent, split work, check and verdicts, `@all`, fast pick](004-channels.md) | Draft |
 | 005 | [Tasks and plan steps: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |

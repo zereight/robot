@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { EVERYONE_MENTION, mentionsEveryone, parseMentions } from "./channels.ts"
 import {
+  directMentions,
   insertMention,
   MENTION_LIST_MAX,
   type MentionEntry,
@@ -108,6 +109,29 @@ test("insert: @all is read as the everyone mention", () => {
   const { text } = insertMention("@", open, 1, EVERYONE_MENTION)
   expect(text).toBe("@all ")
   expect(mentionsEveryone(text)).toBe(true)
+})
+
+const roster = [
+  { id: "ada", name: "Ada", archived: false },
+  { id: "bo", name: "Bo", archived: false },
+  { id: "cy", name: "Cy", archived: true },
+]
+
+test("a direct chat names another agent, and not itself, an archived agent, an unknown name or @all", () => {
+  expect(directMentions(roster, "ada", "@Bo look").map((agent) => agent.id)).toEqual(["bo"])
+  expect(directMentions(roster, "ada", "@Ada hi")).toEqual([])
+  expect(directMentions(roster, "ada", "@Cy hi")).toEqual([])
+  expect(directMentions(roster, "ada", "@Nope hi")).toEqual([])
+  expect(directMentions(roster, "ada", "@all hi")).toEqual([])
+  expect(directMentions(roster, "ada", "mail a@Bo.com")).toEqual([])
+})
+
+test("a direct chat keeps the order of the agents when the message names two", () => {
+  const open = [
+    { id: "cy", name: "Cy", archived: false },
+    { id: "bo", name: "Bo", archived: false },
+  ]
+  expect(directMentions(open, "ada", "@Bo and @Cy").map((agent) => agent.id)).toEqual(["cy", "bo"])
 })
 
 test("insert: the result is a mention that the channel reads, also with a space in the name", () => {
