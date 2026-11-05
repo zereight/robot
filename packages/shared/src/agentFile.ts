@@ -54,6 +54,11 @@ export interface AgentFileChannel {
   readonly members: readonly number[]
   /** A place in the `agents` list. One of the members, or null. */
   readonly lead: number | null
+  /**
+   * The name of the parent channel in this file, or null for a top channel (spec 002, 030).
+   * The name is as the file writes it, after the spaces at both ends are removed.
+   */
+  readonly parent: string | null
 }
 
 /** A skill of a version 2 file, as it is read. `agents` are places in the `agents` list. */
@@ -236,7 +241,7 @@ const readChannel = (
   keys: readonly string[],
 ): Step<AgentFileChannel> => {
   if (!isObject(value)) return fail("agent_file_field", path)
-  const { name, topic, instructions, reviewParts, members, lead } = value
+  const { name, topic, instructions, reviewParts, members, lead, parent } = value
   if (
     typeof name !== "string" ||
     charLength(name.trim()) < 1 ||
@@ -255,6 +260,15 @@ const readChannel = (
     return fail("agent_file_field", `${path}.instructions`)
   if (reviewParts !== undefined && typeof reviewParts !== "boolean")
     return fail("agent_file_field", `${path}.reviewParts`)
+  // Absent or null: a top channel. A name must be a channel of this file (checked after the list).
+  if (parent !== undefined && parent !== null && typeof parent !== "string")
+    return fail("agent_file_field", `${path}.parent`)
+  const parentName = typeof parent === "string" ? parent.trim() : ""
+  if (
+    typeof parent === "string" &&
+    (parentName === "" || charLength(parentName) > CHANNEL_NAME_MAX)
+  )
+    return fail("agent_file_field", `${path}.parent`)
   const readMembers = readAgentNames(members, keys, `${path}.members`)
   if (!readMembers.ok) return readMembers
   let readLead: number | null = null
@@ -273,6 +287,7 @@ const readChannel = (
       reviewParts: reviewParts === true,
       members: readMembers.value,
       lead: readLead,
+      parent: parentName === "" ? null : parentName,
     },
   }
 }
@@ -384,6 +399,13 @@ export const parseAgentFile = (text: string): AgentFileParse => {
     if (channelKeys.has(key)) return fail("agent_file_duplicate_channel", channel.name)
     channelKeys.add(key)
   }
+  // The parent is another channel of this file, or none (spec 002, 030).
+  for (const [i, channel] of channels.value.entries()) {
+    if (channel.parent === null) continue
+    const key = channelNameKey(channel.parent)
+    if (key === channelNameKey(channel.name) || !channelKeys.has(key))
+      return fail("agent_file_field", `channels[${i}].parent`)
+  }
   const skillKeys = new Set<string>()
   for (const skill of skills.value) {
     const key = skillNameKey(skill.name)
@@ -420,6 +442,8 @@ export interface AgentFileChannelOut {
   readonly reviewParts: boolean
   readonly members: readonly string[]
   readonly lead: string | null
+  /** The name of the parent channel in this file. Absent or null: a top channel. */
+  readonly parent?: string | null
 }
 
 /** A skill to write. `agents` are names of agents that the file holds. */
@@ -469,6 +493,7 @@ export const writeAgentFile = (
               reviewParts: c.reviewParts,
               members: c.members,
               lead: c.lead,
+              ...(c.parent ? { parent: c.parent } : {}),
             })),
           }
         : {}),

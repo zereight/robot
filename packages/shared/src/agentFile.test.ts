@@ -255,6 +255,7 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
         reviewParts: true,
         members: [0, 1],
         lead: 0,
+        parent: null,
       },
     ])
   })
@@ -270,6 +271,7 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
         reviewParts: false,
         members: [1],
         lead: null,
+        parent: null,
       },
     ])
   })
@@ -286,6 +288,26 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
       "channels[0].instructions",
     )
     expect(refused(channels({ reviewParts: "yes" })).detail).toBe("channels[0].reviewParts")
+    expect(refused(channels({ parent: "" })).detail).toBe("channels[0].parent")
+    expect(refused(channels({ parent: 3 })).detail).toBe("channels[0].parent")
+  })
+
+  test("the parent is another channel of the file, or none", () => {
+    const text = file(two, {
+      channels: [channel({ name: "Product" }), channel({ name: "Docs", parent: " product " })],
+    })
+    const result = parseAgentFile(text)
+    if (!result.ok) throw new Error("refused")
+    expect(result.file.channels.map((c) => [c.name, c.parent])).toEqual([
+      ["Product", null],
+      ["Docs", "product"],
+    ])
+    expect(refused(file(two, { channels: [channel({ parent: "Missing" })] })).detail).toBe(
+      "channels[0].parent",
+    )
+    expect(refused(file(two, { channels: [channel({ parent: "Launch" })] })).detail).toBe(
+      "channels[0].parent",
+    )
   })
 
   test("a member or a lead must be an agent of the file; the lead must be a member", () => {
