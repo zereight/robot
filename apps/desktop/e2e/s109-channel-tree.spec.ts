@@ -1,24 +1,15 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { expect, type Locator, type Page, test } from "@playwright/test"
-import { freshUserData, type Launched, launch, resizeWindow, shot } from "./harness.ts"
+import { expect, type Page, test } from "@playwright/test"
+import { freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { freePortPair } from "./ports.ts"
-import {
-  closeSettings,
-  envFor,
-  openDevices,
-  rpc,
-  setName,
-  synced,
-  turnOnSync,
-} from "./sync-helpers.ts"
+import { closeSettings, rpc, synced, turnOnSync } from "./sync-helpers.ts"
 
-// Spec 030, "Channel tree" (S109), with 029 and 012: the field "Parent channel" with its rules
-// (no loop, at most 3 levels), the line "In <parent channel>" in the header, the tree on the org
-// chart (layout, structure lines, focus order), "Put under…" and "Move to the top" with Undo, the
-// drag of a channel node onto a channel node or onto the root, and a linked computer with the
-// switch "Can create and change agents". Sync and export of the field are checked by unit tests
-// (sync/kinds.test.ts, services/Data.test.ts), and the repair of a broken tree (030, "Repair") by
+// Spec 030, "Channel tree" (S109): the field "Parent channel" with its rules (no loop, at most 3
+// levels), the line "In <parent channel>" in the header, and the repair of a broken tree (030,
+// "Repair") on two computers. The org chart draws organizations, not channels (029, S119), so the
+// tree of channels has no chart here; the moves on the chart are in s108. Sync and export of the
+// field are checked by unit tests (sync/kinds.test.ts, services/Data.test.ts), and the repair by
 // unit tests too (shared/channelTree.test.ts, sync/channelRepair.test.ts, services/Sync.test.ts).
 // The last test here shows the repair on two computers: the muted line and no notice. The repair of a
 // restore has no screen yet (the archive of a channel is slice S19), so a unit test checks it.
@@ -69,31 +60,7 @@ const makeChannel = async (
     ...(extra.parentId ? { parentId: extra.parentId } : {}),
   })
 
-const channelNode = (page: Page, channelId: string) =>
-  page.locator(`[data-testid=org-channel][data-key="c:${channelId}"]`)
-const line = (page: Page, id: string) => page.locator(`[data-testid=org-line][data-id="${id}"]`)
-const center = async (target: Locator) => {
-  const box = await target.boundingBox()
-  if (!box) throw new Error("no box")
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-}
-/** Presses on `from`, moves onto `to` in steps, and runs `during` before the drop. */
-const drag = async (page: Page, from: Locator, to: Locator, during?: () => Promise<void>) => {
-  const start = await center(from)
-  await page.mouse.move(start.x, start.y)
-  await page.mouse.down()
-  await page.mouse.move(start.x + 10, start.y + 10, { steps: 3 })
-  const end = await center(to)
-  await page.mouse.move(end.x, end.y, { steps: 8 })
-  await during?.()
-  await page.mouse.up()
-}
-const openMenu = async (page: Page, node: Locator) => {
-  await node.click({ button: "right" })
-  await expect(page.getByTestId("org-menu")).toBeVisible()
-}
-
-test("the channel tree: the field, the header line, the chart, Put under, Move to the top and a drag", async () => {
+test("the channel tree: the field, its reasons, the header line and the level limit", async () => {
   test.setTimeout(240_000)
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
   try {
@@ -109,8 +76,7 @@ test("the channel tree: the field, the header line, the chart, Put under, Move t
 
     // The field "Parent channel" in the settings of "Docs": "Product". The header of "Docs" shows
     // "In Product", and a click opens "Product".
-    await page.getByTestId("page-orgchart").click()
-    await channelNode(page, docs.id).click()
+    await page.getByTestId(`place-channel-${docs.id}`).click()
     await expect(page.getByTestId("channel-header-name")).toHaveText("Docs")
     await expect(page.getByTestId("channel-header-parent")).toHaveCount(0)
     await page.getByTestId("channel-settings").click()
@@ -145,158 +111,8 @@ test("the channel tree: the field, the header line, the chart, Put under, Move t
       "parent_levels",
     )
     expect(await tree(page)).toEqual(["Docs < Product", "Ops", "Product", "Site < Docs"])
-
-    // The chart: each sub-channel node sits under the node of its parent, with a structure line
-    // between them, and the root has no line to a sub-channel.
-    await page.getByTestId("page-orgchart").click()
-    await expect(channelNode(page, docs.id)).toHaveAttribute("data-parent", `c:${product.id}`)
-    await expect(channelNode(page, site.id)).toHaveAttribute("data-level", "3")
-    await expect(line(page, `s:c:${product.id}>c:${docs.id}`)).toHaveCount(1)
-    await expect(line(page, `s:c:${docs.id}>c:${site.id}`)).toHaveCount(1)
-    await expect(line(page, `s:root>c:${docs.id}`)).toHaveCount(0)
-    await expect(line(page, `s:root>c:${product.id}`)).toHaveCount(1)
-    const yOf = async (id: string) => (await center(channelNode(page, id))).y
-    expect(await yOf(docs.id)).toBeGreaterThan(await yOf(product.id))
-    expect(await yOf(site.id)).toBeGreaterThan(await yOf(docs.id))
-    await shot(page, "s109-03-chart-tree")
-
-    // Tab: the root, then each channel node, its agents, then its sub-channels.
-    await page.getByTestId("org-canvas").click({ position: { x: 4, y: 4 } })
-    const order: string[] = []
-    for (let i = 0; i < 10; i++) {
-      await page.keyboard.press("Tab")
-      order.push(
-        await page.evaluate(
-          () => document.activeElement?.getAttribute("aria-label")?.split(". ")[0] ?? "?",
-        ),
-      )
-    }
-    expect(order).toEqual(["You", "Ops", "Dee", "Product", "Ada", "Docs", "Bo", "Cy", "Site", "Cy"])
-    await page.keyboard.press("Escape")
-
-    // "Move to the top" on "Site", and Undo puts it back under "Docs".
-    await openMenu(page, channelNode(page, site.id))
-    await page.getByTestId("org-menu").getByTestId("org-menu-to-top").click()
-    await expect(page.getByTestId("org-notice-text")).toHaveText("Moved Site to the top.")
-    await expect.poll(() => tree(page)).toContain("Site")
-    await expect(line(page, `s:root>c:${site.id}`)).toHaveCount(1)
-    await page.getByTestId("org-undo").click()
-    await expect(page.getByTestId("org-notice-text")).toHaveText("Undone.")
-    await expect.poll(() => tree(page)).toContain("Site < Docs")
-    // "Docs" is under "Product". Its menu has "Move to the top", and "Put under…" lists the
-    // channels that the tree allows, but not "Product", its parent now (spec 030, "Channel tree"):
-    // that pick would change nothing. "Site" is its own sub-channel, so only "Ops" is left.
-    await page.keyboard.press("Escape")
-    await openMenu(page, channelNode(page, docs.id))
-    await expect(page.getByTestId("org-menu").getByTestId("org-menu-to-top")).toHaveCount(1)
-    await page.getByTestId("org-menu").getByTestId("org-menu-put-under").click()
-    const docsMenu = page.getByTestId("org-menu")
-    await expect(docsMenu.getByTestId(`org-menu-under-${ops.id}`)).toBeVisible()
-    await expect(docsMenu.getByTestId(`org-menu-under-${product.id}`)).toHaveCount(0)
-    await expect(docsMenu.getByTestId(`org-menu-under-${site.id}`)).toHaveCount(0)
-    await page.keyboard.press("Escape")
-    await expect(page.getByTestId("org-menu")).toHaveCount(0)
-    // A top channel has no "Move to the top".
-    await page.keyboard.press("Escape")
-    await openMenu(page, channelNode(page, ops.id))
-    await expect(page.getByTestId("org-menu").getByTestId("org-menu-to-top")).toHaveCount(0)
-
-    // "Put under…" on "Ops" lists the channels that the tree allows: not "Site" (a fourth level).
-    await page.getByTestId("org-menu").getByTestId("org-menu-put-under").click()
-    const menu = page.getByTestId("org-menu")
-    await expect(menu.getByTestId(`org-menu-under-${product.id}`)).toBeVisible()
-    await expect(menu.getByTestId(`org-menu-under-${docs.id}`)).toBeVisible()
-    await expect(menu.getByTestId(`org-menu-under-${site.id}`)).toHaveCount(0)
-    await shot(page, "s109-04-put-under")
-    await menu.getByTestId(`org-menu-under-${docs.id}`).click()
-    await expect(page.getByTestId("org-notice-text")).toHaveText("Put Ops under Docs.")
-    await expect.poll(() => tree(page)).toContain("Ops < Docs")
-    await expect(channelNode(page, ops.id)).toHaveAttribute("data-parent", `c:${docs.id}`)
-
-    // Drag "Product" onto "Docs", its own sub-channel: no ring, and the drop changes nothing.
-    await drag(page, channelNode(page, product.id), channelNode(page, docs.id), async () => {
-      await expect(channelNode(page, docs.id)).toHaveAttribute("data-ring", "false")
-    })
-    await expect(page.getByTestId("org-notice")).toContainText("Put Ops under Docs.")
-    expect(await tree(page)).toEqual(["Docs < Product", "Ops < Docs", "Product", "Site < Docs"])
-    // Drag "Ops" onto the root: it moves to the top.
-    await drag(page, channelNode(page, ops.id), page.getByTestId("org-root"), async () => {
-      await expect(page.getByTestId("org-root")).toHaveAttribute("data-ring", "true")
-      await expect(page.getByTestId("org-drop-area")).toHaveCount(0)
-    })
-    await expect(page.getByTestId("org-notice-text")).toHaveText("Moved Ops to the top.")
-    await expect.poll(() => tree(page)).toContain("Ops")
-    // Drag "Ops" onto "Product": it goes under it.
-    await drag(page, channelNode(page, ops.id), channelNode(page, product.id), async () => {
-      await expect(channelNode(page, product.id)).toHaveAttribute("data-ring", "true")
-    })
-    await expect(page.getByTestId("org-notice-text")).toHaveText("Put Ops under Product.")
-    await expect.poll(() => tree(page)).toContain("Ops < Product")
-    await shot(page, "s109-05-dragged")
   } finally {
     await app.close().catch(() => {})
-  }
-})
-
-const tile = (page: Page, name: string) =>
-  page.locator(`[data-testid=server-tile][data-name="${name}"]`)
-
-test("a linked computer with the switch Can create and change agents puts a channel under another", async () => {
-  test.setTimeout(240_000)
-  const [PORT_1, PORT_2] = await freePortPair()
-  const two: Launched = await launch(freshUserData(), envFor(PORT_2))
-  const one: Launched = await launch(freshUserData(), envFor(PORT_1))
-  try {
-    await resizeWindow(one.app, 1300, 860)
-    const ids = await makeAgents(two.page, ["Ada", "Bo"])
-    const product = await makeChannel(two.page, "Product", [ids.Ada as string])
-    const docs = await makeChannel(two.page, "Docs", [ids.Bo as string])
-    await openDevices(two.page)
-    await setName(two.page, "MacBook 2")
-    await closeSettings(two.page)
-
-    // MacBook 1 connects one way. MacBook 2 leaves the switch "Can create and change agents" on.
-    await openDevices(two.page)
-    await two.page.getByTestId("pair-open").click()
-    await two.page.getByTestId("pair-turn-on").click()
-    await expect(two.page.getByTestId("pair-code")).toHaveAttribute("data-code", /^\d{6}$/)
-    const code = (await two.page.getByTestId("pair-code").getAttribute("data-code")) ?? ""
-    const address =
-      (await two.page
-        .getByTestId("pair-addresses")
-        .locator("li")
-        .first()
-        .getAttribute("data-address")) ?? ""
-    await one.page.getByTestId("server-add").click()
-    await one.page.getByTestId("connect-address").fill(address)
-    await one.page.getByTestId("connect-code").fill(code)
-    await one.page.getByTestId("connect-next").click()
-    await one.page.getByTestId("connect-two-way").click()
-    await one.page.getByTestId("connect-finish").click()
-    await two.page.getByTestId("join-allow").click()
-    await expect(one.page.getByTestId("connect-dialog")).toBeHidden()
-    await two.page.getByTestId("pair-close").click()
-    await closeSettings(two.page)
-    await expect(tile(one.page, "MacBook 2")).toHaveAttribute("data-state", "online")
-
-    // The chart of MacBook 2 on MacBook 1: "Put under…" on "Docs" puts it under "Product" on
-    // MacBook 2, and the chart draws it under its parent.
-    await one.page.getByTestId("page-orgchart").click()
-    await tile(one.page, "MacBook 2").click()
-    await expect(channelNode(one.page, docs.id)).toBeVisible()
-    await openMenu(one.page, channelNode(one.page, docs.id))
-    await one.page.getByTestId("org-menu").getByTestId("org-menu-put-under").click()
-    await one.page.getByTestId("org-menu").getByTestId(`org-menu-under-${product.id}`).click()
-    await expect(one.page.getByTestId("org-notice-text")).toHaveText("Put Docs under Product.")
-    await expect.poll(() => tree(two.page)).toEqual(["Docs < Product", "Product"])
-    await expect(channelNode(one.page, docs.id)).toHaveAttribute("data-parent", `c:${product.id}`)
-    await shot(one.page, "s109-06-linked-put-under")
-    // Undo goes to MacBook 2 too.
-    await one.page.getByTestId("org-undo").click()
-    await expect.poll(() => tree(two.page)).toEqual(["Docs", "Product"])
-  } finally {
-    await one.app.close().catch(() => {})
-    await two.app.close().catch(() => {})
   }
 })
 
