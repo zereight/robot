@@ -1,14 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import {
-  DAILY_LIMIT_MAX,
-  DAILY_LIMIT_MIN,
-  type LimitChannel,
-  limitViewOf,
-  stoppingChannel,
-  usedWithLower,
-  validDailyLimit,
-} from "./channelTools.ts"
+import { type LimitChannel, limitViewOf, stoppingChannel, usedWithLower } from "./channelTools.ts"
 import type { TreeChannel } from "./channelTree.ts"
+import { DAILY_LIMIT_MAX, DAILY_LIMIT_MIN, validDailyLimit } from "./orgLimit.ts"
 
 // Spec 030, "Daily token limit" (the limit of a channel, until the limit moves to the organizations).
 

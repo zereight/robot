@@ -15,16 +15,6 @@ import { limitState } from "./taskUsage.ts"
  */
 export const CHANNEL_LIMIT_CODE = "channel_limit"
 
-/** The daily token limit takes a whole number in this range. It is off by default (spec 030). */
-export const DAILY_LIMIT_MIN = 10_000
-export const DAILY_LIMIT_MAX = 100_000_000
-
-export const validDailyLimit = (value: unknown): value is number =>
-  typeof value === "number" &&
-  Number.isInteger(value) &&
-  value >= DAILY_LIMIT_MIN &&
-  value <= DAILY_LIMIT_MAX
-
 /** A channel with its daily token limit, for the functions below. */
 export interface LimitChannel extends TreeChannel {
   /** The daily token limit, or null when it is off. */

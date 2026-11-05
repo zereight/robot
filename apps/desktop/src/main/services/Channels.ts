@@ -14,7 +14,6 @@ import {
   BLOCKED_RULE,
   blockedReasonForAgent,
   CHAIN_LIMIT_RULE,
-  CHANNEL_LIMIT_CODE,
   CHANNEL_NAME_MAX,
   CHANNEL_SUMMARY_SYSTEM,
   CHANNEL_TOPIC_MAX,
@@ -138,7 +137,6 @@ import { type Actor, CurrentActor } from "./actor.ts"
 import { type Attempt, withBackup } from "./backupTurn.ts"
 import { applyEvent } from "./Chat.ts"
 import { Connections } from "./Connections.ts"
-import { limitStopping } from "./channelAccess.ts"
 import { NOT_REPAIR_LINE } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
@@ -153,6 +151,7 @@ import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
+import { orgLimitStop } from "./orgLimitData.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
@@ -639,6 +638,20 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const until = agent.model_account_id ? limitedUntil.get(agent.model_account_id) : undefined
         return until !== undefined && until > Date.now()
       }
+
+      /**
+       * The daily token limit (spec 030): the error of a look or a summary of the lead that would
+       * start now, with the name of the organization whose limit is used. Else null.
+       */
+      const limitStop = (agentId: string) => orgLimitStop(db, agentId, "channel")
+
+      /**
+       * True when an agent cannot look at a question now: a usage limit of its provider holds, or
+       * the daily token limit of an organization of it is used (spec 004, 030). The question then
+       * goes on to the next reader, and at the end to the user.
+       */
+      const cannotLook = (agent: AgentRow) =>
+        blockedByUsageLimit(agent) || orgLimitStop(db, agent.id, "question") !== null
 
       /** Streams one reply of an agent into the channel as a new message. Returns its id and text. */
       const streamReply = Effect.fn("Channels.streamReply")(function* (o: {
@@ -1524,7 +1537,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             })
           }),
           {
-            ...limitGate(channel.id, task),
             // A last line "Blocked: ..." ends the task as Blocked. With "Review parts" on, a part of
             // a plan that ends well waits for the user. The setting is read when the part ends
             // (spec 004, 005). The plan, the summary, a check and a reply to a mention are no parts.
@@ -1546,18 +1558,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const full = tasks.queueFull(agentId)
         return full ? { failed: { code: full.code, detail: full.detail ?? "" } } : {}
       }
-      /**
-       * The daily token limit (spec 030): when the limit of the channel, or of a higher channel, is
-       * used, the error of a task that would start now, with the name of that channel. Else null.
-       */
-      const limitStop = (channelId: string) => {
-        const stop = limitStopping(db, channelId)
-        return stop ? { code: CHANNEL_LIMIT_CODE, detail: stop.name } : null
-      }
-      /** The `gate` of `tasks.run` for a task of this channel. A routine task is not a task of the channel. */
-      const limitGate = (channelId: string, task: Pick<Task, "source">) =>
-        task.source === "channel" ? { gate: () => limitStop(channelId) } : {}
-
       /** Fails with the reason when the queue of the agent is full (spec 005, "Queue"). */
       const checkQueue = (agentId: string) => {
         const full = tasks.queueFull(agentId)
@@ -1864,7 +1864,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             ? {
                 id: lead.id,
                 archived: lead.archived_at !== null,
-                blocked: blockedByUsageLimit(lead),
+                blocked: cannotLook(lead),
               }
             : null,
           asker: q.member.id,
@@ -1950,7 +1950,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   id: agent.id,
                   name: agent.name,
                   archived: agent.archived_at !== null,
-                  blocked: blockedByUsageLimit(agent),
+                  blocked: cannotLook(agent),
                 },
               ]
             : []
@@ -2479,7 +2479,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 channelPartsOpen(channel.id)
               )
                 break
-              limited = limitStop(channel.id)
+              limited = limitStop(lead.id)
               if (limited) break
               const final = looks >= LOOKS_MAX - 1
               looks++
@@ -2491,7 +2491,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             }
 
             // All parts ended: the lead sums them up, also when some failed or were blocked.
-            limited = limited ?? limitStop(channel.id)
+            limited = limited ?? limitStop(lead.id)
             if (limited) return
             const ended = tasks.children(task.id)
             const unfixed = stillNotMet(ended).flatMap((id) => {
@@ -2522,7 +2522,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             void summary
           }),
           {
-            ...limitGate(channel.id, task),
             // A look or a summary that the limit stopped ends the job as Blocked (spec 030).
             finish: () =>
               limited

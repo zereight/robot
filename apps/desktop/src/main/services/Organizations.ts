@@ -5,9 +5,11 @@ import {
   ORGS_MAX,
   type Org,
   type OrgCreate,
+  type OrgLimitView,
   type OrgPatch,
   type OrgToolChoice,
   type OrgToolRow,
+  type OrgUsageRow,
   orgNameProblem,
   orgParentRefusal,
   orgToolNow,
@@ -28,6 +30,7 @@ import {
   readOrgs,
   toOrg,
 } from "./orgData.ts"
+import { orgLimitViewOf, orgUsageOf } from "./orgLimitData.ts"
 import { noteOrgRepairs, repairOrgTree } from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { Providers } from "./Providers.ts"
@@ -75,6 +78,10 @@ export interface OrganizationsService {
   ): Effect.Effect<readonly OrgToolRow[], AppError>
   /** The skills and connections that an agent has from organizations (the lines "From <organization>"). */
   toolsOfAgent(agentId: string): Effect.Effect<readonly AgentOrgTool[]>
+  /** The daily token limit of an organization, the tokens used today, and where it stands (spec 030). */
+  limit(id: string): Effect.Effect<OrgLimitView, AppError>
+  /** One row for each organization of a server that has a daily token limit (spec 006, 030). */
+  usage(serverId: string): Effect.Effect<readonly OrgUsageRow[]>
 }
 
 interface ToolRow {
@@ -440,6 +447,12 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         tools,
         setTool,
         toolsOfAgent,
+        limit: (id) =>
+          Effect.suspend(() => {
+            const view = orgLimitViewOf(db, id)
+            return view === null ? Effect.fail(failNotFound()) : Effect.succeed(view)
+          }),
+        usage: (serverId) => Effect.sync(() => orgUsageOf(db, serverId)),
       })
     }),
   )
