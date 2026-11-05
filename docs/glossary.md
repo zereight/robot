@@ -135,7 +135,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Organization mark | The small word "organization" beside an organization in the list of who may use a skill or a connection, (017, 018, 030). | 조직 | group mark |
 | Tools from organizations | The block of an agent profile that lists each skill and connection that the agent has from an organization, each with the line "From <organization>" (002, 030). | 조직에서 받은 도구, {organization}에서 받음 | inherited tools |
 | Now (the muted line) | The line under the value "Inherit" in the part "Tools" of the form of an organization: "Now: <value> from <organization>", or "Now: none" when no organization above gives a value (030). | 지금: {value}, {organization}에서 받음 / 지금: 없음 (proposed) | current, effective |
-| Daily token limit | The most tokens that the tasks of the members of an organization and of its lower organizations may use in one day (030). | 하루 토큰 한도 (proposed) | budget, quota |
+| Daily token limit | The most tokens that the tasks of the members of an organization and of its lower organizations may use in one day (030). | 하루 토큰 한도 | budget, quota |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 | Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |
