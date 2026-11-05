@@ -28,7 +28,9 @@ name of its organization in front of it, for example "[Docs] Ada". The stored na
 - **Where it shows**: wherever the window shows the name of an agent as a label, as the sender of a
   message, or as the owner of a piece of work. These are:
   - the place list: the rows of agents, also in the compact list, in "Pinned" and in user sections,
-    and the results of the search of places (001, "Place rows");
+    and the results of the search of places (001, "Place rows"). The rows under an organization
+    section of the view "By organization" do not show it, because the header names the
+    organization (001, "Agents by organization");
   - the header of a direct chat (003);
   - the header line of each message of an agent, and the sender of a quoted reply (003);
   - the mention list (see below), and the lists of members and of the lead of a channel (004);

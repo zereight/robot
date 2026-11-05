@@ -116,7 +116,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Org chart | The page that draws the main agent, the organizations with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows organizations and hand-offs, and the tree of organizations (030). It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
 | Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 | delegation, assignment |
 | Legend words of the org chart | The three kinds of line, named in the legend (029): "Leads" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 이끌어요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to, gives parts |
-| No organization | The node of the org chart, and the drop area, for agents that are in no organization (029, 030). | 조직 없음 | unassigned, ungrouped |
+| No organization | The node of the org chart, and the drop area, for agents that are in no organization (029, 030). It is also the last section of the view "By organization" of Agents (001). | 조직 없음 | unassigned, ungrouped |
 | No members. | The line of an organization node that has no member (029). | 멤버가 없어요. | empty, nobody |
 | Also in | The line of the org chart that names the other organization of an agent that shows in more than one node (029). | {organization}에도 있어요 | duplicate, copy of |
 | Fit to view | The button and the key "0" that frame the whole org chart with room around it (029). | 화면에 맞추기 | reset, zoom to 100% |
@@ -130,6 +130,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (036). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
 | Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (036). | 보이는 이름 (proposed) | display name, nickname |
 | Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (036, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
+| By organization | The choice in the menu of the Agents header that groups the agents in organization sections (001). | 조직별 (proposed) | by team, group by |
+| My sections | The other choice in that menu: the user sections and "Unassigned" (001). It is the first choice. | 내 섹션 (proposed) | custom view, default view |
+| Organization section | A section of the view "By organization" that holds the agents whose deepest organization is one organization. The app makes it, and it is read only (001). | 조직 섹션 (proposed) | team section, group |
 | Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 | permission, permission level (that is 007) |
 | Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬, 끔 | default, copy |
 | Hand-off rules | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 전달 규칙 | organization, Teams (that is the link of 028) |
