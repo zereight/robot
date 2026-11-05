@@ -199,11 +199,12 @@ test("organizations: make them with the form, the tree rules show their reasons,
     await closeDialog(page)
     expect(await orgByName(page, "Site")).toBeDefined()
 
-    // "Docs" has one lower organization ("Site"). The confirm says so, and nothing else goes.
+    // "Docs" is under "Product" and has one sub-organization ("Site"). The confirm says that it
+    // moves up to "Product" (spec 030, flow 4 and its acceptance), and nothing else goes.
     await orgRow(page, "Docs").click()
     await page.getByTestId("org-delete").click()
     await expect(page.getByTestId("org-delete-lower")).toHaveText(
-      "1 lower organization becomes a top organization.",
+      "1 sub-organization moves up to Product.",
     )
     await expect(page.getByTestId("org-delete-confirm")).toContainText(
       "The access that this organization gives is gone.",
@@ -212,10 +213,11 @@ test("organizations: make them with the form, the tree rules show their reasons,
     await page.getByTestId("org-delete-go").click()
     await expect(dialog(page)).toHaveCount(0)
     await expect(orgRow(page, "Docs")).toHaveCount(0)
-    // "Site" is a top organization now, and the members are still agents.
+    // "Site" is under "Product" now (it moved up), and the members are still agents.
+    const productId = (await orgByName(page, "Product"))?.id
     await expect(orgRow(page, "Site")).toBeVisible()
-    await expect(orgRow(page, "Site")).toHaveAttribute("data-parent", "")
-    expect((await orgByName(page, "Site"))?.parentId).toBeNull()
+    await expect(orgRow(page, "Site")).toHaveAttribute("data-parent", `o:${productId}`)
+    expect((await orgByName(page, "Site"))?.parentId).toBe(productId ?? null)
     expect(await agentIdOf(page, "Bo")).toBeTruthy()
     expect((await orgsOf(page)).map((o) => o.name).sort()).toEqual(["Ops", "Product", "Site"])
   } finally {
@@ -344,8 +346,10 @@ test("organizations: the profile lists the organizations of an agent and the too
     await openOrgPart(page)
     await orgRow(page, "Product").click()
     await page.getByTestId("org-delete").click()
+    // <n> counts the sub-organizations of "Product", not the ones below them (spec 030, flow 4):
+    // "Docs" only. "Product" has no parent, so "Docs" becomes a top organization.
     await expect(page.getByTestId("org-delete-lower")).toHaveText(
-      "2 lower organizations become top organizations.",
+      "1 sub-organization becomes a top organization.",
     )
     await page.getByTestId("org-delete-go").click()
     await expect(dialog(page)).toHaveCount(0)
@@ -409,16 +413,18 @@ test("organizations: the form works with the keyboard at the narrowest window an
     await page.keyboard.type("Keys")
     await page.keyboard.press("Tab")
     await expect(page.getByTestId("org-member-search")).toBeFocused()
+    // Ada is in "Product", so the form of a new top organization shows Ada muted and not tickable
+    // (spec 030, "One line"). Tab skips it and goes to Bo.
     await page.keyboard.press("Tab")
-    await expect(page.getByTestId("org-member-Ada")).toBeFocused()
+    await expect(page.getByTestId("org-member-Bo")).toBeFocused()
     await page.keyboard.press("Space")
-    await expect(page.getByTestId("org-member-Ada")).toBeChecked()
+    await expect(page.getByTestId("org-member-Bo")).toBeChecked()
     await orgName(page).focus()
     await page.keyboard.press("Enter")
     await expect(dialog(page)).toHaveCount(0)
     // The chart stays open, and the focus goes to the node of the new organization (spec 029).
     await expect(orgRow(page, "Keys")).toBeFocused()
-    expect((await orgByName(page, "Keys"))?.memberIds).toEqual([await agentIdOf(page, "Ada")])
+    expect((await orgByName(page, "Keys"))?.memberIds).toEqual([await agentIdOf(page, "Bo")])
 
     // Escape closes the form without saving.
     await page.getByTestId("org-new").focus()
