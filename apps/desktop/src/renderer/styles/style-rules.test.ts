@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join, relative } from "node:path"
+import { palettes } from "../theme/tokens.ts"
 
 // Style rules for the style sheets of the main window.
 //
@@ -224,5 +225,54 @@ rule(
     /^border-(?:(?:left|right|inline-start|inline-end)(?:-width)?|inline-(?:start|end)-width)$/.test(
       d.prop,
     ) && /^[2-9][0-9]*px\b/.test(d.value),
+  [],
+)
+
+// A `var(--name)` with no fallback and no definition is not an error in CSS: the declaration is
+// dropped, and a padding or a gap quietly becomes 0. So the sheet loads and looks broken, and
+// nothing says why. The names that exist are the colour tokens (theme/tokens.ts), a name that a
+// sheet declares, and a name that a script sets on an element. `var(--name, fallback)` is a
+// choice to run without the name, so it is not checked. A name that one sheet declares for its own
+// parts counts for every sheet: this finds a name that nobody defines, not one used out of scope.
+function definedNames(): Set<string> {
+  const names = new Set<string>()
+  for (const palette of Object.values(palettes)) {
+    for (const name of Object.keys(palette)) {
+      names.add(`--c-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`)
+    }
+  }
+  for (const path of sheets(root)) {
+    for (const m of readFileSync(path, "utf8").matchAll(/(--[a-z0-9-]+)\s*:/g)) {
+      names.add(m[1] as string)
+    }
+  }
+  for (const path of scripts(root)) {
+    for (const m of readFileSync(path, "utf8").matchAll(
+      /["'`](--[a-z0-9-]+)["'`]|(--[a-z0-9-]+):/g,
+    )) {
+      names.add((m[1] ?? m[2]) as string)
+    }
+  }
+  return names
+}
+
+function scripts(dir: string): string[] {
+  const found: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) found.push(...scripts(path))
+    else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) found.push(path)
+  }
+  return found.sort()
+}
+
+const defined = definedNames()
+rule(
+  "undefined variable",
+  "Define the name in global.css, or use a name that exists. A name with no definition drops the whole declaration.",
+  (d) =>
+    [...d.value.matchAll(/var\(\s*(--[a-z0-9-]+)\s*(,?)/g)].some(
+      (m) => m[2] === "" && !defined.has(m[1] as string),
+    ),
   [],
 )
