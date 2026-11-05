@@ -16,6 +16,8 @@ import { testRuntime } from "./testing.ts"
 const KEY = "sk-chat-skills-test"
 /** The last message of each request that reached the model. */
 const asked: string[] = []
+/** The system text of each request that reached the model. */
+const systems: string[] = []
 let failNext = false
 
 const sse = (text: string, slow = false) =>
@@ -42,9 +44,10 @@ const server = Bun.serve({
   hostname: "127.0.0.1",
   async fetch(req) {
     if (new URL(req.url).pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { content: string }[] }
+    const body = (await req.json()) as { messages: { role: string; content: string }[] }
     const last = body.messages.at(-1)?.content ?? ""
     asked.push(last)
+    systems.push(body.messages.find((m) => m.role === "system")?.content ?? "")
     if (last.endsWith("fail") && failNext) {
       failNext = false
       return Response.json({ error: { message: "boom" } }, { status: 500 })
@@ -65,6 +68,7 @@ const until = async (check: () => Promise<boolean>, ms = 5000) => {
 
 const setup = async () => {
   asked.length = 0
+  systems.length = 0
   failNext = false
   const t = testRuntime()
   const run = t.runtime.runPromise
@@ -234,6 +238,45 @@ describe("the skill chip of a message (spec 017)", () => {
     expect(got).toContain("OLD STEPS")
     expect(got).not.toContain("NEW STEPS")
     await t.runtime.dispose()
+  })
+
+  test("the turn reads the names and notes of usable skills, never the instructions", async () => {
+    const t = await setup()
+    await t.run(
+      Skills.use((s) =>
+        s.create(
+          t.local.id,
+          { name: "Briefer", description: "Ask for a briefing now.", instructions: "BRIEF STEPS" },
+          null,
+        ),
+      ),
+    )
+    const other = await t.run(
+      Agents.use((a) =>
+        a.create({ serverId: t.local.id, name: "Bo", role: "", instructions: "", model: null }),
+      ),
+    )
+    await t.run(
+      Skills.use((s) =>
+        s.create(
+          t.local.id,
+          { name: "Foreign", description: "Not yours.", instructions: "FOREIGN STEPS" },
+          [other.id],
+        ),
+      ),
+    )
+    await t.send("hello", t.skill.id)
+    await t.settled()
+    const system = systems.at(-1) as string
+    expect(system).toContain('"Briefer": Ask for a briefing now.')
+    expect(system).not.toContain("BRIEF STEPS")
+    expect(system).not.toContain("Foreign")
+    expect(system).not.toContain("FOREIGN STEPS")
+    // The setup skill has no note: slash only.
+    expect(system).not.toContain("Weekly summary")
+    // The chip still goes first in the message.
+    const sent = asked.at(-1) as string
+    expect(sent.indexOf("OLD STEPS")).toBeLessThan(sent.indexOf("hello"))
   })
 
   test("a chip that is off, deleted or for another agent is refused, and nothing is stored", async () => {
