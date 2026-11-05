@@ -1,32 +1,25 @@
-import {
-  type Channel,
-  type ChartAgent,
-  type ChartChannel,
-  type MessageKey,
-  ROOT_KEY,
-} from "@robot/shared"
+import { type ChartAgent, type ChartOrg, type MessageKey, type Org, ROOT_KEY } from "@robot/shared"
 import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { NewAgentDialog } from "../agents/AgentDialogs.tsx"
-import { ChannelDialog } from "../channels/ChannelDialog.tsx"
 import { describeError } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
+import { NEW_ORG, OrgDialog } from "../orgs/OrgDialog.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { type MenuItem, PopupMenu } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import {
   agentsFor,
   type Before,
-  channelDropEdit,
-  channelsFor,
   dropEdit,
   type Edit,
-  leavingOf,
   type NoticeKind,
   noticeMs,
-  parentsFor,
+  orgDropEdit,
+  orgsFor,
+  parentChoices,
   planEdit,
   type Step,
   undoSteps,
@@ -34,21 +27,23 @@ import {
 import styles from "./orgchart.module.css"
 
 // Edit on the org chart (spec 029, "Edit on the chart"): the menus of the nodes, the drag of an
-// agent node onto a channel node, the drag of a channel node onto a channel node or the root
-// (030), and the line at the bottom of the canvas with "Undo". Every
-// change is the change of the channel settings (004), so the server keeps the rules: a member that
-// works cannot leave its channel, and a linked computer changes only with the switch "Can create
-// and change agents" (012). Without the switch, the menus hold no change and there is no drag.
+// agent node onto an organization node, the drag of an organization node onto an organization node
+// or the root (030), the form of an organization, and the line at the bottom of the canvas with
+// "Undo". Every change is the change of the form of an organization (030), so the server keeps the
+// rules: the tree has no loop and at most 3 levels, and a linked computer changes only with the
+// switch "Can create and change agents" (012). Without the switch, the menus hold no change and
+// there is no drag. An agent that works can change its organizations: membership holds no running
+// work.
 
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_START_PX = 5
-/** The key of the drop area "No channel" that shows during a drag. It is no node of the layout. */
+/** The key of the drop area "No organization" that shows during a drag. It is no node of the layout. */
 export const DROP_AREA_KEY = "drop:none"
 
 interface Notice {
   readonly kind: NoticeKind
   readonly text: string
-  /** The channels as they were: set while "Undo" can put them back. A refusal has none. */
+  /** The organizations as they were: set while "Undo" can put them back. A refusal has none. */
   readonly before?: readonly Before[]
 }
 
@@ -62,44 +57,45 @@ interface OpenMenu {
 
 /** The node that is dragged now, and the node under the pointer. */
 export interface Dragging {
-  /** Set for the drag of a channel node: the channel that moves in the tree (spec 030). */
-  readonly channelId?: string
-  /** The agent of a dragged agent node. Empty for a channel node. */
+  /** Set for the drag of an organization node: the organization that moves in the tree (spec 030). */
+  readonly orgId?: string
+  /** The agent of a dragged agent node. Empty for an organization node. */
   readonly agentId: string
   readonly name: string
-  /** The channel of the dragged copy, or null for "No channel". */
+  /** The organization of the dragged copy, or null for "No organization". */
   readonly from: string | null
   readonly key: string
   readonly x: number
   readonly y: number
-  /** The key of the channel node (or the root, or the drop area) under the pointer. */
+  /** The key of the organization node (or the root, or the drop area) under the pointer. */
   readonly over: string | undefined
   /** Option is held: the agent is added and stays where it was. */
   readonly add: boolean
 }
 
 export const createChartEdit = (deps: {
-  /** The channel node of a key, for the channel of a copy. */
-  channelNode: (key: string) => ChartChannel | undefined
+  /** The organization node of a key, for the organization of a copy. */
+  orgNode: (key: string) => ChartOrg | undefined
   openProfile: (agentId: string) => void
-  openChannel: (channelId: string) => void
-  /** After "New agent" or "New agent in this channel": the focus goes to the node of the agent. */
-  focusAgent: (agentId: string, channelId: string | null) => void
+  /** After "New agent" or "New agent in this organization": the focus goes to the node of the agent. */
+  focusAgent: (agentId: string, orgId: string | null) => void
+  /** After "New organization" is saved: the focus goes to its node. */
+  focusOrg: (orgId: string) => void
 }) => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const channels = useChannels()
+  const orgs = useOrgs()
   const canEdit = () => ui.canChange()
 
-  /** The channels as the server has them now. The list of the window can be a moment late. */
-  const fresh = async (): Promise<readonly Channel[]> => {
+  /** The organizations as the server has them now. The list of the window can be a moment late. */
+  const fresh = async (): Promise<readonly Org[]> => {
     const serverId = ui.server()?.id
-    return serverId ? await call("channels.list", { serverId }) : channels.channels()
+    return serverId ? await call("organizations.list", { serverId }) : orgs.orgs()
   }
   const agentName = (id: string) => agents.byId(id)?.name ?? ""
-  const channelName = (list: readonly Channel[], id: string) =>
-    list.find((c) => c.id === id)?.name ?? channels.byId(id)?.name ?? ""
+  const orgName = (list: readonly Org[], id: string) =>
+    list.find((o) => o.id === id)?.name ?? orgs.byId(id)?.name ?? ""
 
   // ---------------------------------------------------------------- The line at the bottom
   // One line shows at a time: a new line takes the place of the line that shows, with its own time.
@@ -112,21 +108,35 @@ export const createChartEdit = (deps: {
   }
   onCleanup(() => clearTimeout(timer))
 
-  const doneText = (edit: Edit, list: readonly Channel[]) => {
+  // The app repaired the tree: the open chart says so for 10 seconds (spec 030, "Repair"). It is
+  // no change of the user, so it has no "Undo". The event comes from this computer only.
+  onCleanup(
+    window.robot.on("organizations.repaired", ({ serverId, name, reason }) => {
+      if (serverId !== ui.server()?.id) return
+      show({
+        kind: "refused",
+        text: t(reason === "loop" ? "orgchart.repaired.loop" : "orgchart.repaired.levels", {
+          name,
+        }),
+      })
+    }),
+  )
+
+  const doneText = (edit: Edit, list: readonly Org[]) => {
     if (edit.kind === "parent") {
-      const channel = channelName(list, edit.channelId)
+      const organization = orgName(list, edit.orgId)
       return edit.parentId === null
-        ? t("orgchart.done.toTop", { channel })
-        : t("orgchart.done.putUnder", { channel, parent: channelName(list, edit.parentId) })
+        ? t("orgchart.done.toTop", { organization })
+        : t("orgchart.done.putUnder", { organization, parent: orgName(list, edit.parentId) })
     }
     const name = agentName(edit.agentId)
-    const channel = channelName(
+    const organization = orgName(
       list,
       edit.kind === "add" || edit.kind === "move"
         ? edit.to
         : edit.kind === "remove"
           ? edit.from
-          : edit.channelId,
+          : edit.orgId,
     )
     const key: Record<Exclude<Edit["kind"], "parent">, MessageKey> = {
       add: "orgchart.done.added",
@@ -135,44 +145,32 @@ export const createChartEdit = (deps: {
       lead: "orgchart.done.lead",
       unlead: "orgchart.done.unlead",
     }
-    return t(key[edit.kind], { name, channel })
+    return t(key[edit.kind], { name, organization })
   }
 
-  /** The reason of a refusal. A member that works: "<agent> works in <channel>. …" */
-  const refusal = (error: unknown, step: Step, list: readonly Channel[]) => {
-    if (error instanceof RpcFailure && error.error.code === "member_working") {
-      const leaving = leavingOf(step, list)
-      const agentId = leaving?.agentIds[0]
-      if (leaving && agentId)
-        return t("orgchart.refused.works", {
-          name: agentName(agentId),
-          channel: channelName(list, leaving.channelId),
-        })
-    }
+  /** The reason of a refusal: the text of the error. */
+  const refusal = (error: unknown) => {
     const text = describeError(error)
     return t(text.key, text.params)
   }
 
-  /** Sends the steps in order. A failure puts back the channels of the steps already made. */
-  const run = async (
-    steps: readonly Step[],
-    list: readonly Channel[],
-    before: readonly Before[],
-  ) => {
+  /** Sends the steps in order. A failure puts back the organizations of the steps already made. */
+  const run = async (steps: readonly Step[], list: readonly Org[], before: readonly Before[]) => {
     for (const [index, step] of steps.entries()) {
       try {
-        await call("channels.update", { id: step.channelId, patch: step.patch })
+        await call("organizations.update", { id: step.orgId, patch: step.patch })
       } catch (error) {
         if (index > 0) {
-          const made = new Set(steps.slice(0, index).map((s) => s.channelId))
+          const made = new Set(steps.slice(0, index).map((s) => s.orgId))
           const back = undoSteps(
-            before.filter((b) => made.has(b.channelId)),
+            before.filter((b) => made.has(b.orgId)),
             await fresh().catch(() => list),
           )
-          for (const s of back)
-            await call("channels.update", { id: s.channelId, patch: s.patch }).catch(() => {})
+          if ("steps" in back)
+            for (const s of back.steps)
+              await call("organizations.update", { id: s.orgId, patch: s.patch }).catch(() => {})
         }
-        show({ kind: "refused", text: refusal(error, step, list) })
+        show({ kind: "refused", text: refusal(error) })
         return false
       }
     }
@@ -190,7 +188,7 @@ export const createChartEdit = (deps: {
       if (await run(plan.steps, list, plan.before))
         show({ kind: "done", text: doneText(edit, list), before: plan.before })
     } catch (error) {
-      show({ kind: "refused", text: refusal(error, { channelId: "", patch: {} }, []) })
+      show({ kind: "refused", text: refusal(error) })
     } finally {
       busy = false
     }
@@ -203,10 +201,15 @@ export const createChartEdit = (deps: {
     show(undefined)
     try {
       const list = await fresh()
-      const steps = undoSteps(shown.before, list)
-      if (await run(steps, list, [])) show({ kind: "undone", text: t("orgchart.undone") })
+      const back = undoSteps(shown.before, list)
+      // The change cannot go back when an organization of it was deleted in the meantime.
+      if ("gone" in back) {
+        show({ kind: "refused", text: t("orgchart.refused.gone", { name: back.gone }) })
+        return
+      }
+      if (await run(back.steps, list, [])) show({ kind: "undone", text: t("orgchart.undone") })
     } catch (error) {
-      show({ kind: "refused", text: refusal(error, { channelId: "", patch: {} }, []) })
+      show({ kind: "refused", text: refusal(error) })
     } finally {
       busy = false
     }
@@ -217,7 +220,7 @@ export const createChartEdit = (deps: {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.key.toLowerCase() !== "z")
         return
-      if (!notice()?.before || creating() || settingsOf()) return
+      if (!notice()?.before || creating() || formOf()) return
       const target = event.target as HTMLElement | null
       if (target?.closest("input, textarea, [contenteditable=true]")) return
       event.preventDefault()
@@ -229,8 +232,9 @@ export const createChartEdit = (deps: {
 
   // ---------------------------------------------------------------- Menus
   const [menu, setMenu] = createSignal<OpenMenu>()
-  const [creating, setCreating] = createSignal<{ channelId: string | null }>()
-  const [settingsOf, setSettingsOf] = createSignal<string>()
+  const [creating, setCreating] = createSignal<{ orgId: string | null }>()
+  /** The form of an organization that is open: an id, or `NEW_ORG`. */
+  const [formOf, setFormOf] = createSignal<string>()
 
   const refocus = (el: HTMLElement | undefined) => {
     if (el?.isConnected) el.focus({ preventScroll: true })
@@ -255,22 +259,22 @@ export const createChartEdit = (deps: {
     onSelect: () => queueMicrotask(() => setMenu(open())),
   })
 
-  const channelList = (
+  const orgList = (
     at: OpenMenu,
     title: string,
     agentId: string,
-    pick: (channelId: string) => Edit,
+    pick: (orgId: string) => Edit,
     testId: string,
   ): OpenMenu => {
-    const targets = channelsFor(agentId, channels.channels())
+    const targets = orgsFor(agentId, orgs.orgs())
     return {
       ...at,
       label: title,
       items: [
         { label: title, heading: true, onSelect: () => {} },
         ...(targets.length > 0
-          ? targets.map((c) => act(c.name, () => void apply(pick(c.id)), `${testId}-${c.id}`))
-          : [{ label: t("orgchart.edit.noChannels"), disabled: true, onSelect: () => {} }]),
+          ? targets.map((o) => act(o.name, () => void apply(pick(o.id)), `${testId}-${o.id}`))
+          : [{ label: t("orgchart.edit.noOrganizations"), disabled: true, onSelect: () => {} }]),
       ],
     }
   }
@@ -283,27 +287,27 @@ export const createChartEdit = (deps: {
     ]
     const base: OpenMenu = { ...at, label, items }
     if (isRoot || !canEdit()) return base
-    const channelId = deps.channelNode(node.parent)?.channelId ?? null
+    const orgId = deps.orgNode(node.parent)?.orgId ?? null
     const name = node.name
-    if (channelId) {
-      const channel = channelName(channels.channels(), channelId)
+    if (orgId) {
+      const organization = orgName(orgs.orgs(), orgId)
       items.push(
         node.isLead
           ? act(
               t("orgchart.edit.removeLead"),
-              () => void apply({ kind: "unlead", agentId: node.agentId, channelId }),
+              () => void apply({ kind: "unlead", agentId: node.agentId, orgId }),
               "org-menu-unlead",
             )
           : act(
-              t("orgchart.edit.makeLead", { channel }),
-              () => void apply({ kind: "lead", agentId: node.agentId, channelId }),
+              t("orgchart.edit.makeLead", { organization }),
+              () => void apply({ kind: "lead", agentId: node.agentId, orgId }),
               "org-menu-lead",
             ),
       )
     }
     items.push(
       list(t("orgchart.edit.addTo"), "org-menu-add", () =>
-        channelList(
+        orgList(
           base,
           t("orgchart.edit.addToTitle", { name }),
           node.agentId,
@@ -312,20 +316,20 @@ export const createChartEdit = (deps: {
         ),
       ),
     )
-    if (channelId) {
+    if (orgId) {
       items.push(
         list(t("orgchart.edit.moveTo"), "org-menu-move", () =>
-          channelList(
+          orgList(
             base,
             t("orgchart.edit.moveToTitle", { name }),
             node.agentId,
-            (to) => ({ kind: "move", agentId: node.agentId, from: channelId, to }),
+            (to) => ({ kind: "move", agentId: node.agentId, from: orgId, to }),
             "org-menu-move-to",
           ),
         ),
         act(
-          t("orgchart.edit.removeFrom", { channel: channelName(channels.channels(), channelId) }),
-          () => void apply({ kind: "remove", agentId: node.agentId, from: channelId }),
+          t("orgchart.edit.removeFrom", { organization: orgName(orgs.orgs(), orgId) }),
+          () => void apply({ kind: "remove", agentId: node.agentId, from: orgId }),
           "org-menu-remove",
         ),
       )
@@ -333,37 +337,34 @@ export const createChartEdit = (deps: {
     return base
   }
 
-  /** The menu of a channel node. "No channel" has "New agent" only. */
-  const channelMenu = (node: ChartChannel, at: Omit<OpenMenu, "items" | "label">) => {
-    const channelId = node.channelId
-    const label = t("orgchart.edit.menu", { name: node.name || t("orgchart.noChannel") })
-    if (!channelId) {
+  /** The menu of an organization node. "No organization" has "New agent" only. */
+  const orgMenu = (node: ChartOrg, at: Omit<OpenMenu, "items" | "label">) => {
+    const orgId = node.orgId
+    const label = t("orgchart.edit.menu", { name: node.name || t("orgchart.noOrganization") })
+    if (!orgId) {
       const items = canEdit()
         ? [
             act(
               t("orgchart.edit.newAgent"),
-              () => setCreating({ channelId: null }),
+              () => setCreating({ orgId: null }),
               "org-menu-new-agent",
             ),
           ]
         : []
       return { ...at, label, items }
     }
+    // The form opens on every computer. Without the switch "Can create and change agents" it is
+    // read only (spec 012).
     const items: MenuItem[] = [
-      act(t("orgchart.edit.openChannel"), () => deps.openChannel(channelId), "org-menu-channel"),
+      act(t("orgchart.edit.editOrg"), () => setFormOf(orgId), "org-menu-edit-org"),
     ]
     const base: OpenMenu = { ...at, label, items }
     if (!canEdit()) return base
     items.push(
       list(t("orgchart.edit.addMember"), "org-menu-add-member", () => {
-        const channel = channels.byId(channelId) ?? {
-          id: channelId,
-          name: node.name,
-          leadId: null,
-          memberIds: [],
-        }
-        const choices = agentsFor(channel, agents.agents())
-        const title = t("orgchart.edit.addMemberTitle", { channel: node.name })
+        const org = orgs.byId(orgId) ?? { id: orgId, name: node.name, leadId: null, memberIds: [] }
+        const choices = agentsFor(org, agents.agents())
+        const title = t("orgchart.edit.addMemberTitle", { organization: node.name })
         return {
           ...base,
           label: title,
@@ -373,7 +374,7 @@ export const createChartEdit = (deps: {
               ? choices.map((a) =>
                   act(
                     a.name,
-                    () => void apply({ kind: "add", agentId: a.id, to: channelId }),
+                    () => void apply({ kind: "add", agentId: a.id, to: orgId }),
                     `org-menu-member-${a.id}`,
                   ),
                 )
@@ -381,25 +382,32 @@ export const createChartEdit = (deps: {
           ],
         }
       }),
-      act(t("orgchart.edit.newAgentHere"), () => setCreating({ channelId }), "org-menu-new-agent"),
-      // The tree (spec 030): "Put under…" lists the channels that the rules allow, and a
-      // sub-channel has "Move to the top".
+      act(t("orgchart.edit.newAgentHere"), () => setCreating({ orgId }), "org-menu-new-agent"),
+      // The tree (spec 030): "Put under…" lists the organizations of the field "Parent
+      // organization", without the parent now. One that the rules refuse is muted, with the
+      // reason. A sub-organization has "Move to the top".
       list(t("orgchart.edit.putUnder"), "org-menu-put-under", () => {
-        const choices = parentsFor(channelId, channels.channels())
-        const title = t("orgchart.edit.putUnderTitle", { channel: node.name })
+        const choices = parentChoices(orgId, orgs.orgs())
+        const title = t("orgchart.edit.putUnderTitle", { organization: node.name })
         return {
           ...base,
           label: title,
           items: [
             { label: title, heading: true, onSelect: () => {} },
             ...(choices.length > 0
-              ? choices.map((c) =>
-                  act(
+              ? choices.map((c) => ({
+                  ...act(
                     c.name,
-                    () => void apply({ kind: "parent", channelId, parentId: c.id }),
+                    () => void apply({ kind: "parent", orgId, parentId: c.id }),
                     `org-menu-under-${c.id}`,
                   ),
-                )
+                  ...(c.refusal
+                    ? {
+                        disabled: true,
+                        reason: t(c.refusal === "loop" ? "orgs.parent.loop" : "orgs.parent.levels"),
+                      }
+                    : {}),
+                }))
               : [{ label: t("orgchart.edit.noParents"), disabled: true, onSelect: () => {} }]),
           ],
         }
@@ -408,19 +416,18 @@ export const createChartEdit = (deps: {
         ? [
             act(
               t("orgchart.edit.toTop"),
-              () => void apply({ kind: "parent", channelId, parentId: null }),
+              () => void apply({ kind: "parent", orgId, parentId: null }),
               "org-menu-to-top",
             ),
           ]
         : []),
-      act(t("orgchart.edit.settings"), () => setSettingsOf(channelId), "org-menu-settings"),
     )
     return base
   }
 
-  /** True when the node has a menu: every node but "You", and "No channel" only with the switch. */
-  const hasMenu = (node: ChartChannel | ChartAgent | undefined) =>
-    node !== undefined && ("agentId" in node || node.channelId !== null || canEdit())
+  /** True when the node has a menu: every node but "You", and "No organization" only with the switch. */
+  const hasMenu = (node: ChartOrg | ChartAgent | undefined) =>
+    node !== undefined && ("agentId" in node || node.orgId !== null || canEdit())
 
   const at = (from: HTMLElement, point?: { x: number; y: number }) => {
     opener = from
@@ -436,13 +443,9 @@ export const createChartEdit = (deps: {
     setKept(undefined)
     setMenu(agentMenu(node, isRoot, at(opener, point)))
   }
-  const openChannelMenu = (
-    node: ChartChannel,
-    opener: HTMLElement,
-    point?: { x: number; y: number },
-  ) => {
+  const openOrgMenu = (node: ChartOrg, opener: HTMLElement, point?: { x: number; y: number }) => {
     setKept(undefined)
-    const next = channelMenu(node, at(opener, point))
+    const next = orgMenu(node, at(opener, point))
     if (next.items.length > 0) setMenu(next)
   }
 
@@ -457,7 +460,7 @@ export const createChartEdit = (deps: {
         pointerId: number
         x: number
         y: number
-        channelId?: string
+        orgId?: string
         agentId: string
         name: string
         from: string | null
@@ -467,37 +470,37 @@ export const createChartEdit = (deps: {
   /** A drag ends with a click on the node where it began. That click opens nothing. */
   let swallowClick = false
 
-  /** The drop area "No channel", or the key of the channel node under the point. */
+  /** The drop area "No organization", or the key of the organization node under the point. */
   const overAt = (x: number, y: number) => {
     const el = document.elementFromPoint(x, y)
     if (el?.closest("[data-drop-area]")) return DROP_AREA_KEY
     if (el?.closest('[data-node][data-kind="root"]')) return ROOT_KEY
-    return el?.closest<HTMLElement>('[data-node][data-kind="channel"]')?.dataset.key ?? undefined
+    return el?.closest<HTMLElement>('[data-node][data-kind="org"]')?.dataset.key ?? undefined
   }
 
   const targetOf = (drag: Dragging, key: string | undefined) => {
     if (!key) return undefined
-    // A channel node: onto another channel node it goes under it, onto the root to the top.
-    if (drag.channelId) {
-      if (key === ROOT_KEY) return channelDropEdit(drag.channelId, null, channels.channels())
-      const to = deps.channelNode(key)?.channelId
-      return to ? channelDropEdit(drag.channelId, to, channels.channels()) : undefined
+    // An organization node: onto another organization node it goes under it, onto the root to the top.
+    if (drag.orgId) {
+      if (key === ROOT_KEY) return orgDropEdit(drag.orgId, null, orgs.orgs())
+      const to = deps.orgNode(key)?.orgId
+      return to ? orgDropEdit(drag.orgId, to, orgs.orgs()) : undefined
     }
     if (key === ROOT_KEY) return undefined
-    // The drop area does what a drop on the channel node "No channel" does.
+    // The drop area does what a drop on the organization node "No organization" does.
     if (key === DROP_AREA_KEY)
       return dropEdit(
         { agentId: drag.agentId, from: drag.from, to: null, add: drag.add },
-        channels.channels(),
+        orgs.orgs(),
       )
-    const node = deps.channelNode(key)
+    const node = deps.orgNode(key)
     if (!node) return undefined
     return dropEdit(
-      { agentId: drag.agentId, from: drag.from, to: node.channelId, add: drag.add },
-      channels.channels(),
+      { agentId: drag.agentId, from: drag.from, to: node.orgId, add: drag.add },
+      orgs.orgs(),
     )
   }
-  /** During a drag, a channel node where a drop is allowed shows a ring. */
+  /** During a drag, an organization node where a drop is allowed shows a ring. */
   const ringOf = (key: string) => {
     const drag = dragging()
     return drag !== undefined && targetOf(drag, key) !== undefined
@@ -520,7 +523,7 @@ export const createChartEdit = (deps: {
       setMenu(undefined)
     }
     setDragging({
-      ...(press.channelId ? { channelId: press.channelId } : {}),
+      ...(press.orgId ? { orgId: press.orgId } : {}),
       agentId: press.agentId,
       name: press.name,
       from: press.from,
@@ -535,7 +538,7 @@ export const createChartEdit = (deps: {
     if (!press || event.pointerId !== press.pointerId) return
     const drag = dragging()
     // A drop where no ring shows, or on the empty canvas, changes nothing. The target is found
-    // before the drag ends: the end takes away the drop area "No channel".
+    // before the drag ends: the end takes away the drop area "No organization".
     const edit = drag
       ? targetOf({ ...drag, add: event.altKey }, overAt(event.clientX, event.clientY))
       : undefined
@@ -565,11 +568,11 @@ export const createChartEdit = (deps: {
     if (drag && event.key === "Alt") setDragging({ ...drag, add: event.type === "keydown" })
   }
 
-  /** A press on an agent node in a channel node: it may become a drag. */
+  /** A press on an agent node in an organization node: it may become a drag. */
   const pressAgent = (event: PointerEvent, node: ChartAgent) => {
     swallowClick = false
     if (event.button !== 0 || !canEdit() || press) return
-    const from = deps.channelNode(node.parent)
+    const from = deps.orgNode(node.parent)
     if (!from) return
     press = {
       pointerId: event.pointerId,
@@ -577,7 +580,7 @@ export const createChartEdit = (deps: {
       y: event.clientY,
       agentId: node.agentId,
       name: node.name,
-      from: from.channelId,
+      from: from.orgId,
       key: node.key,
     }
     window.addEventListener("pointermove", onMove)
@@ -586,18 +589,18 @@ export const createChartEdit = (deps: {
     window.addEventListener("keydown", onDragKey, true)
     window.addEventListener("keyup", onDragKey, true)
   }
-  /** A press on a channel node (not "No channel"): it may become a drag in the tree (spec 030). */
-  const pressChannel = (event: PointerEvent, node: ChartChannel) => {
+  /** A press on an organization node (not "No organization"): it may become a drag in the tree (spec 030). */
+  const pressOrg = (event: PointerEvent, node: ChartOrg) => {
     swallowClick = false
-    if (event.button !== 0 || !canEdit() || press || !node.channelId) return
+    if (event.button !== 0 || !canEdit() || press || !node.orgId) return
     press = {
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      channelId: node.channelId,
+      orgId: node.orgId,
       agentId: "",
       name: node.name,
-      // The drop area "No channel" is for agents only.
+      // The drop area "No organization" is for agents only.
       from: null,
       key: node.key,
     }
@@ -653,30 +656,24 @@ export const createChartEdit = (deps: {
             onCreated={async (agent) => {
               // The chart stays open, the profile does not open, and the focus goes to the node of
               // the new agent once the chart shows it.
-              deps.focusAgent(agent.id, target.channelId)
-              if (!target.channelId) return
-              // The agent is made but cannot join the channel: the refusal line gives the reason,
-              // and the focus goes to its node in "No channel".
+              deps.focusAgent(agent.id, target.orgId)
+              if (!target.orgId) return
+              // The agent is made but cannot join the organization: the refusal line gives the
+              // reason, and the focus goes to its node in "No organization".
               const cannotJoin = (error: unknown) => {
-                const reason = describeError(error)
                 show({
                   kind: "refused",
-                  text: t("orgchart.refused.join", {
-                    name: agent.name,
-                    reason: t(reason.key, reason.params),
-                  }),
+                  text: t("orgchart.refused.join", { name: agent.name, reason: refusal(error) }),
                 })
                 deps.focusAgent(agent.id, null)
               }
               try {
-                const current = (await fresh()).find((c) => c.id === target.channelId)
+                const current = (await fresh()).find((o) => o.id === target.orgId)
                 if (!current) {
-                  cannotJoin(
-                    new RpcFailure({ code: "channel_not_found", message: target.channelId }),
-                  )
+                  cannotJoin(new RpcFailure({ code: "org_not_found", message: target.orgId }))
                   return
                 }
-                await call("channels.update", {
+                await call("organizations.update", {
                   id: current.id,
                   patch: { memberIds: [...current.memberIds, agent.id] },
                 })
@@ -687,20 +684,20 @@ export const createChartEdit = (deps: {
           />
         )}
       </Presence>
-      <Presence when={settingsOf()}>
+      <Presence when={formOf()}>
         {(id) => (
-          <Show when={channels.byId(id)}>
-            {(channel) => (
-              <ChannelDialog channel={channel()} onClose={() => setSettingsOf(undefined)} />
-            )}
-          </Show>
+          <OrgDialog
+            id={id}
+            onClose={() => setFormOf(undefined)}
+            onSaved={(org) => deps.focusOrg(org.id)}
+          />
         )}
       </Presence>
     </>
   )
 
   /**
-   * During the drag of an agent node that is in a channel: the drop area "No channel" at the
+   * During the drag of an agent node that is in an organization: the drop area "No organization" at the
    * bottom left of the canvas, over the chart and the controls. It stays in place when the view
    * moves, and goes when the drag ends.
    */
@@ -715,7 +712,7 @@ export const createChartEdit = (deps: {
         data-testid="org-drop-area"
         aria-hidden="true"
       >
-        {t("orgchart.noChannel")}
+        {t("orgchart.noOrganization")}
       </div>
     </Show>
   )
@@ -754,18 +751,24 @@ export const createChartEdit = (deps: {
     menuOpen: () => menu() !== undefined,
     /** True while the form of a new agent is open. */
     creating: () => creating() !== undefined,
+    /** True while the form of an organization is open. */
+    creatingOrg: () => formOf() !== undefined,
+    /** A click on an organization node: its form (spec 029, 030). */
+    openOrg: (id: string) => setFormOf(id),
+    /** The button "New organization": the form of a new one. */
+    newOrg: () => setFormOf(NEW_ORG),
     /** The key of the node to give the focus back to after a change from its menu. */
     kept,
     dropKept: () => setKept(undefined),
     hasMenu,
     openAgentMenu,
-    openChannelMenu,
+    openOrgMenu,
     isMenuKey,
     dragging,
     ringOf,
     pointerStays,
     pressAgent,
-    pressChannel,
+    pressOrg,
     takeClick,
     Overlays,
     NoticeLine,

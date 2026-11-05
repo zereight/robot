@@ -1,11 +1,11 @@
 import {
   type AgentState,
   type ChartAgent,
-  type ChartChannel,
   type ChartModel,
+  type ChartOrg,
   copyKey,
   litBy,
-  NO_CHANNEL_KEY,
+  NO_ORG_KEY,
   ROOT_KEY,
 } from "@robot/shared"
 import { Ellipsis, Minus, Plus, User } from "lucide-solid"
@@ -28,12 +28,10 @@ import { Face } from "../agents/Face.tsx"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
 import { useOrgChart } from "../state/orgChart.tsx"
 import { setProfileTarget } from "../state/profileTarget.ts"
 import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
-import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { createChartEdit, DROP_AREA_KEY } from "./ChartEdit.tsx"
@@ -41,13 +39,13 @@ import { edgeStep } from "./edit.ts"
 import { type ChartLayout, layoutChart } from "./layout.ts"
 import {
   agentLabel,
-  channelLabel,
-  channelTitle,
   countsLine,
   handoffTip,
   membersWord,
   moreLabel,
   moreWord,
+  orgLabel,
+  orgTitle,
   stateWord,
 } from "./names.ts"
 import styles from "./orgchart.module.css"
@@ -69,7 +67,7 @@ const sameKeys = (a: string[], b: string[]) =>
  */
 const structureKey = (model: ChartModel) =>
   JSON.stringify([
-    model.channels.map((c) => [c.key, c.leadKey, c.more.length > 0, c.nodes.map((n) => n.key)]),
+    model.orgs.map((c) => [c.key, c.leadKey, c.more.length > 0, c.nodes.map((n) => n.key)]),
     model.lines.map((l) => [l.id, l.from, l.to, String(l.count ?? "").length]),
   ])
 
@@ -110,10 +108,10 @@ const Legend = (props: { capped: boolean; follows: boolean }) => {
           {t("orgchart.legend.capped")}
         </li>
       </Show>
-      {/* With the hand-off rule "Along the channels" the legend ends with this line (spec 029, 030). */}
+      {/* With the hand-off rule "Along the organizations" the legend ends with this line (spec 029, 030). */}
       <Show when={props.follows}>
-        <li class={styles.legendNote} data-testid="org-legend-channels">
-          {t("orgchart.legend.channels")}
+        <li class={styles.legendNote} data-testid="org-legend-rule">
+          {t("orgchart.legend.rule")}
         </li>
       </Show>
     </ul>
@@ -122,14 +120,13 @@ const Legend = (props: { capped: boolean; follows: boolean }) => {
 
 /**
  * The org chart (spec 029). It starts nothing. It changes only the members and the lead of a
- * channel, and only when the user edits (see ChartEdit.tsx).
+ * organization, and only when the user edits (see ChartEdit.tsx).
  */
 export const OrgChartPage = () => {
   const app = useApp()
   const { t } = app
   const ui = useUi()
   const agents = useAgents()
-  const channels = useChannels()
   const chart = useOrgChart()
   const model = chart.model
   // The layout does not change during the drag of a node (spec 029): it waits until the drag ends.
@@ -162,10 +159,10 @@ export const OrgChartPage = () => {
     const map = new Map<string, ChartAgent>()
     if (!m) return map
     if (m.root) map.set(ROOT_KEY, m.root)
-    for (const c of m.channels) for (const n of c.nodes) map.set(n.key, n)
+    for (const c of m.orgs) for (const n of c.nodes) map.set(n.key, n)
     return map
   })
-  const channelNodes = createMemo(() => new Map((model()?.channels ?? []).map((c) => [c.key, c])))
+  const orgNodes = createMemo(() => new Map((model()?.orgs ?? []).map((c) => [c.key, c])))
 
   // ---------------------------------------------------------------- Dim, hover and focus
   const [hover, setHover] = createSignal<string>()
@@ -177,7 +174,7 @@ export const OrgChartPage = () => {
     const key = cleared() ? undefined : (hover() ?? focus())
     const m = model()
     if (!key || !m) return undefined
-    // The tile "+<n> more" belongs to its channel node: it lights what the channel node lights.
+    // The tile "+<n> more" belongs to its organization node: it lights what the organization node lights.
     if (key.endsWith(MORE_SUFFIX)) {
       const from = litBy(m, key.slice(0, -MORE_SUFFIX.length))
       return { nodes: new Set([...from.nodes, key]), lines: from.lines }
@@ -312,7 +309,7 @@ export const OrgChartPage = () => {
     canvas()?.releasePointerCapture(event.pointerId)
   }
 
-  // ---------------------------------------------------------------- Go to an agent or a channel
+  // ---------------------------------------------------------------- Go to an agent
   // The place opens on the server whose chart is on the screen: this computer, or the linked
   // server that the chart came from (spec 029, 012).
   const openProfile = (agentId: string) => {
@@ -320,15 +317,13 @@ export const OrgChartPage = () => {
     setProfileTarget(agentId)
     ui.selectPlace({ kind: "agent", id: agentId }, ui.server()?.id)
   }
-  const openChannel = (channelId: string) =>
-    ui.selectPlace({ kind: "channel", id: channelId }, ui.server()?.id)
 
   // ---------------------------------------------------------------- Edit on the chart
   const edit = createChartEdit({
-    channelNode: (key) => channelNodes().get(key),
+    orgNode: (key) => orgNodes().get(key),
     openProfile,
-    openChannel,
-    focusAgent: (agentId, channelId) => setBorn({ agentId, channelId }),
+    focusAgent: (agentId, orgId) => setBorn({ agentId, orgId }),
+    focusOrg: (orgId) => setBornOrg(orgId),
   })
   // A drag never moves the view by itself: from its start the view is the user's, so that no
   // change of the chart frames it again (spec 029).
@@ -339,7 +334,7 @@ export const OrgChartPage = () => {
   })
 
   // Edge scroll: while a drag holds the pointer within EDGE_PX of an edge of the canvas, the view
-  // moves in that direction. Not on the drop area "No channel" (spec 029).
+  // moves in that direction. Not on the drop area "No organization" (spec 029).
   createEffect(() => {
     if (!nodeDrag()) return
     let frame = 0
@@ -368,16 +363,16 @@ export const OrgChartPage = () => {
     onCleanup(() => cancelAnimationFrame(frame))
   })
 
-  // After "New agent" or "New agent in this channel" the focus goes to the node of the new agent:
-  // its copy in that channel, or the root when it is the main agent. It waits until the form has
-  // closed and the chart shows that node. A copy in "No channel" before the agent joins the
-  // channel does not count.
-  const [born, setBorn] = createSignal<{ agentId: string; channelId: string | null }>()
+  // After "New agent" or "New agent in this organization" the focus goes to the node of the new
+  // agent: its copy in that organization, or the root when it is the main agent. It waits until the
+  // form has closed and the chart shows that node. A copy in "No organization" before the agent
+  // joins the organization does not count.
+  const [born, setBorn] = createSignal<{ agentId: string; orgId: string | null }>()
   createEffect(() => {
     const b = born()
     if (!b || edit.creating()) return
     const nodes = agentNodes()
-    const wanted = copyKey(b.channelId ? `c:${b.channelId}` : NO_CHANNEL_KEY, b.agentId)
+    const wanted = copyKey(b.orgId ? `o:${b.orgId}` : NO_ORG_KEY, b.agentId)
     const key = nodes.has(wanted)
       ? wanted
       : nodes.get(ROOT_KEY)?.agentId === b.agentId
@@ -393,15 +388,32 @@ export const OrgChartPage = () => {
     )
   })
 
+  // After "New organization" is saved the focus goes to its node (spec 029). It waits until the
+  // form has closed and the chart shows the node.
+  const [bornOrg, setBornOrg] = createSignal<string>()
+  createEffect(() => {
+    const id = bornOrg()
+    if (!id || edit.creatingOrg()) return
+    const key = `o:${id}`
+    if (!orgNodes().has(key) || !nodeKeys().includes(key)) return
+    setBornOrg(undefined)
+    edit.dropKept()
+    queueMicrotask(() =>
+      page
+        ?.querySelector<HTMLElement>(`[data-node][data-key="${CSS.escape(key)}"]`)
+        ?.focus({ preventScroll: true }),
+    )
+  })
+
   // ---------------------------------------------------------------- The tile "+<n> more"
   const [more, setMore] = createSignal<{ key: string; left: number; top: number }>()
-  const moreChannel = () => {
+  const moreOrg = () => {
     const open = more()
-    return open ? channelNodes().get(open.key) : undefined
+    return open ? orgNodes().get(open.key) : undefined
   }
-  // The list closes when its channel node has no hidden member any more.
+  // The list closes when its organization node has no hidden member any more.
   createEffect(() => {
-    if (more() && (moreChannel()?.more.length ?? 0) === 0) setMore(undefined)
+    if (more() && (moreOrg()?.more.length ?? 0) === 0) setMore(undefined)
   })
   let moreOpener: HTMLElement | undefined
   const openMore = (key: string, from: HTMLElement) => {
@@ -463,7 +475,7 @@ export const OrgChartPage = () => {
   }
 
   // The focus is never lost when the page changes: a node that goes while it has the focus gives
-  // the focus to its channel node, or to the root.
+  // the focus to its organization node, or to the root.
   let focused: { key: string; parent: string | null } | undefined
   const onFocusIn = (event: FocusEvent) => {
     const el = (event.target as Element).closest<HTMLElement>("[data-node]")
@@ -648,65 +660,67 @@ export const OrgChartPage = () => {
     </div>
   )
 
-  const ChannelNode = (props: { nodeKey: string }) => {
-    const channel = () => channelNodes().get(props.nodeKey)
+  const OrgNode = (props: { nodeKey: string }) => {
+    const org = () => orgNodes().get(props.nodeKey)
     return (
-      <Show when={channel()}>
+      <Show when={org()}>
         {(c) => (
           <button
             type="button"
             class={styles.node}
             style={rectStyle(props.nodeKey)}
             data-node=""
-            data-kind="channel"
+            data-kind="org"
             data-key={props.nodeKey}
-            data-channel-id={c().channelId ?? ""}
+            data-org-id={c().orgId ?? ""}
             data-dim={nodeDim(props.nodeKey)}
             data-ring={edit.ringOf(props.nodeKey)}
             data-over={edit.dragging()?.over === props.nodeKey}
             data-dragged={edit.dragging()?.key === props.nodeKey}
             data-parent={c().parentKey ?? ""}
             data-level={c().level}
-            data-testid="org-channel"
-            aria-label={channelLabel(t, c())}
+            data-testid="org-unit"
+            aria-label={orgLabel(t, c())}
             aria-haspopup={edit.hasMenu(c()) ? "menu" : undefined}
             onClick={() => {
-              const id = c().channelId
-              if (!edit.takeClick() && id) openChannel(id)
+              // A click on an organization node opens its form. "No organization" does nothing.
+              const id = c().orgId
+              if (!edit.takeClick() && id) edit.openOrg(id)
             }}
-            onPointerDown={(event) => edit.pressChannel(event, c())}
+            onPointerDown={(event) => edit.pressOrg(event, c())}
             onContextMenu={(event) => {
               event.preventDefault()
-              edit.openChannelMenu(c(), event.currentTarget, { x: event.clientX, y: event.clientY })
+              edit.openOrgMenu(c(), event.currentTarget, { x: event.clientX, y: event.clientY })
             }}
             onKeyDown={(event) => {
               if (!edit.isMenuKey(event)) return
               event.preventDefault()
               event.stopPropagation()
-              edit.openChannelMenu(c(), event.currentTarget)
+              edit.openOrgMenu(c(), event.currentTarget)
             }}
             {...pointing(props.nodeKey)}
           >
-            <span class={styles.channelHead}>
-              <span class={styles.face} aria-hidden="true">
-                {/* The picture of the channel stands in place of the `#` (spec 004, 029). */}
-                <ChannelMark picture={channels.byId(c().channelId ?? "")?.picture} size={28} />
-              </span>
-              <span
-                class={styles.channelName}
-                title={channelTitle(t, c())}
-                data-testid="org-channel-name"
-              >
-                {channelTitle(t, c())}
+            <span class={styles.orgHead}>
+              <span class={styles.orgName} title={orgTitle(t, c())} data-testid="org-unit-name">
+                {orgTitle(t, c())}
               </span>
             </span>
-            <span class={styles.counts} data-testid="org-channel-counts">
-              <span data-testid="org-channel-members">{membersWord(t, c().memberCount)}</span>
-              <Show when={countsLine(t, c().counts) !== ""}>
-                <span aria-hidden="true">·</span>
-                <span data-testid="org-channel-states">{countsLine(t, c().counts)}</span>
-              </Show>
-            </span>
+            <Show
+              when={c().memberCount > 0}
+              fallback={
+                <span class={styles.counts} data-testid="org-unit-empty">
+                  {t("orgchart.noMembers")}
+                </span>
+              }
+            >
+              <span class={styles.counts} data-testid="org-unit-counts">
+                <span data-testid="org-unit-members">{membersWord(t, c().memberCount)}</span>
+                <Show when={countsLine(t, c().counts) !== ""}>
+                  <span aria-hidden="true">·</span>
+                  <span data-testid="org-unit-states">{countsLine(t, c().counts)}</span>
+                </Show>
+              </span>
+            </Show>
           </button>
         )}
       </Show>
@@ -714,9 +728,9 @@ export const OrgChartPage = () => {
   }
 
   const MoreTile = (props: { nodeKey: string }) => {
-    const channel = () => channelNodes().get(props.nodeKey.slice(0, -MORE_SUFFIX.length))
+    const org = () => orgNodes().get(props.nodeKey.slice(0, -MORE_SUFFIX.length))
     return (
-      <Show when={channel()}>
+      <Show when={org()}>
         {(c) => (
           <button
             type="button"
@@ -750,13 +764,10 @@ export const OrgChartPage = () => {
   const NodeMenuButton = (props: { nodeKey: string }) => {
     const kind = kindOf(props.nodeKey)
     const agentNode = () => (kind === "more" ? undefined : agentNodes().get(props.nodeKey))
-    const channelNode = () => (kind === "channel" ? channelNodes().get(props.nodeKey) : undefined)
-    const name = () =>
-      agentNode()?.name ?? (channelNode() ? channelTitle(t, channelNode() as ChartChannel) : "")
+    const orgNode = () => (kind === "org" ? orgNodes().get(props.nodeKey) : undefined)
+    const name = () => agentNode()?.name ?? (orgNode() ? orgTitle(t, orgNode() as ChartOrg) : "")
     const has = () =>
-      kind === "channel"
-        ? edit.hasMenu(channelNode())
-        : kind !== "more" && agentNode() !== undefined
+      kind === "org" ? edit.hasMenu(orgNode()) : kind !== "more" && agentNode() !== undefined
     const style = (): JSX.CSSProperties => {
       const r = placed().get(props.nodeKey)?.rect
       return r ? { left: `${r.x + r.w - 28}px`, top: `${r.y + 4}px` } : { display: "none" }
@@ -787,8 +798,8 @@ export const OrgChartPage = () => {
             const at = event.currentTarget.getBoundingClientRect()
             const point = { x: at.left, y: at.bottom + 4 }
             const a = agentNode()
-            const c = channelNode()
-            if (c && opener) edit.openChannelMenu(c, opener, point)
+            const c = orgNode()
+            if (c && opener) edit.openOrgMenu(c, opener, point)
             else if (a && opener) edit.openAgentMenu(a, props.nodeKey === ROOT_KEY, opener, point)
           }}
         >
@@ -817,207 +828,221 @@ export const OrgChartPage = () => {
       </Show>
       <Show when={model()}>
         {(m) => (
-          <Show
-            when={!m().empty}
-            fallback={
-              <div class={styles.empty} data-testid="org-empty">
-                <p>{t("orgchart.empty")}</p>
-                <Show when={ui.canChange()}>
-                  <Button
-                    variant="primary"
-                    onClick={() => setCreating(true)}
-                    data-testid="org-new-agent"
-                  >
-                    {t("agents.new")}
+          <>
+            {/* The header line: the legend of the lines and the button "New organization". */}
+            <div class={styles.head} data-testid="org-head">
+              <Show when={!m().empty}>
+                <Legend capped={m().handoffsCapped} follows={m().handOffRule === "channels"} />
+              </Show>
+              <Show when={edit.canEdit()}>
+                <span class={styles.headButton}>
+                  <Button onClick={edit.newOrg} data-testid="org-new">
+                    {t("orgs.new")}
                   </Button>
-                </Show>
-              </div>
-            }
-          >
-            <Legend capped={m().handoffsCapped} follows={m().handOffRule === "channels"} />
-            <section
-              ref={setCanvas}
-              class={styles.viewport}
-              tabindex="-1"
-              aria-label={t("page.orgchart")}
-              aria-description={
-                edit.canEdit()
-                  ? `${t("orgchart.canvas.hint")} ${t("orgchart.edit.hint")}`
-                  : t("orgchart.canvas.hint")
+                </span>
+              </Show>
+            </div>
+            <Show
+              when={!m().empty}
+              fallback={
+                <div class={styles.empty} data-testid="org-empty">
+                  <p>{t("orgchart.empty")}</p>
+                  <Show when={ui.canChange()}>
+                    <Button
+                      variant="primary"
+                      onClick={() => setCreating(true)}
+                      data-testid="org-new-agent"
+                    >
+                      {t("agents.new")}
+                    </Button>
+                  </Show>
+                </div>
               }
-              data-dragging={dragging()}
-              data-drag-node={edit.dragging() !== undefined}
-              data-testid="org-canvas"
-              onKeyDown={onKeyDown}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-              onFocusIn={onFocusIn}
-              onFocusOut={onFocusOut}
             >
-              <div
-                class={styles.surface}
-                data-animate={animate()}
-                data-testid="org-surface"
-                data-zoom={view().zoom.toFixed(3)}
-                data-x={view().x.toFixed(1)}
-                data-y={view().y.toFixed(1)}
-                style={{
-                  transform: `translate(${view().x}px, ${view().y}px) scale(${view().zoom})`,
-                }}
+              <section
+                ref={setCanvas}
+                class={styles.viewport}
+                tabindex="-1"
+                aria-label={t("page.orgchart")}
+                aria-description={
+                  edit.canEdit()
+                    ? `${t("orgchart.canvas.hint")} ${t("orgchart.edit.hint")}`
+                    : t("orgchart.canvas.hint")
+                }
+                data-dragging={dragging()}
+                data-drag-node={edit.dragging() !== undefined}
+                data-testid="org-canvas"
+                onKeyDown={onKeyDown}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onFocusIn={onFocusIn}
+                onFocusOut={onFocusOut}
               >
-                <svg
-                  class={styles.lines}
-                  width={(layout()?.bounds.x ?? 0) + (layout()?.bounds.w ?? 0)}
-                  height={(layout()?.bounds.y ?? 0) + (layout()?.bounds.h ?? 0)}
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <marker
-                      id="org-arrow-lead"
-                      markerUnits="userSpaceOnUse"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="10"
-                      refY="5"
-                      orient="auto"
-                    >
-                      <path class={styles.arrowLead} d="M0 0 L10 5 L0 10 z" />
-                    </marker>
-                    <marker
-                      id="org-arrow-handoff"
-                      markerUnits="userSpaceOnUse"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="10"
-                      refY="5"
-                      orient="auto"
-                    >
-                      <path class={styles.arrowHandoff} d="M0 0 L10 5 L0 10 z" />
-                    </marker>
-                  </defs>
-                  <For each={lineKeys()}>
-                    {(id) => {
-                      const line = () => placedLines().get(id)
-                      return (
-                        <Show when={line()}>
-                          {(l) => (
-                            <g data-testid="org-line" data-id={id} data-kind={l().kind}>
-                              <path
-                                class={styles.line}
-                                data-kind={l().kind}
-                                data-dim={lineDim(id)}
-                                d={pathOf(l().points)}
-                                marker-end={
-                                  l().kind === "lead"
-                                    ? "url(#org-arrow-lead)"
-                                    : l().kind === "handoff"
-                                      ? "url(#org-arrow-handoff)"
-                                      : undefined
-                                }
-                              />
-                              <Show when={l().kind === "handoff"}>
-                                <path
-                                  class={styles.hit}
-                                  d={pathOf(l().points)}
-                                  data-testid="org-line-hit"
-                                  onPointerEnter={(event) => showTip(id, event)}
-                                  onPointerMove={(event) => showTip(id, event)}
-                                  onPointerLeave={() => setTip(undefined)}
-                                />
-                              </Show>
-                            </g>
-                          )}
-                        </Show>
-                      )
-                    }}
-                  </For>
-                </svg>
-                <For each={nodeKeys()}>
-                  {(key) => (
-                    <Switch>
-                      <Match when={kindOf(key) === "root"}>
-                        <Show when={m().root} fallback={<YouNode />}>
-                          <AgentNode nodeKey={key} />
-                        </Show>
-                      </Match>
-                      <Match when={kindOf(key) === "channel"}>
-                        <ChannelNode nodeKey={key} />
-                      </Match>
-                      <Match when={kindOf(key) === "more"}>
-                        <MoreTile nodeKey={key} />
-                      </Match>
-                      <Match when={true}>
-                        <AgentNode nodeKey={key} />
-                      </Match>
-                    </Switch>
-                  )}
-                </For>
-                <For each={lineKeys()}>
-                  {(id) => (
-                    <Show when={placedLines().get(id)?.label}>
-                      {(rect) => (
-                        <span
-                          class={styles.count}
-                          style={{
-                            left: `${rect().x}px`,
-                            top: `${rect().y}px`,
-                            width: `${rect().w}px`,
-                            height: `${rect().h}px`,
-                          }}
-                          data-dim={lineDim(id)}
-                          data-id={id}
-                          data-testid="org-line-count"
-                          aria-hidden="true"
-                          onPointerEnter={(event) => showTip(id, event)}
-                          onPointerMove={(event) => showTip(id, event)}
-                          onPointerLeave={() => setTip(undefined)}
-                        >
-                          {modelLines().get(id)?.count ?? ""}
-                        </span>
-                      )}
-                    </Show>
-                  )}
-                </For>
-                <For each={nodeKeys()}>{(key) => <NodeMenuButton nodeKey={key} />}</For>
-              </div>
-              <edit.NoticeLine />
-              <edit.DropArea />
-              <div
-                ref={controls}
-                class={styles.controls}
-                data-control=""
-                data-testid="org-controls"
-              >
-                <IconButton
-                  label={t("orgchart.zoomOut")}
-                  onClick={() => zoomBy(1 / ZOOM_STEP)}
-                  data-testid="org-zoom-out"
-                >
-                  <Minus size={16} />
-                </IconButton>
-                <IconButton
-                  label={t("orgchart.zoomIn")}
-                  onClick={() => zoomBy(ZOOM_STEP)}
-                  data-testid="org-zoom-in"
-                >
-                  <Plus size={16} />
-                </IconButton>
-                <button
-                  type="button"
-                  class={styles.fit}
-                  onClick={() => {
-                    own = true
-                    fit(true)
+                <div
+                  class={styles.surface}
+                  data-animate={animate()}
+                  data-testid="org-surface"
+                  data-zoom={view().zoom.toFixed(3)}
+                  data-x={view().x.toFixed(1)}
+                  data-y={view().y.toFixed(1)}
+                  style={{
+                    transform: `translate(${view().x}px, ${view().y}px) scale(${view().zoom})`,
                   }}
-                  data-testid="org-fit"
                 >
-                  {t("orgchart.fit")}
-                </button>
-              </div>
-            </section>
-          </Show>
+                  <svg
+                    class={styles.lines}
+                    width={(layout()?.bounds.x ?? 0) + (layout()?.bounds.w ?? 0)}
+                    height={(layout()?.bounds.y ?? 0) + (layout()?.bounds.h ?? 0)}
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <marker
+                        id="org-arrow-lead"
+                        markerUnits="userSpaceOnUse"
+                        markerWidth="10"
+                        markerHeight="10"
+                        refX="10"
+                        refY="5"
+                        orient="auto"
+                      >
+                        <path class={styles.arrowLead} d="M0 0 L10 5 L0 10 z" />
+                      </marker>
+                      <marker
+                        id="org-arrow-handoff"
+                        markerUnits="userSpaceOnUse"
+                        markerWidth="10"
+                        markerHeight="10"
+                        refX="10"
+                        refY="5"
+                        orient="auto"
+                      >
+                        <path class={styles.arrowHandoff} d="M0 0 L10 5 L0 10 z" />
+                      </marker>
+                    </defs>
+                    <For each={lineKeys()}>
+                      {(id) => {
+                        const line = () => placedLines().get(id)
+                        return (
+                          <Show when={line()}>
+                            {(l) => (
+                              <g data-testid="org-line" data-id={id} data-kind={l().kind}>
+                                <path
+                                  class={styles.line}
+                                  data-kind={l().kind}
+                                  data-dim={lineDim(id)}
+                                  d={pathOf(l().points)}
+                                  marker-end={
+                                    l().kind === "lead"
+                                      ? "url(#org-arrow-lead)"
+                                      : l().kind === "handoff"
+                                        ? "url(#org-arrow-handoff)"
+                                        : undefined
+                                  }
+                                />
+                                <Show when={l().kind === "handoff"}>
+                                  <path
+                                    class={styles.hit}
+                                    d={pathOf(l().points)}
+                                    data-testid="org-line-hit"
+                                    onPointerEnter={(event) => showTip(id, event)}
+                                    onPointerMove={(event) => showTip(id, event)}
+                                    onPointerLeave={() => setTip(undefined)}
+                                  />
+                                </Show>
+                              </g>
+                            )}
+                          </Show>
+                        )
+                      }}
+                    </For>
+                  </svg>
+                  <For each={nodeKeys()}>
+                    {(key) => (
+                      <Switch>
+                        <Match when={kindOf(key) === "root"}>
+                          <Show when={m().root} fallback={<YouNode />}>
+                            <AgentNode nodeKey={key} />
+                          </Show>
+                        </Match>
+                        <Match when={kindOf(key) === "org"}>
+                          <OrgNode nodeKey={key} />
+                        </Match>
+                        <Match when={kindOf(key) === "more"}>
+                          <MoreTile nodeKey={key} />
+                        </Match>
+                        <Match when={true}>
+                          <AgentNode nodeKey={key} />
+                        </Match>
+                      </Switch>
+                    )}
+                  </For>
+                  <For each={lineKeys()}>
+                    {(id) => (
+                      <Show when={placedLines().get(id)?.label}>
+                        {(rect) => (
+                          <span
+                            class={styles.count}
+                            style={{
+                              left: `${rect().x}px`,
+                              top: `${rect().y}px`,
+                              width: `${rect().w}px`,
+                              height: `${rect().h}px`,
+                            }}
+                            data-dim={lineDim(id)}
+                            data-id={id}
+                            data-testid="org-line-count"
+                            aria-hidden="true"
+                            onPointerEnter={(event) => showTip(id, event)}
+                            onPointerMove={(event) => showTip(id, event)}
+                            onPointerLeave={() => setTip(undefined)}
+                          >
+                            {modelLines().get(id)?.count ?? ""}
+                          </span>
+                        )}
+                      </Show>
+                    )}
+                  </For>
+                  <For each={nodeKeys()}>{(key) => <NodeMenuButton nodeKey={key} />}</For>
+                </div>
+                <edit.NoticeLine />
+                <edit.DropArea />
+                <div
+                  ref={controls}
+                  class={styles.controls}
+                  data-control=""
+                  data-testid="org-controls"
+                >
+                  <IconButton
+                    label={t("orgchart.zoomOut")}
+                    onClick={() => zoomBy(1 / ZOOM_STEP)}
+                    data-testid="org-zoom-out"
+                  >
+                    <Minus size={16} />
+                  </IconButton>
+                  <IconButton
+                    label={t("orgchart.zoomIn")}
+                    onClick={() => zoomBy(ZOOM_STEP)}
+                    data-testid="org-zoom-in"
+                  >
+                    <Plus size={16} />
+                  </IconButton>
+                  <button
+                    type="button"
+                    class={styles.fit}
+                    onClick={() => {
+                      own = true
+                      fit(true)
+                    }}
+                    data-testid="org-fit"
+                  >
+                    {t("orgchart.fit")}
+                  </button>
+                </div>
+              </section>
+            </Show>
+          </>
         )}
       </Show>
       <Show when={tip()}>
@@ -1034,18 +1059,18 @@ export const OrgChartPage = () => {
       </Show>
       <Show when={more()}>
         {(open) => (
-          <Show when={moreChannel()}>
+          <Show when={moreOrg()}>
             {(c) => (
               <div
                 class={styles.popover}
                 role="dialog"
-                aria-label={t("orgchart.more.title", { channel: channelTitle(t, c()) })}
+                aria-label={t("orgchart.more.title", { organization: orgTitle(t, c()) })}
                 style={{ left: `${open().left}px`, top: `${open().top}px` }}
                 data-popover=""
                 data-testid="org-more-list"
               >
                 <div class={styles.popoverTitle}>
-                  {t("orgchart.more.title", { channel: channelTitle(t, c()) })}
+                  {t("orgchart.more.title", { organization: orgTitle(t, c()) })}
                 </div>
                 <ul class={styles.popoverList}>
                   <For each={c().more}>

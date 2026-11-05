@@ -121,7 +121,7 @@ describe("the extent of a layout", () => {
     const model = buildChart({
       ...EMPTY_ORG_SNAPSHOT,
       agents: ["a", "b", "c", "d"].map(agent),
-      channels: [
+      orgs: [
         { id: "x", name: "X", createdAt: 1, leadId: "a", memberIds: ["a", "b"], parentId: null },
         { id: "y", name: "Y", createdAt: 2, leadId: null, memberIds: ["c", "d"], parentId: null },
       ],
