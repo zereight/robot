@@ -113,17 +113,19 @@ A new word goes here in the same pull request as the spec that brings it.
 | Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 | delegation, assignment |
 | Legend words of the org chart | The three kinds of line, named in the legend (029): "Leads" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 이끌어요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to, gives parts |
 | Fit to view | The button and the key "0" that frame the whole org chart with room around it (029). | 화면에 맞추기 | reset, zoom to 100% |
-| Organization | A group of agents with a lead, a parent organization and access. It is not a channel (030). | 조직 (proposed) | company, department, team (Teams is the link of 028), channel |
-| Parent organization | The organization that an organization sits inside (030). | 상위 조직 (proposed) | parent team, department |
-| Sub-organization | An organization with a parent organization (030). | 하위 조직 (proposed) | sub-team, child organization |
-| Top organization | An organization with no parent organization (030). | 최상위 조직 (proposed) | root organization |
-| Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 (proposed) | permission, permission level (that is 007) |
-| Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬, 끔 (proposed) | default, copy |
+| Organization | A group of agents with a lead, a parent organization and access. It is not a channel (030). | 조직 | company, department, team (Teams is the link of 028), channel |
+| Parent organization | The organization that an organization sits inside (030). | 상위 조직 | parent team, department |
+| Sub-organization | An organization with a parent organization (030). | 하위 조직 | sub-team, child organization |
+| Top organization | An organization with no parent organization (030). | 최상위 조직 | root organization |
+| Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 | permission, permission level (that is 007) |
+| Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬 (끔 is proposed: "Off" comes with S120) | default, copy |
 | Hand-off rules | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 전달 규칙 (proposed) | organization, Teams (that is the link of 028) |
 | Hand-off rule | The rule of who may send work to whom with "send message" (030). Values: "Any agent", "Along the organizations". | 전달 규칙, 아무 에이전트에게, 조직을 따라 (proposed) | chain of command, reporting line |
 | Hand-off range | The field of an organization that says to whom its members may send work when the rule is "Along the organizations": "Inherit", "Own organization", "Own and lower organizations", "All agents" (030). | 전달 범위 (proposed) | scope, reach |
 | Ask up the line | The switch that sends a question that the lead of a channel passes to the leads of the organizations of the member and to the main agent before the user (030). | 위로 물어보기 (proposed) | escalate, auto answer |
-| Tools | The skills and connections that an organization gives to its members and to the members of its lower organizations, with the values "Inherit", "On" and "Off" (030). | 도구 (proposed) | team permissions, inherited tools |
+| Tools | The skills and connections that an organization gives to its members and to the members of its lower organizations, with the values "Inherit", "On" and "Off" (030). | 도구 | team permissions, inherited tools |
+| Organization mark | The small word "organization" beside an organization in the list of who may use a skill or a connection, as "channel" marks a channel there (017, 018, 030). | 조직 | group mark |
+| Tools from organizations | The block of an agent profile that lists each skill and connection that the agent has from an organization, each with the line "From <organization>" (002, 030). | 조직에서 받은 도구, {organization}에서 받음 | inherited tools |
 | Daily token limit | The most tokens that the tasks of the members of an organization and of its lower organizations may use in one day (030). | 하루 토큰 한도 (proposed) | budget, quota |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
