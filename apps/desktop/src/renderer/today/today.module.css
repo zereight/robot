@@ -119,3 +119,25 @@
   align-self: flex-start;
   margin: 4px 0 0 8px;
 }
+
+/* The choice of an organization, at the head of the page (spec 021, "Filter by organization"). */
+.filter {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.filterSelect {
+  padding: 4px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  color: var(--c-text);
+  font-size: var(--text-s);
+}
+
+.filterSelect:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}

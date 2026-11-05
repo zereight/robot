@@ -367,3 +367,82 @@ test("a routine can belong to an organization, and the field refuses an agent th
     await app.close()
   }
 })
+
+test("the Today page can be filtered by organization, and the choice survives a restart", async () => {
+  test.setTimeout(240_000)
+  const mock = await startMockProvider()
+  const userData = freshUserData()
+  const first = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = first
+  try {
+    await resizeWindow(app, 1300, 900)
+    await connectMock(page, mock.openaiUrl, GOOD_KEY)
+    await createAgent(page, "Ada")
+    await createAgent(page, "Bo")
+    const serverId = await serverIdOf(page)
+    const docs = await rpc<OrgInfo>(page, "organizations.create", {
+      serverId,
+      name: "Docs",
+      memberIds: [await agentIdOf(page, "Ada")],
+      leadId: null,
+    })
+    // One routine per agent, due in the next 24 hours: "Next 24 hours" gets one row for each.
+    const routine = (agent: string, name: string) =>
+      rpc(page, "routines.create", {
+        serverId,
+        agentId: agent,
+        name,
+        prompt: "Check.",
+        schedule: { kind: "once", at: Date.now() + 3 * 60 * 60 * 1000 },
+        place: { kind: "agent" },
+      })
+    await routine(await agentIdOf(page, "Ada"), "Ada check")
+    await routine(await agentIdOf(page, "Bo"), "Bo check")
+
+    await page.getByTestId("page-today").click()
+    await expect(page.getByTestId("today-page")).toBeVisible()
+    const nextRows = page.getByTestId("today-group-next").getByTestId("today-row")
+    await expect(nextRows).toHaveCount(2)
+
+    // --- A filter keeps the rows of the members of the organization -------------------------
+    await page.getByTestId("today-org").selectOption({ label: "Docs" })
+    await expect(nextRows).toHaveCount(1)
+    await expect(nextRows.first()).toContainText("Ada check")
+    // The badge of the page button does not change with the filter (spec 021, "Rules").
+    await shot(page, "s139-12-today-filter")
+
+    // --- An organization with no member says so in one line ---------------------------------
+    await rpc<OrgInfo>(page, "organizations.create", {
+      serverId,
+      name: "Ops",
+      memberIds: [],
+      leadId: null,
+    })
+    await page.getByTestId("today-org").selectOption({ label: "Ops" })
+    await expect(page.getByTestId("today-filter-empty")).toBeVisible()
+    await expect(page.getByTestId("today-filter-empty")).toContainText("Nothing in Ops.")
+
+    // --- The choice belongs to the device and survives a restart -----------------------------
+    await page.getByTestId("today-org").selectOption({ label: "Docs" })
+    await expect(nextRows).toHaveCount(1)
+    // The choice is written to the store of this device; wait for the write before the restart.
+    await expect
+      .poll(async () => (await rpc<{ todayOrg: string | null }>(page, "ui.get")).todayOrg)
+      .toBe(docs.id)
+    await app.close()
+    const again = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+    try {
+      await again.page.getByTestId("page-today").click()
+      await expect(again.page.getByTestId("today-page")).toBeVisible()
+      await expect(again.page.getByTestId("today-org")).toHaveValue(docs.id)
+      await expect(again.page.getByTestId("today-group-next").getByTestId("today-row")).toHaveCount(
+        1,
+      )
+    } finally {
+      await again.app.close()
+    }
+  } finally {
+    await mock.close()
+    await app.close()
+  }
+})

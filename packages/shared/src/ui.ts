@@ -64,6 +64,11 @@ export const UiState = Schema.Struct({
   agentView: AgentView,
   /** The view of the org chart: the canvas, or the list. */
   orgView: OrgView,
+  /**
+   * The organization whose rows the Today page shows (spec 021, "Filter by organization"), or null
+   * for "All". It belongs to this device.
+   */
+  todayOrg: Schema.NullOr(Schema.String),
   activityPanel: Schema.Boolean,
   placeListWidth: Schema.Number.check(
     Schema.isBetween({ minimum: PLACE_LIST_MIN, maximum: PLACE_LIST_MAX }),
@@ -87,6 +92,7 @@ export const defaultUiState: UiState = {
   collapsed: [],
   agentView: "sections",
   orgView: "chart",
+  todayOrg: null,
   activityPanel: true,
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,

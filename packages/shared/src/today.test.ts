@@ -21,6 +21,8 @@ import {
   TODAY_GROUPS,
   type TodayRow,
   type TodaySnapshot,
+  todayFilterEmpty,
+  todayForOrganization,
   todayLine,
   todaySnapshot,
   visibleGroups,
@@ -442,5 +444,34 @@ describe("the page", () => {
     const third = visibleGroups(snapshot, { needs: 60 })[0]
     expect(third?.rows).toHaveLength(45)
     expect(third?.more).toBe(0)
+  })
+})
+
+describe("the filter by organization (spec 021)", () => {
+  const snapshotOf = (rows: readonly TodayRow[]): TodaySnapshot =>
+    todaySnapshot(day.start, { needs: rows, wrong: rows, done: rows, next: rows })
+
+  test("it keeps the rows of the agents of the organization, and drops a row with no agent", () => {
+    // Three approvals: two of agents, and one that names no agent (a row that a filter drops).
+    const rows = needsRows(
+      [
+        card(1, { agentId: "ada" }),
+        card(2, { agentId: "bo" }),
+        card(3, { agentId: null as never }),
+      ],
+      [],
+    )
+    const out = todayForOrganization(snapshotOf(rows), new Set(["ada"]))
+    expect(out.groups.every((g) => g.rows.map((r) => r.text).join(",") === "Run step 1")).toBe(true)
+    // The groups stay four, in the same order.
+    expect(out.groups.map((g) => g.id)).toEqual(["needs", "wrong", "done", "next"])
+    // The badge does not change: it counts what waits, not what the filter shows.
+    expect(out.badge).toBe(3)
+  })
+
+  test("a filter that keeps no row is told from one that keeps every row", () => {
+    const rows = needsRows([card(1, { agentId: "ada" })], [])
+    expect(todayFilterEmpty(todayForOrganization(snapshotOf(rows), new Set()))).toBe(true)
+    expect(todayFilterEmpty(todayForOrganization(snapshotOf(rows), new Set(["ada"])))).toBe(false)
   })
 })

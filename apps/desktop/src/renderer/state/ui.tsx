@@ -169,6 +169,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     },
     /** Picks the view of the org chart: the canvas, or the list (spec 029). */
     setOrgView: (orgView: OrgView) => update({ orgView }),
+    /** Picks the organization of the Today page, or null for "All" (spec 021). */
+    setTodayOrg: (todayOrg: string | null) => update({ todayOrg }),
     newSectionKind,
     /** True when the section still exists in the list of its kind. */
     hasSection: (kind: PlaceKind, sectionId: string | null) =>
