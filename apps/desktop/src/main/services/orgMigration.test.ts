@@ -483,3 +483,157 @@ describe("the step that clears the parent channel (spec 030, 'Migration', 'What 
     ).toEqual({ n: 0 })
   })
 })
+
+describe("the repair of a line after the migration (spec 030, 'Migration', 'One line')", () => {
+  const LINE = migrations.findIndex((sql) => sql.includes("CREATE TABLE org_line_note"))
+  const tool = (d: DatabaseSync, ...channels: string[]) =>
+    d.exec(`INSERT INTO skill (id, server_id, name, name_key, instructions, agents, channels, enabled, created_at)
+      VALUES ('sk', 's', 'Notes', 'notes', 'x', '[]', '${JSON.stringify(channels)}', 1, 1)`)
+  const notes = (db: DatabaseSync) =>
+    db.prepare("SELECT org_name, agent_name FROM org_line_note ORDER BY id").all()
+  const channelMembers = (db: DatabaseSync, id: string) =>
+    (
+      db
+        .prepare("SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position")
+        .all(id) as { agent_id: string }[]
+    ).map((m) => m.agent_id)
+
+  test("it comes after the step that clears the parent channel, and it only adds a table", () => {
+    expect(LINE).toBeGreaterThan(
+      migrations.findIndex((sql) => sql.includes("SET parent_channel_id = NULL")),
+    )
+    expect(migrations[LINE]).not.toMatch(/DROP |DELETE FROM|UPDATE /i)
+    expect(dataSteps[LINE]).toBeDefined()
+  })
+
+  test('acceptance: "Docs" (made first) and "Ops" have a tool and the member A: A leaves "Ops" only', () => {
+    const db = before((d) => {
+      agent(d, "A")
+      channel(d, "Docs", { members: ["A"], created: 1 })
+      channel(d, "Ops", { members: ["A"], created: 2 })
+      tool(d, "Docs", "Ops")
+    })
+    migrate(db)
+    expect(orgs(db).map((o) => o.name)).toEqual(["Docs", "Ops"])
+    expect(members(db, "org-Docs")).toEqual(["A"])
+    expect(members(db, "org-Ops")).toEqual([])
+    // The agent stays a member of the channel.
+    expect(channelMembers(db, "Ops")).toEqual(["A"])
+    expect(channelMembers(db, "Docs")).toEqual(["A"])
+    // One removal waits for one line of the organization log.
+    expect(notes(db)).toEqual([{ org_name: "Ops", agent_name: "A" }])
+  })
+
+  test("the channel that was made first counts as joined first, whatever its id", () => {
+    const db = before((d) => {
+      agent(d, "A")
+      channel(d, "Alpha", { members: ["A"], created: 20 })
+      channel(d, "Zulu", { members: ["A"], created: 10 })
+      tool(d, "Alpha", "Zulu")
+    })
+    migrate(db)
+    expect(members(db, "org-Zulu")).toEqual(["A"])
+    expect(members(db, "org-Alpha")).toEqual([])
+  })
+
+  test("channels made at the same time: the lower id counts as joined first", () => {
+    const db = before((d) => {
+      agent(d, "A")
+      channel(d, "Beta", { members: ["A"], created: 5 })
+      channel(d, "Alpha", { members: ["A"], created: 5 })
+      tool(d, "Alpha", "Beta")
+    })
+    migrate(db)
+    expect(members(db, "org-Alpha")).toEqual(["A"])
+    expect(members(db, "org-Beta")).toEqual([])
+  })
+
+  test("an agent in organizations on one line keeps them; only the organization apart loses it", () => {
+    const db = before((d) => {
+      for (const a of ["A", "B"]) agent(d, a)
+      channel(d, "Product", { members: ["A", "B"], created: 1 })
+      channel(d, "Docs", { parent: "Product", members: ["A"], created: 2 })
+      channel(d, "Ops", { members: ["A", "B"], created: 3, limit: 1000 })
+    })
+    migrate(db)
+    expect(members(db, "org-Product")).toEqual(["A", "B"])
+    expect(members(db, "org-Docs")).toEqual(["A"])
+    // B is in "Product" and "Ops", which are not on one line: "Ops" is later. A too.
+    expect(members(db, "org-Ops")).toEqual([])
+    expect(notes(db)).toEqual([
+      { org_name: "Ops", agent_name: "A" },
+      { org_name: "Ops", agent_name: "B" },
+    ])
+  })
+
+  test("a lead that is removed is no longer the lead of the organization", () => {
+    const db = before((d) => {
+      for (const a of ["A", "B"]) agent(d, a)
+      channel(d, "Docs", { members: ["A"], created: 1 })
+      channel(d, "Ops", { members: ["B", "A"], lead: "A", created: 2 })
+      tool(d, "Docs", "Ops")
+    })
+    migrate(db)
+    expect(members(db, "org-Ops")).toEqual(["B"])
+    expect(orgs(db).map((o) => [o.name, o.lead])).toEqual([
+      ["Docs", null],
+      ["Ops", null],
+    ])
+  })
+
+  test("no agent off the line: nothing is removed and no note waits", () => {
+    const db = before((d) => {
+      for (const a of ["A", "B"]) agent(d, a)
+      channel(d, "Docs", { members: ["A"], created: 1, limit: 1000 })
+      channel(d, "Ops", { members: ["B"], created: 2, limit: 1000 })
+    })
+    migrate(db)
+    expect(members(db, "org-Docs")).toEqual(["A"])
+    expect(members(db, "org-Ops")).toEqual(["B"])
+    expect(notes(db)).toEqual([])
+  })
+
+  test("two computers with the same old data end with the same members", () => {
+    const setup = (d: DatabaseSync) => {
+      agent(d, "A")
+      channel(d, "Docs", { members: ["A"], created: 1 })
+      channel(d, "Ops", { members: ["A"], created: 2 })
+      tool(d, "Docs", "Ops")
+    }
+    const one = before(setup)
+    const two = before(setup)
+    migrate(one)
+    migrate(two)
+    for (const db of [one, two]) {
+      expect(members(db, "org-Docs")).toEqual(["A"])
+      expect(members(db, "org-Ops")).toEqual([])
+    }
+  })
+
+  test("a removal marks the organization for sync, in a sync pair", () => {
+    const db = before((d) => {
+      agent(d, "A")
+      channel(d, "Docs", { members: ["A"], created: 1 })
+      channel(d, "Ops", { members: ["A"], created: 2 })
+      tool(d, "Docs", "Ops")
+      d.exec(`INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'live', 1)`)
+    })
+    migrate(db)
+    expect(dirty(db).map((r) => (r as { id: string }).id)).toContain("org-Ops")
+  })
+
+  test("it gives the same result when the steps run again, and the notes stay one", () => {
+    const db = before((d) => {
+      agent(d, "A")
+      channel(d, "Docs", { members: ["A"], created: 1 })
+      channel(d, "Ops", { members: ["A"], created: 2 })
+      tool(d, "Docs", "Ops")
+    })
+    migrate(db)
+    migrate(db)
+    dataSteps[LINE]?.(db)
+    expect(members(db, "org-Ops")).toEqual([])
+    expect(notes(db)).toHaveLength(1)
+  })
+})
