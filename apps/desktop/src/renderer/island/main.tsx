@@ -85,7 +85,7 @@ const reasonText = (reason: { code: string; detail: string } | null) => {
 }
 
 /** Keeps the window as big as the content: the page tells the main process its size. */
-const useFit = () => {
+const useFit = (view: () => string) => {
   let element: HTMLElement | undefined
   onMount(() => {
     if (!element) return
@@ -93,7 +93,12 @@ const useFit = () => {
     const send = () => {
       if (!element) return
       const box = element.getBoundingClientRect()
-      const size = { width: Math.ceil(box.width), height: Math.ceil(box.height) }
+      // The bar is as wide as its window, so its own width is no measure: it would keep the size of
+      // a card that closed. The main process knows the width of the bar from the notch.
+      const size = {
+        width: view() === "bar" ? 0 : Math.ceil(box.width),
+        height: Math.ceil(box.height),
+      }
       const key = `${size.width}x${size.height}`
       if (key === last) return
       last = key
@@ -101,7 +106,10 @@ const useFit = () => {
     }
     const watcher = new ResizeObserver(send)
     watcher.observe(element)
-    send()
+    createEffect(() => {
+      view()
+      send()
+    })
     onCleanup(() => watcher.disconnect())
   })
   return (el: HTMLElement) => {
@@ -119,7 +127,7 @@ const Island = () => {
       setState(next)
     }),
   )
-  const fit = useFit()
+  const fit = useFit(() => view())
 
   const shape = () => islandShape(state())
   const [detail, setDetail] = createSignal(false)
