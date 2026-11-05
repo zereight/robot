@@ -8,6 +8,7 @@ import {
   nameKey,
 } from "./agents.ts"
 import { CHANNEL_NAME_MAX, CHANNEL_TOPIC_MAX } from "./channels.ts"
+import { validDailyLimit } from "./channelTools.ts"
 import { CHANNEL_INSTRUCTIONS_MAX, HANDBOOK_MAX } from "./handbook.ts"
 import type { NotImported } from "./importReview.ts"
 import { ROUTINE_NAME_MAX, ROUTINE_PROMPT_MAX } from "./routines.ts"
@@ -59,6 +60,8 @@ export interface AgentFileChannel {
    * The name is as the file writes it, after the spaces at both ends are removed.
    */
   readonly parent: string | null
+  /** The daily token limit, or null when it is off (spec 030). */
+  readonly dailyTokenLimit: number | null
 }
 
 /** A skill of a version 2 file, as it is read. `agents` are places in the `agents` list. */
@@ -241,7 +244,7 @@ const readChannel = (
   keys: readonly string[],
 ): Step<AgentFileChannel> => {
   if (!isObject(value)) return fail("agent_file_field", path)
-  const { name, topic, instructions, reviewParts, members, lead, parent } = value
+  const { name, topic, instructions, reviewParts, members, lead, parent, dailyTokenLimit } = value
   if (
     typeof name !== "string" ||
     charLength(name.trim()) < 1 ||
@@ -264,6 +267,13 @@ const readChannel = (
   if (parent !== undefined && parent !== null && typeof parent !== "string")
     return fail("agent_file_field", `${path}.parent`)
   const parentName = typeof parent === "string" ? parent.trim() : ""
+  // Absent or null: the limit is off. A number must be in the range of the setting (spec 030).
+  if (
+    dailyTokenLimit !== undefined &&
+    dailyTokenLimit !== null &&
+    !validDailyLimit(dailyTokenLimit)
+  )
+    return fail("agent_file_field", `${path}.dailyTokenLimit`)
   if (
     typeof parent === "string" &&
     (parentName === "" || charLength(parentName) > CHANNEL_NAME_MAX)
@@ -288,6 +298,7 @@ const readChannel = (
       members: readMembers.value,
       lead: readLead,
       parent: parentName === "" ? null : parentName,
+      dailyTokenLimit: validDailyLimit(dailyTokenLimit) ? dailyTokenLimit : null,
     },
   }
 }
@@ -444,6 +455,8 @@ export interface AgentFileChannelOut {
   readonly lead: string | null
   /** The name of the parent channel in this file. Absent or null: a top channel. */
   readonly parent?: string | null
+  /** The daily token limit. Absent or null: the limit is off. */
+  readonly dailyTokenLimit?: number | null
 }
 
 /** A skill to write. `agents` are names of agents that the file holds. */
@@ -494,6 +507,9 @@ export const writeAgentFile = (
               members: c.members,
               lead: c.lead,
               ...(c.parent ? { parent: c.parent } : {}),
+              ...(typeof c.dailyTokenLimit === "number"
+                ? { dailyTokenLimit: c.dailyTokenLimit }
+                : {}),
             })),
           }
         : {}),

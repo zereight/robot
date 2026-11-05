@@ -256,6 +256,7 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
         members: [0, 1],
         lead: 0,
         parent: null,
+        dailyTokenLimit: null,
       },
     ])
   })
@@ -272,6 +273,7 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
         members: [1],
         lead: null,
         parent: null,
+        dailyTokenLimit: null,
       },
     ])
   })
@@ -307,6 +309,22 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     )
     expect(refused(file(two, { channels: [channel({ parent: "Launch" })] })).detail).toBe(
       "channels[0].parent",
+    )
+  })
+
+  test("the daily token limit is off unless the file gives a number in range", () => {
+    const channels = (over: Record<string, unknown>) => file(two, { channels: [channel(over)] })
+    const read = (over: Record<string, unknown>) => {
+      const result = parseAgentFile(channels(over))
+      if (!result.ok) throw new Error("refused")
+      return result.file.channels[0]?.dailyTokenLimit
+    }
+    expect(read({})).toBeNull()
+    expect(read({ dailyTokenLimit: null })).toBeNull()
+    expect(read({ dailyTokenLimit: 50_000 })).toBe(50_000)
+    expect(refused(channels({ dailyTokenLimit: 9999 })).detail).toBe("channels[0].dailyTokenLimit")
+    expect(refused(channels({ dailyTokenLimit: 100_000_001 })).detail).toBe(
+      "channels[0].dailyTokenLimit",
     )
   })
 

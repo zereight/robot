@@ -258,6 +258,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
               members: c.memberIds.map((id) => fileName.get(id) ?? ""),
               lead: c.leadId === null ? null : (fileName.get(c.leadId) ?? null),
               ...(parent ? { parent } : {}),
+              ...(typeof c.dailyTokenLimit === "number"
+                ? { dailyTokenLimit: c.dailyTokenLimit }
+                : {}),
             }
           })
         }
@@ -568,7 +571,13 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
               })
               channelCount++
               madeChannel.set(channelNameKey(channel.name), row.id)
-              if (channel.reviewParts) yield* channels.update(row.id, { reviewParts: true })
+              if (channel.reviewParts || channel.dailyTokenLimit !== null)
+                yield* channels.update(row.id, {
+                  ...(channel.reviewParts ? { reviewParts: true } : {}),
+                  ...(channel.dailyTokenLimit !== null
+                    ? { dailyTokenLimit: channel.dailyTokenLimit }
+                    : {}),
+                })
             }),
           )
           if (Exit.isFailure(exit)) return yield* failed("channel", name, exit.cause)

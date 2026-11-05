@@ -1096,6 +1096,27 @@ describe("team file: channels, skills and the handbook", () => {
     ])
   })
 
+  test("the file keeps a daily token limit that is on", async () => {
+    const source = await setup()
+    const { ada, bob } = await team(source)
+    const duo = (await channelsOf(source)).find((c) => c.name === "Duo")
+    if (!duo) throw new Error("no channel")
+    await source.run(Channels.use((c) => c.update(duo.id, { dailyTokenLimit: 50_000 })))
+    const path = join(source.dataDir, "limit.json")
+    await exportTeam(source, path, [ada.id, bob.id], { channels: true })
+    const written = JSON.parse(readFileSync(path, "utf8")).channels as {
+      name: string
+      dailyTokenLimit?: number
+    }[]
+    expect(written.map((c) => [c.name, c.dailyTokenLimit ?? null])).toEqual([["Duo", 50_000]])
+
+    const app = await setup()
+    const result = await importTeam(app, path, { skills: [] })
+    expect(Exit.isSuccess(result)).toBe(true)
+    const imported = await channelsOf(app)
+    expect(imported.map((c) => [c.name, c.dailyTokenLimit])).toEqual([["Duo", 50_000]])
+  })
+
   test("a parent that is not in the file is left out", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)
