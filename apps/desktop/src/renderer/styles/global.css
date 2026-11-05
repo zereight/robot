@@ -30,6 +30,11 @@
   --text-l: 1.25rem;
   --text-xl: 1.5rem;
   --text-2xl: 1.875rem;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
   --motion-fast: 120ms;
   --motion-medium: 200ms;
   --motion-slow: 260ms;

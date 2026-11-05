@@ -723,8 +723,6 @@ button.node[data-kind="more"]:hover {
   color: var(--c-text-muted);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .viewButton {
-    transition: none;
-  }
+:root[data-reduce-motion="true"] .viewButton {
+  transition: none;
 }

@@ -35,7 +35,7 @@ typography:
     letterSpacing: "-0.015em"
   title:
     fontFamily: "system-ui, -apple-system, Segoe UI, Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR, sans-serif"
-    fontSize: "1.125rem"
+    fontSize: "1.25rem"
     fontWeight: 600
     lineHeight: 1.35
   body:

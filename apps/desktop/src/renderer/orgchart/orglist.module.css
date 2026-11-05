@@ -169,9 +169,7 @@
   opacity: 0.4;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .blockHead,
-  .row {
-    transition: none;
-  }
+:root[data-reduce-motion="true"] .blockHead,
+:root[data-reduce-motion="true"] .row {
+  transition: none;
 }
