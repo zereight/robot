@@ -551,7 +551,7 @@ const DEFS: Record<string, ToolDef> = {
   send_message: {
     name: "send_message",
     description:
-      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send.",
+      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send. When you are the lead of the receiver, write the text as a brief: the aim, the limit of the work, what a done result is, and when to stop and ask.",
     schema: object(
       { to: str("The name of the agent."), text: str("The message, with all that it needs.") },
       ["to", "text"],

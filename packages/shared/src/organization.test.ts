@@ -617,4 +617,9 @@ describe("order of a lead (spec 007)", () => {
     expect(LEAD_ORDER_WORDS).toContain("order of your lead")
     expect(LEAD_ORDER_WORDS).toContain("Do the work")
   })
+
+  test("the words tell a stuck receiver to ask its lead first, not the user (spec 030)", () => {
+    expect(LEAD_ORDER_WORDS).toContain("ask your lead")
+    expect(LEAD_ORDER_WORDS).toContain("Do not ask the user first")
+  })
 })

@@ -462,6 +462,40 @@ on.
 - Each look writes one line to the channel log (014), as a look of the lead does, with the place of
   the agent on the line.
 
+## Lead and members as agent and sub-agents
+
+The lead of an organization works as an agent. The members work as its sub-agents. The lead keeps
+the aim, divides the work, and accepts the result. A member does the work that the lead gives.
+This holds only for an order of a lead (007), so a message between colleagues does not change.
+
+- **An order is a task**: when a lead sends an order to a member (or to a member of a lower
+  organization), the work is a task of the member (005). The lead is the asker. The task has a
+  short brief from the lead: the aim, the limit of the work, what a done result is, and when to
+  stop and ask. The member starts with the brief and its own handbook (002). It does not read the
+  chat of the lead.
+- **One lead has many orders**: a lead can give orders to many members at the same time. Each
+  order is its own task. The daily token limit and the rules for the number of running tasks
+  (005) hold for all of them.
+- **A member that is stuck**: a member that cannot go on asks its lead first, in the task. The
+  question goes to the lead as a reply that needs an answer. The lead answers, or passes the
+  question up the line (see "Ask up the line"). The member does not ask the user first.
+- **The result**: when the task ends, the reply goes to the lead as any reply does. The lead
+  accepts it, or sends a new order for the same task with what to change. The chat and the task
+  page show that the lead has not accepted the result yet. A result that the lead accepts is not
+  shown to the user again.
+- **Change in the course of work**: the lead can send a new instruction to a task that runs, and
+  the member reads it at the next step. The lead can cancel the task. A task that a lead cancels
+  sends no reply (005).
+- **Lower leads**: the lead of a sub-organization is a member of the organization above it. It
+  takes an order as a member and gives orders as a lead. A task can be at most 3 levels deep in
+  this way, as the tree is (see "Organization tree"). An order that would go deeper is refused
+  with the reason.
+- **What does not change**: who may send to whom, the permission level of each agent, the rules
+  about secrets, and the access of an organization (see "Who can send to whom" and "Access"). A
+  member does not get a right that its lead has.
+- **Messages between members**: a member sends to a colleague as before (007). The receiver reads
+  it as input from a colleague. It makes no task of a lead.
+
 ## Migration
 
 The first start of this version changes the data of each profile once.
@@ -570,6 +604,19 @@ The first start of this version changes the data of each profile once.
 - A choice of the organization that the prefix of 036 shows.
 
 ## Acceptance
+
+- Lead "Mia" of "Docs" sends an order to member "Jo". Jo gets a task with Mia as the asker and a
+  brief with the aim, the limit, the done result and when to ask. Jo does not know the chat of Mia.
+- Mia sends orders to "Jo" and "Kai" at the same time. There are two tasks. Both count on the
+  daily token limit of "Docs".
+- Jo is stuck. Jo asks Mia in the task, not the user. Mia cannot answer and passes the question
+  up the line. The user is asked last.
+- Jo ends the task. Mia gets the reply. The task page shows that Mia has not accepted it. Mia
+  sends a new order for the same task, and Jo goes on in that task.
+- Mia cancels a running task of Jo. Mia gets no reply from it.
+- A lead of a sub-organization takes an order as a member, and gives orders to its own members.
+  An order at a fourth level is refused with a reason.
+- Jo sends a message to Kai. Kai reads it as input from a colleague, and no task is made.
 
 - Make organizations "Product", "Docs" and "Site" with the form. Set the parent of "Docs" to
   "Product" and of "Site" to "Docs". The parent field of "Product" shows "Docs" and "Site" muted
