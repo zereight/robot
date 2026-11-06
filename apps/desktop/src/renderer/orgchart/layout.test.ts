@@ -20,7 +20,6 @@ import {
   overlaps,
   type Point,
   type Rect,
-  ROW_MAX_PX,
 } from "./layout.ts"
 
 // The layout never overlaps (spec 029, "Layout"): no node covers another, no line passes through a
@@ -125,15 +124,6 @@ const faults = (model: ChartModel, layout: ChartLayout): string[] => {
       const b = nodes[j]
       if (a && b && overlaps(a.rect, b.rect)) found.push(`${a.key} covers ${b.key}`)
     }
-  }
-  // A row of top organization nodes is at most 1,600 px wide, unless it holds one node alone: the
-  // sub-organizations of that node stand in one row, however wide.
-  for (const row of layout.rows) {
-    const tops = layout.areas.filter(
-      (x) => x.depth === 0 && x.rect.y === row.y && x.rect.x >= row.x && x.rect.x < row.x + row.w,
-    )
-    if (row.w > ROW_MAX_PX && tops.length > 1)
-      found.push(`a row is ${row.w} px wide, more than ${ROW_MAX_PX}`)
   }
 
   // Every line has a path that stays out of every node, and it starts and ends on its nodes.
@@ -426,16 +416,11 @@ describe("what the layout depends on", () => {
     expect(layoutChart(b, 14)).toEqual(layoutChart(a, 14))
   })
 
-  test("a row is never wider than 1,600 px, and organization nodes that do not fit go to the next row", () => {
+  test("the top organization nodes stand in one row, however wide", () => {
     const model = buildChart(twentyOrgs())
     const layout = layoutChart(model, 16)
-    expect(layout.rows.length).toBeGreaterThan(1)
-    for (const row of layout.rows) expect(row.w).toBeLessThanOrEqual(ROW_MAX_PX)
-    // The rows are below each other.
-    for (let i = 1; i < layout.rows.length; i++) {
-      const above = layout.rows[i - 1] as Rect
-      expect((layout.rows[i] as Rect).y).toBeGreaterThanOrEqual(above.y + above.h)
-    }
+    expect(layout.rows.length).toBe(1)
+    expect(layout.areas.filter((x) => x.depth === 0).length).toBeGreaterThan(1)
   })
 
   test("a larger text makes larger nodes, and the lanes stay at least 2 cells wide", () => {
