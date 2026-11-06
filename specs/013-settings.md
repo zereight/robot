@@ -101,10 +101,15 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - The page lists each role line that an agent has, with the faces and names of the agents that
   have it. Lines that differ only in case are one role. The first spelling found is shown. The
   list is in alphabetical order.
-- The user can rename a role. The new name goes to every agent of that role. If the new name is
-  the name of another role, the two roles join into one.
-- The user can remove a role after a confirm. Its agents keep their names, chats and files, and
-  have an empty role line.
+- Each role has a box "Role instructions" of up to 5000 characters (002, "Role instructions"). It
+  is empty at first. A save refuses text that looks like a secret, with the reason. The page says
+  that the text goes to the model provider of each agent of that role.
+- The user can rename a role. The new name goes to every agent of that role, and the role keeps its
+  text. If the new name is the name of another role, the two roles join into one. The text of the
+  role that keeps the name stays first, then a blank line, then the other text. When the joined
+  text is longer than 5000 characters, the rename is refused with the reason.
+- The user can remove a role after a confirm. The confirm says that its role instructions are
+  deleted. Its agents keep their names, chats and files, and have an empty role line.
 - A role exists while an agent that is not archived has it. The user makes a new role in the
   profile of an agent (see 002, "Role label"). The list of that field shows the roles of this page.
 - Archived agents are not in the list, and a rename or a remove does not change them. An archived
