@@ -56,7 +56,7 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 | 002 | The agent is the main object: face, model, workspace, permission, memory, Soul. | Removed as an object. Soul, memory and self-improvement move to the workflow (see 008, 010). |
 | 003 | A direct chat with an agent. | A chat with a workflow. One chat for each workflow. |
 | 005 | A task is one run of an agent. | A task is one run of a node (decision 11). |
-| 007 | Workspace folder and permission level for each agent. | Open question 1. |
+| 007 | Workspace folder and permission level for each agent. | One folder and one level for each workflow (decision 18). |
 | 008 | One memory scope for each agent. | One scope for each workflow. |
 | 009 | A routine starts a task of an agent. | Ends. A trigger of a workflow takes its place (decision 12). |
 | 010 | Owner is none or one agent. A step names an agent. | Every workflow has one responsible document. A node has a prompt and a model. No participant rule. |
