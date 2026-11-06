@@ -150,6 +150,12 @@ export interface Place {
    * absent as empty (spec 012). It is text of the user and is not translated.
    */
   readonly role?: string
+  /**
+   * The spot in the group "Pinned" (0 is first), or absent when the place is not pinned (spec 001,
+   * "Pinned places"). A pinned place also stays in its section here, so a reader that does not know
+   * the group (the phone) shows it there. A reader that knows it uses `pinnedPlaces`.
+   */
+  readonly pinRank?: number
 }
 
 /** A built-in place list section. */

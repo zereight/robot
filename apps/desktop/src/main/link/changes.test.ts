@@ -1249,6 +1249,8 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["sections.move", { id: "x", direction: "up" }],
     ["sections.delete", { id: "x" }],
     ["places.move", { kind: "agent", id: "x", sectionId: null }],
+    ["places.pin", { kind: "agent", id: "x", pinned: true }],
+    ["places.order", { items: [{ kind: "agent", id: "x" }] }],
     // Skills are made and changed, and "Make a skill" from a task, an article or an item, on the
     // computer only (spec 012, 017). A client reads the list of one agent for its command list.
     ["skills.list", { serverId: "x" }],

@@ -113,7 +113,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - A place is in at most one section. A channel with no section shows in Channels, before the
   user sections. An agent with no section shows in "Unassigned".
 - Delete of a section moves its places to no section. It deletes no place.
-- The order of the places inside a section does not change.
+- The order of the places inside a section is the order that the user set (see "Order of places").
+  A place that the user has not ordered comes after the ordered ones, by name.
 - The sections and the places in them belong to the server. The computer and the phone show the
   same ones. The open or closed state of a section belongs to the device (step 4 of "Flows"
   above).
@@ -195,7 +196,8 @@ is on at first.
 - "Pin" in the menu of a place (right click, or a long press) puts the place in a group "Pinned"
   at the top of the place list, above Channels. "Unpin" is in the same menu. A pinned place shows
   in this group and not in its section. After "Unpin" it shows in its section again.
-- The group holds agents and channels, in the order of pinning, the oldest first. It holds at most
+- The group holds agents and channels, in the order that the user set. A place that is just pinned
+  comes after the others. It holds at most
   10 places. At 10, "Pin" is off, with the reason in words. A place that is archived or deleted
   leaves the group.
 - The group has a header that the user can collapse. A collapsed header shows the sum of the
@@ -205,6 +207,25 @@ is on at first.
   or unpin: the menu of a place there has no "Pin" and no "Unpin" (011, 012).
 - Each profile (022) has its own pins. An export of a profile holds them with the layout (014).
 - Two computers that sync (019) do not sync pins. They are part of the layout of one computer.
+
+## Order of places
+
+- The user sets the order of the places inside one list: a user section, "Unassigned", the places of
+  Channels that are in no section, and the group "Pinned". The order of the sections is set as
+  before (see "Flows" of "User sections").
+- Drag: the user drags a place row to a spot between two rows of the same list. A line shows the
+  spot. The row drops there. A drop on a row of another list, or on a header, has the meaning that
+  "Drag a place" gives (a header) or none. Escape cancels the drag. A drag never opens the place.
+- Menu: the menu of a place has "Move up" and "Move down". "Move up" is off for the first place of
+  its list, and "Move down" for the last. The two entries are the way for the keyboard.
+- A place that moves to another list (a section, "No section", "Pinned") comes last in that list.
+- The order is not set while the filter of places has a text, and not in the view "By
+  organization" of Agents (the order there comes from the organizations). The two menu entries are
+  off then.
+- The order belongs to the server and to the profile (022). The phone and a linked computer show
+  it. They cannot change it: the menu there has no "Move up" and no "Move down" (011, 012).
+- Two computers that sync (019) do not sync the order. It is part of the layout of one computer. An
+  export of a profile holds it with the layout (014).
 
 ## Message search
 

@@ -21,6 +21,7 @@ import {
   OrgCreate,
   OrgPatch,
   PlaceKind,
+  PlaceRef,
   ProviderConnect,
   parseAddress,
   REVIEW_CHANGES_MAX,
@@ -496,6 +497,18 @@ export const handlers: Handlers = {
       Effect.flatMap(({ kind, id, sectionId }) =>
         Sections.use((s) => s.assign({ kind, id }, sectionId)),
       ),
+      done,
+    ),
+  "places.pin": (input) =>
+    decode(Schema.Struct({ kind: PlaceKind, id: Schema.String, pinned: Schema.Boolean }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ kind, id, pinned }) => Sections.use((s) => s.pin({ kind, id }, pinned))),
+      done,
+    ),
+  "places.order": (input) =>
+    decode(Schema.Struct({ items: Schema.Array(PlaceRef) }))(input).pipe(
+      Effect.flatMap(({ items }) => Sections.use((s) => s.order(items))),
       done,
     ),
   "sections.create": (input) =>

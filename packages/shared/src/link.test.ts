@@ -245,6 +245,8 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "teams.signOut",
     "teams.remove",
     "places.move",
+    "places.pin",
+    "places.order",
     "knowledge.list",
     "knowledge.get",
     "knowledge.save",

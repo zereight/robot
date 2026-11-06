@@ -102,7 +102,7 @@ client shows it and sends commands.
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; make, edit and delete organizations, also the parent organization, the hand-off range and the daily token limit (030), and edits on the org chart (029); edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
 A client sees the user sections and the pinned places of the server (001). It cannot make,
-rename, order or delete a section, move a place into another section, or pin or unpin a place.
+rename, order or delete a section, move a place into another section, pin or unpin a place, or change the order of places.
 A client can mark a place or a message as read or as unread (001, 003). The read state follows
 the server. The Today, Board, Routines and usage page buttons and pages, and the
 other parts in the right column, show a muted line on a client: "Open this on <server name>."

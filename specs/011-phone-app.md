@@ -24,7 +24,7 @@ The user follows and directs agents from an iPhone or Android phone while away f
    setting "Reduce Motion" of the system. This includes the user sections, with the same order and
    the same badge on a collapsed header. The user can open and close a section on the phone. The
    phone remembers this for itself. In this version the phone cannot make, rename, order or
-   delete a section, and it cannot move a place to a section, and it cannot pin or unpin a place.
+   delete a section, and it cannot move a place to a section, and it cannot pin or unpin a place, and it cannot change the order of places.
    The user does this on the computer. The phone shows the group "Pinned" and the sections inside
    sections (001). The phone has no view "By organization" of Agents in this version. It shows the
    user sections, also when the computer shows that view (001, "Agents by organization").

@@ -246,11 +246,11 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await page.mouse.up()
   await expect(await plainNames(page, "agents")).toEqual(["Bo", "Cy"])
   await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
-  // A drop on "Unassigned" means no section. Put Ada back, so the later steps stay as they are.
+  // A drop on "Unassigned" means no section. Put Ada back. She comes last there (spec 001).
   await dragOnto(page, rowOf(page, "Ada"), page.getByTestId("unassigned-header"))
   await expect
     .poll(() => namesIn(page.getByTestId("unassigned-section")))
-    .toEqual(["Ada", "Bo", "Cy"])
+    .toEqual(["Bo", "Cy", "Ada"])
   await expect.poll(() => namesIn(researchAgents)).toEqual([])
   await moveByMenu(rowOf(page, "Ada"), page, "Research")
   await expect.poll(() => namesIn(researchAgents)).toEqual(["Ada"])
@@ -407,7 +407,8 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await page.getByTestId("channel-submit").click()
   await expect(page.getByTestId("channel-dialog")).toHaveCount(0)
   await expect.poll(() => namesIn(channelResearch)).toEqual([])
-  await expect.poll(() => plainNames(page, "channels")).toEqual(["Chat", "Launch"])
+  // Chat comes last in the list that it joins (spec 001, "Order of places").
+  await expect.poll(() => plainNames(page, "channels")).toEqual(["Launch", "Chat"])
 
   // Archive an agent, then delete its section. The restore puts it in no section.
   await rowOf(page, "Ada copy").click()
@@ -422,9 +423,10 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await page.getByTestId("settings-nav-archive").click()
   await page.getByTestId("archive-restore").click()
   await page.getByTestId("settings-close").click()
+  // The places that were moved keep their order. Ada copy was not ordered, so it follows them.
   await expect
     .poll(() => plainNames(page, "agents"))
-    .toEqual(["Ada", "Ada copy", "Bo", "Cy", "Dee"])
+    .toEqual(["Ada", "Bo", "Cy", "Dee", "Ada copy"])
   await shot(page, "s28-12-final")
 
   await app.close()

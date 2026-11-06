@@ -272,6 +272,8 @@ test("linked sections: a client sees the sections of the server and cannot chang
       ["sections.move", { id: s.section, direction: "up" }],
       ["sections.delete", { id: s.section }],
       ["places.move", { kind: "agent", id: s.ada, sectionId: s.section }],
+      ["places.pin", { kind: "agent", id: s.ada, pinned: true }],
+      ["places.order", { items: [{ kind: "agent", id: s.ada }] }],
     ] as const) {
       const reply = await ask(one.page, clientServer, method, input)
       expect(reply.ok, method).toBe(false)
@@ -279,7 +281,8 @@ test("linked sections: a client sees the sections of the server and cannot chang
     }
     expect(await sectionNames(two.page)).toEqual(["Studies"])
     expect(await namesIn(sectionOf(two.page, "Studies"))).toEqual(["Bo"])
-    expect(await plainNames(two.page)).toEqual(["Ada", "Cy"])
+    // Ada moved out of a section and back: she comes last (spec 001, "Order of places").
+    expect(await plainNames(two.page)).toEqual(["Cy", "Ada"])
     // The create calls of a client must not carry a section: the strict check refuses it.
     const withSection = await ask(one.page, clientServer, "agents.create", {
       serverId: clientServer,
@@ -289,7 +292,7 @@ test("linked sections: a client sees the sections of the server and cannot chang
       sectionId: s.section,
     })
     expect(withSection.code).toBe("invalid_input")
-    expect(await plainNames(two.page)).toEqual(["Ada", "Cy"])
+    expect(await plainNames(two.page)).toEqual(["Cy", "Ada"])
     report("s28-linked-sections", { refusals, withSection: withSection.code })
   } finally {
     await one.app.close().catch(() => {})

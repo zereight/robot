@@ -2860,6 +2860,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           )
           if (patch.memberIds) writeMembers(id, memberIds)
         })
+        // A channel that moves to another section comes last there (spec 001, "Order of places").
+        if (sectionId !== row.place_section_id) yield* sections.last({ kind: "channel", id })
         const next = channelRow(id) as ChannelRow
         // Turning "The lead answers questions" off sends a question that is with the lead to the
         // user at once (spec 004).
