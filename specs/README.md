@@ -8,7 +8,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | No. | Area | State |
 | --- | --- | --- |
 | 000 | [Product](000-product.md) | Draft |
-| 001 | [Window layout: server rail, agent list with user sections, direct chat, activity panel](001-window-layout.md) | Draft |
+| 001 | [Window layout: server rail, workflow list, workflow view with its chat, activity panel](001-window-layout.md) | Draft |
 | 002 | [Agents: create, starters, face, name, role, Soul, self-improvement, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
 | 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context, mentions](003-direct-chat.md) | Draft |
 | 005 | [Tasks: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
@@ -16,7 +16,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 007 | [Agent workspace and tools: files, shell, browser, approvals, permission rules, action log, other agents, computer use](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what an agent keeps between chats, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 009 | [Routines: scheduled jobs, calendar, missed runs, limits and pause on repeated failure, and the check of overlaps, loops and runs at once](009-routines.md) | Draft |
-| 010 | [Workflows: a graph of steps and triggers, with an assistant, workflow files, CC Workflow Studio files and a check of every way a run can go](010-workflows.md) | Draft |
+| 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
 | 012 | [Device link: pair phones and computers, messages, identity, offline behaviour](012-device-link.md) | Draft |
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
@@ -91,6 +91,7 @@ Their words about those areas do not apply now.
 | M39 | 038, and the changes to 001, 005, 009, 010, 023 and 028 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S139: the tab "Events" and "Check where this goes" |
 | M40 | The changes to 014, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S140 to S143: org chart arrange, outlines, details and step |
 | M41 | The changes to 002, 010 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S144 to S146: the owner of a workflow and the participants of its agent steps, the workflows of organizations and agents, and the button "New agent" in the form of an organization |
+| W1 | The changes to 000, 001 and 010. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W1". | Slice W1: the workflow is the product. It is a graph of nodes with a responsible document, one chat and one memory, and a TLA file that the check reads. |
 
 ## Surfaces check
 
