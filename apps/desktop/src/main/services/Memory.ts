@@ -3,6 +3,7 @@ import {
   charLength,
   DAY_MS,
   isMemoryMode,
+  LEAD_ENDED_NOTE,
   looksLikeSecret,
   MEMORY_HISTORY_DAYS,
   MEMORY_HISTORY_MAX,
@@ -80,6 +81,12 @@ export interface MemoryService {
    * rows still hold its name.
    */
   deleteChannel(channelId: string): Effect.Effect<void>
+  /**
+   * The note "not the lead" for one channel (spec 004, "Lead prompt"). `ended` true saves it, once,
+   * when the agent still is a member; `ended` false takes it away. It is a normal note with a
+   * history row.
+   */
+  leadEnded(agentId: string, channelId: string, ended: boolean): Effect.Effect<void>
   /**
    * Adds an item as the user, or for an accepted proposal. A text typed by hand may be longer than
    * the tool takes and may look like a secret. Every item makes a history row.
@@ -596,6 +603,28 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
             // A proposal for the channel stays: it is not memory, and the user decides. Save
             // makes a general item of it, because the channel is gone.
             for (const agentId of new Set(notes.map((n) => n.agent_id))) changed(agentId)
+          }),
+        leadEnded: (agentId, channelId, ended) =>
+          Effect.sync(() => {
+            const mine = db.all<Row>(
+              "SELECT * FROM memory WHERE agent_id = ? AND channel_id = ? AND text = ?",
+              agentId,
+              channelId,
+              LEAD_ENDED_NOTE,
+            )
+            if (ended) {
+              if (mine.length > 0 || !needAgent(agentId) || !isMember(agentId, channelId)) return
+              addItem(agentId, LEAD_ENDED_NOTE, "agent", "agent", null, channelId)
+              return
+            }
+            for (const row of mine) {
+              db.run("DELETE FROM memory WHERE id = ?", row.id)
+              record(agentId, row.id, "agent", "deleted", row.source, row.text, null, null, {
+                before: channelId,
+                after: null,
+              })
+            }
+            if (mine.length > 0) changed(agentId)
           }),
         add: (agentId, text, source, messageId = null) =>
           Effect.gen(function* () {

@@ -229,6 +229,14 @@ plan and the channel. Then the user does not need to stop for it.
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
   Two members can still have one folder as workspace. Then the rules of 025 apply.
+- **Lead prompt**: a fixed text that tells an agent that it is the lead of a channel, what the
+  lead does, and what the lead does not do. The lead gets it in each turn of that channel. A member
+  that is not the lead gets none. A change of the lead counts from the next turn.
+- **Lead memory note**: when an agent stops being the lead of a channel and is still a member, the
+  app saves one memory note for that channel (008, "Channel note"): "You are not the lead of this
+  channel." The app saves it once: a second change makes no second note. When the agent becomes the
+  lead again, the app takes the note away. The note is a normal memory item with a history row, and
+  the user can see and undo it. It starts no agent turn.
 - The lead can make a new member and change the role line and the instructions of a member with the
   team tools (037, "Team tools"). Each is a request that the user allows. The new member joins this
   channel when the user allows.
@@ -278,6 +286,10 @@ plan and the channel. Then the user does not need to stop for it.
 
 - A job split into two parts shows two plan steps, two chips, and one summary at the end.
 - Stopping the channel cancels all running parts; their steps leave the panel.
+- An agent that is made the lead gets the Lead prompt in its next turn. After the lead is changed
+  to another member, the first agent gets no Lead prompt in its next turn, and its memory holds one
+  note "You are not the lead of this channel." for that channel. A second change makes no second
+  note. When the first agent is made the lead again, the note is gone.
 - A message with `@all` in a channel of three members makes three tasks, one for each member, and
   the lead does nothing.
 - With the fast pick set up and a fake service that answers "member 2" at 0.9, a job without a

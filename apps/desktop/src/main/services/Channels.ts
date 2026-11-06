@@ -51,6 +51,7 @@ import {
   KEEP_GOING_MAX,
   keepGoingMessage,
   LEAD_LOOK_MS,
+  LEAD_PROMPT,
   type LeadAnswer,
   type LeadLookAnswer,
   type LeadLookEnd,
@@ -608,6 +609,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const remembered = memory.forTurn(agent.id, lastText(turns), channel.id)
         return [
           withAssignment(assignment, instructionsOf(channel, agent)),
+          agent.id === channel.lead_agent_id ? LEAD_PROMPT : "",
           `You are ${agent.name}. You work in the channel "${channel.name}" with: ${memberRows(
             channel.id,
           )
@@ -2877,6 +2879,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         // Turning "The lead answers questions" off sends a question that is with the lead to the
         // user at once (spec 004).
         if (row.lead_answers === 1 && next.lead_answers === 0) leadAnswersOff(id)
+        // The old lead keeps a note that it does not lead; the new lead loses that note (spec 004,
+        // "Lead prompt").
+        if (current.leadId !== leadId) {
+          if (current.leadId) Effect.runSync(memory.leadEnded(current.leadId, id, true))
+          if (leadId) Effect.runSync(memory.leadEnded(leadId, id, false))
+        }
         changed(next)
         return toChannel(next)
       })
