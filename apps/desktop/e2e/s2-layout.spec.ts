@@ -12,7 +12,6 @@ test("layout: rail, place list, panel, width and sections survive a restart", as
   const tiles = page.getByTestId("server-tile")
   await expect(tiles).toHaveCount(1)
   await expect(tiles.first()).toHaveAttribute("aria-pressed", "true")
-  await expect(page.getByTestId("section-channels")).toContainText("No channels yet.")
   await expect(page.getByTestId("section-agents")).toContainText("No agents yet.")
   await expect(page.getByTestId("no-place")).toBeVisible()
   await expect(page.getByTestId("activity-panel")).toBeVisible()

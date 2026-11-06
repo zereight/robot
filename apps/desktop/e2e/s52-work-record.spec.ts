@@ -9,10 +9,6 @@ const send = async (page: Page, text: string) => {
   await page.getByTestId("composer-input").fill(text)
   await page.getByTestId("composer-input").press("Enter")
 }
-const post = async (page: Page, text: string) => {
-  await page.getByTestId("channel-input").fill(text)
-  await page.getByTestId("channel-input").press("Enter")
-}
 const settled = (page: Page) =>
   expect(page.locator("[data-testid=message][data-status=streaming]")).toHaveCount(0, {
     timeout: 30_000,
@@ -37,8 +33,6 @@ const recentRows = (page: Page) => page.getByTestId("recent-row")
 const moments = (page: Page) => page.locator("[data-testid=task-moment]")
 const momentIds = (page: Page) =>
   moments(page).evaluateAll((els) => els.map((e) => e.dataset.moment))
-const taskRows = (page: Page, label: string) =>
-  page.locator("[data-testid=task-row]").filter({ hasText: label })
 
 test("moments in the task view and Recent work in the profile of an agent", async () => {
   test.setTimeout(300_000)
@@ -48,7 +42,7 @@ test("moments in the task view and Recent work in the profile of an agent", asyn
   const { app, page } = await launch(userData, env)
   await resizeWindow(app, 1300, 900)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
-  for (const name of ["Lia", "Bo", "Cy", "Ada", "Dee"]) await createAgent(page, name)
+  for (const name of ["Ada", "Dee"]) await createAgent(page, name)
 
   // --- An agent with no task: one muted line, no "Show all" ------------------------------------
   await openProfile(page, "Dee")
@@ -100,7 +94,6 @@ test("moments in the task view and Recent work in the profile of an agent", asyn
   // A clock time on each line, in plain text.
   for (const time of await moments(page).locator("time").allTextContents())
     expect(time).toMatch(/\d{1,2}:\d{2}/)
-  await expect(page.getByTestId("task-verdict")).toHaveCount(0)
   await shot(page, "s52-04-moments-chat-task")
   await page.keyboard.press("Escape")
   await expect(page.getByTestId("task-detail")).toHaveCount(0)
@@ -139,133 +132,19 @@ test("moments in the task view and Recent work in the profile of an agent", asyn
   })
   await closeProfile(page)
 
-  // --- A channel with "Review parts": a part waits for review, one is blocked, one is queued ----
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Launch")
-  for (const name of ["Lia", "Bo", "Cy"]) await page.getByTestId(`channel-member-${name}`).check()
-  await page.getByTestId("channel-lead").selectOption({ label: "Lia" })
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
-  await page.getByTestId("channel-settings").click()
-  await page.getByTestId("channel-review-parts").click()
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-form")).toHaveCount(0)
-
-  // Bo is busy in his own chat, so his part of the job waits behind it.
-  await place(page, "Bo").click()
-  await send(page, "run long work")
-  await expect(page.locator("[data-testid=message][data-status=streaming]")).toHaveCount(1, {
-    timeout: 15_000,
-  })
-  await place(page, "Launch").click()
-  await post(page, "split review of the release")
-  await expect(page.getByTestId("part-chip")).toHaveCount(2, { timeout: 30_000 })
-  await expect(page.locator("[data-testid=part-card][data-state=blocked]")).toHaveCount(1, {
-    timeout: 30_000,
-  })
-  await openProfile(page, "Bo")
-  const queued = recentRows(page).filter({ hasText: "Write the introduction" })
-  await expect(queued.getByTestId("recent-state")).toHaveText("Waits behind its own chat")
-  await expect(queued.getByTestId("recent-source")).toHaveText("Channel")
-  await shotRecent(page, "s52-06-waits-behind")
-  await closeProfile(page)
-
-  // Cy cannot do the work: the row says Blocked and gives the reason.
-  await openProfile(page, "Cy")
-  const blocked = recentRows(page).first()
-  await expect(blocked.getByTestId("recent-state")).toHaveText("Blocked")
-  await expect(blocked.getByTestId("recent-reason")).toHaveText("no access to the repository")
-  await closeProfile(page)
-
-  // Stop the chat of Bo: his part runs and waits for review.
-  await place(page, "Bo").click()
-  await page.getByTestId("composer-stop").click()
-  await expect(page.getByTestId("composer-send")).toBeVisible({ timeout: 10_000 })
-  await place(page, "Launch").click()
-  await expect(page.getByTestId("part-review-bar")).toHaveCount(1, { timeout: 30_000 })
-  await openProfile(page, "Bo")
-  const review = recentRows(page).filter({ hasText: "Write the introduction" })
-  await expect(review.getByTestId("recent-state")).toHaveText("Waits for your review")
-  await shotRecent(page, "s52-07-waits-for-review")
-
-  // The task view of the part: Given by the lead, Started, Ended (waits for review).
-  await review.click()
-  await expect(page.getByTestId("task-detail-state")).toHaveText("In review")
-  await expect(momentIds(page)).resolves.toEqual(["given", "started", "ended"])
-  await expect(moments(page).nth(0)).toContainText("Given by the lead, Lia")
-  await expect(moments(page).nth(2)).toContainText("Ended: waits for review")
-  await shot(page, "s52-08-moments-part-in-review")
-
-  // Ask for changes: the Decided moment shows the text of the request.
-  await page.getByTestId("task-request-changes").click()
-  await page.getByTestId("changes-text").fill("Make the introduction shorter")
-  await page.getByTestId("changes-send").click()
-  await expect(page.getByTestId("changes-dialog")).toHaveCount(0)
-  await page.keyboard.press("Escape")
-  await expect(page.getByTestId("task-detail")).toHaveCount(0)
-  await page.getByTestId("page-tasks").click()
-  await taskRows(page, "Write the introduction for the first release")
-    .filter({ hasText: "Done" })
-    .first()
-    .getByTestId("task-open")
-    .click()
-  await expect(momentIds(page)).resolves.toEqual(["given", "started", "ended", "decided", "closed"])
-  await expect(moments(page).nth(3)).toContainText(
-    "You asked for changes: Make the introduction shorter",
-  )
-  await shot(page, "s52-09-moments-decided-changes")
-  await page.keyboard.press("Escape")
-  await page.getByTestId("page-chats").click()
-  await place(page, "Launch").click()
-
-  // Accept the new part: it is done, with a Decided moment and no text.
-  await expect(page.getByTestId("part-review-bar")).toHaveCount(1, { timeout: 30_000 })
-  await page.getByTestId("part-accept").click()
-  await expect(page.locator("[data-kind=summary]")).toHaveCount(1, { timeout: 30_000 })
-  await page.getByTestId("page-tasks").click()
-  await taskRows(page, "Changes: Write the introduction").first().getByTestId("task-open").click()
-  await expect(moments(page).filter({ hasText: "You accepted the part" })).toHaveCount(1)
-  await page.keyboard.press("Escape")
-
-  // --- A channel without review: the lead judges, and the task view has the Judged moment -------
-  await page.getByTestId("page-chats").click()
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Checks")
-  for (const name of ["Lia", "Bo", "Cy"]) await page.getByTestId(`channel-member-${name}`).check()
-  await page.getByTestId("channel-lead").selectOption({ label: "Lia" })
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Checks")
-  await post(page, "split verdicts of the release")
-  await expect(page.locator("[data-testid=channel-message][data-kind=summary]")).toHaveCount(1, {
-    timeout: 60_000,
-  })
-  await page.getByTestId("page-tasks").click()
-  const facts = taskRows(page, "List the facts")
-  await facts.last().getByTestId("task-open").click()
-  await expect(page.getByTestId("task-verdict")).toHaveText("Not met")
-  await expect(momentIds(page)).resolves.toEqual(["given", "started", "ended", "judged", "closed"])
-  await expect(moments(page).nth(3)).toContainText(
-    "The lead judged it: Not met. Only two of the five facts are listed.",
-  )
-  await expect(moments(page).locator("[data-moment=decided]")).toHaveCount(0)
-  await shot(page, "s52-10-moments-judged")
-  await page.keyboard.press("Escape")
-  await page.getByTestId("page-chats").click()
-
   // --- Korean: the block and the moments have their own words ----------------------------------
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-general").click()
   await page.getByTestId("setting-language").locator('label[data-value="ko"]').click()
   await page.getByTestId("settings-close").click()
-  await openProfile(page, "Cy")
+  await openProfile(page, "Ada")
   await expect(page.getByTestId("recent-work").locator("h3")).toHaveText("최근 작업")
   await expect(page.getByTestId("recent-show-all")).toHaveText("모두 보기")
-  const blockedKo = page.locator("[data-testid=recent-row][data-state=blocked]")
-  await expect(blockedKo.getByTestId("recent-state")).toHaveText("막힘")
-  await expect(blockedKo.getByTestId("recent-reason")).toHaveText("no access to the repository")
-  await blockedKo.click()
+  const doneKo = page.locator("[data-testid=recent-row][data-state=done]").first()
+  await expect(doneKo.getByTestId("recent-state")).toHaveText("완료")
+  await doneKo.click()
   await expect(page.getByTestId("task-moments")).toBeVisible()
-  await expect(moments(page).first()).toContainText("맡김: 리드 Lia")
-  await expect(moments(page).nth(2)).toContainText("끝남: 막힘")
+  await expect(moments(page).first()).toContainText("맡김: 채팅")
+  await expect(moments(page).nth(2)).toContainText("끝남: 완료")
   await shot(page, "s52-11-korean")
 })

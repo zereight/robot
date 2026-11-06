@@ -163,173 +163,6 @@ const answer = (body: ChatBody): Plan => {
   // A condition in the mode "Ask a model": the model answers yes when the text holds "Hello".
   if (text === "Reply with yes or no only.")
     return { chunks: [last.includes("Hello") ? "Yes" : "No"], delay: 0 }
-  // The check of a lead (spec 004): the system text says that the work has stopped.
-  if (String(body.messages[0]?.content ?? "").includes("The work in the channel has stopped"))
-    return { chunks: [checkAnswer(last)], delay: 0 }
-  // A look of the lead at a question of a member (spec 004, "Questions of members").
-  if (String(body.messages[0]?.content ?? "").includes("A member asks a question"))
-    return leadLook(last)
-  // A lead that gives one part to Bo (spec 004). The words after "ASKS" in the job tell Bo which
-  // questions to ask, one after the other (see `askWords`). "split lead approval" gives Bo a step
-  // that needs an approval instead.
-  if (text.includes("split lead")) {
-    const asks =
-      /ASKS(?: (?:answer|pass|slow|hang|fail|\w+\d(?:slow)?))+/.exec(text)?.[0] ?? "ASKS answer"
-    const prompt = text.includes("approval")
-      ? 'Run the step. TOOL run_command {"command":"sudo ls"}'
-      : `Pick the sizes. ${asks}`
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "One part for Bo",
-          parts: [{ member: "Bo", label: "Pick the sizes", prompt, doneTest: "Names the sizes" }],
-        }),
-      ],
-      delay: 0,
-    }
-  }
-  // A lead that splits a job into two parts with a done test each. The members are Bo and Cy.
-  if (text.includes("split verdicts") || text.includes("split stubborn"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "Two parts, each with a done test",
-          parts: [
-            {
-              member: "Bo",
-              label: "Draft the intro",
-              prompt: "Draft the intro",
-              doneTest: "The intro has a title",
-            },
-            {
-              member: "Cy",
-              label: "List the facts",
-              prompt: "List the facts HALFREPLY",
-              doneTest: "Lists five facts",
-            },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
-  // A member who does half of the work.
-  if (text.includes("HALFREPLY")) return { chunks: ["Only two of the five facts."], delay: 0 }
-  // Usage of a task (spec 005): the lead splits a job into a part for Bo, who answers at once, and
-  // a part for Cy. "split usage" holds the part of Cy quiet until the test lets it go, so that the
-  // card of the lead can show the total while the job runs. "split usagegap" lets Cy report no
-  // usage at all. The numbers come from the words USAGE in the prompts (see `spendOf`).
-  if (text.includes("split usagegap"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "Two parts, and one that reports no tokens",
-          parts: [
-            { member: "Bo", label: "Write the intro", prompt: "Write the intro USAGE 3000/500" },
-            { member: "Cy", label: "Check the facts", prompt: "Check the facts USAGE none" },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
-  // The daily token limit of a channel (spec 030): the lead gives Bo two parts. Bo does one part at
-  // a time, so the second waits. The first one reports 51,000 tokens and so uses the limit of 50,000
-  // while it runs. The second one then meets the limit when it would start.
-  if (text.includes("split limit"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "Two parts for one agent",
-          parts: [
-            { member: "Bo", label: "Write the intro", prompt: "Write the intro USAGE 51000/0" },
-            { member: "Bo", label: "Check the facts", prompt: "Check the facts USAGE 100/10" },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
-  if (text.includes("split usage"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "Two parts, and one that goes quiet",
-          parts: [
-            { member: "Bo", label: "Write the intro", prompt: "Write the intro USAGE 3000/500" },
-            {
-              member: "Cy",
-              label: "Check the facts",
-              prompt: "go quiet while you check the facts USAGE 3000/500",
-            },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
-  // A lead that splits a job answers with a plan. The members are Bo and Cy.
-  if (text.includes("split two"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "Two parts",
-          parts: [
-            { member: "Bo", label: "Write the intro", prompt: "Write the intro" },
-            { member: "Cy", label: "Check the facts", prompt: "Check the facts" },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
-  // A lead gives one part to Bo, who then goes quiet until the test lets the model go on.
-  if (text.includes("split quiet"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "One part that goes quiet",
-          parts: [
-            { member: "Bo", label: "Write the long answer", prompt: "go quiet on this part" },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
-  if (text.includes("split long"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "One long part",
-          parts: [{ member: "Bo", label: "Long work", prompt: "go slow on the long work" }],
-        }),
-      ],
-      delay: 0,
-    }
-  // A lead gives one part to Bo, who then works for a long time.
-  if (text.includes("split hold"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "One part that runs long",
-          parts: [{ member: "Bo", label: "Hold the line", prompt: "run long" }],
-        }),
-      ],
-      delay: 0,
-    }
-  // A lead gives one part to Bo, who does it, and one to Cy, who cannot do it (spec 005, Blocked).
-  if (text.includes("split review"))
-    return {
-      chunks: [
-        JSON.stringify({
-          plan: "Two parts, and one that cannot be done",
-          parts: [
-            {
-              member: "Bo",
-              label: "Write the introduction for the first release",
-              prompt: "Write the introduction for the first release",
-            },
-            { member: "Cy", label: "Check the facts", prompt: "BLOCKEDPART check the facts" },
-          ],
-        }),
-      ],
-      delay: 0,
-    }
   // A member who cannot do the work ends the reply with a last line that starts with "Blocked:".
   if (text.includes("BLOCKEDPART"))
     return { chunks: ["I looked at it.\n", "Blocked: no access to the repository"], delay: 0 }
@@ -375,123 +208,6 @@ const answer = (body: ChatBody): Plan => {
   return { chunks: ["Hello! ", "You said: ", text], delay: 30 }
 }
 
-/**
- * A stand-in lead for a look at a question (spec 004). The word in square brackets in the question
- * tells what it does: [answer] picks the first choice, [pass] passes the question, [slow] answers
- * after 3 seconds, [hang] does not answer for 30 seconds, and [fail] fails.
- *
- * For the line above the lead (spec 030, "Ask up the line") the same stand-in serves every agent
- * that looks. It tells the place of the agent on the line from the lines "Passes before you:" in
- * the text of the look: the lead has none, the first agent of the line has one, and so on. The
- * word tells what each place does:
- * - [upN]: every agent before the place N passes with "Not sure", and the agent at place N answers.
- *   [upNslow] answers after 3 seconds.
- * - [lateN]: the lead passes with "Not sure"; the agents at the places 1 to N do not answer for
- *   30 seconds; the agent after them answers.
- * - [userN]: the agents before the place N pass with "Not sure"; the agent at place N passes with
- *   "Only the user can choose".
- */
-const leadLook = (state: string): Plan => {
-  const question = /Question of [^\n]*:\n([^\n]*)/.exec(state)?.[1] ?? ""
-  const how = /\[(\w+)\]/.exec(question)?.[1] ?? "answer"
-  if (how === "fail") return { status: 500 }
-  const line = /^(up|late|user)(\d)(slow)?$/.exec(how)
-  if (line) {
-    const kind = line[1]
-    const n = Number(line[2])
-    // The place of the agent: the number of passes before it.
-    const place =
-      state
-        .split("Passes before you:")[1]
-        ?.split("\n\n")[0]
-        ?.split("\n")
-        .filter((l) => l.startsWith("- ")).length ?? 0
-    const pass = (passKind: string) => ({
-      chunks: [JSON.stringify({ action: "pass", kind: passKind, reason: `Not sure at ${place}.` })],
-      delay: 0,
-    })
-    const answer = (pause: number) => ({
-      chunks: [JSON.stringify({ action: "answer", choice: 1, reason: `Answered at ${place}.` })],
-      delay: 0,
-      pause,
-    })
-    if (kind === "up") return place < n ? pass("not_sure") : answer(line[3] ? 3000 : 0)
-    if (kind === "late") {
-      if (place === 0) return pass("not_sure")
-      return place <= n
-        ? { chunks: [JSON.stringify({ action: "answer", choice: 1 })], delay: 0, pause: 30_000 }
-        : answer(0)
-    }
-    return place < n ? pass("not_sure") : pass("user_choice")
-  }
-  const reply =
-    how === "pass"
-      ? { action: "pass", kind: "user_choice", reason: "A matter of taste." }
-      : { action: "answer", choice: 1, reason: "The shop ships to the EU only." }
-  return {
-    chunks: [JSON.stringify(reply)],
-    delay: 0,
-    pause: how === "slow" ? 3000 : how === "hang" ? 30_000 : 0,
-  }
-}
-
-/**
- * The words after "ASKS" in a message of the user: the member asks one question for each word,
- * one after the other, and each question holds its word in square brackets (see `leadLook`).
- */
-const askWords = (text: string) =>
-  /ASKS((?: (?:answer|pass|slow|hang|fail|(?:up|late|user)\d(?:slow)?))+)/
-    .exec(text)?.[1]
-    ?.trim()
-    .split(" ") ?? []
-
-const askCall = (words: readonly string[], index: number) => ({
-  name: "ask_user",
-  args: JSON.stringify({
-    question: `Question ${index + 1} [${words[index]}]: use the EU sizes only?`,
-    choices: ["Yes", "No"],
-  }),
-})
-
-/**
- * A stand-in lead for the check of a channel. It reads the parts to judge: a reply that says
- * "Only two" is Not met, any other reply is Met. With two parts it nudges the first part that is
- * Not met. With more parts it asks one question when the job is "stubborn", else it does nothing.
- */
-const checkAnswer = (state: string) => {
-  const judged = state.split("Parts to judge:\n")[1]?.split("\n\nGive your check")[0] ?? ""
-  const verdicts: { part: number; verdict: string; reason?: string }[] = []
-  for (const block of judged.split(/\n\n(?=Part \d+:)/)) {
-    const match =
-      /^Part (\d+): [^\n]*\nDone test: [^\n]*\nEnd of the last reply of [^\n]*:\n([\s\S]*)$/.exec(
-        block.trim(),
-      )
-    if (!match) continue
-    const part = Number(match[1])
-    verdicts.push(
-      match[2]?.includes("Only two")
-        ? { part, verdict: "not_met", reason: "Only two of the five facts are listed." }
-        : { part, verdict: "met" },
-    )
-  }
-  const partLines = (state.split("Parts:\n")[1]?.split("\n\n")[0] ?? "").split("\n").length
-  const notMet = verdicts.find((v) => v.verdict === "not_met")
-  if (notMet && partLines <= 2)
-    return JSON.stringify({
-      verdicts,
-      action: "nudge",
-      part: notMet.part,
-      instruction: `Finish the list of five facts.${state.includes("stubborn") ? " HALFREPLY" : ""}`,
-    })
-  if (notMet && state.includes("stubborn"))
-    return JSON.stringify({
-      verdicts,
-      action: "ask",
-      question: "Which five facts do you want?",
-    })
-  return JSON.stringify({ verdicts, action: "nothing" })
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /**
@@ -519,8 +235,6 @@ const toolCalls = (body: ChatBody) => {
   // Turns without an answer are merged, so the last request in the text counts.
   const match = [...last.content.matchAll(/TOOL (\w+) (\{.*\})/g)].at(-1)
   if (match) return [{ name: match[1] as string, args: match[2] as string }]
-  const words = askWords(last.content)
-  if (words.length > 0) return [askCall(words, 0)]
   const long = longWork(body)
   if (long.length > 0) return long
   return knowledgeRead(body)
@@ -606,9 +320,6 @@ const spendOf = (body: ChatBody) => {
     return { prompt_tokens: 100, completion_tokens: 10 }
   const at = body.messages.map((m) => m.role).lastIndexOf("user")
   const text = String(body.messages[at]?.content ?? "")
-  // The summary of a lead quotes the parts, and so their words. It reports nothing, so that the
-  // numbers of a job are the ones its prompts ask for.
-  if (text.includes("All parts have ended:")) return null
   // A message can hold the words of earlier requests of the chat: the last ones count.
   const spec = [...text.matchAll(/USAGE ([\w/,]+)/g)].at(-1)?.[1]
   if (!spec) return undefined
@@ -657,22 +368,6 @@ const summaryReply = async (res: ServerResponse, body: ChatBody) => {
   res.end("data: [DONE]\n\n")
 }
 
-/**
- * A request for the summary of the older messages of a channel (spec 004). The answer says how many
- * messages it read. A message that holds "summary fails" makes it fail.
- */
-const channelSummaryReply = (res: ServerResponse, body: ChatBody) => {
-  const text = body.messages.map((m) => String(m.content)).join("\n")
-  if (text.includes("summary fails"))
-    return json(res, 400, { error: { message: "mock bad request" } })
-  const lines = text.split("\n").filter((l) => /^\[[^\]]+\]: /.test(l)).length
-  res.writeHead(200, { "content-type": "text/event-stream" })
-  const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`)
-  send({ choices: [{ delta: { content: `Channel summary of ${lines} older messages` } }] })
-  send({ choices: [], usage: { prompt_tokens: 40, completion_tokens: 8 } })
-  res.end("data: [DONE]\n\n")
-}
-
 const openAiReply = async (
   res: ServerResponse,
   body: ChatBody,
@@ -682,8 +377,6 @@ const openAiReply = async (
 ) => {
   if (String(body.messages[0]?.content ?? "").startsWith("You write the summary"))
     return summaryReply(res, body)
-  if (String(body.messages[0]?.content ?? "").startsWith("You summarise the older messages"))
-    return channelSummaryReply(res, body)
   const calls = toolCalls(body)
   if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
@@ -708,24 +401,10 @@ const openAiReply = async (
     const users = usersOf(body)
     // The request of this turn is the last message of the user.
     const lastAsk = users.at(-1) ?? ""
-    // A member that asks its questions one after the other: the next one, with an id of its own.
-    const words = askWords(lastAsk)
+    // The calls that this turn has answered so far.
     const answered = body.messages
       .slice(body.messages.map((m) => m.role).lastIndexOf("user") + 1)
       .filter((m) => m.role === "tool").length
-    if (words.length > answered) {
-      res.writeHead(200, { "content-type": "text/event-stream" })
-      const next = askCall(words, answered)
-      const first = {
-        index: 0,
-        id: `ask_${answered + 1}`,
-        function: { name: next.name, arguments: "" },
-      }
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
-      const rest = { index: 0, function: { arguments: next.args } }
-      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
-      return res.end("data: [DONE]\n\n")
-    }
     // A task that never ends: some text, then the next call, with an id of its own.
     if (lastAsk.includes("ENDLESS")) {
       res.writeHead(200, { "content-type": "text/event-stream" })

@@ -313,14 +313,6 @@ test("role badge and the filter of places by role line (spec 001)", async () => 
     name: "Team",
   })
   await rpc(page, "places.move", { kind: "agent", id: dee.id, sectionId: team.id })
-  // The channel "design" has a member with the role "Researcher". A channel never has a badge.
-  await rpc(page, "channels.create", {
-    serverId: made.serverId,
-    name: "design",
-    topic: "",
-    memberIds: [ada.id, dee.id],
-    leadId: null,
-  })
   await expect(row(page, "Dee")).toBeVisible()
 
   // The badge: after the name, muted, only for an agent that has a role line.
@@ -328,8 +320,6 @@ test("role badge and the filter of places by role line (spec 001)", async () => 
   await expect(badge(page, "Bo")).toHaveText("Writer")
   await expect(badge(page, "Cy")).toHaveCount(0)
   await expect(badge(page, "Dee")).toHaveText("Researcher")
-  await expect(badge(page, "design")).toHaveCount(0)
-  await expect(row(page, "design")).toBeVisible()
   const order = await row(page, "Ada").evaluate((el) => {
     const name = el.querySelector("[data-place-row] > span:nth-of-type(2)") ?? el.children[1]
     const role = el.querySelector("[data-testid=role-badge]")
@@ -344,7 +334,7 @@ test("role badge and the filter of places by role line (spec 001)", async () => 
 
   // The filter: the role line counts, a name still counts, Escape clears.
   await search(page).fill("design")
-  expect(await rowNames(page)).toEqual(["design", "Ada"])
+  expect(await rowNames(page)).toEqual(["Ada"])
   await search(page).fill("writ")
   expect(await rowNames(page)).toEqual(["Bo"])
   await search(page).fill("Bo")
@@ -354,10 +344,10 @@ test("role badge and the filter of places by role line (spec 001)", async () => 
   await shot(page, "s107-11-en-filter")
   await search(page).press("Escape")
   await expect(search(page)).toHaveValue("")
-  expect((await rowNames(page)).sort()).toEqual(["Ada", "Bo", "Cy", "Dee", "design"].sort())
+  expect((await rowNames(page)).sort()).toEqual(["Ada", "Bo", "Cy", "Dee"].sort())
 
-  // An agent in a collapsed section: the section opens and shows the agent. A channel with a member
-  // of that role does not show. Escape collapses the section again.
+  // An agent in a collapsed section: the section opens and shows the agent. Escape collapses the
+  // section again.
   await page.getByTestId("user-section-toggle").click()
   await expect(row(page, "Dee")).toHaveCount(0)
   await search(page).fill("researcher")

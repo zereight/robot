@@ -287,7 +287,7 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
     })
     await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
     await expect(two.page.getByTestId("sync-guard-body")).toContainText(
-      "MacBook 1 wants to delete 8 agents and channels here.",
+      "MacBook 1 wants to delete 8 agents here.",
     )
     await shot(two.page, "s22-09-guard")
     expect(await archivedCount(two.page, serverTwo)).toBe(8)

@@ -25,7 +25,7 @@ const latinWords = async (page: Page, selector: string) => {
   return (words.match(/[A-Za-z]{2,}/g) ?? []).filter((w) => !allowedLatin.has(w))
 }
 
-test("workflows: a channel message starts a flow, and the editor survives a restart", async () => {
+test("workflows: a run of a flow, and the editor survives a restart", async () => {
   test.setTimeout(120_000)
   const mock = await startMockProvider()
   const userData = freshUserData()
@@ -34,41 +34,26 @@ test("workflows: a channel message starts a flow, and the editor survives a rest
   await resizeWindow(app, 1500, 1000)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Ops")
-  await page.getByTestId("channel-member-Ada").check()
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Ops")
 
-  // A workflow with a channel trigger and one agent step.
+  // A workflow with a schedule trigger and one agent step. The triggers are manual and schedule:
+  // no trigger "message in a channel".
   await page.getByTestId("page-workflows").click()
   await page.getByTestId("wf-new").click()
   await page.getByTestId("wf-name").fill("On deploy")
-  await page.getByTestId("wf-trigger-kind").selectOption("channel")
-  await page.getByTestId("wf-trigger-contains").fill("deploy")
+  await expect(page.getByTestId("wf-trigger-kind").locator("option")).toHaveCount(2)
+  await page.getByTestId("wf-trigger-kind").selectOption("schedule")
+  await expect(page.getByTestId("wf-trigger-schedule")).toBeVisible()
   await page.getByTestId("wf-add-agent").click()
-  await page.getByTestId("wf-step-prompt").fill("Handle: {{trigger}}")
+  await page.getByTestId("wf-step-prompt").fill("Handle the deploy")
   await page.getByTestId("wf-save").click()
-  await page.getByTestId("wf-back").click()
-  await expect(page.getByTestId("wf-card")).toHaveCount(1)
 
-  // A message without the text starts nothing; one with it starts a run.
-  await page.getByTestId("page-chats").click()
-  await page.getByText("Ops", { exact: true }).first().click()
-  await page.getByTestId("channel-input").fill("@Ada hello there")
-  await page.getByTestId("channel-input").press("Enter")
-  await page.getByTestId("channel-input").fill("@Ada please deploy now")
-  await page.getByTestId("channel-input").press("Enter")
-  await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-open").click()
+  // A run of the flow.
+  await page.getByTestId("wf-run").click()
   await expect(page.getByTestId("wf-run-row")).toHaveCount(1, { timeout: 20_000 })
-  await expect(page.getByTestId("wf-run-row")).toContainText("Channel message")
   await expect(page.getByTestId("wf-run-row")).toContainText("Done", { timeout: 20_000 })
   await page.getByTestId("wf-run-step").first().locator("summary").click()
-  await expect(page.getByTestId("wf-run-step").first()).toContainText(
-    "Handle: @Ada please deploy now",
-  )
-  await shot(page, "s16-01-channel-trigger")
+  await expect(page.getByTestId("wf-run-step").first()).toContainText("Handle the deploy")
+  await shot(page, "s16-01-run")
 
   // The graph and the trigger are saved: close the app, open again.
   await app.close()
@@ -77,10 +62,10 @@ test("workflows: a channel message starts a flow, and the editor survives a rest
   await second.page.getByTestId("page-workflows").click()
   await second.page.getByTestId("wf-open").click()
   await expect(second.page.getByTestId("wf-node")).toHaveCount(1)
-  await expect(second.page.getByTestId("wf-trigger-kind")).toHaveValue("channel")
-  await expect(second.page.getByTestId("wf-trigger-contains")).toHaveValue("deploy")
+  await expect(second.page.getByTestId("wf-trigger-kind")).toHaveValue("schedule")
   await expect(second.page.getByTestId("wf-run-row")).toHaveCount(1)
   await second.app.close()
+  await mock.close()
 })
 
 test("korean: routines, workflows, approval cards and memory have no English left", async () => {
@@ -115,7 +100,7 @@ test("korean: routines, workflows, approval cards and memory have no English lef
   await page.getByTestId("page-workflows").click()
   expect(await latinWords(page, "[data-testid=workflows-page]")).toEqual([])
   await page.getByTestId("wf-new").click()
-  for (const kind of ["agent", "condition", "approval", "post"])
+  for (const kind of ["agent", "condition", "approval", "notify"])
     await page.getByTestId(`wf-add-${kind}`).click()
   expect(await latinWords(page, "[data-testid=workflows-page]")).toEqual([])
   await page.getByTestId("wf-node").first().click()

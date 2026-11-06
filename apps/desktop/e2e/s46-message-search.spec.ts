@@ -24,18 +24,6 @@ const hitWith = (page: Page, place: string, text: string) =>
 const marks = (hit: Locator) => hit.locator("mark").allTextContents()
 const row = (page: Page, name: string) =>
   page.locator(`[data-place-row][data-place-name="${name}"]`)
-const post = async (page: Page, text: string) => {
-  await page.getByTestId("channel-input").fill(text)
-  await page.getByTestId("channel-input").press("Enter")
-  await expect(page.getByTestId("channel-send")).toBeVisible({ timeout: 15_000 })
-}
-const makeChannel = async (page: Page, name: string, members: string[]) => {
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill(name)
-  for (const member of members) await page.getByTestId(`channel-member-${member}`).check()
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText(name)
-}
 const openProfile = async (page: Page, name: string) => {
   await row(page, name).click()
   await page.getByTestId("chat-header-agent").click()
@@ -52,14 +40,13 @@ test("message search: hits, marks, jump and Back, pages, the cap, archive, and t
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
   await createAgent(page, "Bo")
-  await makeChannel(page, "Launch", ["Ada", "Bo"])
-  await makeChannel(page, "Secret", ["Bo"])
 
-  // Messages in three places. The mock model answers every message with the text it got.
-  await post(page, "@Bo the kestrel nests in the attic")
-  await row(page, "Launch").click()
-  await post(page, "@Bo launch budget in euros")
+  // Messages in two places. The mock model answers every message with the text it got.
   await row(page, "Bo").click()
+  await send(page, "the kestrel nests in the attic")
+  await settled(page)
+  await send(page, "launch budget in euros")
+  await settled(page)
   await send(page, "Use <b>bold</b> text")
   await settled(page)
   await row(page, "Ada").click()
@@ -80,17 +67,16 @@ test("message search: hits, marks, jump and Back, pages, the cap, archive, and t
   await expect(page.getByTestId("message").last()).toContainText("Falcon")
   await shot(page, "s46-01-tool-card")
 
-  // A word that only a channel without this agent holds: the agent gets no hit from it.
+  // A word that only the chat of another agent holds: the agent gets no hit from it.
   await send(page, `TOOL search_chats ${JSON.stringify({ query: "kestrel" })}`)
   await settled(page)
   const outside = page.getByTestId("tool-card").last()
   await expect(outside).toContainText("Searched past chats")
   await outside.locator("summary").click()
   await expect(outside).not.toContainText("attic")
-  await expect(outside).not.toContainText("#Secret")
   // The user does find it: the user holds every place of the server.
   await searchBox(page).fill("kestrel")
-  await expect(hitsIn(page, "Secret").first()).toBeVisible()
+  await expect(hitsIn(page, "Bo").first()).toBeVisible()
   await searchBox(page).fill("")
 
   // The tool is on the list that the model gets while memory is on.
@@ -152,13 +138,13 @@ test("message search: hits, marks, jump and Back, pages, the cap, archive, and t
   await row(page, "Bo").click()
   await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
 
-  // One letter does not search. Two letters do.
-  await searchBox(page).fill("e")
+  // One letter does not search messages. It still finds the place "Ada". Two letters do.
+  await searchBox(page).fill("a")
   await expect(page.getByTestId("search-nothing")).toHaveCount(0)
   await expect(group(page)).toHaveCount(0)
   await searchBox(page).fill("")
 
-  // The group "Messages": both words marked, in places of both kinds, newest first.
+  // The group "Messages": both words marked, in more than one place, newest first.
   const started = Date.now()
   await searchBox(page).fill("euros budget")
   await expect(group(page)).toBeVisible()
@@ -166,7 +152,7 @@ test("message search: hits, marks, jump and Back, pages, the cap, archive, and t
   const firstHitMs = Date.now() - started
   await expect(group(page)).toContainText("Messages")
   await expect(hitsIn(page, "Ada")).toHaveCount(2)
-  await expect(hitsIn(page, "Launch").first()).toBeVisible()
+  await expect(hitsIn(page, "Bo").first()).toBeVisible()
   const mine = hitWith(page, "Ada", "The budget is 4200 euros")
   await expect(mine).toHaveCount(1)
   expect(await marks(mine)).toEqual(["budget", "euros"])
@@ -184,17 +170,6 @@ test("message search: hits, marks, jump and Back, pages, the cap, archive, and t
   await page.getByTestId("jump-back").click()
   await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
   await expect(page.getByTestId("jump-back")).toHaveCount(0)
-
-  // A hit in a channel opens the channel at the message.
-  const inChannel = hitsIn(page, "Launch").first()
-  const channelMessage = (await inChannel.getAttribute("data-message-id")) ?? ""
-  await inChannel.click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
-  const channelRow = page.locator(`[data-testid=message][data-message-id="${channelMessage}"]`)
-  await expect(channelRow).toHaveAttribute("data-flash", "true")
-  await expect(channelRow).toBeInViewport()
-  await page.getByTestId("jump-back").click()
-  await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
 
   // Markup in a message is plain text in the hit.
   await searchBox(page).fill("bold")

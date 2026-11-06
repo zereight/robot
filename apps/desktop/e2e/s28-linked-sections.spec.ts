@@ -13,7 +13,7 @@ import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, report, rpc, setName } from "./sync-helpers.ts"
 
 // Specs 001 (user sections), 012 (linked server) and 016 (knowledge). MacBook 1 (the client) opens
-// MacBook 2 (the server) and may change agents and channels there. A client sees the sections of
+// MacBook 2 (the server) and may change agents there. A client sees the sections of
 // the server and cannot change them. It does not open the knowledge of an agent.
 
 const tile = (page: Page, name: string) =>
@@ -78,7 +78,7 @@ const latinWords = async (page: Page, selector: string) => {
       skip.remove()
     return clone.textContent ?? ""
   })
-  const words = text.replace(/MacBook|Ada|Bo|Cy|Launch|Writer|mock-fast|Mock|ROBot|VPN|sudo/g, "")
+  const words = text.replace(/MacBook|Ada|Bo|Cy|Writer|mock-fast|Mock|ROBot|VPN|sudo/g, "")
   return words.match(/[A-Za-z]{2,}/g) ?? []
 }
 
@@ -125,8 +125,8 @@ const pairOneWay = async (one: Launched, two: Launched) => {
 }
 
 /**
- * MacBook 2 has the agents Ada and Bo, the channel Launch, the agent section Research with Ada in
- * it, and one article of Ada. MacBook 1 opens it.
+ * MacBook 2 has the agents Ada and Bo, the agent section Research with Ada in it, and one article
+ * of Ada. MacBook 1 opens it.
  */
 const start = async (
   ports: [number, number],
@@ -153,13 +153,6 @@ const start = async (
     archived: false,
   })
   const ada = agents.find((a) => a.name === "Ada")?.id ?? ""
-  await rpc(two.page, "channels.create", {
-    serverId,
-    name: "Launch",
-    topic: "",
-    memberIds: [ada],
-    leadId: null,
-  })
   const made = await rpc<{ id: string }>(two.page, "sections.create", {
     serverId,
     kind: "agent",
@@ -193,17 +186,10 @@ test("linked sections: a client sees the sections of the server and cannot chang
     expect(await sectionNames(two.page)).toEqual(["Research"])
     await shot(one.page, "s28-linked-01-client-sections")
 
-    // Nothing of the section tools is there: the menu of Agents holds only the choice of view (spec
-    // 001, "Agents by organization"), no menu on Channels, no menu on a section, no menu on a place,
-    // and no box for a new section.
-    await one.page.getByTestId("agents-menu").click()
-    await expect(one.page.getByTestId("agents-menu-view-sections")).toBeVisible()
-    await expect(one.page.getByTestId("agents-menu-view-organization")).toBeVisible()
+    // Nothing of the section tools is there: no menu on Agents, no menu on a section, no menu on a
+    // place, and no box for a new section.
+    await expect(one.page.getByTestId("agents-menu")).toHaveCount(0)
     await expect(one.page.getByTestId("agents-menu-new-section")).toHaveCount(0)
-    await expect(one.page.getByTestId("agents-menu-export")).toHaveCount(0)
-    await expect(one.page.getByTestId("agents-menu-import-file")).toHaveCount(0)
-    await one.page.keyboard.press("Escape")
-    await expect(one.page.getByTestId("channels-menu")).toHaveCount(0)
     await expect(one.page.getByTestId("section-menu")).toHaveCount(0)
     await rowOf(one.page, "Bo").click({ button: "right" })
     await expect(one.page.getByTestId("move-to-section")).toHaveCount(0)
@@ -238,10 +224,6 @@ test("linked sections: a client sees the sections of the server and cannot chang
     await expect(rowOf(two.page, "Cy")).toBeVisible()
     expect(await plainNames(two.page)).toEqual(["Bo", "Cy"])
     expect(await plainNames(one.page)).toEqual(["Bo", "Cy"])
-    await one.page.getByTestId("new-channel").click()
-    await expect(one.page.getByTestId("channel-name")).toBeVisible()
-    await expect(one.page.getByTestId("channel-section")).toHaveCount(0)
-    await dismiss(one.page, "channel-dialog")
 
     // The server moves a place and renames the section: the client follows at once.
     await rpc(two.page, "places.move", { kind: "agent", id: s.ada, sectionId: null })

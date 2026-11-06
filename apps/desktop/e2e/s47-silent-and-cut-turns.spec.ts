@@ -5,6 +5,7 @@ import { type ElectronApplication, expect, type Page, test } from "@playwright/t
 import { makeFakeRuntimes } from "./fake-runtimes.ts"
 import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { rpc } from "./sync-helpers.ts"
 
 // Silent and cut turns (specs 003, 005, 006, 013): the silent limit, how far a turn went, the
 // notice after a restart, and the programs that a crashed run leaves behind.
@@ -135,17 +136,22 @@ test("a restart cuts a request: Send again when it never reached the model, Cont
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
 
-  // Ada works on a part of a channel job. This is another place, so the chat of Ada is free.
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Launch")
-  await page.getByTestId("channel-member-Ada").check()
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
-  await page.getByTestId("channel-input").fill("@Ada run long")
-  await page.getByTestId("channel-input").press("Enter")
-  await expect(page.getByTestId("channel-message").last()).toContainText("w3", {
-    timeout: 15_000,
-  })
+  // Ada works in a thread. A thread is another place, so the main chat of Ada is free.
+  const serverId = (await rpc<{ id: string }[]>(page, "servers.list"))[0]?.id
+  const agentId = (
+    await rpc<{ id: string; name: string }[]>(page, "agents.list", { serverId, archived: false })
+  ).find((a) => a.name === "Ada")?.id
+  const thread = await rpc<{ id: string }>(page, "chat.thread.create", { agentId })
+  await rpc(page, "chat.send", { agentId, threadId: thread.id, text: "run long", replyTo: null })
+  // The request reaches the model and the reply starts to stream.
+  await expect
+    .poll(() =>
+      mock.requests.some(
+        (r) => r.path === "/v1/chat/completions" && JSON.stringify(r.body).includes("run long"),
+      ),
+    )
+    .toBe(true)
+  await page.waitForTimeout(1_000)
 
   // The user writes to Ada in the chat. The task waits, since an agent runs one task at a time.
   await place(page, "Ada")
@@ -169,7 +175,7 @@ test("a restart cuts a request: Send again when it never reached the model, Cont
   await expect(page.getByTestId("restart-continue")).toHaveCount(0)
   await shot(page, "s47-04-send-again")
 
-  // The tasks page tells how far each one went: the part of the channel had started to work.
+  // The tasks page tells how far each one went: the work in the thread had started.
   await page.getByTestId("page-tasks").click()
   await expect(page.locator("[data-testid=task-row][data-state=failed]")).toHaveCount(2)
   const rowOf = (text: string) =>

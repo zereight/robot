@@ -7,23 +7,22 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
 // S67: the team file (spec 002, "Agent file"; spec 014, "Review before an import"; spec 017). The
-// export dialog has three tick boxes (channels, skills and the handbook). The file is format
-// version 2. The review screen of the import lists the channels, the skills and the handbook, and
-// the import makes them by the rules. The scenario runs in English and in Korean, at 1100 px wide
+// export dialog has two tick boxes (skills and the handbook). The file is format version 2. The
+// review screen of the import lists the skills and the handbook, and the import makes them by the
+// rules. ROBot has no channels: the channels of a file show under "Not imported". The scenario runs in English and in Korean, at 1100 px wide
 // with the activity panel open (the chat column is about 460 px then).
 
 interface Words {
   readonly locale: "en-US" | "ko-KR"
   readonly shots: "en" | "ko"
-  readonly exportChannels: string
   readonly exportSkills: string
   readonly exportHandbook: string
   readonly found: (n: number) => string
-  readonly limitChannels: string
   readonly handbookLength: (n: number) => string
   readonly showAll: string
   readonly replaces: string
-  readonly noMember: string
+  readonly channel: (name: string) => string
+  readonly channelGone: string
   readonly noAgent: string
   readonly secret: string
   readonly saved: (path: string) => string
@@ -39,50 +38,47 @@ interface Words {
 const EN: Words = {
   locale: "en-US",
   shots: "en",
-  exportChannels: "Channels of these agents",
   exportSkills: "Skills of these agents",
   exportHandbook: "Handbook",
   found: (n) => `${n} found`,
-  limitChannels: "A file holds at most 40 channels. Pick fewer agents.",
   handbookLength: (n) => `${n} characters`,
   showAll: "Show all",
   replaces: "Replaces the handbook of this server. The old text stays in the handbook history.",
-  noMember: "None of its members is ticked.",
+  channel: (name) => `Channel “${name}”`,
+  channelGone: "ROBot has no channels.",
   noAgent: "None of the agents that may use it is ticked.",
   secret: "A secret was removed",
-  saved: (path) => `Saved 2 agents, 1 channels and 2 skills to ${path}`,
+  saved: (path) => `Saved 2 agents and 2 skills to ${path}`,
   savedHandbook: "The file holds the handbook.",
-  countsStart: "ROBot will make 2 agents, 0 routines (paused), 1 channels and 2 skills (off).",
+  countsStart: "ROBot will make 2 agents, 0 routines (paused) and 2 skills (off).",
   countsWithHandbook:
-    "ROBot will make 2 agents, 0 routines (paused), 1 channels and 2 skills (off). It will replace the handbook.",
+    "ROBot will make 2 agents, 0 routines (paused) and 2 skills (off). It will replace the handbook.",
   countsHandbook: "ROBot will replace the handbook.",
   nothing: "Nothing is ticked.",
-  imported: "Imported 2 agents, 0 routines (paused), 1 channels and 2 skills (off).",
+  imported: "Imported 2 agents, 0 routines (paused) and 2 skills (off).",
   handbookReplaced: "The handbook was replaced.",
   v1Counts: "ROBot will make 1 agents, 0 routines (paused).",
 }
 const KO: Words = {
   locale: "ko-KR",
   shots: "ko",
-  exportChannels: "이 에이전트들의 채널",
   exportSkills: "이 에이전트들의 스킬",
   exportHandbook: "핸드북",
   found: (n) => `${n}개`,
-  limitChannels: "파일 하나에는 채널을 최대 40개까지 담을 수 있어요. 에이전트를 줄여 주세요.",
   handbookLength: (n) => `${n}자`,
   showAll: "모두 보기",
   replaces: "이 서버의 핸드북을 바꿔요. 이전 글은 핸드북 기록에 남아요.",
-  noMember: "멤버가 아무도 체크되지 않았어요.",
+  channel: (name) => `채널 “${name}”`,
+  channelGone: "ROBot에는 채널이 없어요.",
   noAgent: "쓸 수 있는 에이전트가 아무도 체크되지 않았어요.",
   secret: "비밀 값이 지워졌어요",
-  saved: (path) => `에이전트 2개, 채널 1개, 스킬 2개를 ${path}에 저장했어요.`,
+  saved: (path) => `에이전트 2개, 스킬 2개를 ${path}에 저장했어요.`,
   savedHandbook: "파일에 핸드북이 들어 있어요.",
-  countsStart: "에이전트 2개, 루틴 0개(멈춤), 채널 1개, 스킬 2개(꺼짐)를 만들어요.",
-  countsWithHandbook:
-    "에이전트 2개, 루틴 0개(멈춤), 채널 1개, 스킬 2개(꺼짐)를 만들어요. 핸드북도 바꿔요.",
+  countsStart: "에이전트 2개, 루틴 0개(멈춤), 스킬 2개(꺼짐)를 만들어요.",
+  countsWithHandbook: "에이전트 2개, 루틴 0개(멈춤), 스킬 2개(꺼짐)를 만들어요. 핸드북도 바꿔요.",
   countsHandbook: "핸드북을 바꿔요.",
   nothing: "체크한 항목이 없어요.",
-  imported: "에이전트 2개, 루틴 0개(멈춤), 채널 1개, 스킬 2개(꺼짐)를 가져왔어요.",
+  imported: "에이전트 2개, 루틴 0개(멈춤), 스킬 2개(꺼짐)를 가져왔어요.",
   handbookReplaced: "핸드북을 바꿨어요.",
   v1Counts: "에이전트 1개, 루틴 0개(멈춤)를 만들어요.",
 }
@@ -98,15 +94,6 @@ const HANDBOOK = [
 const LOOKALIKE = "sk-looks-like-a-key-0123456789abcdef"
 
 type Agent = { id: string; name: string }
-type Channel = {
-  id: string
-  name: string
-  topic: string
-  instructions: string
-  leadId: string | null
-  memberIds: string[]
-  reviewParts: boolean
-}
 type Skill = { name: string; enabled: boolean; agentIds: string[] | null; description: string }
 
 const serverOf = async (page: Page) =>
@@ -114,7 +101,7 @@ const serverOf = async (page: Page) =>
 const agentsOf = async (page: Page) =>
   rpc<Agent[]>(page, "agents.list", { serverId: await serverOf(page), archived: false })
 const channelsOf = async (page: Page) =>
-  rpc<Channel[]>(page, "channels.list", { serverId: await serverOf(page) })
+  rpc<{ name: string }[]>(page, "channels.list", { serverId: await serverOf(page) })
 const skillsOf = async (page: Page) =>
   rpc<Skill[]>(page, "skills.list", { serverId: await serverOf(page) })
 
@@ -168,22 +155,6 @@ const scenario = (words: Words) => async () => {
   const idFor = (name: string) => made.find((a) => a.name === name)?.id as string
   const ids = { ada: idFor("Ada"), bob: idFor("Bob"), cy: idFor("Cy") }
 
-  const launchChannel = await rpc<Channel>(page, "channels.create", {
-    serverId,
-    name: "Launch",
-    topic: "Ship the release",
-    instructions: "Write short lines.",
-    memberIds: [ids.ada, ids.bob],
-    leadId: ids.ada,
-  })
-  await rpc(page, "channels.update", { id: launchChannel.id, patch: { reviewParts: true } })
-  await rpc(page, "channels.create", {
-    serverId,
-    name: "Everyone",
-    topic: "",
-    memberIds: [ids.ada, ids.bob, ids.cy],
-    leadId: null,
-  })
   const skill = (name: string, agentIds: string[] | null) =>
     rpc(page, "skills.create", {
       serverId,
@@ -197,27 +168,24 @@ const scenario = (words: Words) => async () => {
   await skill("Cy only", [ids.cy])
   await rpc(page, "handbook.save", { serverId, text: HANDBOOK })
 
-  // The three tick boxes are off at the start. They show how many channels and skills the file
-  // would hold for the agents that are picked now.
+  // The two tick boxes are off at the start. They show how many skills the file would hold for
+  // the agents that are picked now. There is no tick box for channels.
   await openExport(page)
   const dialog = page.getByTestId("agent-export-dialog")
   await expect(dialog.getByTestId("agent-export-item")).toHaveCount(3)
-  for (const box of ["channels", "skills", "handbook"])
+  await expect(dialog.getByTestId("agent-export-channels")).toHaveCount(0)
+  for (const box of ["skills", "handbook"])
     await expect(dialog.getByTestId(`agent-export-${box}`)).not.toBeChecked()
-  await expect(dialog.getByTestId("agent-export-team")).toContainText(words.exportChannels)
   await expect(dialog.getByTestId("agent-export-team")).toContainText(words.exportSkills)
   await expect(dialog.getByTestId("agent-export-team")).toContainText(words.exportHandbook)
-  await expect(dialog.getByTestId("agent-export-channels-count")).toHaveText(words.found(2))
   await expect(dialog.getByTestId("agent-export-skills-count")).toHaveText(words.found(3))
   await fits(page, "agent-export-dialog")
   await shot(page, `s67-${tag}-01-export-start`)
 
-  // Cy is not picked: the channel with Cy and the skill of Cy leave the count.
+  // Cy is not picked: the skill of Cy leaves the count.
   await dialog.getByTestId("agent-export-item").nth(2).uncheck()
-  await expect(dialog.getByTestId("agent-export-channels-count")).toHaveText(words.found(1))
   await expect(dialog.getByTestId("agent-export-skills-count")).toHaveText(words.found(2))
-  for (const box of ["channels", "skills", "handbook"])
-    await dialog.getByTestId(`agent-export-${box}`).check()
+  for (const box of ["skills", "handbook"]) await dialog.getByTestId(`agent-export-${box}`).check()
   await shot(page, `s67-${tag}-02-export-ticked`)
   await dialog.getByTestId("agent-export-submit").click()
   await expect(dialog.getByTestId("agent-export-saved")).toContainText(words.saved(teamFile))
@@ -226,57 +194,27 @@ const scenario = (words: Words) => async () => {
   await dialog.getByTestId("agent-export-close").click()
   await expect(page.getByTestId("agent-export-dialog")).toHaveCount(0)
 
-  // The file: format version 2, with the channel whose members are all picked, the skills that
-  // Ada or Bob may use (a skill for all agents is written for them), and the handbook.
+  // The file: format version 2, with no channels, the skills that Ada or Bob may use (a skill for
+  // all agents is written for them), and the handbook.
   const written = JSON.parse(readFileSync(teamFile, "utf8")) as {
     version: number
     agents: { name: string }[]
-    channels: Record<string, unknown>[]
     skills: { name: string; agents: string[] }[]
     handbook: string
   }
   expect(written.version).toBe(2)
   expect(written.agents.map((a) => a.name)).toEqual(["Ada", "Bob"])
-  expect(written.channels).toEqual([
-    {
-      name: "Launch",
-      topic: "Ship the release",
-      instructions: "Write short lines.",
-      reviewParts: true,
-      members: ["Ada", "Bob"],
-      lead: "Ada",
-    },
-  ])
+  expect(written).not.toHaveProperty("channels")
   expect(written.skills.map((k) => [k.name, k.agents])).toEqual([
     ["Review notes", ["Ada"]],
     ["Summarise", ["Ada", "Bob"]],
   ])
   expect(written.handbook).toBe(HANDBOOK)
 
-  // The limit of 40 channels: a file with more is not written, and the dialog says why.
-  for (let i = 0; i < 39; i++)
-    await rpc(page, "channels.create", {
-      serverId,
-      name: `Extra ${i}`,
-      topic: "",
-      memberIds: [ids.ada],
-      leadId: null,
-    })
-  await openExport(page)
-  const limited = page.getByTestId("agent-export-dialog")
-  await expect(limited.getByTestId("agent-export-channels-count")).toHaveText(words.found(41))
-  await limited.getByTestId("agent-export-channels").check()
-  await expect(limited.getByTestId("agent-export-limit-channels")).toHaveText(words.limitChannels)
-  await expect(limited.getByTestId("agent-export-submit")).toBeDisabled()
-  await shot(page, `s67-${tag}-04-export-limit`)
-  await limited.getByTestId("agent-export-channels").uncheck()
-  await expect(limited.getByTestId("agent-export-limit-channels")).toHaveCount(0)
-  await expect(limited.getByTestId("agent-export-submit")).toBeEnabled()
-  await limited.getByTestId("agent-export-close").click()
   await app.close()
 
   // Two files are made by hand for the checks below: version 1 with fields that it does not
-  // define, and version 2 with a key in a channel and in the handbook.
+  // define, and version 2 with a channel and with a key in the handbook.
   writeFileSync(
     secretFile,
     JSON.stringify({
@@ -299,37 +237,23 @@ const scenario = (words: Words) => async () => {
     }),
   )
 
-  // ---- app two: it has an agent, a channel and a handbook of its own ----------------------------
+  // ---- app two: it has an agent and a handbook of its own --------------------------------------
   ;({ app, page } = await launch(freshUserData(), { ...env, ROBOT_TEST_AGENT_FILE_OPEN: teamFile }))
   await resizeWindow(app, 1100, 800)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await checkWindow(page)
   await createAgent(page, "Zed")
   const target = await serverOf(page)
-  const zed = (await agentsOf(page))[0] as Agent
-  await rpc(page, "channels.create", {
-    serverId: target,
-    name: "Launch",
-    topic: "",
-    memberIds: [zed.id],
-    leadId: null,
-  })
   await rpc(page, "handbook.save", { serverId: target, text: "The old handbook." })
 
   await openImport(page)
   const review = page.getByTestId("agent-import-dialog")
   await expect(review.getByTestId("agent-import-item")).toHaveCount(2)
-  // Channels and skills start ticked; the handbook does not.
-  await expect(review.getByTestId("channel-import-item")).toHaveCount(1)
+  // Skills start ticked; the handbook does not.
   await expect(review.getByTestId("skill-import-item")).toHaveCount(2)
-  await expect(review.getByTestId("channel-import-tick")).toBeChecked()
   for (const tick of await review.getByTestId("skill-import-tick").all())
     await expect(tick).toBeChecked()
   await expect(review.getByTestId("handbook-import-tick")).not.toBeChecked()
-  // The channel says its members and its lead; a taken name gets a number.
-  await expect(review.getByTestId("channel-import-item")).toContainText("Launch 2")
-  await expect(review.getByTestId("channel-import-members")).toContainText("Ada, Bob")
-  await expect(review.getByTestId("channel-import-lead")).toContainText("Ada")
   await expect(review.getByTestId("skill-import-agents").first()).toContainText("Ada")
   // The handbook shows its first lines and "Show all", and says that it replaces the handbook.
   await expect(review.getByTestId("handbook-import")).toContainText(
@@ -349,16 +273,14 @@ const scenario = (words: Words) => async () => {
   await review.getByTestId("handbook-import-text").scrollIntoViewIfNeeded()
   await shot(page, `s67-${tag}-06-review-handbook-open`)
 
-  // Ada is not ticked: the skill "Review notes" needs Ada only and has no agent left, and the
-  // channel keeps Bob. "Not imported" says so, at once.
+  // Ada is not ticked: the skill "Review notes" needs Ada only and has no agent left. "Not
+  // imported" says so, at once.
   await review.getByTestId("agent-import-tick").first().uncheck()
   const notImported = review.getByTestId("agent-import-not-imported")
   await expect(notImported).toContainText("Review notes")
   await expect(notImported).toContainText(words.noAgent)
-  await expect(notImported).not.toContainText(words.noMember)
-  // Bob is not ticked too: now the channel has no member left.
+  // Bob is not ticked too: now nothing is ticked.
   await review.getByTestId("agent-import-tick").nth(1).uncheck()
-  await expect(notImported).toContainText(words.noMember)
   await expect(review.getByTestId("agent-import-submit")).toBeDisabled()
   await expect(review.getByTestId("agent-import-counts")).toHaveText(words.nothing)
   await review.getByTestId("agent-import-not-imported").scrollIntoViewIfNeeded()
@@ -373,30 +295,20 @@ const scenario = (words: Words) => async () => {
   // Tick everything back, and the handbook, and pick a model.
   await review.getByTestId("agent-import-tick").first().check()
   await review.getByTestId("agent-import-tick").nth(1).check()
-  await expect(notImported).not.toContainText(words.noMember)
   await review.getByTestId("handbook-import-tick").check()
   await review.getByTestId("model-model").selectOption("o3-mini")
   await expect(review.getByTestId("agent-import-counts")).toHaveText(words.countsWithHandbook)
   await review.getByTestId("agent-import-submit").click()
   await expect(page.getByTestId("agent-import-dialog")).toHaveCount(0)
 
-  // The result: a line says what was made. The agents, the channel and the skills are there.
+  // The result: a line says what was made. The agents and the skills are there.
   await expect(page.getByTestId("toasts")).toContainText(words.imported)
   await expect(page.getByTestId("toasts")).toContainText(words.handbookReplaced)
   await shot(page, `s67-${tag}-08-import-result`)
   const agents = await agentsOf(page)
   expect(agents.map((a) => a.name).sort()).toEqual(["Ada", "Bob", "Zed"])
-  const channels = await channelsOf(page)
-  expect(channels.map((c) => c.name).sort()).toEqual(["Launch", "Launch 2"])
-  const second = channels.find((c) => c.name === "Launch 2") as Channel
+  expect(await channelsOf(page)).toEqual([])
   const idOf = (name: string) => agents.find((a) => a.name === name)?.id
-  expect(second).toMatchObject({
-    topic: "Ship the release",
-    instructions: "Write short lines.",
-    reviewParts: true,
-    leadId: idOf("Ada"),
-  })
-  expect([...second.memberIds].sort()).toEqual([idOf("Ada"), idOf("Bob")].sort())
   // The skills are off, and each one is for the agents that were made.
   const skills = await skillsOf(page)
   expect(skills.map((k) => [k.name, k.enabled]).sort()).toEqual([
@@ -432,7 +344,7 @@ const scenario = (words: Words) => async () => {
   await app.close()
 
   // ---- app three: a key in a part marks it and leaves it not ticked; the handbook stays when it
-  // is not ticked ------------------------------------------------------------------------------
+  // is not ticked; the channel of the file is not imported ---------------------------------------
   ;({ app, page } = await launch(freshUserData(), {
     ...env,
     ROBOT_TEST_AGENT_FILE_OPEN: secretFile,
@@ -443,10 +355,9 @@ const scenario = (words: Words) => async () => {
   await rpc(page, "handbook.save", { serverId: third, text: "Mine." })
   await openImport(page)
   const plain = page.getByTestId("agent-import-dialog")
-  await expect(plain.getByTestId("channel-import-tick")).not.toBeChecked()
-  await expect(plain.getByTestId("channel-import-item").getByTestId("import-secret")).toHaveText(
-    words.secret,
-  )
+  await expect(plain.getByTestId("channel-import-item")).toHaveCount(0)
+  await expect(plain.getByTestId("agent-import-not-imported")).toContainText(words.channel("Ops"))
+  await expect(plain.getByTestId("agent-import-not-imported")).toContainText(words.channelGone)
   await expect(plain.getByTestId("skill-import-tick")).toBeChecked()
   await expect(plain.getByTestId("handbook-import-tick")).not.toBeChecked()
   await expect(plain.getByTestId("handbook-import").getByTestId("import-secret")).toHaveText(

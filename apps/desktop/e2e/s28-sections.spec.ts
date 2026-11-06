@@ -8,7 +8,7 @@ const send = async (page: Page, text: string) => {
   await page.getByTestId("composer-input").press("Enter")
 }
 
-type Kind = "agents" | "channels"
+type Kind = "agents"
 
 const builtIn = (page: Page, kind: Kind) => page.getByTestId(`section-${kind}`)
 /** A user section of a list, found by its name. */
@@ -89,10 +89,6 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await resizeWindow(app, 1300, 900)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   for (const name of ["Ada", "Bo", "Cy"]) await createAgent(page, name)
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Launch")
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
   await expect(await plainNames(page, "agents")).toEqual(["Ada", "Bo", "Cy"])
   // Agents with no section are in "Unassigned". The header has no menu.
   const unassigned = page.getByTestId("unassigned-section")
@@ -112,7 +108,7 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   ).toContainText("Drag a place here")
   await shot(page, "s28-01-new-section")
 
-  // The same name with another case is refused in the same list. The other list accepts it.
+  // The same name with another case is refused in the same list.
   input = await startSection(page, "agents")
   await input.fill("research")
   await input.press("Enter")
@@ -123,8 +119,6 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await shot(page, "s28-02-refused")
   await input.press("Escape")
   await expect(page.getByTestId("user-section")).toHaveCount(1)
-  await makeSection(page, "channels", "Research")
-  await expect(userSection(page, "channels", "Research")).toBeVisible()
   // A name of 41 characters cannot be typed, and an empty name is refused.
   input = await startSection(page, "agents")
   await input.fill("x".repeat(60))
@@ -164,7 +158,6 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await resizeWindow(app, 1300, 900)
   await expect.poll(() => namesIn(userSection(page, "agents", "Research"))).toEqual(["Ada"])
   await expect.poll(() => plainNames(page, "agents")).toEqual(["Bo", "Cy"])
-  await expect.poll(() => sectionNames(page, "channels")).toEqual(["Research"])
   await shot(page, "s28-04-after-restart")
 
   // Two unread messages in a section: its collapsed header shows 2, and the dot while it works.
@@ -198,13 +191,13 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   // Up and down move through the places that show. A collapsed section has none.
   await page.getByTestId("place-search").focus()
   const walked: string[] = []
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     await page.keyboard.press("ArrowDown")
     walked.push(
       await page.evaluate(() => document.activeElement?.getAttribute("data-place-name") ?? ""),
     )
   }
-  expect(walked).toEqual(["Launch", "Bo", "Cy", "Cy"])
+  expect(walked).toEqual(["Bo", "Cy", "Cy"])
 
   // Open the section: the badge leaves the header and shows on the agent.
   await researchAgents.getByTestId("user-section-toggle").click()
@@ -212,35 +205,10 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await expect(rowOf(page, "Ada")).toContainText("2")
   await shot(page, "s28-06-badge-on-agent")
 
-  // Drag: a header of the other kind refuses a channel row. A header of its kind takes it.
-  const channelResearch = userSection(page, "channels", "Research")
-  const launchRow = rowOf(builtIn(page, "channels"), "Launch")
-  await dragOver(page, launchRow, header(researchAgents))
-  await expect(header(researchAgents)).toHaveAttribute("data-drop", "false")
-  await page.mouse.up()
-  await expect(await namesIn(channelResearch)).toEqual([])
-  await expect(await plainNames(page, "channels")).toEqual(["Launch"])
-  // A drag never opens the place.
-  await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
-
-  await dragOver(page, launchRow, header(channelResearch))
-  await expect(header(channelResearch)).toHaveAttribute("data-drop", "true")
-  await shot(page, "s28-07-drag-over")
-  await page.mouse.up()
-  await expect.poll(() => namesIn(channelResearch)).toEqual(["Launch"])
-  await expect(await plainNames(page, "channels")).toEqual([])
-  await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
-  // And back to no section: the header of the built-in section takes it.
-  await dragOnto(
-    page,
-    rowOf(channelResearch, "Launch"),
-    page.getByTestId("section-header-channels"),
-  )
-  await expect.poll(() => plainNames(page, "channels")).toEqual(["Launch"])
-
   // Escape cancels a drag: the header shows as selected, then it does not, and nothing moves.
   await dragOver(page, rowOf(page, "Cy"), header(researchAgents))
   await expect(header(researchAgents)).toHaveAttribute("data-drop", "true")
+  await shot(page, "s28-07-drag-over")
   await page.keyboard.press("Escape")
   await expect(header(researchAgents)).toHaveAttribute("data-drop", "false")
   await page.mouse.up()
@@ -333,8 +301,8 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await expect(researchToggle).toHaveAttribute("aria-expanded", "true")
   await expect(rowOf(page, "Ada")).toBeVisible()
   await expect(rowOf(page, "Bo")).toHaveCount(0)
-  // A section with no match hides, also a whole list.
-  await expect(page.getByTestId("section-channels")).toHaveCount(0)
+  // A section with no match hides.
+  await expect(page.getByTestId("unassigned-section")).toHaveCount(0)
   await shot(page, "s28-10-search-opens")
   await searchBox.press("Escape")
   await expect(searchBox).toHaveValue("")
@@ -389,26 +357,6 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await page.getByTestId("archive-restore").click()
   await page.getByTestId("settings-close").click()
   await expect.poll(() => namesIn(researchAgents)).toEqual(["Ada", "Ada copy"])
-
-  // A channel has the same choice in its form and in its settings.
-  await page.getByTestId("new-channel").click()
-  const channelSection = page.getByTestId("channel-section")
-  await expect(channelSection.locator("option")).toHaveText(["No section", "Research"])
-  await expect(channelSection.locator("option:checked")).toHaveText("No section")
-  await page.getByTestId("channel-name").fill("Chat")
-  await channelSection.selectOption({ label: "Research" })
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Chat")
-  await expect(page.getByTestId("channel-dialog")).toHaveCount(0)
-  await expect.poll(() => namesIn(channelResearch)).toEqual(["Chat"])
-  await page.getByTestId("channel-settings").click()
-  await expect(channelSection.locator("option:checked")).toHaveText("Research")
-  await channelSection.selectOption({ label: "No section" })
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-dialog")).toHaveCount(0)
-  await expect.poll(() => namesIn(channelResearch)).toEqual([])
-  // Chat comes last in the list that it joins (spec 001, "Order of places").
-  await expect.poll(() => plainNames(page, "channels")).toEqual(["Launch", "Chat"])
 
   // Archive an agent, then delete its section. The restore puts it in no section.
   await rowOf(page, "Ada copy").click()

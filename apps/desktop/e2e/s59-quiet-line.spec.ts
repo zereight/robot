@@ -171,7 +171,7 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
     await closeSettings(two.page)
 
     await connectMock(two.page, mock.openaiUrl, GOOD_KEY)
-    for (const name of ["Ada", "Lia", "Bo"]) await createAgent(two.page, name)
+    for (const name of ["Ada", "Bo"]) await createAgent(two.page, name)
     const servers = await rpc<{ id: string; kind: string }[]>(two.page, "servers.list")
     const serverId = servers.find((s) => s.kind === "local")?.id as string
     const agents = await rpc<{ id: string; name: string }[]>(two.page, "agents.list", {
@@ -179,21 +179,14 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
       archived: false,
     })
     const id = (name: string) => agents.find((a) => a.name === name)?.id as string
-    const channel = await rpc<{ id: string }>(two.page, "channels.create", {
-      serverId,
-      name: "Launch",
-      topic: "",
-      memberIds: [id("Lia"), id("Bo")],
-      leadId: id("Lia"),
-    })
     // The silent limit is 5 minutes: the quiet time is 90 seconds (spec 005).
     await rpc(two.page, "settings.update", { silentLimit: 5 })
 
-    // Ada answers a part and then goes quiet. Bo does the same in a part of the channel job.
+    // Ada answers a part and then goes quiet. Bo does the same in his own chat.
     await place(two.page, "Ada")
     await send(two.page, "go quiet please")
     await expect(two.page.getByTestId("working-line")).toBeVisible()
-    await rpc(two.page, "channels.send", { channelId: channel.id, text: "split quiet job" })
+    await rpc(two.page, "chat.send", { agentId: id("Bo"), text: "go quiet too", replyTo: null })
 
     // ---- The chat of MacBook 2 -----------------------------------------------------------
     const lineOf = (page: Page) => page.getByTestId("working-text")
@@ -212,7 +205,7 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
     await expect(two.page.getByTestId("activity-task-state")).toHaveText(QUIET_EN)
     await shot(two.page, "s59-10-chat-quiet-en")
 
-    // ---- Nothing in the Today page, no notice, no action log entry --------------------------
+    // ---- No notice ----------------------------------------------------------------------------
     expect(notices()).toEqual([])
 
     // ---- The Tasks page: both running rows read the line ------------------------------------
@@ -230,31 +223,21 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
     await shot(two.page, "s59-12-task-detail-quiet-en")
     await two.page.keyboard.press("Escape")
 
-    // ---- The plan step in the activity panel, also at the tight width -------------------------
+    // ---- The chat at the tight width ---------------------------------------------------------
     await two.page.getByTestId("page-chats").click()
-    await place(two.page, "Launch")
-    await expect(two.page.getByTestId("plan-step")).toHaveCount(1)
-    const step = two.page.getByTestId("plan-step")
-    await expect(step).toHaveAttribute("data-state", "running")
-    await expect(step).toHaveAttribute("data-quiet", "true")
-    const icon = step.getByTestId("plan-step-icon")
-    await expect(icon).toHaveAttribute("aria-label", QUIET_EN)
-    await expect(icon).toHaveAttribute("title", QUIET_EN)
-    // The step keeps its spinner and its label.
-    await expect(step).toContainText("Write the long answer")
-    await shot(two.page, "s59-13-plan-step-quiet-1300")
     await resizeWindow(two.app, 1100, 800)
-    await expect(two.page.getByTestId("plan-step")).toHaveAttribute("data-quiet", "true")
-    await shot(two.page, "s59-14-plan-step-quiet-1100")
     // The chat of an agent at the tight width reads the whole line.
     await place(two.page, "Ada")
     await expect(two.page.getByTestId("working-line")).toHaveAttribute("data-quiet", "true")
     await expect(lineOf(two.page)).toHaveText(QUIET_EN)
-    const box = await two.page.getByTestId("working-line").boundingBox()
-    const view = await two.page.getByTestId("chat-view").boundingBox()
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
-      (view?.x ?? 0) + (view?.width ?? 0),
-    )
+    // The layout settles after the resize: the line then ends inside the chat view.
+    await expect
+      .poll(async () => {
+        const box = await two.page.getByTestId("working-line").boundingBox()
+        const view = await two.page.getByTestId("chat-view").boundingBox()
+        return (view?.x ?? 0) + (view?.width ?? 0) - ((box?.x ?? 0) + (box?.width ?? 0))
+      })
+      .toBeGreaterThanOrEqual(0)
     await shot(two.page, "s59-15-chat-quiet-1100")
     await resizeWindow(two.app, 1300, 860)
 
@@ -309,11 +292,6 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
     await two.page.getByTestId("settings-close").click()
     await expect(lineOf(two.page)).toHaveText(QUIET_KO)
     await shot(two.page, "s59-20-chat-quiet-ko")
-    await resizeWindow(two.app, 1100, 800)
-    await place(two.page, "Launch")
-    await expect(two.page.getByTestId("plan-step-icon")).toHaveAttribute("title", QUIET_KO)
-    await shot(two.page, "s59-21-plan-step-quiet-ko-1100")
-    await resizeWindow(two.app, 1300, 860)
     await island.getByTestId("island-bar").hover()
     await expect(island.getByTestId("island-detail")).toBeVisible()
     await expect(
@@ -334,12 +312,8 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
     await expect(two.page.locator("[data-testid=message][data-author=agent]").last()).toContainText(
       "Done after a quiet moment.",
     )
-    // MacBook 1 drops the line as well, and the step of the part is done.
+    // MacBook 1 drops the line as well.
     await expect(one.page.getByTestId("working-line")).toHaveCount(0, { timeout: 20_000 })
-    await place(two.page, "Launch")
-    await expect(two.page.locator("[data-testid=plan-step][data-quiet=true]")).toHaveCount(0, {
-      timeout: 20_000,
-    })
     await shot(two.page, "s59-23-after-ko")
     // The Tasks page has no quiet line left.
     await two.page.getByTestId("page-tasks").click()

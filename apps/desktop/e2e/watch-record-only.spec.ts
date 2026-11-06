@@ -56,26 +56,22 @@ test("watch routines: Record only shows a change in the calendar and starts no t
   await mock.close()
 })
 
-test("workflows: a message trigger with Record only records the run and runs no step", async () => {
-  test.setTimeout(120_000)
+test("workflows: a schedule trigger with Record only records the run and runs no step", async () => {
+  test.setTimeout(240_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1500, 1000)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Ops")
-  await page.getByTestId("channel-member-Ada").check()
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Ops")
 
   await page.getByTestId("page-workflows").click()
   await page.getByTestId("wf-new").click()
-  await page.getByTestId("wf-name").fill("On deploy")
-  // A manual trigger has no switch. A message trigger has it.
+  await page.getByTestId("wf-name").fill("Each minute")
+  // A manual trigger has no switch. A schedule trigger has it.
   await expect(page.getByTestId("wf-trigger-record-only")).toHaveCount(0)
-  await page.getByTestId("wf-trigger-kind").selectOption("channel")
-  await page.getByTestId("wf-trigger-contains").fill("deploy")
+  await page.getByTestId("wf-trigger-kind").selectOption("schedule")
+  await page.getByTestId("wf-trigger-schedule").getByTestId("routine-kind").selectOption("every")
+  await page.getByTestId("wf-trigger-schedule").getByTestId("routine-minutes").fill("1")
   await page.getByTestId("wf-trigger-record-only").click()
   await expect(page.getByTestId("wf-trigger-record-only")).toHaveAttribute("aria-checked", "true")
   await page.getByTestId("wf-add-agent").click()
@@ -85,19 +81,14 @@ test("workflows: a message trigger with Record only records the run and runs no 
   await page.getByTestId("wf-back").click()
   await expect(page.getByTestId("wf-card")).toHaveCount(1)
 
-  await page.getByTestId("page-chats").click()
-  await page.getByText("Ops", { exact: true }).first().click()
-  await page.getByTestId("channel-input").fill("please deploy now")
-  await page.getByTestId("channel-input").press("Enter")
-  await page.getByTestId("page-workflows").click()
+  // The schedule comes due within about a minute. The run is recorded and no step runs.
   await page.getByTestId("wf-open").click()
   await expect(page.getByTestId("wf-trigger-record-only")).toHaveAttribute("aria-checked", "true")
   const row = page.getByTestId("wf-run-row")
-  await expect(row).toHaveCount(1, { timeout: 20_000 })
-  await expect(row).toContainText("Recorded")
-  await row.click()
+  await expect(row.first()).toBeVisible({ timeout: 120_000 })
+  await expect(row.first()).toContainText("Recorded")
+  await row.first().click()
   await expect(page.getByTestId("wf-run-recorded")).toBeVisible()
-  await expect(page.getByTestId("wf-run-trigger-text")).toHaveText("please deploy now")
   await expect(page.getByTestId("wf-run-step")).toHaveCount(0)
   await shot(page, "record-only-04-workflow-history")
   const handled = mock.requests.filter((r) =>

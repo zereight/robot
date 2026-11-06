@@ -24,8 +24,8 @@ import {
   turnOnSync,
 } from "./sync-helpers.ts"
 
-// Spec 012, "Create and change agents". MacBook 1 (the client) works with the agents and channels
-// of MacBook 2 (the server). Two copies of the app run side by side, each with its own data
+// Spec 012, "Create and change agents". MacBook 1 (the client) works with the agents of MacBook 2
+// (the server). Two copies of the app run side by side, each with its own data
 // folder, and find each other on 127.0.0.1.
 
 const tile = (page: Page, name: string) =>
@@ -128,7 +128,7 @@ const start = async (ports: [number, number], extra: Record<string, string> = {}
   return { mock, data2, one, two }
 }
 
-test("linked agents: a client with the switch makes and changes agents, channels and memory", async () => {
+test("linked agents: a client with the switch makes and changes agents and memory", async () => {
   test.setTimeout(240_000)
   const s = await start(await freePortPair())
   const { one, two, mock } = s
@@ -138,9 +138,8 @@ test("linked agents: a client with the switch makes and changes agents, channels
     await tile(one.page, "MacBook 2").click()
     const serverId = await linkedServerId(one.page)
 
-    // The plus buttons show only because the server lets this device change agents.
+    // The plus button shows only because the server lets this device change agents.
     await expect(one.page.getByTestId("new-agent")).toBeVisible()
-    await expect(one.page.getByTestId("new-channel")).toBeVisible()
 
     // Create "Writer" with a model of the server.
     await one.page.getByTestId("new-agent").click()
@@ -289,25 +288,6 @@ test("linked agents: a client with the switch makes and changes agents, channels
     await expect(placeOf(two.page, "Writer copy")).toHaveCount(0)
     await expect(placeOf(one.page, "Writer copy")).toHaveCount(0)
 
-    // A channel: make it, change it, and see that there is no way to delete it.
-    await one.page.getByTestId("new-channel").click()
-    await one.page.getByTestId("channel-name").fill("Docs")
-    await one.page.getByTestId("channel-topic").fill("Write the docs")
-    await one.page.getByTestId("channel-member-Writer").check()
-    await one.page.getByTestId("channel-submit").click()
-    await expect(one.page.getByTestId("channel-dialog")).toBeHidden()
-    await expect(one.page.getByTestId("channel-header-name")).toHaveText("Docs")
-    await expect(two.page.locator("[data-testid^=place-channel-]")).toContainText("Docs")
-    await one.page.getByTestId("channel-settings").click()
-    await expect(one.page.getByTestId("channel-delete")).toHaveCount(0)
-    await one.page.getByTestId("channel-topic").fill("Write all the docs")
-    await one.page.getByTestId("channel-submit").click()
-    await expect(one.page.getByTestId("channel-dialog")).toBeHidden()
-    await expect(one.page.getByTestId("channel-header-topic")).toHaveText("Write all the docs")
-    await two.page.locator("[data-testid^=place-channel-]").first().click()
-    await expect(two.page.getByTestId("channel-header-topic")).toHaveText("Write all the docs")
-    await shot(one.page, "s24-05-client-channel")
-
     // Memory: add an item from MacBook 1. MacBook 2 lists it.
     await placeOf(one.page, "Writer").click()
     await one.page.getByTestId("chat-header-agent").click()
@@ -347,7 +327,6 @@ test("linked agents: the switch is read at each request and works at once", asyn
     await tile(one.page, "MacBook 2").click()
     const serverId = await linkedServerId(one.page)
     await expect(one.page.getByTestId("new-agent")).toHaveCount(0)
-    await expect(one.page.getByTestId("new-channel")).toHaveCount(0)
     await placeOf(one.page, "Ada").click()
     await expect(one.page.getByTestId("chat-header-model")).toHaveAttribute("data-readonly", "true")
     const adaId = await agentIdOf(two.page, "Ada")
@@ -368,7 +347,6 @@ test("linked agents: the switch is read at each request and works at once", asyn
     await shot(two.page, "s24-06-switch-off-in-devices")
     await clientRow(two.page, "MacBook 1").getByTestId("client-can-change").click()
     await expect(one.page.getByTestId("new-agent")).toBeVisible()
-    await expect(one.page.getByTestId("new-channel")).toBeVisible()
     await expect(one.page.getByTestId("chat-header-model")).not.toHaveAttribute(
       "data-readonly",
       "true",
@@ -392,9 +370,8 @@ test("linked agents: the switch is read at each request and works at once", asyn
     expect(await names(two.page)).toEqual(["Ada"])
     await dismiss(one.page, "new-agent-dialog")
 
-    // The plus buttons and the fields turn read-only. The state is still "online".
+    // The plus button and the fields turn read-only. The state is still "online".
     await expect(one.page.getByTestId("new-agent")).toHaveCount(0)
-    await expect(one.page.getByTestId("new-channel")).toHaveCount(0)
     await expect(tile(one.page, "MacBook 2")).toHaveAttribute("data-state", "online")
     await placeOf(one.page, "Ada").click()
     await one.page.getByTestId("chat-header-agent").click()
