@@ -171,8 +171,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     closeSettings: () => setSettingsSection(undefined),
     /** The panel shows when the user wants it and the window is wide enough. */
     activityPanelVisible: () => ui.activityPanel && !narrow(),
-    canGoBack: () => (historyTick(), history.canBack()),
-    canGoForward: () => (historyTick(), history.canForward()),
+    canGoBack: () => historyTick() >= 0 && history.canBack(),
+    canGoForward: () => historyTick() >= 0 && history.canForward(),
     goBack: () => goTo(history.back()),
     goForward: () => goTo(history.forward()),
     selectServer: (serverId: string) => update({ serverId }),
