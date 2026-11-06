@@ -78,7 +78,7 @@ describe("parseWorkflowFile", () => {
             step({ effort: "low", continueOnFailure: true }),
             { kind: "condition", name: "Greeting?", x: 300, y: 0, mode: "ask", text: "Is it?" },
             { kind: "approval", name: "Gate", x: 600, y: 0, message: "Go on?" },
-            { kind: "post", name: "Post", x: 900, y: 0, text: "Result: {{input}}" },
+            { kind: "notify", name: "Post", x: 900, y: 0, title: "Result" },
             { kind: "notify", name: "Tell", x: 1200, y: 0, title: "Done" },
           ],
           connections: [
@@ -99,7 +99,7 @@ describe("parseWorkflowFile", () => {
       "agent",
       "condition",
       "approval",
-      "post",
+      "notify",
       "notify",
     ])
     expect(w?.steps[0]).toEqual({
@@ -138,7 +138,7 @@ describe("parseWorkflowFile", () => {
           steps: [
             { kind: "agent", name: "A" },
             { kind: "condition", name: "C" },
-            { kind: "post", name: "P" },
+            { kind: "notify", name: "P" },
             { kind: "notify", name: "N" },
             { kind: "approval", name: "G" },
           ],
@@ -161,7 +161,7 @@ describe("parseWorkflowFile", () => {
         continueOnFailure: false,
       },
       { kind: "condition", name: "C", x: 230, y: 0, mode: "contains", text: "" },
-      { kind: "post", name: "P", x: 460, y: 0, text: "{{input}}" },
+      { kind: "notify", name: "P", x: 460, y: 0, title: "" },
       { kind: "notify", name: "N", x: 0, y: 110, title: "" },
       { kind: "approval", name: "G", x: 230, y: 110, message: "" },
     ])
@@ -256,7 +256,7 @@ describe("parseWorkflowFile", () => {
             continueOnFailure: false,
           },
           { kind: "condition", name: "C", x: 3, y: 4, mode: "ask", text: "q" },
-          { kind: "post", name: "P", x: 5, y: 6, text: "t" },
+          { kind: "notify", name: "P", x: 5, y: 6, title: "t" },
           { kind: "notify", name: "N", x: 7, y: 8, title: "T" },
         ],
         connections: [
@@ -288,6 +288,48 @@ describe("parseWorkflowFile", () => {
       detail: "21",
     })
     expect(WORKFLOW_FILE_MAX_BYTES).toBe(10 * 1024 * 1024)
+  })
+})
+
+describe("what an older file holds", () => {
+  test("a post step becomes a pink note at its place, and the file lists it as not imported", () => {
+    const result = accepted(
+      file([
+        flow({
+          steps: [
+            step({ name: "Draft" }),
+            { kind: "post", name: "Share", x: 40, y: 50, text: "Result: {{input}}" },
+            { kind: "notify", name: "Tell", x: 60, y: 70, title: "Done" },
+          ],
+          connections: [
+            { from: 1, to: 2 },
+            { from: 2, to: 3 },
+          ],
+        }),
+      ]),
+    )
+    const [w] = result.workflows
+    expect(w?.steps.map((s) => s.kind)).toEqual(["agent", "notify"])
+    expect(w?.connections).toEqual([])
+    expect(w?.notes).toEqual([
+      { text: "Not imported: post Share\nResult: {{input}}", tone: "pink", x: 40, y: 50 },
+    ])
+    expect(w?.notImported).toContainEqual({
+      reason: "no_step",
+      owner: "Digest",
+      nodeType: "post",
+      name: "Share",
+    })
+  })
+
+  test("a trigger of a message in a channel becomes a manual trigger and is listed", () => {
+    const result = accepted(file([flow({ trigger: { kind: "channel" } })]))
+    expect(result.workflows[0]?.trigger).toEqual({ kind: "manual" })
+    expect(result.workflows[0]?.notImported).toContainEqual({
+      reason: "no_trigger",
+      owner: "Digest",
+      trigger: "channel",
+    })
   })
 })
 
@@ -382,7 +424,7 @@ describe("a file that is refused", () => {
       ],
       [
         "workflow_file_field",
-        [flow({ trigger: { kind: "channel" } })],
+        [flow({ trigger: { kind: "unknown" } })],
         "workflows[0].trigger.kind",
       ],
       ["workflow_file_field", [flow({ trigger: "manual" })], "workflows[0].trigger"],
@@ -570,7 +612,7 @@ describe("secrets in a file", () => {
             step({ name: `Step ${key}`, agent: `Ada ${key}`, prompt: `Use ${key}` }),
             { kind: "condition", name: "C", text: `Is ${key} here?` },
             { kind: "approval", name: "G", message: `OK ${key}` },
-            { kind: "post", name: "P", text: `Say ${key}` },
+            { kind: "notify", name: "P", title: `Say ${key}` },
             { kind: "notify", name: "N", title: `T ${key}` },
           ],
           connections: [
@@ -631,7 +673,7 @@ describe("what an import makes", () => {
         continueOnFailure: false,
       },
       { kind: "condition", name: "Ask", x: 7, y: 8, mode: "ask", text: "Is it?" },
-      { kind: "post", name: "Post", x: 9, y: 10, text: "{{input}}" },
+      { kind: "notify", name: "Post", x: 9, y: 10, title: "Result" },
       { kind: "notify", name: "Tell", x: 11, y: 12, title: "Done" },
     ],
     connections: [
@@ -653,7 +695,7 @@ describe("what an import makes", () => {
       ["agent", "Check", 3, 4],
       ["agent", "Free", 5, 6],
       ["condition", "Ask", 7, 8],
-      ["post", "Post", 9, 10],
+      ["notify", "Post", 9, 10],
       ["notify", "Tell", 11, 12],
     ])
     expect(input.steps[0]).toMatchObject({
@@ -677,11 +719,11 @@ describe("what an import makes", () => {
     })
   })
 
-  test("a step with an agent that is not found has no agent; a post step has no place", () => {
+  test("a step with an agent that is not found has no agent; a step keeps its title", () => {
     const input = make()
     expect(input.steps[1]).toMatchObject({ kind: "agent", agentId: "" })
     expect(input.steps[2]).toMatchObject({ kind: "agent", agentId: "" })
-    expect(input.steps[4]).toMatchObject({ kind: "post", channelId: "" })
+    expect(input.steps[4]).toMatchObject({ kind: "notify", title: "Result" })
     expect(input.steps[1] && "effort" in input.steps[1]).toBe(false)
   })
 
@@ -752,7 +794,7 @@ describe("the document of the format", () => {
     const result = parseWorkflowFile(block ?? "")
     if (!result.ok) throw new Error(`${result.code} ${result.detail}`)
     const [w] = result.file.workflows
-    expect(w?.steps.map((s) => s.kind)).toEqual(["agent", "condition", "post", "notify"])
+    expect(w?.steps.map((s) => s.kind)).toEqual(["agent", "condition", "notify", "notify"])
     expect(w?.steps[1]).toMatchObject({ mode: "ask" })
     expect(w?.notes).toHaveLength(1)
   })
@@ -787,15 +829,7 @@ describe("the document of the format", () => {
       "tone",
     ])
       expect(doc).toContain(`\`${key}\``)
-    for (const word of [
-      ...STEP_EFFORTS,
-      ...NOTE_TONES,
-      "agent",
-      "condition",
-      "approval",
-      "post",
-      "notify",
-    ])
+    for (const word of [...STEP_EFFORTS, ...NOTE_TONES, "agent", "condition", "approval", "notify"])
       expect(doc).toContain(`"${word}"`)
     for (const limit of [
       "1 to 20 workflows",

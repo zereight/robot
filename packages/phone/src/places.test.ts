@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import type { PlaceSection } from "@robot/shared"
 import { allPlaces, serverUnread, shownSections } from "./places.ts"
 
 const place = (name: string, sectionId: string | null, unread = 0) => ({
@@ -21,10 +22,11 @@ test("agents with no section come after the user sections", () => {
 })
 
 test("the Channels section of an older server does not show and does not count (spec 011)", () => {
+  // An older server can still send the section Channels.
   const sections = [
-    { id: "channels" as const, places: [place("Launch", null, 4)], sections: [] },
-    { id: "agents" as const, places: [place("Ada", null, 2)], sections: [] },
-  ]
+    { id: "channels", places: [place("Launch", null, 4)], sections: [] },
+    { id: "agents", places: [place("Ada", null, 2)], sections: [] },
+  ] as unknown as PlaceSection[]
   expect(shownSections(sections).map((s) => s.id)).toEqual(["agents"])
   expect(serverUnread(sections)).toBe(2)
   expect(shownSections(null)).toEqual([])

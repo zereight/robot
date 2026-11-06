@@ -6,7 +6,6 @@ import { Effect } from "effect"
 import type { FakeChat } from "../teams/fakeChat.testing.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
-import { asOldShape } from "./channelTurns.testing.ts"
 import { Database } from "./Database.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
@@ -70,9 +69,7 @@ export const startModel = (extra?: (text: string, lastLine: string) => string | 
       const url = new URL(req.url)
       if (url.pathname === "/v1/models")
         return Response.json({ data: [{ id: "mock", context_length: 100000 }] })
-      const body = asOldShape(
-        (await req.json()) as { messages: { role: string; content: string | null }[] },
-      )
+      const body = (await req.json()) as { messages: { role: string; content: string | null }[] }
       const last = body.messages.at(-1)
       if (last?.role === "tool") return sse([delta("Done."), usage, "[DONE]"])
       const text = String(last?.content ?? "")

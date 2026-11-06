@@ -1,6 +1,3 @@
-import type { Verdict } from "./check.ts"
-import type { TaskQuestion } from "./leadAnswers.ts"
-import { ORG_LIMIT_CODE } from "./orgLimit.ts"
 import type { TaskUsage, TreeUsage } from "./taskUsage.ts"
 import type { RecentPlace } from "./work.ts"
 
@@ -8,7 +5,6 @@ export const TASK_STATES = [
   "queued",
   "running",
   "waiting",
-  "review",
   "done",
   "failed",
   "blocked",
@@ -22,23 +18,19 @@ export type TaskState = (typeof TASK_STATES)[number]
  * message from Teams to the direct chat of an agent (spec 028): its depth is 0, and it is a normal
  * source in the queue (spec 005). "memory_check" is the short turn that finds facts that an agent
  * did not save (spec 008): its depth is 0, it posts no message, and it is last in the queue.
- * "question" is the look of an agent on the line at a question of a member (spec 030, "Ask up the
- * line"): its source id is the channel of the question, its depth is the depth of the part that
- * asks, and it is a normal source in the queue. "follow_up" is the turn that an agent asked for
+ * "follow_up" is the turn that an agent asked for
  * itself to look at one thing again later (spec 005, "Follow-up"): its depth is 0, and it is a
  * background source. "mention" is a name in a direct chat (spec 003): its depth is 0, its source
  * id is the chat's own agent, and the user reads the reply in that chat.
  */
 export const TASK_SOURCES = [
   "chat",
-  "channel",
   "routine",
   "workflow",
   "agent",
   "handover",
   "teams",
   "memory_check",
-  "question",
   "follow_up",
   "mention",
 ] as const
@@ -46,8 +38,7 @@ export type TaskSource = (typeof TASK_SOURCES)[number]
 
 /**
  * What a message from another agent was (spec 029): "send" is the tool "send message", "reply" is
- * the answer that comes back to the sender. Only a task with the source "agent" has one. The org
- * chart counts the sends as hand-offs and leaves the replies out.
+ * the answer that comes back to the sender. Only a task with the source "agent" has one.
  */
 export const AGENT_MESSAGE_KINDS = ["send", "reply"] as const
 export type AgentMessageKind = (typeof AGENT_MESSAGE_KINDS)[number]
@@ -72,23 +63,16 @@ export const queueRank = (source: TaskSource, picked: boolean): 1 | 2 | 3 | 4 =>
         ? 3
         : 2
 
-/** States in which a task can still be stopped. A task in review is not one of them (spec 005). */
+/** States in which a task can still be stopped (spec 005). */
 export const ACTIVE_STATES: readonly TaskState[] = ["queued", "running", "waiting"]
 export const isActive = (state: TaskState) => ACTIVE_STATES.includes(state)
 
-/** States that a task never leaves by itself. "In review" is not one of them (spec 005). */
+/** States that a task never leaves by itself (spec 005). */
 export const FINAL_STATES: readonly TaskState[] = ["done", "failed", "blocked", "cancelled"]
 export const isFinal = (state: TaskState) => FINAL_STATES.includes(state)
 
-/** A blocked task counts as a failed one for the lead, routines, workflows and notices (spec 005). */
+/** A blocked task counts as a failed one for routines, workflows and notices (spec 005). */
 export const isFailure = (state: TaskState) => state === "failed" || state === "blocked"
-
-/**
- * True while the work of a request has not stopped: a part is queued, running, waiting, or in
- * review (spec 004). The summary of the lead waits while this holds, and so does the check.
- */
-export const requestOpen = (states: readonly TaskState[]) =>
-  states.some((s) => isActive(s) || s === "review")
 
 // ---------------------------------------------------------------------------------------------
 // Blocked (spec 005).
@@ -108,19 +92,16 @@ export const BLOCKED_CODE = "blocked"
 export const BLOCKED_EMPTY_CODE = "blocked_empty"
 
 /**
- * Told to the agent of a task that comes from a part of a plan, a message of another agent, a
- * routine or a workflow (spec 005). A task of a direct chat gets no such text, because the user
+ * Told to the agent of a task that comes from a message of another agent, a routine or a workflow
+ * (spec 005). A task of a direct chat gets no such text, because the user
  * reads the reply there.
  */
 export const BLOCKED_RULE =
   'If you could not do the work, end your reply with a last line that starts with "Blocked:" and gives the reason in one sentence. Write that line in no other case.'
 
 /** True when a task of this source gets the rule of "Blocked" in its instructions. */
-export const toldAboutBlocked = (task: Pick<Task, "source" | "parentId">) =>
-  task.source === "agent" ||
-  task.source === "routine" ||
-  task.source === "workflow" ||
-  (task.source === "channel" && task.parentId !== null)
+export const toldAboutBlocked = (task: Pick<Task, "source">) =>
+  task.source === "agent" || task.source === "routine" || task.source === "workflow"
 
 /**
  * Reads the last line of a reply that has text. When it starts with "Blocked:" in any letter
@@ -143,44 +124,16 @@ export const blockedReason = (text: string): string | null => {
 /** How a turn that ended with no error and was not stopped ends the task. */
 export type TurnEnd =
   | { readonly state: "done" }
-  | {
-      readonly state: "blocked"
-      readonly reason: string
-      /**
-       * The code of an error that the app writes itself, for a reason the window shows in the
-       * language of the user (the daily token limit of a channel, spec 030). The reason is then its
-       * detail. Without it the reason is the text of the agent.
-       */
-      readonly code?: string
-    }
-  | { readonly state: "review" }
+  | { readonly state: "blocked"; readonly reason: string }
 
 /**
  * The end of a turn that ended with no error (spec 005). A turn with an error is Failed and a turn
- * that the user stopped is Cancelled, so neither comes here. A "Blocked:" line beats review: a part
- * that could not do the work is not offered for review.
+ * that the user stopped is Cancelled, so neither comes here.
  */
-export const endOfTurn = (replyText: string, options: { readonly review: boolean }): TurnEnd => {
+export const endOfTurn = (replyText: string): TurnEnd => {
   const reason = blockedReason(replyText)
-  if (reason !== null) return { state: "blocked", reason }
-  return options.review ? { state: "review" } : { state: "done" }
+  return reason !== null ? { state: "blocked", reason } : { state: "done" }
 }
-
-/** The error that a task keeps when it ends as blocked after `end`. */
-export const blockedErrorOf = (end: Extract<TurnEnd, { readonly state: "blocked" }>) =>
-  end.code === undefined ? blockedError(end.reason) : { code: end.code, detail: end.reason }
-
-/**
- * The reason of a blocked task as plain English for an agent that reads it (the check of the lead
- * and its summary). The window shows the reason in the language of the user instead, through the
- * code. A blocked task whose error the app wrote itself names it in words (spec 030).
- */
-export const blockedReasonForAgent = (
-  error: { readonly code: string; readonly detail: string } | null | undefined,
-): string =>
-  error?.code === ORG_LIMIT_CODE
-    ? `The daily token limit of ${error.detail} is used.`
-    : (error?.detail ?? "")
 
 /** The error that a blocked task keeps. */
 export const blockedError = (reason: string) =>
@@ -190,37 +143,11 @@ export const blockedError = (reason: string) =>
 export const isBlockedError = (error: { readonly code: string } | null) =>
   error !== null && (error.code === BLOCKED_CODE || error.code === BLOCKED_EMPTY_CODE)
 
-// ---------------------------------------------------------------------------------------------
-// Review (spec 004, 005).
-// ---------------------------------------------------------------------------------------------
-
-/** "Request changes" takes a text of 1 to 2000 characters. */
-export const REVIEW_CHANGES_MAX = 2000
-
-/** True when the text of "Request changes" is allowed. */
-export const validChanges = (text: string) => {
-  const length = [...text.trim()].length
-  return length >= 1 && length <= REVIEW_CHANGES_MAX
-}
-
-/** The label of the part that "Request changes" starts: the old label with a prefix, cut at 48. */
-export const CHANGES_PREFIX = "Changes: "
-export const changesLabel = (label: string, max = 48) => {
-  const full = [...`${CHANGES_PREFIX}${label}`]
-  return full.length > max ? `${full.slice(0, max - 1).join("")}…` : full.join("")
-}
-
 /** How a turn ended (spec 005, "Moments"): the state that the end gave the task. */
-export const ENDED_AS = ["done", "failed", "blocked", "cancelled", "review"] as const
+export const ENDED_AS = ["done", "failed", "blocked", "cancelled"] as const
 export type EndedAs = (typeof ENDED_AS)[number]
 export const isEndedAs = (value: unknown): value is EndedAs =>
   typeof value === "string" && (ENDED_AS as readonly string[]).includes(value)
-
-/** What the user decided on a part in review: accepted it, or asked for changes. */
-export const DECISIONS = ["accepted", "changes"] as const
-export type Decision = (typeof DECISIONS)[number]
-export const isDecision = (value: unknown): value is Decision =>
-  typeof value === "string" && (DECISIONS as readonly string[]).includes(value)
 
 export const TASK_LABEL_MAX = 60
 
@@ -261,7 +188,7 @@ export interface Task {
   /** A short name for lists. */
   readonly label: string
   readonly source: TaskSource
-  /** The chat agent or channel that the task came from. */
+  /** The chat agent that the task came from. */
   readonly sourceId: string | null
   readonly parentId: string | null
   /** The earlier task that this one tries again. */
@@ -297,28 +224,12 @@ export interface Task {
   /** How far the turn went. Null for a task from before the app kept it (spec 005). */
   readonly progress: TaskProgress | null
   /**
-   * What a finished part must hold: one line, up to 200 characters, written by the lead in the
-   * plan (spec 004, 005). Null for a task that has none.
-   */
-  readonly doneTest: string | null
-  /** The verdict of the lead after the check: "met" or "not_met". Not a state (spec 005). */
-  readonly verdict: Verdict | null
-  /** The reason of a verdict "not_met", up to 160 characters. Null for "met" and for no reason. */
-  readonly verdictReason: string | null
-  /** When the lead gave the verdict. Null until then. */
-  readonly judgedAt: number | null
-  /** When the user decided on the part (accept, request changes). Null when not (spec 004). */
-  readonly decidedAt: number | null
-  /**
    * When the turn of the task ended, and how (spec 005, "Moments"). Null while the turn goes on,
    * for a task that never started, and for a task that the app stopped (the real time is not
-   * known). A part that waits for review ended as `review`, also after the user decided.
+   * known).
    */
   readonly endedAt: number | null
   readonly endedAs: EndedAs | null
-  /** What the user decided on a part, and for "changes" the text of the request. */
-  readonly decision: Decision | null
-  readonly decisionText: string | null
   /**
    * What the turns of this task used, as the provider reports it (spec 005, "Usage of a task"). A
    * number that the provider did not report is null. It holds no text of a message.
@@ -339,23 +250,11 @@ export interface TaskDetail {
   readonly result: string
   /** The messages that the user sent into the turn of the task, oldest first (spec 003). */
   readonly joined: readonly { readonly text: string; readonly at: number }[]
-  /** The name of the agent that gave the task as a part of a plan (its lead). Null for any other. */
-  readonly leadName: string | null
-  /**
-   * True when the task is a finished order of a lead that the lead has not judged yet (spec 030,
-   * "Lead and members as agent and sub-agents").
-   */
-  readonly awaitsAcceptance: boolean
   /**
    * The total of the task and the tasks below it, with one line for each agent. Null for a task
    * with no child task (spec 005, "Usage of a task").
    */
   readonly tree: TreeUsage | null
-  /**
-   * The questions that the part asked, with who answered each one: the user, or the lead with its
-   * reason (spec 005, "Tasks page"; spec 004). Empty for a task that is no part.
-   */
-  readonly questions: readonly TaskQuestion[]
 }
 
 /** One line of a prompt, cut to a label. */

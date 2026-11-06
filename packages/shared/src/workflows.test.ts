@@ -29,7 +29,7 @@ import {
   workflowDiagram,
 } from "./workflows.ts"
 
-const s = (id: string, kind: "agent" | "condition" | "post" = "agent") => ({ id, kind })
+const s = (id: string, kind: "agent" | "condition" | "notify" = "agent") => ({ id, kind })
 
 describe("graphProblem", () => {
   test("accepts a chain and a branch", () => {
@@ -241,13 +241,13 @@ describe("the answer of a model to a condition", () => {
 })
 
 describe("When the editor builds a diagram", () => {
-  describe("with an agent step, a condition and a post step", () => {
+  describe("with an agent step, a condition and a notify step", () => {
     it("should write a flowchart, a diamond, and the English word yes", () => {
       const text = workflowDiagram(
         [
           { id: "a", kind: "agent", name: "Draft" },
           { id: "c", kind: "condition", name: 'Say "hi"' },
-          { id: "p", kind: "post", name: "Post it" },
+          { id: "p", kind: "notify", name: "Post it" },
         ],
         [
           { from: "a", to: "c" },

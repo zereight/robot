@@ -90,11 +90,8 @@ const BehindLine = (props: { task: Task; testid: string; class: string | undefin
 /** The sources of a task whose place the button "Open source place" opens. */
 const OPENS_PLACE: readonly Task["source"][] = ["chat", "handover", "teams"]
 
-/** The states and sources that the filters offer. Review and the channel sources are gone (005). */
-const SHOWN_STATES = TASK_STATES.filter((state) => state !== "review")
-const SHOWN_SOURCES = TASK_SOURCES.filter(
-  (source) => source !== "channel" && source !== "question" && source !== "mention",
-)
+/** The sources that the filter offers (spec 005). */
+const SHOWN_SOURCES = TASK_SOURCES.filter((source) => source !== "mention")
 
 const duration = (task: Task) => {
   const ms = taskDuration(task)
@@ -133,37 +130,27 @@ const TaskTimesList = (props: { task: Task }) => {
  * The moments of a task with their clock times, in plain text (spec 005). A moment that did not
  * happen is not listed. The three times above keep their own meaning.
  */
-const MomentsList = (props: { task: Task; leadName: string | null }) => {
+const MomentsList = (props: { task: Task }) => {
   const { t, locale } = useApp()
   const text = (moment: Moment): string => {
     switch (moment.id) {
       case "given":
-        return moment.by.kind === "lead"
-          ? t("moments.given.lead", { name: moment.by.name })
-          : t(
-              moment.by.kind === "agent"
-                ? "moments.given.agent"
-                : (`moments.given.${moment.by.source}` as MessageKey),
-            )
+        return t(
+          moment.by.kind === "agent"
+            ? "moments.given.agent"
+            : (`moments.given.${moment.by.source}` as MessageKey),
+        )
       case "started":
         return t("moments.started")
       case "ended":
         return t(`moments.ended.${moment.how}` as MessageKey)
-      case "decided":
-        return moment.decision === "accepted"
-          ? t("moments.decided.accepted")
-          : t("moments.decided.changes", { text: moment.text ?? "" })
-      case "judged":
-        return moment.verdict === "met"
-          ? t("moments.judged.met")
-          : t("moments.judged.not_met", { reason: moment.reason || t("tasks.verdict.noReason") })
       case "closed":
         return t("moments.closed", { state: t(`tasks.state.${moment.state}` as MessageKey) })
     }
   }
   return (
     <ol class={styles.moments} data-testid="task-moments">
-      <For each={taskMoments(props.task, props.leadName)}>
+      <For each={taskMoments(props.task)}>
         {(moment) => (
           <li data-testid="task-moment" data-moment={moment.id}>
             <time class={styles.joinedTime} data-at={moment.at}>
@@ -305,40 +292,11 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             <h3>{t("tasks.times")}</h3>
             <TaskTimesList task={d().task} />
             <h3>{t("moments.title")}</h3>
-            <MomentsList task={d().task} leadName={d().leadName} />
+            <MomentsList task={d().task} />
             {/* The tokens and the cost of the task, and the total of its tree (spec 005). */}
             <TaskUsageView usage={d().task.usage} tree={d().tree} />
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
-            {/* The questions of a part, with who answered each one (spec 004, 005). */}
-            <Show when={d().questions.length > 0}>
-              <h3>{t("tasks.questions")}</h3>
-              <ul class={styles.questions} data-testid="task-questions">
-                <For each={d().questions}>
-                  {(item) => (
-                    <li data-testid="task-question" data-by={item.by}>
-                      <span class={styles.text}>{item.question}</span>
-                      <span class={styles.questionBy} data-testid="task-question-by">
-                        {item.by === "user"
-                          ? t("tasks.question.user")
-                          : item.by === "lead"
-                            ? t("tasks.question.lead", { name: item.name ?? "" })
-                            : item.by === "with_lead"
-                              ? t("tasks.question.withLead", { name: item.name ?? "" })
-                              : item.by === "passed"
-                                ? t("tasks.question.passed", { name: item.name ?? "" })
-                                : t("tasks.question.open")}
-                      </span>
-                      <Show when={item.reason}>
-                        <span class={styles.questionReason} data-testid="task-question-reason">
-                          {item.reason}
-                        </span>
-                      </Show>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
             <Show when={d().joined.length > 0}>
               <h3>{t("tasks.joined")}</h3>
               <ul class={styles.joined} data-testid="task-joined">
@@ -577,7 +535,7 @@ export const TasksPage = () => {
               data-testid="tasks-filter-state"
             >
               <option value="">{t("tasks.filter.all")}</option>
-              <For each={SHOWN_STATES}>
+              <For each={TASK_STATES}>
                 {(s) => <option value={s}>{t(`tasks.state.${s}` as MessageKey)}</option>}
               </For>
             </select>

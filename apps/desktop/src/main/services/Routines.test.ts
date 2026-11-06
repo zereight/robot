@@ -5,11 +5,9 @@ import { join } from "node:path"
 import { messageText, ROUTINES_MAX, type Watch } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Events } from "./Events.ts"
 import { Notifier } from "./Notifier.ts"
-import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
 import { Servers } from "./Servers.ts"
@@ -113,8 +111,6 @@ const setup = async () => {
         }),
       ),
     )
-  const org = (name: string, memberIds: string[]) =>
-    run(Organizations.use((o) => o.create({ serverId: local.id, name, memberIds, leadId: null })))
   const tick = (now: number) => run(Routines.use((r) => r.tick(now)))
   const tasks = () => run(Tasks.use((x) => x.list(local.id)))
   const idle = () =>
@@ -164,7 +160,6 @@ const setup = async () => {
     local,
     agent,
     account,
-    org,
     fails,
     create,
     watch,
@@ -251,43 +246,6 @@ describe("routines", () => {
       (e) => e,
     )
     expect(bad).toMatchObject({ code: "invalid_schedule" })
-  })
-
-  test("a routine can post in a channel the agent belongs to", async () => {
-    const s = await setup()
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Ops",
-          topic: "",
-          memberIds: [s.agent.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const routine = await s.create("channel check", 2, {
-      place: { kind: "channel", channelId: channel.id },
-    })
-    await s.tick(routine.createdAt + 2 * MIN + 1000)
-    await s.idle()
-    const task = (await s.tasks()).find((t) => t.source === "routine")
-    expect(task?.state).toBe("done")
-    const history = await s.run(Channels.use((c) => c.history(channel.id)))
-    expect(history.some((m) => m.author === "agent")).toBe(true)
-    // An agent outside the channel is refused.
-    const other = await s.run(
-      Agents.use((a) =>
-        a.create({ serverId: s.local.id, name: "Bo", role: "", instructions: "", model: null }),
-      ),
-    )
-    const refused = await s
-      .create("x", 2, { agentId: other.id, place: { kind: "channel", channelId: channel.id } })
-      .then(
-        () => "ok",
-        (e) => e,
-      )
-    expect(refused).toMatchObject({ code: "agent_not_in_channel" })
   })
 })
 
@@ -920,55 +878,5 @@ describe("the events of a watch (spec 038)", () => {
     await s.tick(t0)
     await s.tick(t0 + 5 * MIN)
     expect(await s.run(Events.use((e) => e.list(s.local.id)))).toHaveLength(0)
-  })
-})
-
-describe("a routine of an organization (spec 030)", () => {
-  test("the agent of the routine must be a member of the organization", async () => {
-    const s = await setup()
-    const docs = await s.org("Docs", [])
-    const code = await s.fails(
-      Routines.use((r) =>
-        r.create({
-          serverId: s.local.id,
-          agentId: s.agent.id,
-          name: "Check",
-          prompt: "Check.",
-          schedule: { kind: "every", minutes: 5, from: Date.now() },
-          place: { kind: "agent" },
-          orgId: docs.id,
-        }),
-      ),
-    )
-    expect(code).toBe("routine_not_member")
-  })
-
-  test("a member may name it, the field comes back, and a delete of the organization clears it", async () => {
-    const s = await setup()
-    const docs = await s.org("Docs", [s.agent.id])
-    const made = await s.create("Check.", 5, { orgId: docs.id })
-    expect(made.orgId).toBe(docs.id)
-    await s.run(Organizations.use((o) => o.remove(docs.id)))
-    const after = await s.routine(made.id)
-    // The routine keeps running for its agent, with no organization.
-    expect(after).toMatchObject({ orgId: null, agentId: s.agent.id })
-  })
-
-  test("an organization that is gone is refused", async () => {
-    const s = await setup()
-    const code = await s.fails(
-      Routines.use((r) =>
-        r.create({
-          serverId: s.local.id,
-          agentId: s.agent.id,
-          name: "Check",
-          prompt: "Check.",
-          schedule: { kind: "every", minutes: 5, from: Date.now() },
-          place: { kind: "agent" },
-          orgId: "gone",
-        }),
-      ),
-    )
-    expect(code).toBe("org_not_found")
   })
 })

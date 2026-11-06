@@ -9,7 +9,6 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Database } from "./Database.ts"
 import { Sections } from "./Sections.ts"
 
@@ -73,14 +72,13 @@ const withPinRanks = (sections: PlaceSection[], layouts: Layouts): PlaceSection[
   }))
 }
 
-/** Builds the place list of a server: channels, then direct chats with agents. */
+/** Builds the place list of a server: the direct chats with agents. */
 export class Places extends Context.Service<Places, PlacesService>()("robot/main/Places") {
   static readonly layer = Layer.effect(
     Places,
     Effect.gen(function* () {
       const agents = yield* Agents
       const db = yield* Database
-      const channels = yield* Channels
       const sections = yield* Sections
 
       const lastMessage = (agentId: string) => {
@@ -120,37 +118,16 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
               layoutKey(kind, r.id),
               { position: r.place_position, pinned: r.pinned === 1 },
             ])
-        return new Map([...read("agent", " AND archived_at IS NULL"), ...read("channel", "")])
+        return new Map(read("agent", " AND archived_at IS NULL"))
       }
 
       return Places.of({
         list: (serverId) =>
-          Effect.all([
-            agents.list(serverId, false),
-            channels.list(serverId),
-            sections.list(serverId),
-          ]).pipe(
-            Effect.map(([list, channelList, userSections]): PlaceSection[] => {
+          Effect.all([agents.list(serverId, false), sections.list(serverId)]).pipe(
+            Effect.map(([list, userSections]): PlaceSection[] => {
               const layouts = layoutsOf(serverId)
               return withPinRanks(
                 [
-                  group(
-                    "channels",
-                    "channel",
-                    channelList.map(
-                      (c): Place => ({
-                        kind: "channel",
-                        id: c.id,
-                        name: c.name,
-                        unread: c.unread,
-                        working: c.working,
-                        lastMessage: channels.lastMessage(c.id),
-                        sectionId: c.sectionId,
-                      }),
-                    ),
-                    userSections,
-                    layouts,
-                  ),
                   group(
                     "agents",
                     "agent",

@@ -34,7 +34,6 @@ import {
   watchRunText,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -112,8 +111,8 @@ const testRun = Boolean(process.env.ROBOT_USER_DATA)
 const MINUTE_MS = (testRun && Number(process.env.ROBOT_TEST_WATCH_MINUTE_MS)) || 60_000
 const LOOP_MS = (testRun && Number(process.env.ROBOT_TEST_ROUTINE_TICK_MS)) || TICK_MS
 
-const placeOf = (row: Row): RoutinePlace =>
-  row.channel_id ? { kind: "channel", channelId: row.channel_id } : { kind: "agent" }
+/** A routine posts its results in the chat of its agent (spec 009). */
+const placeOf = (_row: Row): RoutinePlace => ({ kind: "agent" })
 
 const watchOf = (row: Row): Watch | null =>
   row.watch === null ? null : (JSON.parse(row.watch) as Watch)
@@ -158,7 +157,6 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const bus = yield* EventBus
       const tasks = yield* Tasks
       const chat = yield* Chat
-      const channels = yield* Channels
       const notifier = yield* Notifier
       const settings = yield* SettingsStore
       const platform = yield* Platform
@@ -207,7 +205,6 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           watch,
           model: modelOf(r),
           tokenLimit: r.token_limit,
-          orgId: r.org_id,
           place: placeOf(r),
           enabled: r.enabled === 1,
           createdAt: r.created_at,
@@ -224,31 +221,9 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const row = (id: string) => db.get<Row>(`${SELECT} WHERE r.id = ?`, id)
       const changed = (serverId: string) => bus.emit("routines.changed", { serverId })
 
-      /**
-       * The rule of an organization that a routine names (spec 030, "A routine of an
-       * organization"): the agent of the routine is a member of it. A removal is refused, because
-       * the agent would run a job of a team that it has left.
-       */
-      const checkOrg = (orgId: string | null | undefined, agentId: string) =>
-        Effect.suspend(() => {
-          if (orgId === null || orgId === undefined) return Effect.void
-          if (!db.get("SELECT 1 AS x FROM org_unit WHERE id = ?", orgId))
-            return Effect.fail(new AppError({ code: "org_not_found" }))
-          if (
-            !db.get(
-              "SELECT 1 AS x FROM org_member WHERE org_id = ? AND agent_id = ?",
-              orgId,
-              agentId,
-            )
-          )
-            return Effect.fail(new AppError({ code: "routine_not_member" }))
-          return Effect.void
-        })
-
       const checkInput = (
         agentId: string,
         trigger: { schedule: Schedule | null; watch: Watch | null },
-        place: RoutinePlace,
       ) =>
         Effect.gen(function* () {
           // One trigger: a schedule or a watch, never both (spec 009).
@@ -260,15 +235,6 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             return yield* new AppError({ code: "invalid_watch" })
           if (!db.get("SELECT 1 AS x FROM agent WHERE id = ? AND archived_at IS NULL", agentId))
             return yield* new AppError({ code: "agent_not_found" })
-          if (
-            place.kind === "channel" &&
-            !db.get(
-              "SELECT 1 AS x FROM channel_member WHERE channel_id = ? AND agent_id = ?",
-              place.channelId,
-              agentId,
-            )
-          )
-            return yield* new AppError({ code: "agent_not_in_channel" })
         })
 
       const active = (routineId: string) =>
@@ -315,13 +281,10 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           kind: "routine_failed",
           agentId: r.agent_id,
           serverId: r.server_id,
-          channelId: r.channel_id,
           title: r.agent_name,
           body: translate(localeNow(), "error.routine_paused", { detail: r.name }),
           reason: { code: "routine_paused", detail: r.name },
-          target: r.channel_id
-            ? { kind: "channel", id: r.channel_id }
-            : { kind: "agent", id: r.agent_id },
+          target: { kind: "agent", id: r.agent_id },
           page: listPage("routine"),
         })
         changed(r.server_id)
@@ -393,23 +356,18 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       /** `retryOf`: the task that this run tries again, so that its agent reads the retry note (spec 005). */
       const start = (r: Row, text: string, outside?: OutsideSource, retryOf?: string) => {
         const model = modelOf(r)
-        return r.channel_id
-          ? channels.runRoutine(r.channel_id, r.agent_id, text, r.id, {
+        return chat
+          .send(
+            { agentId: r.agent_id, text, replyTo: null },
+            {
+              source: "routine",
+              sourceId: r.id,
               ...(model ? { model } : {}),
               ...(outside ? { outside } : {}),
-            })
-          : chat
-              .send(
-                { agentId: r.agent_id, text, replyTo: null },
-                {
-                  source: "routine",
-                  sourceId: r.id,
-                  ...(model ? { model } : {}),
-                  ...(outside ? { outside } : {}),
-                  ...(retryOf ? { retryOf } : {}),
-                },
-              )
-              .pipe(Effect.asVoid)
+              ...(retryOf ? { retryOf } : {}),
+            },
+          )
+          .pipe(Effect.asVoid)
       }
 
       /**
@@ -561,8 +519,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           // No change: no task. One muted line when the switch is on.
           if (watch.postUnchanged) {
             const part = { kind: "note", note: "watch_unchanged", routine: r.name } as const
-            if (r.channel_id) channels.note(r.channel_id, r.agent_id, part)
-            else chat.note(r.agent_id, part)
+            chat.note(r.agent_id, part)
           }
           changed(r.server_id)
         })
@@ -661,8 +618,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             if (routineCount(input.serverId) >= ROUTINES_MAX)
               return yield* new AppError({ code: "routines_full", detail: String(ROUTINES_MAX) })
             const trigger = triggerOf(input as { schedule?: Schedule; watch?: Watch })
-            yield* checkInput(input.agentId, trigger, input.place)
-            yield* checkOrg(input.orgId ?? null, input.agentId)
+            yield* checkInput(input.agentId, trigger)
             const id = randomUUID()
             const now = Date.now()
             const model = input.model ?? null
@@ -681,13 +637,13 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               model?.accountId ?? null,
               model?.model ?? null,
               model?.effort ?? null,
-              input.place.kind === "channel" ? input.place.channelId : null,
+              null,
               options?.paused ? 0 : 1,
               now,
               now,
               now,
               input.tokenLimit ?? null,
-              input.orgId ?? null,
+              null,
               // A routine that an agent file made counts its prompt as words of the user after the
               // user saves its form once (spec 007, 009).
               options?.fromFile ? 1 : 0,
@@ -704,13 +660,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               patch.schedule !== undefined || patch.watch !== undefined
                 ? triggerOf(patch as { schedule?: Schedule; watch?: Watch })
                 : { schedule: scheduleOf(current), watch: watchOf(current) }
-            const place = patch.place ?? placeOf(current)
             const agentId = patch.agentId ?? current.agent_id
-            yield* checkInput(agentId, trigger, place)
-            // A new organization, or a new agent, must hold the rule of the spec.
-            const orgId = patch.orgId === undefined ? current.org_id : patch.orgId
-            if (patch.orgId !== undefined || patch.agentId !== undefined)
-              yield* checkOrg(orgId, agentId)
+            yield* checkInput(agentId, trigger)
             const model = patch.model === undefined ? modelOf(current) : patch.model
             const tokenLimit =
               patch.tokenLimit === undefined ? current.token_limit : patch.tokenLimit
@@ -727,7 +678,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               patch.prompt ?? current.prompt,
               JSON.stringify(trigger.schedule),
               watchText,
-              place.kind === "channel" ? place.channelId : null,
+              null,
               patch.enabled === undefined ? current.enabled : patch.enabled ? 1 : 0,
               model?.accountId ?? null,
               model?.model ?? null,
@@ -736,7 +687,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               now,
               now,
               tokenLimit,
-              patch.orgId === undefined ? current.org_id : patch.orgId,
+              null,
               // The form of the routine was saved once: the prompt counts as words of the user.
               patch.prompt !== undefined ? 0 : current.unsaved_import,
               id,

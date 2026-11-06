@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import {
   AGENT_FILE_FORMAT,
   AGENT_FILE_MAX_AGENTS,
-  AGENT_FILE_MAX_CHANNELS,
   AGENT_FILE_MAX_SKILLS,
   AGENT_FILE_VERSION,
   type AgentFileAgent,
@@ -53,7 +52,6 @@ describe("parseAgentFile", () => {
             routines: [routine],
           },
         ],
-        channels: [],
         skills: [],
         handbook: "",
       },
@@ -83,7 +81,7 @@ describe("parseAgentFile", () => {
     expect(JSON.parse(text)).toMatchObject({ format: "robot-agents", version: 2 })
     expect(parseAgentFile(text)).toEqual({
       ok: true,
-      file: { version: 2, agents, channels: [], skills: [], handbook: "" },
+      file: { version: 2, agents, skills: [], handbook: "" },
     })
   })
 
@@ -94,7 +92,6 @@ describe("parseAgentFile", () => {
       file: {
         version: 2,
         agents: [{ name: "Ada", role: "", instructions: "", face: null, routines: [] }],
-        channels: [],
         skills: [],
         handbook: "",
       },
@@ -223,16 +220,6 @@ describe("parseAgentFile", () => {
   })
 })
 
-const channel = (over: Record<string, unknown> = {}) => ({
-  name: "Launch",
-  topic: "Ship it",
-  instructions: "Be brief.",
-  reviewParts: true,
-  members: ["Ada", "bob"],
-  lead: "Ada",
-  ...over,
-})
-
 const skill = (over: Record<string, unknown> = {}) => ({
   name: "Summarise",
   description: "Short summary",
@@ -243,44 +230,7 @@ const skill = (over: Record<string, unknown> = {}) => ({
 
 const two = [agent({ name: "Ada" }), agent({ name: "Bob" })]
 
-describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
-  test("reads a channel by the names of its agents, ignoring case", () => {
-    const result = parseAgentFile(file(two, { channels: [channel()] }))
-    if (!result.ok) throw new Error(`refused: ${result.code} ${result.detail}`)
-    expect(result.file.channels).toEqual([
-      {
-        name: "Launch",
-        topic: "Ship it",
-        instructions: "Be brief.",
-        reviewParts: true,
-        members: [0, 1],
-        lead: 0,
-      },
-    ])
-  })
-
-  test("an older file may hold a parent channel, a daily token limit or tools for a channel: the reading ignores them (spec 030, 'Migration')", () => {
-    const plain = parseAgentFile(file(two, { channels: [channel()] }))
-    const older = parseAgentFile(
-      file(two, {
-        channels: [
-          channel({
-            parent: "Product",
-            parentChannel: "Product",
-            dailyTokenLimit: 50_000,
-            tools: ["Summarise"],
-            organizations: ["Docs"],
-          }),
-        ],
-      }),
-    )
-    if (!plain.ok || !older.ok) throw new Error("refused")
-    expect(older.file.channels).toEqual(plain.file.channels)
-    expect(Object.keys(older.file.channels[0] ?? {}).sort()).toEqual(
-      ["instructions", "lead", "members", "name", "reviewParts", "topic"].sort(),
-    )
-  })
-
+describe("parseAgentFile, version 2: skills and the handbook", () => {
   test("an older file may list the channels of a skill: the reading ignores them (spec 030, 'Migration')", () => {
     const plain = parseAgentFile(file(two, { skills: [skill()] }))
     const older = parseAgentFile(file(two, { skills: [skill({ channels: ["Docs"] })] }))
@@ -288,67 +238,7 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     expect(older.file.skills).toEqual(plain.file.skills)
   })
 
-  test("a channel needs a name; the other fields get defaults", () => {
-    const result = parseAgentFile(file(two, { channels: [{ name: "  Plain ", members: ["Bob"] }] }))
-    if (!result.ok) throw new Error("refused")
-    expect(result.file.channels).toEqual([
-      {
-        name: "Plain",
-        topic: "",
-        instructions: "",
-        reviewParts: false,
-        members: [1],
-        lead: null,
-      },
-    ])
-  })
-
-  test("the limits of a channel are the limits of the app", () => {
-    const channels = (over: Record<string, unknown>) => file(two, { channels: [channel(over)] })
-    expect(parseAgentFile(channels({ name: "x".repeat(60) })).ok).toBe(true)
-    expect(refused(channels({ name: "x".repeat(61) })).detail).toBe("channels[0].name")
-    expect(refused(channels({ name: " " })).detail).toBe("channels[0].name")
-    expect(parseAgentFile(channels({ topic: "x".repeat(200) })).ok).toBe(true)
-    expect(refused(channels({ topic: "x".repeat(201) })).detail).toBe("channels[0].topic")
-    expect(parseAgentFile(channels({ instructions: "x".repeat(4000) })).ok).toBe(true)
-    expect(refused(channels({ instructions: "x".repeat(4001) })).detail).toBe(
-      "channels[0].instructions",
-    )
-    expect(refused(channels({ reviewParts: "yes" })).detail).toBe("channels[0].reviewParts")
-  })
-
-  test("a member or a lead must be an agent of the file; the lead must be a member", () => {
-    const channels = (over: Record<string, unknown>) => file(two, { channels: [channel(over)] })
-    expect(refused(channels({ members: ["Ada", "Zed"] }))).toEqual({
-      ok: false,
-      code: "agent_file_member",
-      detail: "channels[0].members[1]",
-    })
-    expect(refused(channels({ members: [] })).detail).toBe("channels[0].members")
-    expect(refused(channels({ members: ["Ada", 7] })).detail).toBe("channels[0].members[1]")
-    expect(refused(channels({ lead: "Zed" })).code).toBe("agent_file_member")
-    expect(refused(channels({ members: ["Ada"], lead: "Bob" }))).toEqual({
-      ok: false,
-      code: "agent_file_field",
-      detail: "channels[0].lead",
-    })
-    expect(parseAgentFile(channels({ lead: null })).ok).toBe(true)
-  })
-
-  test("a member that is listed twice counts once", () => {
-    const result = parseAgentFile(
-      file(two, { channels: [channel({ members: ["Ada", "ada", "Bob"], lead: null })] }),
-    )
-    if (!result.ok) throw new Error("refused")
-    expect(result.file.channels[0]?.members).toEqual([0, 1])
-  })
-
-  test("two channels, or two skills, with one name are refused", () => {
-    expect(refused(file(two, { channels: [channel(), channel({ name: " LAUNCH " })] }))).toEqual({
-      ok: false,
-      code: "agent_file_duplicate_channel",
-      detail: "LAUNCH",
-    })
+  test("two skills with one name are refused", () => {
     expect(refused(file(two, { skills: [skill(), skill({ name: "/summarise" })] }))).toEqual({
       ok: false,
       code: "agent_file_duplicate_skill",
@@ -391,23 +281,14 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     )
   })
 
-  test("a file holds at most 40 channels and 100 skills", () => {
-    const channels = (n: number) =>
-      Array.from({ length: n }, (_, i) => channel({ name: `Channel ${i}`, lead: null }))
+  test("a file holds at most 100 skills", () => {
     const skills = (n: number) => Array.from({ length: n }, (_, i) => skill({ name: `Skill ${i}` }))
-    expect(parseAgentFile(file(two, { channels: channels(AGENT_FILE_MAX_CHANNELS) })).ok).toBe(true)
-    expect(refused(file(two, { channels: channels(AGENT_FILE_MAX_CHANNELS + 1) }))).toEqual({
-      ok: false,
-      code: "agent_file_too_many_channels",
-      detail: "41",
-    })
     expect(parseAgentFile(file(two, { skills: skills(AGENT_FILE_MAX_SKILLS) })).ok).toBe(true)
     expect(refused(file(two, { skills: skills(AGENT_FILE_MAX_SKILLS + 1) }))).toEqual({
       ok: false,
       code: "agent_file_too_many_skills",
       detail: "101",
     })
-    expect(refused(file(two, { channels: "x" })).detail).toBe("channels")
     expect(refused(file(two, { skills: {} })).detail).toBe("skills")
   })
 
@@ -422,14 +303,11 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     expect(none.ok && none.file.handbook).toBe("")
   })
 
-  test("a file of version 1 is still read; its channels, skills and handbook are not defined", () => {
-    const result = parseAgentFile(
-      file(two, { version: 1, channels: [channel()], skills: [skill()], handbook: "Text" }),
-    )
+  test("a file of version 1 is still read; its skills and handbook are not defined", () => {
+    const result = parseAgentFile(file(two, { version: 1, skills: [skill()], handbook: "Text" }))
     if (!result.ok) throw new Error("refused")
     expect(result.file.version).toBe(1)
     expect(result.file.agents).toHaveLength(2)
-    expect(result.file.channels).toEqual([])
     expect(result.file.skills).toEqual([])
     expect(result.file.handbook).toBe("")
   })
@@ -443,24 +321,23 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
       routines: [],
     }))
     const text = writeAgentFile(agents, {
-      channels: [
-        {
-          name: "Launch",
-          topic: "",
-          instructions: "Be brief.",
-          reviewParts: false,
-          members: ["Ada", "Bob"],
-          lead: "Bob",
-        },
-      ],
       skills: [{ name: "Summarise", description: "", instructions: "Do it.", agents: ["Bob"] }],
       handbook: "Answer in Korean.",
     })
     const result = parseAgentFile(text)
     if (!result.ok) throw new Error("refused")
-    expect(result.file.channels[0]).toMatchObject({ members: [0, 1], lead: 1, reviewParts: false })
     expect(result.file.skills[0]).toMatchObject({ name: "Summarise", agents: [1] })
     expect(result.file.handbook).toBe("Answer in Korean.")
+  })
+
+  test("an older file may hold channels: the reading ignores them and checks nothing in them", () => {
+    const plain = parseAgentFile(file(two, { skills: [skill()] }))
+    const older = parseAgentFile(
+      file(two, { skills: [skill()], channels: [{ name: "", members: 7, lead: false }, "x"] }),
+    )
+    if (!plain.ok || !older.ok) throw new Error("refused")
+    expect(older.file).toEqual(plain.file)
+    expect("channels" in older.file).toBe(false)
   })
 
   test("a part that is not asked for is not written", () => {

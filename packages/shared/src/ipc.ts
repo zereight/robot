@@ -3,13 +3,6 @@ import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
 import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
 import type { CcNotExported } from "./ccWorkflowExport.ts"
-import type {
-  Channel,
-  ChannelActivity,
-  ChannelCreate,
-  ChannelMessage,
-  ChannelPatch,
-} from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type { EventResult, EventText, EventWhy, RobotEvent } from "./events.ts"
@@ -44,11 +37,6 @@ import type {
 } from "./memory.ts"
 import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
-import type { HandOffRule, Organization } from "./organization.ts"
-import type { Org, OrgCreate, OrgPatch, OrgRepairLine } from "./organizations.ts"
-import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
-import type { OrgLimitView, OrgUsageRow } from "./orgLimit.ts"
-import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolRow } from "./orgTools.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
@@ -61,7 +49,6 @@ import type {
   RuntimeTarget,
 } from "./providers.ts"
 import type { QuietState } from "./quiet.ts"
-import type { RetroProposal } from "./retro.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
 import type { SearchPage } from "./search.ts"
@@ -91,7 +78,6 @@ import type { Task, TaskDetail } from "./task.ts"
 import type { TeachState } from "./teach.ts"
 import type { TeamsLinkView, TeamsPatch } from "./teamsLink.ts"
 import type { ChatMeter, ChatThread, ChatThreads } from "./threads.ts"
-import type { TodaySnapshot } from "./today.ts"
 import type {
   ConnectionSaveInput,
   ConnectionTestResult,
@@ -343,15 +329,14 @@ export interface RpcMethods {
   }
   "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
   /**
-   * Asks where to save, then writes one agent file. `path` is null when cancelled. The three flags
-   * are the tick boxes "Channels of these agents", "Skills of these agents" and "Handbook" (spec
-   * 002); an absent flag is off. The output counts what the file holds.
+   * Asks where to save, then writes one agent file. `path` is null when cancelled. The two flags
+   * are the tick boxes "Skills of these agents" and "Handbook" (spec 002); an absent flag is off.
+   * The output counts what the file holds.
    */
   "agentFile.export": {
     input: {
       serverId: string
       agentIds: readonly string[]
-      channels?: boolean
       skills?: boolean
       handbook?: boolean
     }
@@ -361,8 +346,8 @@ export interface RpcMethods {
   "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
   /**
    * Makes the agents of the file that `agentFile.open` read that the user ticked, all with this
-   * model, then the ticked channels and skills (off), and replaces the handbook when it is ticked
-   * (`channels` and `skills` are places in the file). Each new agent with something left to do
+   * model, then the ticked skills (off), and replaces the handbook when it is ticked (`skills` are
+   * places in the file). Each new agent with something left to do
    * gets a checklist.
    */
   "agentFile.apply": {
@@ -370,7 +355,6 @@ export interface RpcMethods {
       serverId: string
       model: AgentModel | null
       pick: readonly AgentPick[]
-      channels?: readonly number[]
       skills?: readonly number[]
       handbook?: boolean
     }
@@ -473,18 +457,6 @@ export interface RpcMethods {
    */
   "tasks.retry": { input: { id: string; confirmed?: boolean }; output: RetryResult }
   /**
-   * Ends the review of a part: it is done (spec 005). Only on the computer that owns the task, and
-   * not a request that a linked device may call (spec 012).
-   */
-  "tasks.accept": { input: { id: string }; output: undefined }
-  /**
-   * Ends the review of a part as done and starts a new part for the same member with `text` as
-   * its prompt (spec 005). The text has 1 to 2000 characters.
-   */
-  "tasks.requestChanges": { input: { id: string; text: string }; output: undefined }
-  /** Cancels every task of the request of this task that is not final (spec 004, 005). */
-  "tasks.endRequest": { input: { id: string }; output: undefined }
-  /**
    * The follow-ups that wait in the details of one task (spec 005, "Follow-up"). A linked device
    * may call it: the rows stay on the computer that runs them.
    */
@@ -520,26 +492,6 @@ export interface RpcMethods {
     }
     output: RobotEvent
   }
-  "channels.list": { input: { serverId: string }; output: readonly Channel[] }
-  "channels.create": { input: ChannelCreate; output: Channel }
-  "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }
-  /** Sets the picture of a channel, or removes it with null (spec 004, "Picture"). */
-  "channels.setPicture": { input: { id: string; dataUrl: string | null }; output: Channel }
-  "channels.delete": { input: { id: string }; output: undefined }
-  "channels.history": { input: { channelId: string }; output: readonly ChannelMessage[] }
-  /** Posts a job. `awaiting` is true when the user has to pick the member who takes it. */
-  "channels.send": {
-    input: { channelId: string; text: string; replyTo?: string | null }
-    output: { awaiting: boolean }
-  }
-  "channels.assign": {
-    input: { channelId: string; messageId: string; agentId: string }
-    output: undefined
-  }
-  /** Stops every running part and job of the channel. */
-  "channels.stop": { input: { channelId: string }; output: undefined }
-  "channels.activity": { input: { channelId: string }; output: ChannelActivity }
-  "channels.markRead": { input: { channelId: string }; output: undefined }
   /**
    * The handbook of a server (spec 002, "Handbook"). A linked device reads it with no switch; it
    * changes it only with "Can create and change agents" (spec 012).
@@ -754,14 +706,11 @@ export interface RpcMethods {
   "skills.onlyFor": { input: { agentId: string }; output: { count: number } }
   /**
    * `agentIds` is the list of agents that may use the skill, or `null` for all agents.
-   * `organizations` are the organizations in the list (spec 017, 030); they count only when
-   * `agentIds` is a list.
    */
   "skills.create": {
     input: SkillInput & {
       serverId: string
       agentIds: readonly string[] | null
-      organizations?: readonly OrgToolEntry[]
     }
     output: Skill
   }
@@ -770,7 +719,6 @@ export interface RpcMethods {
     input: SkillInput & {
       id: string
       agentIds: readonly string[] | null
-      organizations?: readonly OrgToolEntry[]
     }
     output: Skill
   }
@@ -839,7 +787,7 @@ export interface RpcMethods {
   }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }
   "notifications.setMute": {
-    input: { kind: "server" | "channel"; id: string; choice: MuteChoice }
+    input: { kind: "server"; id: string; choice: MuteChoice }
     output: undefined
   }
   "island.get": { input: undefined; output: IslandState }
@@ -861,72 +809,6 @@ export interface RpcMethods {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
   }
-  /**
-   * Organizations (spec 030). A linked device reads the list and the tools with the link only, and
-   * makes, changes and deletes organizations only with the switch "Can create and change agents"
-   * (spec 012). The tools of an organization change on this computer only.
-   */
-  "organizations.list": { input: { serverId: string }; output: readonly Org[] }
-  /** The daily token limit of an organization with the tokens used today (spec 030). */
-  "organizations.limit": { input: { id: string }; output: OrgLimitView }
-  /** One row for each organization with a daily token limit (spec 006, 030). */
-  "usage.organizations": { input: { serverId: string }; output: readonly OrgUsageRow[] }
-  "organizations.create": { input: OrgCreate; output: Org }
-  "organizations.update": { input: { id: string; patch: OrgPatch }; output: Org }
-  "organizations.delete": { input: { id: string }; output: undefined }
-  /** The part "Tools" of the form of an organization: the skills and connections with its value. */
-  /**
-   * The retrospective of an organization (spec 030, "Retrospective"): one request to the model of
-   * the lead, and one to three proposals. It saves nothing.
-   */
-  "retro.look": {
-    input: { orgId: string; requestId: string }
-    output: readonly RetroProposal[]
-  }
-  /** Drops a look back: the model call stops and its answer is not used. */
-  "retro.cancel": { input: { requestId: string }; output: undefined }
-  /** The newest repair of an organization in the log of the last 30 days (spec 030). */
-  "organizations.lastRepair": { input: { id: string }; output: OrgRepairLine | null }
-  "orgTools.list": { input: { orgId: string }; output: readonly OrgToolRow[] }
-  /** Sets the value of an organization for a skill or a connection: "Inherit", "On" or "Off". */
-  "orgTools.set": {
-    input: {
-      orgId: string
-      kind: "skill" | "connection"
-      id: string
-      choice: OrgToolChoice
-    }
-    output: readonly OrgToolRow[]
-  }
-  /** The skills and connections that an agent has from organizations: the lines "From <organization>". */
-  "orgTools.forAgent": { input: { agentId: string }; output: readonly AgentOrgTool[] }
-  /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
-  "today.get": { input: undefined; output: TodaySnapshot }
-  /** The org chart of this computer (spec 029). It reads local data only and sends nothing out. */
-  "orgChart.get": { input: undefined; output: OrgSnapshot }
-  /**
-   * The org chart of a server as a ready model (spec 029, 012): the nodes, the order, the counts,
-   * the states and the cut labels of the running tasks, and nothing else about tasks. A linked
-   * computer and the phone ask this; it needs only the link. `serverId` is the server, as in
-   * `workflows.list`.
-   */
-  "orgChart.model": { input: { serverId: string }; output: ChartModel }
-  /**
-   * The part "Organization" of the settings (spec 030, 013): the hand-off rule and the switch "Ask
-   * up the line" of a server. A
-   * linked computer reads it with no switch (spec 012).
-   */
-  "organization.get": { input: { serverId: string }; output: Organization }
-  /**
-   * Sets the hand-off rule of this computer (spec 030). There is no request for a linked server:
-   * a client reads the part and never changes it (spec 012).
-   */
-  "organization.setHandOff": { input: { rule: HandOffRule }; output: Organization }
-  /**
-   * Turns the switch "Ask up the line" on or off for this computer (spec 030). Like the hand-off
-   * rule, there is no request for a linked server: a client reads the part and never changes it.
-   */
-  "organization.setAskUpTheLine": { input: { on: boolean }; output: Organization }
   /**
    * Message search (spec 001): one page of the messages of a server that hold every word of the
    * text, newest first. A linked server answers it; while the link is offline the answer comes
@@ -1082,45 +964,10 @@ export interface RpcEvents {
    * second.
    */
   "quiet.changed": QuietState
-  /** The Today page changed: the whole page, so the window needs no second request. */
-  "today.changed": TodaySnapshot
-  /** The org chart changed: the whole snapshot, so the window needs no second request (spec 029). */
-  "orgChart.changed": OrgSnapshot
-  /** The part "Organization" changed here, by sync, or on a linked server (spec 030). */
-  "organization.changed": { serverId: string }
-  /** An organization was made, changed or deleted, here, by sync, or on a linked server (spec 030). */
-  "organizations.changed": { serverId: string }
-  /**
-   * The app cleared the parent field of an organization to repair the tree, or removed an agent from
-   * an organization to repair a line (spec 030, "Repair", "One line"). This computer only; the open
-   * org chart shows the line for a short time.
-   */
-  "organizations.repaired":
-    | { serverId: string; organizationId: string; name: string; reason: "loop" | "levels" }
-    | {
-        serverId: string
-        organizationId: string
-        /** The organization that the agent left. */
-        name: string
-        reason: "line"
-        agentName: string
-        /** The organization of the agent that is not on one line with the one that it left. */
-        otherName: string
-      }
-  /**
-   * The org chart of a linked server changed: its whole ready model (spec 029, 012). A server
-   * pushes it to its linked devices. This computer sends it to no window of its own, so a window
-   * gets it only with the id of the linked server that sent it.
-   */
-  "orgChart.model": ChartModel
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
   "app.openPage": { page: "workflows" | "routines" | "teams"; serverId?: string }
   "notifications.changed": Record<string, never>
-  /** The members, the plan steps or the state of a channel changed. */
-  "channels.changed": { channelId: string }
-  "channel.message": ChannelMessage
-  "channel.removed": { channelId: string; messageId: string }
   /**
    * A file of a message is going to a linked server (spec 003, flow 4). The window that sends it
    * shows the progress on the chip. It does not go to other devices.

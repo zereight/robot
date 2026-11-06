@@ -12,7 +12,6 @@ import { Effect } from "effect"
 import type { AppServices } from "../layers.ts"
 import { pairRuntimes } from "../link/pairing.testing.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
@@ -20,8 +19,8 @@ import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { MemoryCheck } from "./MemoryCheck.ts"
+import { readMainAgent } from "./mainAgent.ts"
 import { Notifier } from "./Notifier.ts"
-import { Organization } from "./Organization.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
@@ -409,7 +408,6 @@ describe("sync between two computers", () => {
       (h) => h.messages.length === 1,
     )
     expect(history.messages).toHaveLength(1)
-    void Channels
   })
 })
 
@@ -501,7 +499,7 @@ describe("two computers that were apart", () => {
       const id = await localId(rt)
       return run(
         rt,
-        Organization.use((o) => Effect.sync(() => o.mainAgent(id))),
+        Database.use((d) => Effect.sync(() => readMainAgent(d, id))),
       )
     }
     await run(
@@ -711,86 +709,7 @@ describe("two computers that were apart", () => {
     expect((await proposals(b)).length).toBe(0)
   })
 
-  test("a channel note crosses with its channel; a move follows; the delete of the channel takes the note on the other computer with no history row (spec 008, 019)", async () => {
-    const { a, b, agents } = await pair()
-    const id = agents[0]?.id ?? ""
-    const serverId = await localId(a)
-    const channel = await run(
-      a,
-      Channels.use((c) =>
-        c.create({ serverId, name: "Launch", topic: "", memberIds: [id], leadId: null }),
-      ),
-    )
-    // The channel crosses first, so the note finds it.
-    await waitFor(
-      () =>
-        run(
-          b,
-          Channels.use((c) => c.list(serverId)),
-        ),
-      (list) => list.length === 1,
-    )
-    await run(
-      a,
-      Memory.use((m) => m.save(id, "Launch is on Friday", undefined, channel.id)),
-    )
-    const channelOf = (rt: Rt) =>
-      run(
-        rt,
-        Memory.use((m) => m.list(id)),
-      ).then((list) => list.map((i) => [i.text, i.channel?.id ?? null]))
-    await waitFor(
-      () => channelOf(b),
-      (list) => list.length === 1,
-    )
-    expect(await channelOf(b)).toEqual([["Launch is on Friday", channel.id]])
-
-    // A move on the second computer crosses as a change of the item.
-    const [item] = await run(
-      b,
-      Memory.use((m) => m.list(id)),
-    )
-    await run(
-      b,
-      Memory.use((m) => m.move(item?.id ?? "", null)),
-    )
-    await waitFor(
-      () => channelOf(a),
-      (list) => list[0]?.[1] === null,
-    )
-    await run(
-      a,
-      Memory.use((m) => m.move(item?.id ?? "", channel.id)),
-    )
-    await waitFor(
-      () => channelOf(b),
-      (list) => list[0]?.[1] === channel.id,
-    )
-
-    // The delete of the channel on the first computer: the note is gone on both, and the second
-    // computer makes no history row for it.
-    await run(
-      a,
-      Channels.use((c) => c.remove(channel.id)),
-    )
-    await waitFor(
-      () => channelOf(b),
-      (list) => list.length === 0,
-    )
-    const rowsB = await run(
-      b,
-      Memory.use((m) => m.history(id)),
-    )
-    // Only the move that the user made there: the removal that sync brought makes no row.
-    expect(rowsB.map((r) => r.kind)).toEqual(["moved"])
-    const rowsA = await run(
-      a,
-      Memory.use((m) => m.history(id)),
-    )
-    expect(rowsA.some((r) => r.actor === "channel_deleted")).toBe(true)
-  })
-
-  test("the handbook, the switch and the instructions of a channel cross; when both change the handbook apart, the later text wins and the other stays in the history (spec 002, 019)", async () => {
+  test("the handbook and the switch of an agent cross; when both change the handbook apart, the later text wins and the other stays in the history (spec 002, 019)", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]
     const handbook = async (rt: Rt) => {
@@ -829,35 +748,11 @@ describe("two computers that were apart", () => {
     ).toBe("From A.")
     expect(await texts(b)).toEqual(["From A."])
 
-    // The switch of an agent and the instructions of a channel cross as fields.
-    const serverA = await localId(a)
+    // The switch of an agent crosses as a field.
     await run(
       a,
       Agents.use((x) => x.update(ada?.id ?? "", { readHandbook: false })),
     )
-    await run(
-      a,
-      Channels.use((c) =>
-        c.create({
-          serverId: serverA,
-          name: "Team",
-          topic: "",
-          instructions: "Use lists.",
-          memberIds: [ada?.id ?? ""],
-          leadId: null,
-        }),
-      ),
-    )
-    const serverB = await localId(b)
-    const channelsB = await waitFor(
-      () =>
-        run(
-          b,
-          Channels.use((c) => c.list(serverB)),
-        ),
-      (list) => list.length === 1,
-    )
-    expect(channelsB[0]?.instructions).toBe("Use lists.")
     const agentB = await waitFor(
       () =>
         run(
@@ -1049,117 +944,6 @@ describe("two computers that were apart", () => {
       ),
     ).toBe(0)
     expect(await unread(a)).toBe(0)
-  })
-
-  test("the hand-off rule crosses as data of the agents; when both change it apart, the later change wins on both (spec 030, 019)", async () => {
-    const { a, b } = await pair()
-    const rule = (rt: Rt) =>
-      run(
-        rt,
-        Organization.use((o) => o.get),
-      ).then((x) => x.handOff)
-    const set = (rt: Rt, value: "any" | "organizations") =>
-      run(
-        rt,
-        Organization.use((o) => o.setHandOff(value)),
-      )
-    expect(await rule(a)).toBe("any")
-    expect(await rule(b)).toBe("any")
-
-    // The rule that is set on one computer counts on the other after it syncs.
-    await set(a, "organizations")
-    expect(
-      await waitFor(
-        () => rule(b),
-        (v) => v === "organizations",
-      ),
-    ).toBe("organizations")
-    // The window of the other computer hears of it.
-    expect(b.events.some((e) => e.event === "organization.changed")).toBe(true)
-
-    // Both change it while apart: the later change wins on both computers.
-    await apart(a, b)
-    await set(b, "any")
-    await settle()
-    await settle()
-    await set(a, "organizations")
-    await set(a, "any")
-    await settle()
-    await set(b, "organizations")
-    await together(a, b)
-    expect(
-      await waitFor(
-        () => rule(a),
-        (v) => v === "organizations",
-      ),
-    ).toBe("organizations")
-    expect(
-      await waitFor(
-        () => rule(b),
-        (v) => v === "organizations",
-      ),
-    ).toBe("organizations")
-  })
-
-  test("the switch 'Ask up the line' crosses like the rule; the later change wins; the rule stays (spec 030, 019)", async () => {
-    const { a, b } = await pair()
-    const state = (rt: Rt) =>
-      run(
-        rt,
-        Organization.use((o) => o.get),
-      )
-    const line = (rt: Rt) => state(rt).then((x) => x.askUpTheLine)
-    const set = (rt: Rt, on: boolean) =>
-      run(
-        rt,
-        Organization.use((o) => o.setAskUpTheLine(on)),
-      )
-    expect(await line(a)).toBe(false)
-    expect(await line(b)).toBe(false)
-
-    // The switch that is turned on at one computer counts on the other after it syncs.
-    await set(a, true)
-    expect(
-      await waitFor(
-        () => line(b),
-        (v) => v === true,
-      ),
-    ).toBe(true)
-    expect(await state(b)).toEqual({ handOff: "any", askUpTheLine: true })
-
-    // A change of the rule on the other computer leaves the switch as it is.
-    await run(
-      b,
-      Organization.use((o) => o.setHandOff("organizations")),
-    )
-    expect(
-      await waitFor(
-        () => state(a),
-        (v) => v.handOff === "organizations",
-      ),
-    ).toEqual({ handOff: "organizations", askUpTheLine: true })
-
-    // Both change it while apart: the later change wins on both computers. Computer 2 turns it
-    // off first; computer 1 turns it off and on again later, so its change is the later one.
-    await apart(a, b)
-    await set(b, false)
-    await settle()
-    await settle()
-    await set(a, false)
-    await set(a, true)
-    await together(a, b)
-    expect(
-      await waitFor(
-        () => line(a),
-        (v) => v === true,
-      ),
-    ).toBe(true)
-    expect(
-      await waitFor(
-        () => line(b),
-        (v) => v === true,
-      ),
-    ).toBe(true)
   })
 })
 
@@ -1528,129 +1312,6 @@ describe("tasks, routines, workflows and files of two computers", () => {
     expect((await routineOnB())?.runsOn).toBeNull()
   })
 
-  /** A workflow on the first computer fires when a message that holds "deploy" is posted in a channel. */
-  const watchedFlow = async () => {
-    const { a, b, ada } = await pair()
-    const idA = await localId(a)
-    const make = (name: string) =>
-      run(
-        a,
-        Channels.use((c) =>
-          c.create({ serverId: idA, name, topic: "", memberIds: [ada.id], leadId: null }),
-        ),
-      )
-    const watched = await make("Watched")
-    const quiet = await make("Quiet")
-    const wf = await run(
-      a,
-      Workflows.use((w) =>
-        w.create({
-          serverId: idA,
-          name: "Flow",
-          trigger: { kind: "channel", channelId: watched.id, contains: "deploy" },
-          steps: [
-            { id: "p", kind: "post", name: "p", x: 0, y: 0, channelId: quiet.id, text: "Ran" },
-          ],
-          edges: [],
-        }),
-      ),
-    )
-    const idB = await localId(b)
-    const onB = await waitFor(
-      async () =>
-        (
-          await run(
-            b,
-            Workflows.use((w) => w.list(idB)),
-          )
-        ).find((x) => x.id === wf.id),
-      (x) => x !== undefined,
-    )
-    expect(onB?.runsOn).toBe("MacBook 1")
-    await waitFor(
-      async () =>
-        (
-          await run(
-            b,
-            Channels.use((c) => c.list(idB)),
-          )
-        ).length,
-      (n) => n === 2,
-    )
-    const runsOnA = async () =>
-      (
-        await run(
-          a,
-          Workflows.use((w) => w.runs(wf.id)),
-        )
-      ).length
-    /** A message that the second computer wrote `ageMs` ago by its own clock, which is `skewMs` off. */
-    const postOld = async (id: string, text: string, ageMs: number, skewMs: number) => {
-      const madeAt = Date.now() + skewMs - ageMs
-      await SQL(
-        b,
-        `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at)
-         VALUES (?, ?, 'user', ?, 'done', 0, ?, ?)`,
-        id,
-        watched.id,
-        JSON.stringify([{ kind: "text", text }]),
-        madeAt,
-        madeAt,
-      )
-      await waitFor(
-        async () =>
-          (
-            await run(
-              a,
-              Channels.use((c) => c.history(watched.id)),
-            )
-          ).some((m) => JSON.stringify(m.parts).includes(text)),
-        Boolean,
-      )
-      await new Promise((r) => setTimeout(r, 300))
-    }
-    return { a, b, watched, runsOnA, postOld }
-  }
-
-  test("a workflow with a channel trigger fires on its computer for a message of the other, unless the message is old", async () => {
-    const { b, watched, runsOnA, postOld } = await watchedFlow()
-
-    // A message that was sent now on the second computer fires it on the first one.
-    await run(
-      b,
-      Channels.use((c) => c.post(watched.id, "please deploy now")),
-    )
-    expect(await waitFor(runsOnA, (n) => n === 1)).toBe(1)
-
-    // A message that is 6 minutes old when it arrives fires nothing.
-    await postOld("old-message", "old deploy", 6 * 60_000, 0)
-    expect(await runsOnA()).toBe(1)
-  })
-
-  test("the age of a message uses the clock difference that the computers measured, so a wrong clock changes nothing", async () => {
-    const { a, runsOnA, postOld } = await watchedFlow()
-    const HOUR = 60 * 60_000
-    const measure = (skew: number) =>
-      SQL(a, "UPDATE sync_pair SET clock_offset = ? WHERE id = 1", skew)
-
-    // The clock of the second computer is 2 hours behind. A message that is 1 minute old shows a
-    // time that looks 2 hours old, but it fires the workflow.
-    await measure(-2 * HOUR)
-    await postOld("behind-new", "deploy behind new", 60_000, -2 * HOUR)
-    expect(await waitFor(runsOnA, (n) => n === 1)).toBe(1)
-
-    // The same clock, and a message that is 10 minutes old: too old, though its time looks new.
-    await postOld("behind-old", "deploy behind old", 10 * 60_000, -2 * HOUR)
-    expect(await runsOnA()).toBe(1)
-
-    // The clock is 2 hours ahead. A young message fires, and an old one does not.
-    await measure(2 * HOUR)
-    await postOld("ahead-new", "deploy ahead new", 30_000, 2 * HOUR)
-    expect(await waitFor(runsOnA, (n) => n === 2)).toBe(2)
-    await postOld("ahead-old", "deploy ahead old", 10 * 60_000, 2 * HOUR)
-    expect(await runsOnA()).toBe(2)
-  })
-
   test("a card that waits on the other computer notices here, and the notice drops when it is answered there", async () => {
     const { a, b, ada } = await pair()
     const parts = (state: "waiting" | "done") =>
@@ -1693,65 +1354,6 @@ describe("tasks, routines, workflows and files of two computers", () => {
         (x) => x === null,
       ),
     ).toBeNull()
-  })
-
-  test("a question that is with the lead on the other computer makes no notice here until the lead passes it (spec 004, 015, 021)", async () => {
-    const { a, b, ada } = await pair()
-    const card = (ask: Record<string, unknown>) =>
-      JSON.stringify([
-        {
-          kind: "tool",
-          id: "call-2",
-          name: "ask_user",
-          label: "Question",
-          state: "waiting",
-          input: "",
-          output: "",
-          ask: {
-            kind: "question",
-            question: "Use the EU sizes only?",
-            choices: ["Yes", "No"],
-            ...ask,
-          },
-        },
-      ])
-    await SQL(
-      b,
-      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('card-2', ?, 'agent', ?, 'streaming', ?)`,
-      ada.id,
-      card({ lead: { agentId: "lead-1", name: "Lia" } }),
-      Date.now(),
-    )
-    const attention = (rt: Rt) =>
-      run(
-        rt,
-        Notifier.use((n) => Effect.sync(() => n.island().waiting[0] ?? null)),
-      )
-    // The card arrives here with its line "Lia looks at it", and makes no notice.
-    await waitFor(
-      () =>
-        run(
-          a,
-          Database.use((db) =>
-            Effect.sync(() => db.get<{ id: string }>("SELECT id FROM message WHERE id = 'card-2'")),
-          ),
-        ),
-      (row) => row !== undefined,
-    )
-    await new Promise((r) => setTimeout(r, 400))
-    expect(await attention(a)).toBeNull()
-    // The lead passes it: the same card is a normal question for the user, and the notice comes.
-    await SQL(
-      b,
-      `UPDATE message SET parts = ? WHERE id = 'card-2'`,
-      card({ passed: { agentId: "lead-1", name: "Lia", kind: "not_sure", reason: "No fact." } }),
-    )
-    const notice = await waitFor(
-      () => attention(a),
-      (x) => x !== null,
-    )
-    expect(notice?.callId).toBe("call-2")
-    expect(notice?.kind).toBe("question")
   })
 
   test("a file of a message is copied from the computer where it was made, and an offline origin gives a plain error", async () => {

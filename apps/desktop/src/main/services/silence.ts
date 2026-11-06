@@ -1,5 +1,4 @@
 import {
-  CHASE_MAX,
   type QuietTurn,
   quietTimeMs,
   silentFailure,
@@ -35,6 +34,16 @@ export const realClock: Clock = {
     return () => clearInterval(timer)
   },
 }
+
+/** The most chases of one turn (spec 007, "Chase"). */
+export const CHASE_MAX = 3
+
+/**
+ * What the giver of a piece of work says to its worker when the work has stayed quiet for the
+ * chase time (spec 007).
+ */
+export const CHASE_WORDS =
+  "Nothing has happened in your work for a while. Reply in one short line: the state of the work and your next step. Then go on with the work."
 
 /** How often the watch looks at the clock. */
 export const TICK_MS = 1000

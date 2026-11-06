@@ -18,7 +18,7 @@ import styles from "./notifications.module.css"
  * The kinds that the user can turn off (spec 015). A mention in a channel and the review of a part
  * belonged to channels, which are gone.
  */
-const SHOWN_KINDS = NOTIFY_KINDS.filter((kind) => kind !== "mention" && kind !== "part_review")
+const SHOWN_KINDS = NOTIFY_KINDS.filter((kind) => kind !== "mention")
 
 /** The state of one mute as a choice for the select. */
 const choiceOf = (mute: Mute | undefined, now: number): MuteChoice => {

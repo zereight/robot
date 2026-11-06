@@ -2,13 +2,11 @@ import { readFileSync, statSync, writeFileSync } from "node:fs"
 import {
   AGENT_FILE_MAX_AGENTS,
   AGENT_FILE_MAX_BYTES,
-  AGENT_FILE_MAX_CHANNELS,
   AGENT_FILE_MAX_SKILLS,
   AGENT_NAME_MAX,
   AGENT_ROLE_MAX,
   type Agent,
   type AgentFileAgent,
-  type AgentFileChannelOut,
   type AgentFileExported,
   type AgentFileFailure,
   type AgentFileImported,
@@ -16,12 +14,7 @@ import {
   type AgentFileSkillOut,
   type AgentModel,
   type AgentPick,
-  CHANNEL_INSTRUCTIONS_MAX,
-  CHANNEL_NAME_MAX,
-  CHANNEL_TOPIC_MAX,
   type ChecklistItem,
-  channelNameKey,
-  channelsForFile,
   faceFromName,
   HANDBOOK_FROM_FILE,
   HANDBOOK_MAX,
@@ -42,7 +35,6 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Checklists } from "./Checklists.ts"
 import { Connections } from "./Connections.ts"
 import { DECISION_KEY } from "./Decision.ts"
@@ -58,14 +50,12 @@ import { Skills } from "./Skills.ts"
 export interface AgentFilesService {
   /**
    * Writes one file with these agents and their routines (spec 002). `path` is null when
-   * cancelled. With `channels`, the file also holds each channel whose members are all among the
-   * agents; with `skills`, each skill that one of them may use; with `handbook`, the handbook (an
-   * empty handbook is not written). A file over a limit is refused.
+   * cancelled. With `skills`, the file also holds each skill that one of them may use; with
+   * `handbook`, the handbook (an empty handbook is not written). A file over a limit is refused.
    */
   export(input: {
     serverId: string
     agentIds: readonly string[]
-    channels?: boolean | undefined
     skills?: boolean | undefined
     handbook?: boolean | undefined
   }): Effect.Effect<AgentFileExported, AppError>
@@ -73,15 +63,13 @@ export interface AgentFilesService {
   open(serverId: string): Effect.Effect<AgentFilePreview | null, AppError>
   /**
    * Makes the agents of the file that `open` read that the user ticked, all with the one model.
-   * A new agent with a routine gets a checklist in its chat. Then it makes the ticked channels
-   * (`channels`, places in the file) and skills (`skills`), and with `handbook` it replaces the
-   * handbook of the server (spec 002, "Agent file"; spec 014, the review before it).
+   * A new agent with a routine gets a checklist in its chat. Then it makes the ticked skills
+   * (`skills`, places in the file), and with `handbook` it replaces the handbook of the server (spec 002, "Agent file"; spec 014, the review before it).
    */
   import(input: {
     serverId: string
     model: AgentModel | null
     pick: readonly AgentPick[]
-    channels?: readonly number[] | undefined
     skills?: readonly number[] | undefined
     handbook?: boolean | undefined
   }): Effect.Effect<AgentFileImported, AppError>
@@ -101,7 +89,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
       const secrets = yield* Secrets
       const platform = yield* Platform
       const checklists = yield* Checklists
-      const channels = yield* Channels
       const skills = yield* Skills
       const handbook = yield* Handbook
       const savedSecrets = yield* SavedSecrets
@@ -116,7 +103,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             .map((a) => secrets.get(secretKey(a.id)))
             .filter((k): k is string => k !== null),
           // The same stored values that an export of all data hides (spec 014), so that no text
-          // of the file holds one, and the handbook and the channels accept what the file brings.
+          // of the file holds one, and the handbook accepts what the file brings.
           ...[secrets.get(DECISION_KEY)].filter((k): k is string => k !== null),
           ...savedSecrets.knownValues(),
           ...connections.knownValues(),
@@ -163,15 +150,8 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           ...(yield* agents.list(serverId, true)),
         ].map((a) => a.name)
         const file = parsed.file
-        // The channels and skills of a version 2 file, cleaned like the agents. A channel or a
-        // skill where the app hid a secret is marked, and starts not ticked on the review.
-        const cleanedChannels = file.channels.map((c) => ({
-          ...c,
-          name: clip(hide(c.name).trim(), CHANNEL_NAME_MAX),
-          topic: clip(hide(c.topic).trim(), CHANNEL_TOPIC_MAX),
-          instructions: clip(hide(c.instructions), CHANNEL_INSTRUCTIONS_MAX),
-          secret: hidden(c.name, c.topic, c.instructions),
-        }))
+        // The skills of a version 2 file, cleaned like the agents. A skill where the app hid a
+        // secret is marked, and starts not ticked on the review.
         const cleanedSkills = file.skills.map((k) => ({
           ...k,
           name: clip(skillName(hide(k.name)), SKILL_NAME_MAX),
@@ -184,7 +164,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           version: file.version,
           agents: cleaned,
           secrets,
-          channels: cleanedChannels,
           skills: cleanedSkills,
           handbook: cleanedHandbook,
           handbookSecret: hidden(file.handbook),
@@ -200,7 +179,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
       const exportAgents = Effect.fn("AgentFiles.export")(function* (input: {
         serverId: string
         agentIds: readonly string[]
-        channels?: boolean | undefined
         skills?: boolean | undefined
         handbook?: boolean | undefined
       }) {
@@ -223,37 +201,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           chosen.map((a) => clip(hide(a.name), AGENT_NAME_MAX)),
           [],
         )
-        // The name that the file gives to each agent: channels and skills tell agents by it.
+        // The name that the file gives to each agent: skills tell agents by it.
         const fileName = new Map(chosen.map((a, i) => [a.id, names[i] ?? a.name]))
         const picked = new Set(chosen.map((a) => a.id))
-
-        // "Channels of these agents": each channel whose members are all among the picked agents.
-        let channelParts: AgentFileChannelOut[] | undefined
-        if (input.channels) {
-          const found = channelsForFile(yield* channels.list(input.serverId), picked)
-          if (found.length > AGENT_FILE_MAX_CHANNELS)
-            return yield* new AppError({
-              code: "agent_file_too_many_channels",
-              detail: String(found.length),
-            })
-          const sorted = [...found].sort((a, b) =>
-            channelNameKey(a.name) < channelNameKey(b.name) ? -1 : 1,
-          )
-          const channelNames = planNames(
-            sorted.map((c) => clip(hide(c.name).trim(), CHANNEL_NAME_MAX)),
-            [],
-            CHANNEL_NAME_MAX,
-            channelNameKey,
-          )
-          channelParts = sorted.map((c, i) => ({
-            name: channelNames[i] ?? c.name,
-            topic: clip(hide(c.topic), CHANNEL_TOPIC_MAX),
-            instructions: hide(c.instructions),
-            reviewParts: c.reviewParts,
-            members: c.memberIds.map((id) => fileName.get(id) ?? ""),
-            lead: c.leadId === null ? null : (fileName.get(c.leadId) ?? null),
-          }))
-        }
 
         // "Skills of these agents": each skill that a picked agent may use. A skill for all
         // agents is written for the picked agents only.
@@ -301,7 +251,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             ),
           })),
           {
-            ...(channelParts ? { channels: channelParts } : {}),
             ...(skillParts ? { skills: skillParts } : {}),
             ...(handbookText.trim() !== "" ? { handbook: handbookText } : {}),
           },
@@ -312,7 +261,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         const target = yield* Effect.promise(() =>
           platform.pickAgentFileSave(`ROBot-agents-${stamp}.json`),
         )
-        if (!target) return { path: null, count: 0, channels: 0, skills: 0, handbook: false }
+        if (!target) return { path: null, count: 0, skills: 0, handbook: false }
         yield* Effect.try({
           try: () => writeFileSync(target, text),
           catch: (e) => new AppError({ code: "agent_file_write", detail: String(e) }),
@@ -320,7 +269,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         return {
           path: target,
           count: chosen.length,
-          channels: channelParts?.length ?? 0,
           skills: skillParts?.length ?? 0,
           handbook: handbookText.trim() !== "",
         } satisfies AgentFileExported
@@ -331,13 +279,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         if (!path) return null
         const loaded = yield* load(path, serverId)
         pending = path
-        // Channels and skills get the names they would get if every part were ticked.
-        const channelNames = planNames(
-          loaded.channels.map((c) => c.name),
-          (yield* channels.list(serverId)).map((c) => c.name),
-          CHANNEL_NAME_MAX,
-          channelNameKey,
-        )
+        // Skills get the names they would get if every part were ticked.
         const skillNames = planNames(
           loaded.skills.map((k) => k.name),
           (yield* skills.list(serverId)).map((k) => k.name),
@@ -364,19 +306,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
                 schedule: r.schedule,
                 secretRemoved: secret?.routines[j] ?? false,
               })),
-            }
-          }),
-          channels: loaded.channels.map((c, i) => {
-            const name = channelNames[i] ?? c.name
-            return {
-              name,
-              fileName: name === c.name ? null : c.name,
-              topic: c.topic,
-              reviewParts: c.reviewParts,
-              members: c.members,
-              lead: c.lead,
-              instructionsLength: [...c.instructions].length,
-              secretRemoved: c.secret,
             }
           }),
           skills: loaded.skills.map((k, i) => {
@@ -407,7 +336,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         serverId: string
         model: AgentModel | null
         pick: readonly AgentPick[]
-        channels?: readonly number[] | undefined
         skills?: readonly number[] | undefined
         handbook?: boolean | undefined
       }) {
@@ -430,10 +358,8 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             return yield* new AppError({ code: "invalid_input" })
           picks.set(p.index, p)
         }
-        const channelPicks = [...new Set(input.channels ?? [])]
         const skillPicks = [...new Set(input.skills ?? [])]
         if (
-          channelPicks.some((i) => loaded.channels[i] === undefined) ||
           skillPicks.some((i) => loaded.skills[i] === undefined) ||
           // The handbook can be ticked only when the file holds one.
           (input.handbook === true && loaded.handbook.trim() === "")
@@ -464,7 +390,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
 
         let made = 0
         let routineCount = 0
-        let channelCount = 0
         let skillCount = 0
         /** The id of each new agent, by its place in the file. */
         const created = new Map<number, string>()
@@ -479,7 +404,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             kind,
             name,
             made,
-            madeChannels: channelCount,
             madeSkills: skillCount,
             code: reason ? reason.error.code : "internal",
             detail: reason?.error.detail ?? null,
@@ -528,41 +452,13 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           if (Exit.isFailure(exit)) return yield* failed("agent", name, exit.cause)
         }
 
-        // The channels and skills need the agents that are made (spec 002, "Agent file").
+        // The skills need the agents that are made (spec 002, "Agent file").
         const plan = planTeam({
-          channels: loaded.channels,
           skills: loaded.skills,
           made: (agent) => created.has(agent),
-          channelPicks,
           skillPicks,
           skillRoom: yield* skills.room(input.serverId),
         })
-        const channelNames = planNames(
-          plan.channels.map((c) => loaded.channels[c.index]?.name ?? ""),
-          (yield* channels.list(input.serverId)).map((c) => c.name),
-          CHANNEL_NAME_MAX,
-          channelNameKey,
-        )
-        for (const [i, planned] of plan.channels.entries()) {
-          const channel = loaded.channels[planned.index]
-          if (!channel) continue
-          const name = channelNames[i] ?? channel.name
-          const exit = yield* Effect.exit(
-            Effect.gen(function* () {
-              const row = yield* channels.create({
-                serverId: input.serverId,
-                name,
-                topic: channel.topic,
-                instructions: channel.instructions,
-                memberIds: planned.members.flatMap((m) => created.get(m) ?? []),
-                leadId: planned.lead === null ? null : (created.get(planned.lead) ?? null),
-              })
-              channelCount++
-              if (channel.reviewParts) yield* channels.update(row.id, { reviewParts: true })
-            }),
-          )
-          if (Exit.isFailure(exit)) return yield* failed("channel", name, exit.cause)
-        }
         for (const planned of plan.skills) {
           const skill = loaded.skills[planned.index]
           if (!skill) continue
@@ -594,7 +490,6 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         return {
           agents: made,
           routines: routineCount,
-          channels: channelCount,
           skills: skillCount,
           handbook: replaced,
         } satisfies AgentFileImported

@@ -38,7 +38,7 @@ describe("quiet turns (spec 005, 'Quiet line')", () => {
     const { activity, events } = shared()
     expect(activity.quietTurns().turns).toEqual([])
     activity.setQuiet(place(), 90)
-    activity.setQuiet(place({ taskId: "t2", agentId: "a2", source: "channel", sourceId: "ch" }), 30)
+    activity.setQuiet(place({ taskId: "t2", agentId: "a2", source: "routine", sourceId: "ch" }), 30)
     const turns = activity.quietTurns().turns
     expect(turns.map((t) => [t.taskId, t.agentId])).toEqual([
       ["t1", "a1"],
@@ -50,7 +50,7 @@ describe("quiet turns (spec 005, 'Quiet line')", () => {
     expect(pushed).toHaveLength(2)
     const last = pushed[1]?.payload as { turns: unknown[] } | undefined
     expect(last?.turns).toHaveLength(2)
-    expect(activity.quietOf("t2")?.source).toBe("channel")
+    expect(activity.quietOf("t2")?.source).toBe("routine")
     expect(activity.quietOf("zzz")).toBeUndefined()
   })
 

@@ -1,13 +1,11 @@
 import {
   STEP_TEXT_MAX,
   type Step,
-  type Trigger,
   type Workflow,
   WorkflowInput,
   WorkflowPatch,
 } from "@robot/shared"
 import { Effect as E, Schema } from "effect"
-import { Channels } from "../services/Channels.ts"
 import { AppError } from "../services/errors.ts"
 import { Servers } from "../services/Servers.ts"
 import { Workflows } from "../services/Workflows.ts"
@@ -17,7 +15,7 @@ import { allowed, type ChangeHandler, checkModel, Id, ownServer, strict } from "
  * What a linked device may do with the workflows of this computer (spec 012, "Workflows").
  * Reading, running, stopping and answering an approval step need only the link. A change needs
  * the switch "Can create and change agents". Each request is untrusted: a strict schema refuses a
- * field it does not know, and every agent, place and model account that a change names must be
+ * field it does not know, and every agent and model account that a change names must be
  * one of this computer. The file of a workflow and "Run on this computer" are not here.
  */
 
@@ -38,20 +36,11 @@ const modelsOf = (steps: readonly Step[]) =>
 
 /**
  * The parts of a change that the window checks with its own pickers. The agents of agent steps
- * and the places of post steps are checked by the service. A model that a step had before is not
+ * are checked by the service. A model that a step had before is not
  * checked again, so a model account that went away later does not block other changes.
  */
-const checkRefs = (
-  next: { readonly trigger?: Trigger; readonly steps?: readonly Step[] },
-  before?: Workflow,
-) =>
+const checkRefs = (next: { readonly steps?: readonly Step[] }, before?: Workflow) =>
   E.gen(function* () {
-    const trigger = next.trigger
-    if (trigger?.kind === "channel" && trigger.channelId !== "") {
-      yield* Channels.use((c) => c.get(trigger.channelId)).pipe(
-        E.mapError(() => new AppError({ code: "channel_not_found" })),
-      )
-    }
     if (!next.steps) return
     const known = new Set(before ? modelsOf(before.steps) : [])
     for (const pair of new Set(modelsOf(next.steps))) {

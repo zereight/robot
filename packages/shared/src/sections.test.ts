@@ -85,10 +85,10 @@ describe("order", () => {
 })
 
 describe("create input", () => {
-  test("a kind is agent or channel", () => {
+  test("a kind is agent", () => {
     const is = Schema.is(SectionCreate)
     expect(is({ serverId: "s", kind: "agent", name: "Research" })).toBe(true)
-    expect(is({ serverId: "s", kind: "channel", name: "Research" })).toBe(true)
+    expect(is({ serverId: "s", kind: "channel", name: "Research" })).toBe(false)
     expect(is({ serverId: "s", kind: "workflow", name: "Research" })).toBe(false)
   })
 })

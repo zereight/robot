@@ -24,7 +24,6 @@ import {
   GUARD_DELETE_MIN,
   isSyncKind,
   type MessagePart,
-  messageText,
   parseAddress,
   pictureType,
   SYNC_BACKUPS_KEEP,
@@ -45,7 +44,6 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { LinkError } from "../link/client.ts"
-import { ageOnArrival } from "../sync/clock.ts"
 import { SyncEngine, type Touch } from "../sync/engine.ts"
 import { KINDS } from "../sync/kinds.ts"
 import {
@@ -57,7 +55,6 @@ import {
   type WireOp,
 } from "../sync/wire.ts"
 import { workspaceFolderName } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
@@ -66,7 +63,6 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
 import { Notifier } from "./Notifier.ts"
-import { noteLineRepairs, noteOrgRepairs } from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { secretKey } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
@@ -150,7 +146,7 @@ interface PairRow {
 }
 
 interface Held {
-  readonly k: "agent" | "channel"
+  readonly k: "agent"
   readonly i: string
   readonly s: readonly [number, number, string]
 }
@@ -175,8 +171,8 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
 const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0
 const readCounts = (v: unknown): SyncCounts | undefined =>
-  isObject(v) && isCount(v.agents) && isCount(v.channels) && isCount(v.messages)
-    ? { agents: v.agents, channels: v.channels, messages: v.messages }
+  isObject(v) && isCount(v.agents) && isCount(v.messages)
+    ? { agents: v.agents, messages: v.messages }
     : undefined
 
 const SCHEMA = migrations.length
@@ -185,11 +181,11 @@ const SNAPSHOT_BATCH = Math.max(1, Number(process.env.ROBOT_SYNC_BATCH) || 250)
 /** Tests turn the clock that this computer reports to the other one. */
 const wall = () => Date.now() + (Number(process.env.ROBOT_SYNC_CLOCK_SKEW_MS) || 0)
 /** A message of the other computer that is older than this when it arrives fires no workflow. */
-const HEARD_MAX_AGE_MS = 5 * 60_000
+const _HEARD_MAX_AGE_MS = 5 * 60_000
 const SNAPSHOT_DELAY_MS = Math.max(0, Number(process.env.ROBOT_SYNC_DELAY_MS) || 0)
 const yieldNow = () => new Promise<void>((resolve) => setImmediate(resolve))
 /**
- * How long no batch of changes must come before the channel tree is checked (spec 030, "Repair").
+ * How long no batch of changes must come before the main agent is checked (spec 002, 019).
  * The batches of one sync follow each other with no pause, so this time only has to be longer than
  * the gap between two of them. Tests turn it (`ROBOT_SYNC_REPAIR_MS`).
  */
@@ -210,7 +206,6 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       const servers = yield* Servers
       const data = yield* Data
       const chat = yield* Chat
-      const channels = yield* Channels
       const tasks = yield* Tasks
       const tools = yield* Tools
       const notifier = yield* Notifier
@@ -256,10 +251,6 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         },
         facesDir: join(platform.dataDir, "faces"),
         removeSecret: (accountId) => secrets.remove(secretKey(accountId)),
-        // A repair of the organization tree writes one line to the organization log (spec 014).
-        onOrgRepair: (repairs) => noteOrgRepairs(bus, platform.dataDir, localServerId(), repairs),
-        // The same for the removal of an agent that repairs a line (spec 030, "One line").
-        onLineRepair: (repairs) => noteLineRepairs(bus, platform.dataDir, localServerId(), repairs),
       })
 
       const peerName = (p: PairRow) => devices.link(p.peer_id)?.name ?? p.peer_name
@@ -306,10 +297,6 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
               if (t.action === "deleted")
                 once("skills", () => bus.emit("skills.changed", { serverId }))
               break
-            case "channel":
-              once(`channel:${t.id}`, () => bus.emit("channels.changed", { channelId: t.id }))
-              once("places", () => bus.emit("places.changed", { serverId }))
-              break
             case "memory":
               once(`memory:${t.parent?.id}`, () =>
                 bus.emit("memory.changed", { agentId: t.parent?.id ?? "" }),
@@ -325,14 +312,6 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
               // The instruction history shows in the profile of the agent (spec 002).
               once("agents", () => bus.emit("agents.changed", { serverId }))
               break
-            case "orgunit":
-              // The organizations show in their form, in the profile and in the lists (spec 030).
-              once("orgunits", () => bus.emit("organizations.changed", { serverId }))
-              break
-            case "org":
-              // The part "Organization" and the legend of the org chart show the rule (spec 030).
-              once("organization", () => bus.emit("organization.changed", { serverId }))
-              break
             case "hversion":
               // The handbook page shows the newest version and the history (spec 002, 019).
               once("handbook", () => bus.emit("handbook.changed", { serverId }))
@@ -345,34 +324,15 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             case "wstep":
               once("workflows", () => bus.emit("workflows.changed", { serverId }))
               break
-            case "task": {
+            case "task":
               once("tasks", () => bus.emit("tasks.changed", { serverId }))
-              // The state of a part shows in its channel: in review, blocked (spec 004, 019).
-              const part = db.get<{ source: string; source_id: string | null }>(
-                "SELECT source, source_id FROM task WHERE id = ?",
-                t.id,
-              )
-              const channelId = part?.source === "channel" ? part.source_id : null
-              if (channelId)
-                once(`channel:${channelId}`, () => bus.emit("channels.changed", { channelId }))
               break
-            }
             case "message":
               // A first copy holds a long history: it makes one event, not one for each message.
               if (live && t.action === "deleted") {
                 bus.emit("chat.removed", { agentId: t.parent?.id ?? "", messageId: t.id })
               } else if (live) once(`m:${t.id}`, () => chat.announce(t.id))
               if (live) attend("message", t.id)
-              once("places", () => bus.emit("places.changed", { serverId }))
-              break
-            case "cmessage":
-              if (live && t.action === "deleted") {
-                bus.emit("channel.removed", { channelId: t.parent?.id ?? "", messageId: t.id })
-              } else if (live) once(`c:${t.id}`, () => channels.announce(t.id))
-              if (live) {
-                attend("cmessage", t.id)
-                if (t.action === "added") hear(t.id)
-              }
               once("places", () => bus.emit("places.changed", { serverId }))
               break
             default:
@@ -441,17 +401,15 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
 
       /** The computer where the card of a task that waits was made. */
       const askOriginOf = (agentId: string, callId: string): string | undefined => {
-        for (const table of ["message", "channel_message"]) {
-          const rows = db.all<{ parts: string; origin: string }>(
-            `SELECT parts, origin FROM ${table}
-             WHERE agent_id = ? AND origin IS NOT NULL AND status = 'streaming'`,
-            agentId,
-          )
-          for (const r of rows) {
-            const parts = JSON.parse(r.parts) as MessagePart[]
-            if (parts.some((x) => x.kind === "tool" && x.id === callId && x.state === "waiting"))
-              return r.origin
-          }
+        const rows = db.all<{ parts: string; origin: string }>(
+          `SELECT parts, origin FROM message
+           WHERE agent_id = ? AND origin IS NOT NULL AND status = 'streaming'`,
+          agentId,
+        )
+        for (const r of rows) {
+          const parts = JSON.parse(r.parts) as MessagePart[]
+          if (parts.some((x) => x.kind === "tool" && x.id === callId && x.state === "waiting"))
+            return r.origin
         }
         return undefined
       }
@@ -474,45 +432,32 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       /** The cards of messages of the other computer that wait, so a notice can drop. */
       const noticed = new Map<string, { agentId: string; calls: Set<string> }>()
 
-      const attend = (kind: "message" | "cmessage", id: string) => {
-        const table = kind === "message" ? "message" : "channel_message"
+      const attend = (kind: "message", id: string) => {
         const row = db.get<{
           agent_id: string | null
-          channel_id?: string
           parts: string
           status: string
           origin: string | null
-        }>(
-          `SELECT agent_id, ${kind === "cmessage" ? "channel_id," : ""} parts, status, origin
-           FROM ${table} WHERE id = ?`,
-          id,
-        )
+        }>(`SELECT agent_id, parts, status, origin FROM ${kind} WHERE id = ?`, id)
         const known = noticed.get(id)
         const calls = new Set<string>()
         if (row?.agent_id && row.origin !== null && row.status === "streaming") {
           const name = computerName(row.origin) || pairRow()?.peer_name || ""
           for (const part of JSON.parse(row.parts) as MessagePart[]) {
             if (part.kind !== "tool" || part.state !== "waiting" || !part.ask) continue
-            // A question that is with the lead is no request for the user yet: no notice and no
-            // row in "Needs you" on this computer, until the lead passes it (spec 004, 015, 021).
-            // The card is not counted as known, so that the pass makes the notice.
-            if (part.ask.kind === "question" && part.ask.lead) continue
             calls.add(part.id)
             if (known?.calls.has(part.id)) continue
             notifier.attention(
               {
                 agentId: row.agent_id,
                 serverId: localServerId(),
-                channelId: row.channel_id ?? null,
                 callId: part.id,
                 kind: askKind(part.ask),
                 // A computer cannot change what an agent may always do on the other one (019).
                 always: false,
                 summary: askSummary(part.ask),
                 step: askStep(part.ask, part.name),
-                target: row.channel_id
-                  ? { kind: "channel", id: row.channel_id, messageId: id }
-                  : { kind: "agent", id: row.agent_id, messageId: id },
+                target: { kind: "agent", id: row.agent_id, messageId: id },
                 ...(part.ask.askedAt !== undefined ? { askedAt: part.ask.askedAt } : {}),
               },
               name,
@@ -532,37 +477,10 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       /** Looks at every card that waits now: after a first copy and after the app starts. */
       const attendAll = () => {
         if (!pairRow()) return
-        for (const [table, kind] of [
-          ["message", "message"],
-          ["channel_message", "cmessage"],
-        ] as const) {
-          for (const r of db.all<{ id: string }>(
-            `SELECT id FROM ${table} WHERE origin IS NOT NULL AND status = 'streaming'`,
-          ))
-            attend(kind, r.id)
-        }
-      }
-
-      /** A message that was sent on the other computer can fire a workflow here (spec 019). */
-      const hear = (id: string) => {
-        const r = db.get<{
-          channel_id: string
-          author: string
-          origin: string | null
-          parts: string
-          created_at: number
-        }>(
-          "SELECT channel_id, author, origin, parts, created_at FROM channel_message WHERE id = ?",
-          id,
-        )
-        if (r?.author !== "user" || r.origin === null) return
-        // A message that is older than 5 minutes when it arrives does not fire a workflow. The
-        // other computer wrote the time by its own clock, so the age uses the difference between
-        // the two clocks that the computers measured when they connected.
-        const pair = pairRow()
-        const skew = pair?.peer_id === r.origin ? pair.clock_offset : 0
-        if (ageOnArrival(r.created_at, wall(), skew) > HEARD_MAX_AGE_MS) return
-        channels.hearUserMessage(r.channel_id, messageText({ parts: JSON.parse(r.parts) }))
+        for (const r of db.all<{ id: string }>(
+          "SELECT id FROM message WHERE origin IS NOT NULL AND status = 'streaming'",
+        ))
+          attend("message", r.id)
       }
 
       // ------------------------------------------------------------------ files of messages
@@ -747,8 +665,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       // ------------------------------------------------------------------ counts and ids
       const counts = (): SyncCounts => ({
         agents: KINDS.agent.count(db),
-        channels: KINDS.channel.count(db),
-        messages: KINDS.message.count(db) + KINDS.cmessage.count(db),
+        messages: KINDS.message.count(db),
       })
 
       const localIds = (kind: SyncKind) => {
@@ -851,18 +768,13 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           computerName(peerId),
           now,
         )
-        for (const [table, announce] of [
-          ["message", (id: string) => chat.announce(id)],
-          ["channel_message", (id: string) => channels.announce(id)],
-        ] as const) {
-          const ids = db.all<{ id: string }>(
-            `SELECT id FROM ${table} WHERE origin IS NOT NULL AND status = 'streaming'`,
-          )
-          db.run(
-            `UPDATE ${table} SET status = 'stopped' WHERE origin IS NOT NULL AND status = 'streaming'`,
-          )
-          for (const r of ids) announce(r.id)
-        }
+        const ids = db.all<{ id: string }>(
+          "SELECT id FROM message WHERE origin IS NOT NULL AND status = 'streaming'",
+        )
+        db.run(
+          "UPDATE message SET status = 'stopped' WHERE origin IS NOT NULL AND status = 'streaming'",
+        )
+        for (const r of ids) chat.announce(r.id)
         for (const [id, known] of noticed) {
           for (const call of known.calls) notifier.clearAttention(known.agentId, call)
           noticed.delete(id)
@@ -1086,23 +998,20 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         await send(p)
       }
 
-      // ------------------------------------------------------------------ the trees
-      // The organization tree, and the one main agent (spec 002), are checked after the sync has
-      // applied all the changes that it has, not between the batches of one sync (spec 030,
-      // "Repair"). A set of changes that makes a valid tree can cross in two batches, and the first
-      // one alone can show a loop that the second one removes. A batch does not say if more follow,
-      // so the check waits until no batch has come for a short time. The tree on the screen is safe
-      // in that time: the reading of the tree sets a broken line aside (`orgParents`).
+      // ------------------------------------------------------------------ the main agent
+      // The one main agent (spec 002) is checked after the sync has applied all the changes that
+      // it has, not between the batches of one sync. A batch does not say if more follow, so the
+      // check waits until no batch has come for a short time.
       let repairDue = false
       let repairTimer: ReturnType<typeof setTimeout> | undefined
       const repairNow = () => {
         if (repairTimer) clearTimeout(repairTimer)
         repairTimer = undefined
         if (closed) return
-        // A first copy is checked when it is whole (`finishCopy`): it holds the channels in parts.
+        // A first copy is checked when it is whole (`finishCopy`): it holds the agents in parts.
         if (pairRow()?.phase === "copying") return
         repairDue = false
-        touched([...engine.repairOrgs(), ...engine.repairMain()])
+        touched(engine.repairMain())
       }
       /** The check is due. Each batch that comes in the meantime moves it back. */
       const repairSoon = () => {
@@ -1117,17 +1026,16 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           if (repairTimer) clearTimeout(repairTimer)
         }),
       )
-      // The app can close in that time. The next start checks the tree again.
+      // The app can close in that time. The next start checks again.
       if (pairRow()) repairSoon()
 
       const finishCopy = () => {
         engine.settleInitial()
-        // The organizations came in parts, so the tree is checked now that the copy is whole (spec
-        // 030, "Repair").
+        // The agents came in parts, so the main agent is checked now that the copy is whole.
         if (repairTimer) clearTimeout(repairTimer)
         repairTimer = undefined
         repairDue = false
-        const repaired = [...engine.repairOrgs(), ...engine.repairMain()]
+        const repaired = engine.repairMain()
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
         touched(repaired)
@@ -1242,7 +1150,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         const hold: ParsedOp[] = []
         const guarded = (op: ParsedOp) =>
           op.deleted !== undefined &&
-          (op.kind === "agent" || op.kind === "channel") &&
+          op.kind === "agent" &&
           KINDS[op.kind].read(engine.ctx, op.id) !== undefined
         const candidates = ops.filter(guarded)
         const already = heldList()
@@ -1269,7 +1177,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             engine.clock.observe(op.deleted)
             if (!list.some((h) => h.k === op.kind && h.i === op.id)) {
               list.push({
-                k: op.kind as "agent" | "channel",
+                k: "agent",
                 i: op.id,
                 s: [op.deleted.l, op.deleted.c, op.deleted.n],
               })
@@ -1306,13 +1214,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         // A first copy is checked when it is whole. Changes made since: the check waits for the
         // end of the flow of batches.
         if (parsed.snap === undefined) {
-          // The organization tree and the lines (spec 030) and the main agent (spec 002) are
-          // checked after the last batch.
-          if (
-            result.touches.some(
-              (t) => (t.kind === "orgunit" || t.kind === "agent") && t.action !== "deleted",
-            )
-          )
+          // The main agent (spec 002) is checked after the last batch.
+          if (result.touches.some((t) => t.kind === "agent" && t.action !== "deleted"))
             repairDue = true
           if (repairDue) repairSoon()
         }

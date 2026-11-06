@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync } from "node:fs"
 import {
-  type ChannelMessage,
   type ChatMessage,
   type MarkPlace,
   type MessagePart,
@@ -13,9 +12,7 @@ import {
 import { Effect } from "effect"
 import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
-import { asOldShape } from "./channelTurns.testing.ts"
 import { Database } from "./Database.ts"
 import { Handover } from "./Handover.ts"
 import { Memory } from "./Memory.ts"
@@ -63,9 +60,7 @@ const server = Bun.serve({
       return Response.json({ data: [{ id: "mock", context_length: 1000 }] })
     // The text of a member starts with its assignment (spec 004): the stand-in reads it behind the
     // last message of the user, as before.
-    const body = asOldShape(
-      (await req.json()) as { messages: { role: string; content: string | null }[] },
-    )
+    const body = (await req.json()) as { messages: { role: string; content: string | null }[] }
     const last = body.messages.at(-1)
     if (last?.role === "tool") return sse([delta("Done."), usage, "[DONE]"])
     const text = String(last?.content ?? "")
@@ -130,7 +125,7 @@ const search = (query: string) => ({ name: "search_chats", args: { query } })
 const tell = (to: string, text: string) => ({ name: "send_message", args: { to, text } })
 
 type ToolPart = Extract<MessagePart, { kind: "tool" }>
-const toolOf = (message: ChatMessage | ChannelMessage | undefined, callId: string) =>
+const toolOf = (message: ChatMessage | undefined, callId: string) =>
   message?.parts.find((p): p is ToolPart => p.kind === "tool" && p.id === callId)
 
 const setup = async (permission: PermissionLevel) => {
@@ -225,39 +220,6 @@ const setup = async (permission: PermissionLevel) => {
     db.get<{ program_mark: string | null }>(`SELECT program_mark FROM ${table} WHERE id = ?`, id)
       ?.program_mark ?? null
 
-  // --- channel ---
-  const channel = await run(
-    Channels.use((c) =>
-      c.create({
-        serverId: local.id,
-        name: "Launch",
-        topic: "Ship it",
-        memberIds: [lia.id, bo.id, cy.id],
-        leadId: lia.id,
-      }),
-    ),
-  )
-  const channelPlace: MarkPlace = { kind: "channel", id: channel.id }
-  const post = (text: string, origin?: { outside: OutsideSource }, id: string = channel.id) =>
-    run(Channels.use((c) => c.send(id, text, null, origin)))
-  const channelHistory = (id: string = channel.id) => run(Channels.use((c) => c.history(id)))
-  const part = (prompt: unknown[], member = "Cy") =>
-    `PLAN ${JSON.stringify([{ member, label: "Remember", prompt: calls(...(prompt as never[])) }])}`
-  const channelCard = async (memberId: string, callId = "call_1") => {
-    await until(async () =>
-      (await channelHistory()).some(
-        (m) => m.agentId === memberId && toolOf(m, callId)?.state === "waiting",
-      ),
-    )
-    return toolOf((await channelHistory()).filter((m) => m.agentId === memberId).at(-1), callId)
-      ?.ask
-  }
-  const channelQuiet = () =>
-    until(async () => {
-      const all = await run(Tasks.use((x) => x.list(local.id)))
-      return all.length > 0 && all.every((x) => !["queued", "running"].includes(x.state))
-    })
-
   return {
     ...t,
     run,
@@ -280,13 +242,6 @@ const setup = async (permission: PermissionLevel) => {
     clear,
     log,
     column,
-    channel,
-    channelPlace,
-    post,
-    part,
-    channelHistory,
-    channelCard,
-    channelQuiet,
   }
 }
 
@@ -677,142 +632,18 @@ describe("a hit of search chats", () => {
     expect(await s.memory(s.ada.id)).toEqual(["A fact"])
     expect(await s.marks({ kind: "thread", id: thread.id })).toEqual(NO_MARKS)
   })
-
-  test("a hit in a channel message of a turn with the mark gives the mark", async () => {
-    const s = await setup("full")
-    await s.post(s.part([save("Bo says yes")], "Bo"), { outside: TEAMS })
-    await s.channelCard(s.bo.id)
-    await s.respond(s.bo.id, "call_1", "deny")
-    await s.channelQuiet()
-    // The plan of the lead and the reply of Bo are messages of turns that held the mark. Cy is a
-    // member, so a search of Cy finds the plan.
-    const thread = await s.run(Chat.use((c) => c.createThread(s.cy.id)))
-    await s.send(s.cy.id, calls(search("Remember"), save("A fact")), { threadId: thread.id })
-    expect(await s.card(s.cy.id, "call_2", thread.id)).toMatchObject({ once: true, outside: TEAMS })
-    await s.respond(s.cy.id, "call_2", "deny")
-    await s.quiet(1)
-  })
 })
 
-describe("a channel", () => {
-  test("a job from Teams: every part holds the mark, and a member's save asks, also at Full access", async () => {
-    const s = await setup("full")
-    expect(await s.post(s.part([save("Cy answers yes")]), { outside: TEAMS })).toEqual({
-      awaiting: false,
-    })
-    // The channel holds the mark from the arrival of the job.
-    expect(await s.marks(s.channelPlace)).toEqual({
-      outside: { source: TEAMS, program: true },
-      sensitive: null,
-    })
-    // The job came from Teams, so the part holds outside content from its start. The first source
-    // is the one of the channel: Teams (spec 007, "Outside content").
-    expect(await s.channelCard(s.cy.id)).toMatchObject({
-      kind: "approval",
-      once: true,
-      outside: TEAMS,
-    })
-    await s.respond(s.cy.id, "call_1", "deny")
-    await s.channelQuiet()
-    expect(await s.memory(s.cy.id)).toEqual([])
-    const history = await s.channelHistory()
-    // The job, the plan of the lead and the reply of the member say that the program mark is there.
-    expect(history.map((m) => s.column("channel_message", m.id) !== null)).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ])
-  })
-
-  test("the same job from the user runs at Full access with no card", async () => {
-    const s = await setup("full")
-    await s.post(s.part([save("Cy answers yes")]))
-    await s.channelQuiet()
-    expect(await s.memory(s.cy.id)).toEqual(["Cy answers yes"])
-    expect(await s.marks(s.channelPlace)).toEqual(NO_MARKS)
-  })
-
-  test("a later job from the user holds the mark, also when the older messages left the history", async () => {
-    const s = await setup("full")
-    await s.post(s.part([save("One")]), { outside: TEAMS })
-    await s.channelCard(s.cy.id)
-    await s.respond(s.cy.id, "call_1", "deny")
-    await s.channelQuiet()
-    // 45 plain messages follow: the job from Teams is not in the 40 that a turn reads any more.
-    const newest = s.db.get<{ t: number }>(
-      "SELECT MAX(created_at) AS t FROM channel_message WHERE channel_id = ?",
-      s.channel.id,
-    )?.t as number
-    for (let i = 0; i < 45; i++)
-      s.db.run(
-        `INSERT INTO channel_message (id, channel_id, author, kind, parts, status, created_at, finished_at)
-         VALUES (?, ?, 'user', 'text', ?, 'done', ?, ?)`,
-        `filler-${i}`,
-        s.channel.id,
-        JSON.stringify([{ kind: "text", text: `filler ${i}` }]),
-        newest + 1 + i,
-        newest + 1 + i,
-      )
-    await Bun.sleep(100)
-    await s.post(s.part([save("Two")], "Bo"))
-    expect(await s.channelCard(s.bo.id)).toMatchObject({ once: true })
-    await s.respond(s.bo.id, "call_1", "deny")
-    await s.channelQuiet()
-    // "Clear" for the channel ends it: the next job runs with no card.
-    const removed = await s.clear(s.channelPlace)
-    expect(removed.outside?.program).toBe(true)
-    await s.post(s.part([save("Three")], "Bo"))
-    await s.channelQuiet()
-    await until(async () => (await s.memory(s.bo.id)).includes("Three"))
-  })
-
-  test("a job that waits for the user to pick a member keeps the mark: the member's save asks", async () => {
-    const s = await setup("full")
-    const open = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "No lead",
-          topic: "",
-          memberIds: [s.bo.id, s.cy.id],
-          leadId: null,
-        }),
-      ),
-    )
-    expect(await s.post(calls(save("Cy answers yes")), { outside: TEAMS }, open.id)).toEqual({
-      awaiting: true,
-    })
-    expect((await s.marks({ kind: "channel", id: open.id })).outside?.program).toBe(true)
-    const job = (await s.channelHistory(open.id))[0]
-    expect(s.column("channel_message", job?.id as string)).not.toBeNull()
-    await s.run(Channels.use((c) => c.assign(open.id, job?.id as string, s.cy.id)))
-    await until(async () =>
-      (await s.channelHistory(open.id)).some((m) => toolOf(m, "call_1")?.state === "waiting"),
-    )
-    const card = toolOf(
-      (await s.channelHistory(open.id)).find((m) => m.agentId === s.cy.id),
-      "call_1",
-    )?.ask
-    expect(card).toMatchObject({ once: true })
-    await s.respond(s.cy.id, "call_1", "deny")
-    await s.channelQuiet()
-    // The other channel holds nothing.
-    expect(await s.marks(s.channelPlace)).toEqual(NO_MARKS)
-  })
-})
+describe("a channel", () => {})
 
 describe("older data and stored forms", () => {
   test("a place with no outside mark, or a text that is no mark, reads as no mark", async () => {
     const s = await setup("full")
     expect(await s.marks(agentPlace(s))).toEqual(NO_MARKS)
-    for (const text of ["", "not json", '{"source":{"kind":"x"},"program":true}', "[]", "5"])
-      for (const table of ["agent", "channel"] as const) {
-        s.db.run(`UPDATE ${table} SET outside_mark = ?`, text)
-        expect(
-          (await s.marks({ kind: table, id: table === "agent" ? s.ada.id : s.channel.id })).outside,
-        ).toBeNull()
-      }
+    for (const text of ["", "not json", '{"source":{"kind":"x"},"program":true}', "[]", "5"]) {
+      s.db.run("UPDATE agent SET outside_mark = ?", text)
+      expect((await s.marks(agentPlace(s))).outside).toBeNull()
+    }
     // A turn in such a place holds nothing, and the save runs.
     await s.turn(s.ada.id, calls(save("Plain")))
     expect(await s.memory(s.ada.id)).toEqual(["Plain"])

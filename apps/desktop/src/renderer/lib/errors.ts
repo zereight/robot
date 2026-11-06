@@ -1,4 +1,4 @@
-import { catalogues, type MessageKey, type MessageParams, parseLineDetail } from "@robot/shared"
+import { catalogues, type MessageKey, type MessageParams } from "@robot/shared"
 import { RpcFailure } from "./rpc.ts"
 
 export interface ErrorText {
@@ -10,13 +10,8 @@ export interface ErrorText {
 export const describeError = (error: unknown): ErrorText => {
   if (error instanceof RpcFailure) {
     const key = `error.${error.error.code}`
-    if (key in catalogues.en) {
-      // A refusal of "One line" (spec 030) carries the names for its long line as JSON.
-      const names = error.error.code.startsWith("org_line_")
-        ? parseLineDetail(error.error.message)
-        : {}
-      return { key: key as MessageKey, params: { ...names, detail: error.error.message } }
-    }
+    if (key in catalogues.en)
+      return { key: key as MessageKey, params: { detail: error.error.message } }
   }
   return { key: "error.unknown" }
 }

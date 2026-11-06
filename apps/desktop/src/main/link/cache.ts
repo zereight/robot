@@ -117,8 +117,6 @@ export class LinkCache {
       const { messages, queue } = value as { messages: readonly Message[]; queue: unknown }
       return { messages: newest(messages ?? []), queue }
     }
-    if (key.startsWith("channels.history:") && Array.isArray(value))
-      return newest(value as Message[])
     return value
   }
 
@@ -154,14 +152,6 @@ export class LinkCache {
         queue: p.queue,
         hold: p.hold ?? null,
       }))
-    } else if (event === "channel.message") {
-      this.#change(link, cacheKey("channels.history", { channelId: p.channelId }), (old) =>
-        upsert(old as Message[], payload as Message),
-      )
-    } else if (event === "channel.removed") {
-      this.#change(link, cacheKey("channels.history", { channelId: p.channelId }), (old) =>
-        (old as Message[]).filter((m) => m.id !== p.messageId),
-      )
     }
   }
 

@@ -51,12 +51,6 @@ describe("ui state", () => {
     expect(Schema.is(UiState)(defaultUiState)).toBe(true)
   })
 
-  test("Agents shows the user sections at first, and only the two views are valid", () => {
-    expect(defaultUiState.agentView).toBe("sections")
-    expect(Schema.is(UiState)({ ...defaultUiState, agentView: "organization" })).toBe(true)
-    expect(Schema.is(UiState)({ ...defaultUiState, agentView: "team" })).toBe(false)
-  })
-
   test("place list width stays between 200 and 400 px", () => {
     expect(clampPlaceListWidth(120)).toBe(200)
     expect(clampPlaceListWidth(512)).toBe(400)
@@ -128,27 +122,12 @@ const sample = (): PlaceSection => ({
 describe("user sections in the place list", () => {
   test("a built-in section knows the kind of its places, and the other way round", () => {
     expect(sectionKind("agents")).toBe("agent")
-    expect(sectionKind("channels")).toBe("channel")
     expect(builtInSection("agent")).toBe("agents")
-    expect(builtInSection("channel")).toBe("channels")
   })
 
   test("all places of a built-in section include its user sections, in the order shown", () => {
     // Agents: user sections first, then the agents that are in no section.
     expect(allPlaces(sample()).map((p) => p.name)).toEqual(["Eve", "Finn", "Gus", "Ada", "Bo"])
-    const channels: PlaceSection = {
-      id: "channels",
-      places: [place("Launch", { kind: "channel" })],
-      sections: [
-        {
-          id: "r",
-          name: "Research",
-          places: [place("Chat", { kind: "channel", sectionId: "r" })],
-        },
-      ],
-    }
-    // Channels: a place with no section stays first.
-    expect(allPlaces(channels).map((p) => p.name)).toEqual(["Launch", "Chat"])
   })
 
   test("the sum of unread counts and the working dot of a section", () => {
@@ -208,11 +187,6 @@ describe("user sections in the place list", () => {
 describe("the filter of places by role line", () => {
   const withRoles = (): PlaceSection[] => [
     {
-      id: "channels",
-      places: [place("launch", { kind: "channel" }), place("design", { kind: "channel" })],
-      sections: [],
-    },
-    {
       id: "agents",
       places: [place("Ada", { role: "Designer" }), place("Bo", { role: "Writer" }), place("Cy")],
       sections: [
@@ -225,7 +199,7 @@ describe("the filter of places by role line", () => {
       ],
     },
   ]
-  const names = (sections: readonly PlaceSection[], id: "channels" | "agents") =>
+  const names = (sections: readonly PlaceSection[], id: "agents") =>
     allPlaces(sections.find((s) => s.id === id) as PlaceSection).map((p) => p.name)
 
   test("an agent matches on part of its role line, ignoring case", () => {
@@ -247,24 +221,8 @@ describe("the filter of places by role line", () => {
     expect(names(filterPlaces(list, "writer"), "agents")).toEqual(["Writer", "Ada"])
   })
 
-  test("a channel matches by its name only, also when a member has a role that matches", () => {
-    // The word "design" is in the name of the channel "design" and in the role of Ada.
-    expect(names(filterPlaces(withRoles(), "design"), "channels")).toEqual(["design"])
-    // The role "Researcher" is in no channel name, so no channel shows.
-    expect(names(filterPlaces(withRoles(), "researcher"), "channels")).toEqual([])
-    // A channel with a stray role field still matches by name only.
-    const stray: PlaceSection[] = [
-      {
-        id: "channels",
-        places: [place("launch", { kind: "channel", role: "Designer" })],
-        sections: [],
-      },
-    ]
-    expect(names(filterPlaces(stray, "designer"), "channels")).toEqual([])
-  })
-
   test("a user section opens on a role match, and one with no match leaves", () => {
-    const [, agents] = filterPlaces(withRoles(), "researcher")
+    const [agents] = filterPlaces(withRoles(), "researcher")
     expect(agents?.places).toEqual([])
     expect(agents?.sections.map((s) => [s.name, s.places.map((p) => p.name)])).toEqual([
       ["Team", ["Dee"]],
@@ -272,61 +230,15 @@ describe("the filter of places by role line", () => {
   })
 
   test("the order of places and sections does not change", () => {
-    const [, agents] = filterPlaces(withRoles(), "e")
+    const [agents] = filterPlaces(withRoles(), "e")
     expect(agents?.places.map((p) => p.name)).toEqual(["Ada", "Bo"])
     expect(agents?.sections.map((s) => s.name)).toEqual(["Team", "Ops"])
   })
 
   test("an empty text, or spaces, keeps every place; a role that is absent matches nothing", () => {
-    expect(filterPlaces(withRoles(), "")).toHaveLength(2)
+    expect(filterPlaces(withRoles(), "")).toHaveLength(1)
     expect(names(filterPlaces(withRoles(), "   "), "agents")).toHaveLength(5)
     expect(placeMatches(place("Cy"), "designer")).toBe(false)
     expect(placeMatches(place("Cy", { role: "" }), "x")).toBe(false)
-  })
-})
-
-describe("the filter of places by organization name (spec 036, Rules)", () => {
-  const list = (): PlaceSection[] => [
-    {
-      id: "channels",
-      places: [place("docs-team", { kind: "channel", id: "c1" })],
-      sections: [],
-    },
-    {
-      id: "agents",
-      places: [place("Ada", { id: "ada" }), place("Bo", { id: "bo" })],
-      sections: [{ id: "t", name: "Team", places: [place("Cy", { id: "cy", sectionId: "t" })] }],
-    },
-  ]
-  const organizationOf = (p: Place) =>
-    p.kind === "agent"
-      ? ({ ada: "Docs", cy: "Research and Development Group" }[p.id] ?? null)
-      : null
-  const agentNames = (sections: readonly PlaceSection[]) =>
-    allPlaces(sections.find((s) => s.id === "agents") as PlaceSection).map((p) => p.name)
-
-  test("an agent matches on part of the whole name of its organization, ignoring case", () => {
-    expect(agentNames(filterPlaces(list(), "docs", organizationOf))).toEqual(["Ada"])
-    expect(agentNames(filterPlaces(list(), "DOC", organizationOf))).toEqual(["Ada"])
-    // The part after the cut of the prefix still matches.
-    expect(agentNames(filterPlaces(list(), "development group", organizationOf))).toEqual(["Cy"])
-  })
-
-  test("without the lookup (the switch is off) the organization never matches", () => {
-    expect(agentNames(filterPlaces(list(), "docs"))).toEqual([])
-    expect(placeMatches(place("Ada", { id: "ada" }), "docs")).toBe(false)
-  })
-
-  test("a channel never matches on an organization, and the order does not change", () => {
-    const found = filterPlaces(list(), "docs", () => "Docs")
-    expect(
-      allPlaces(found.find((s) => s.id === "channels") as PlaceSection).map((p) => p.name),
-    ).toEqual(["docs-team"])
-    // The sections come first and the agents with no section last (spec 001); the filter keeps it.
-    expect(agentNames(filterPlaces(list(), "o", () => "Docs"))).toEqual(["Cy", "Ada", "Bo"])
-  })
-
-  test("an empty text keeps every place", () => {
-    expect(agentNames(filterPlaces(list(), "  ", organizationOf))).toEqual(["Cy", "Ada", "Bo"])
   })
 })

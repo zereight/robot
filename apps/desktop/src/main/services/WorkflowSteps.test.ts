@@ -1,7 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import type { Edge, Step } from "@robot/shared"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
@@ -126,11 +125,6 @@ const setup = async () => {
       ),
     )
   const ada = await agent("Ada")
-  const channel = await run(
-    Channels.use((c) =>
-      c.create({ serverId: local.id, name: "Out", topic: "", memberIds: [ada.id], leadId: null }),
-    ),
-  )
   const agentStep = (
     id: string,
     agentId: string,
@@ -159,14 +153,14 @@ const setup = async () => {
       mode: "ask",
       ...extra,
     }) as Step
+  /** A step at the end of a path: a notice with the text as its title. */
   const post = (id: string, text: string): Step => ({
     id,
-    kind: "post",
+    kind: "notify",
     name: id,
     x: 0,
     y: 0,
-    channelId: channel.id,
-    text,
+    title: text,
   })
   const notify = (id: string, title: string): Step => ({
     id,
@@ -214,7 +208,6 @@ const setup = async () => {
     first,
     connect,
     agent,
-    channel,
     agentStep,
     ask,
     post,
@@ -661,20 +654,13 @@ describe("effort of an agent step on a Claude model", () => {
   })
 })
 
-describe("a step that still needs its agent or its place", () => {
+describe("a step that still needs its agent", () => {
   test("it saves; a run fails at that step with the reason", async () => {
     const s = await setup()
-    const wf = await s.create(
-      [
-        s.agentStep("a", "", "Hello"),
-        { id: "p", kind: "post", name: "p", x: 0, y: 0, channelId: "", text: "x" },
-      ],
-      [],
-    )
+    const wf = await s.create([s.agentStep("a", "", "Hello")], [])
     const detail = await s.finished(wf.id)
     expect(detail.run.state).toBe("failed")
     expect(detail.steps.find((x) => x.stepId === "a")?.error).toBe("no_agent")
-    expect(detail.steps.find((x) => x.stepId === "p")?.error).toBe("no_place")
     // An id that names nothing is still refused when the workflow is saved.
     const refused = await s.create([s.agentStep("a", "nope", "x")], []).then(
       () => "ok",

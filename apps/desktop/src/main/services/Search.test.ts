@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite"
 import { SEARCH_CAP, SEARCH_PAGE, type SearchHit } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "./Database.ts"
 import { migrations } from "./migrations.ts"
 import { Search } from "./Search.ts"
@@ -23,12 +22,6 @@ const setup = async () => {
   let clock = 1_000
   const agent = (name: string) =>
     run(Agents.use((a) => a.create({ serverId: server.id, name, role: "", instructions: "" })))
-  const channel = (name: string, memberIds: string[] = []) =>
-    run(
-      Channels.use((c) =>
-        c.create({ serverId: server.id, name, topic: "", memberIds, leadId: null }),
-      ),
-    )
   /** A message of a direct chat. Time goes forward by itself. */
   const say = (
     agentId: string,
@@ -47,29 +40,12 @@ const setup = async () => {
     )
     return id
   }
-  const post = (
-    channelId: string,
-    body: string,
-    options: { author?: "user" | "agent"; agentId?: string; at?: number } = {},
-  ) => {
-    const id = `c${++clock}`
-    db.run(
-      "INSERT INTO channel_message (id, channel_id, author, agent_id, parts, status, created_at) VALUES (?, ?, ?, ?, ?, 'done', ?)",
-      id,
-      channelId,
-      options.author ?? "user",
-      options.agentId ?? null,
-      text(body),
-      options.at ?? clock,
-    )
-    return id
-  }
   const page = (query: string, offset = 0) =>
     run(Search.use((s) => s.page(server.id, query, offset)))
   const ids = async (query: string) => (await page(query)).hits.map((h) => h.messageId)
   const forAgent = (agentId: string, query: string) =>
     run(Search.use((s) => Effect.succeed(s.forAgent(agentId, query))))
-  return { ...t, run, server, db, agent, channel, say, post, page, ids, forAgent }
+  return { ...t, run, server, db, agent, say, page, ids, forAgent }
 }
 
 describe("what a message must hold", () => {
@@ -161,23 +137,17 @@ describe("what a message must hold", () => {
 })
 
 describe("what the search covers", () => {
-  test("messages of the user and of agents, in chats and in channels", async () => {
+  test("messages of the user and of agents, in chats", async () => {
     const t = await setup()
     const ada = await t.agent("Ada")
-    const room = await t.channel("launch", [ada.id])
     const a = t.say(ada.id, "falcon from the user", { author: "user" })
     const b = t.say(ada.id, "falcon from the agent", { author: "agent" })
-    const c = t.post(room.id, "falcon in the channel", { author: "user" })
-    const d = t.post(room.id, "falcon from a member", { author: "agent", agentId: ada.id })
     const found = (await t.page("falcon")).hits
-    expect(found.map((h) => h.messageId).sort()).toEqual([a, b, c, d].sort())
+    expect(found.map((h) => h.messageId).sort()).toEqual([a, b].sort())
     const byId = new Map(found.map((h) => [h.messageId, h]))
     expect(byId.get(a)).toMatchObject({ kind: "agent", placeName: "Ada", author: "user" })
     expect(byId.get(b)).toMatchObject({ kind: "agent", placeName: "Ada", author: "agent" })
-    expect(byId.get(c)).toMatchObject({ kind: "channel", placeName: "launch", author: "user" })
-    expect(byId.get(d)).toMatchObject({ kind: "channel", placeName: "launch", author: "agent" })
     expect(byId.get(a)?.placeId).toBe(ada.id)
-    expect(byId.get(c)?.placeId).toBe(room.id)
   })
 
   test("not tool cards, thinking, files, or a reply that still streams", async () => {
@@ -264,14 +234,10 @@ describe("what the search covers", () => {
     expect(t.db.get("SELECT COUNT(*) AS n FROM message_text")).toEqual({ n: 1 })
   })
 
-  test("deleting an agent or a channel deletes its messages from the search", async () => {
+  test("deleting an agent deletes its messages from the search", async () => {
     const t = await setup()
     const ada = await t.agent("Ada")
-    const room = await t.channel("launch")
     t.say(ada.id, "gone with the agent")
-    t.post(room.id, "gone with the channel")
-    expect(await t.ids("gone")).toHaveLength(2)
-    t.db.run("DELETE FROM channel WHERE id = ?", room.id)
     expect(await t.ids("gone")).toHaveLength(1)
     t.db.run("DELETE FROM agent WHERE id = ?", ada.id)
     expect(await t.ids("gone")).toEqual([])
@@ -306,9 +272,8 @@ describe("the order and the pages", () => {
   test("newest first", async () => {
     const t = await setup()
     const ada = await t.agent("Ada")
-    const room = await t.channel("launch")
     const first = t.say(ada.id, "topic one", { at: 100 })
-    const third = t.post(room.id, "topic three", { at: 300 })
+    const third = t.say(ada.id, "topic three", { at: 300 })
     const second = t.say(ada.id, "topic two", { at: 200 })
     expect(await t.ids("topic")).toEqual([third, second, first])
     // The same order for a word that the index does not hold.
@@ -408,26 +373,20 @@ describe("a hit", () => {
 })
 
 describe("the tool for an agent", () => {
-  test("it reads the chats and the channels of the agent, and no other place", async () => {
+  test("it reads the chat of the agent, and no other place", async () => {
     const t = await setup()
     const ada = await t.agent("Ada")
     const bo = await t.agent("Bo")
-    const withAda = await t.channel("with-ada", [ada.id, bo.id])
-    const withoutAda = await t.channel("without-ada", [bo.id])
     t.say(ada.id, "the code name is Falcon")
     t.say(bo.id, "Bo knows Osprey")
-    t.post(withAda.id, "shared Heron note")
-    t.post(withoutAda.id, "private Kestrel note")
 
     const falcon = await t.forAgent(ada.id, "falcon")
     expect(falcon.failed).toBe(false)
     expect(falcon.output).toContain("Falcon")
     expect(falcon.output).toContain("chat with Ada")
-    expect((await t.forAgent(ada.id, "heron")).output).toContain("channel #with-ada")
-    // No part in the place, no hit.
+    // The chat of another agent is no hit.
     expect((await t.forAgent(ada.id, "osprey")).output).toContain("No past message matches")
-    expect((await t.forAgent(ada.id, "kestrel")).output).toContain("No past message matches")
-    expect((await t.forAgent(bo.id, "kestrel")).output).toContain("Kestrel")
+    expect((await t.forAgent(bo.id, "osprey")).output).toContain("Osprey")
   })
 
   test("it gives 10 hits at most, newest first, with pieces of 300 characters at most", async () => {
@@ -451,19 +410,14 @@ describe("the tool for an agent", () => {
   test("it names who wrote a hit, and skips an archived chat", async () => {
     const t = await setup()
     const ada = await t.agent("Ada")
-    const room = await t.channel("launch", [ada.id])
     t.say(ada.id, "needle from the user", { author: "user" })
     t.say(ada.id, "needle from the agent", { author: "agent" })
-    t.post(room.id, "needle from a member", { author: "agent", agentId: ada.id })
     const { output } = await t.forAgent(ada.id, "needle")
     expect(output).toContain('written by the user: "needle from the user"')
     expect(output).toContain('written by Ada: "needle from the agent"')
-    expect(output).toContain("channel #launch")
-    expect(output).toContain('written by Ada: "needle from a member"')
     await t.run(Agents.use((a) => a.archive(ada.id)))
     const after = (await t.forAgent(ada.id, "needle")).output
     expect(after).not.toContain("chat with Ada")
-    expect(after).toContain("channel #launch")
   })
 
   test("a text that is too short is a failed call", async () => {

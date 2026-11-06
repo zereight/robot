@@ -1,10 +1,7 @@
-import { EVERYONE_MENTION, parseMentions } from "./channels.ts"
-import { orgNameMatches } from "./orgPrefix.ts"
+// The `@` list of the message box of a direct chat (spec 003, "Mention another agent"). These
+// functions hold the rules of the list. The computer and the phone draw it.
 
-// The `@` list of the message box of a channel (spec 004, "Mention"). These functions hold the
-// rules of the list. The computer and the phone draw it.
-
-/** The list shows at most this many members, and `@all` as one more line. */
+/** The list shows at most this many agents. */
 export const MENTION_LIST_MAX = 30
 
 export interface OpenMention {
@@ -29,45 +26,40 @@ export const openMention = (text: string, caret: number): OpenMention | null => 
   return { start, query }
 }
 
-/** One line of the list: a member, or the everyone mention `@all`. */
-export type MentionEntry<T> =
-  | { readonly kind: "member"; readonly member: T }
-  | { readonly kind: "all" }
-
 /**
- * The lines of the list for a query. The members come first, in the order of the channel: the
- * names that start with the query, then the names that hold it or whose whole organization name
- * holds it (spec 036; a member with no `organization` has none to match). The letter case does
- * not count.
- * `@all` is in the list when `withAll` holds and the query starts the word "all". It is the last
- * line, so that a bare `@` and Enter never call every member by chance. When the query is the
- * whole word, it is the first line.
- * `first` marks the members that come before the others (spec 003, "Mention another agent"); each
- * of the two groups keeps the order above.
+ * The agents of the list for a query: the names that start with the query, then the names that
+ * hold it. The letter case does not count.
  */
-export const mentionEntries = <
-  T extends { readonly name: string; readonly organization?: string | null },
->(
+export const mentionEntries = <T extends { readonly name: string }>(
   members: readonly T[],
   query: string,
-  withAll: boolean,
-  first?: (member: T) => boolean,
-): MentionEntry<T>[] => {
+): T[] => {
   const q = query.toLocaleLowerCase()
   const starts = members.filter((m) => m.name.toLocaleLowerCase().startsWith(q))
   const inside = members.filter(
-    (m) =>
-      !starts.includes(m) &&
-      (m.name.toLocaleLowerCase().includes(q) || orgNameMatches(m.organization, q)),
+    (m) => !starts.includes(m) && m.name.toLocaleLowerCase().includes(q),
   )
-  const found = [...starts, ...inside]
-  const ordered = first ? [...found.filter(first), ...found.filter((m) => !first(m))] : found
-  const lines: MentionEntry<T>[] = ordered
-    .slice(0, MENTION_LIST_MAX)
-    .map((member) => ({ kind: "member", member }))
-  if (!withAll || !EVERYONE_MENTION.startsWith(q)) return lines
-  return q === EVERYONE_MENTION ? [{ kind: "all" }, ...lines] : [...lines, { kind: "all" }]
+  return [...starts, ...inside].slice(0, MENTION_LIST_MAX)
 }
+
+/**
+ * The names of `names` that the text mentions with `@Name`, in the order of `names`. A longer
+ * name wins, so "@Ada Lovelace" is not also read as "@Ada". The letter case does not count.
+ */
+export const parseMentions = (text: string, names: readonly string[]): string[] => {
+  const found = new Set<string>()
+  let rest = text
+  for (const name of [...names].sort((a, b) => b.length - a.length)) {
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])@${escapeRegex(name)}(?![\\p{L}\\p{N}_])`, "iu")
+    if (pattern.test(rest)) {
+      found.add(name)
+      rest = rest.replace(pattern, "$1 ")
+    }
+  }
+  return names.filter((n) => found.has(n))
+}
+
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 /**
  * The other agents that a direct chat names with `@Name` (spec 003, "Mention another agent").

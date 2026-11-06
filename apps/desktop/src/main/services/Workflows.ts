@@ -27,12 +27,10 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer } from "effect"
 import { CurrentActor } from "./actor.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
-import { loadHandOffModel } from "./handOff.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, toAppError } from "./Providers.ts"
@@ -144,7 +142,6 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const bus = yield* EventBus
       const tasks = yield* Tasks
       const chat = yield* Chat
-      const channels = yield* Channels
       const notifier = yield* Notifier
       const providers = yield* Providers
       const settings = yield* SettingsStore
@@ -166,11 +163,22 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         Date.now(),
       )
 
+      /**
+       * The stored trigger. A trigger that ROBot has no more (a message in a channel, spec 010)
+       * reads as "manual", so the editor holds no hidden trigger and a save writes "manual".
+       */
+      const triggerOf = (text: string): Trigger => {
+        const stored = JSON.parse(text) as { kind?: unknown }
+        return stored.kind === "schedule" || stored.kind === "manual"
+          ? (stored as Trigger)
+          : { kind: "manual" }
+      }
+
       const toWorkflow = (r: WorkflowRow): Workflow => ({
         id: r.id,
         serverId: r.server_id,
         name: r.name,
-        trigger: JSON.parse(r.trigger) as Trigger,
+        trigger: triggerOf(r.trigger),
         steps: JSON.parse(r.steps) as Step[],
         edges: JSON.parse(r.edges) as Edge[],
         notes: JSON.parse(r.notes ?? "[]") as Note[],
@@ -213,23 +221,27 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           if (problem && (problem !== "no_steps" || needSteps))
             return Effect.fail(new AppError({ code: `graph_${problem}` }))
           for (const step of steps) {
-            // An empty id is a step that still needs its agent or its place: it saves, and a run
-            // fails at the step.
+            // An empty id is a step that still needs its agent: it saves, and a run fails at the
+            // step.
             if (
               step.kind === "agent" &&
               step.agentId !== "" &&
               !db.get("SELECT 1 AS x FROM agent WHERE id = ? AND archived_at IS NULL", step.agentId)
             )
               return Effect.fail(new AppError({ code: "agent_not_found", detail: step.name }))
-            if (
-              step.kind === "post" &&
-              step.channelId !== "" &&
-              !db.get("SELECT 1 AS x FROM channel WHERE id = ?", step.channelId)
-            )
-              return Effect.fail(new AppError({ code: "channel_not_found", detail: step.name }))
           }
           return Effect.void
         })
+
+      /** The agents of a server, for the participants of a workflow. */
+      const participantModel = (serverId: string) => ({
+        agents: db
+          .all<{ id: string; archived_at: number | null }>(
+            "SELECT id, archived_at FROM agent WHERE server_id = ?",
+            serverId,
+          )
+          .map((a) => ({ id: a.id, archived: a.archived_at !== null })),
+      })
 
       const setStep = (runId: string, stepId: string, patch: Partial<StepRow>) => {
         const keys = Object.keys(patch) as (keyof StepRow)[]
@@ -441,13 +453,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           switch (step.kind) {
             case "agent": {
               if (step.agentId === "") return failed("no_agent")
-              // The participants are read when the step starts, so a change of a member or of a lead
-              // counts at once (spec 010, "Owner and participants").
-              if (
-                !workflowParticipants(wf.owner, loadHandOffModel(db, wf.serverId, null)).has(
-                  step.agentId,
-                )
-              )
+              // The participants are read when the step starts, so an agent that was archived counts
+              // at once (spec 010, "Owner and participants").
+              if (!workflowParticipants(wf.owner, participantModel(wf.serverId)).has(step.agentId))
                 return failed("not_participant")
               let prompt = fillTemplate(step.prompt, input, trigger)
               if (input && !step.prompt.includes("{{input}}")) prompt += `\n\nInput:\n${input}`
@@ -495,14 +503,6 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 page: "workflows",
               })
               return { state: "done" as const, result: input, error: "", branch: "" }
-            }
-            case "post": {
-              if (step.channelId === "") return failed("no_place")
-              const text = fillTemplate(step.text, input, trigger)
-              const posted = yield* channels.post(step.channelId, text).pipe(Effect.exit)
-              return posted._tag === "Success"
-                ? { state: "done" as const, result: text, error: "", branch: "" }
-                : { state: "failed" as const, result: "", error: "channel_not_found", branch: "" }
             }
           }
         })
@@ -626,7 +626,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           changed(wf.serverId)
         })
 
-      const fire = (wf: Workflow, trigger: "schedule" | "channel", triggerText: string) =>
+      const fire = (wf: Workflow, trigger: "schedule", triggerText: string) =>
         wf.trigger.kind !== "manual" && wf.trigger.recordOnly
           ? record(wf, trigger, triggerText)
           : start(wf, trigger, triggerText).pipe(Effect.asVoid)
@@ -690,23 +690,6 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           }
         })
 
-      // A message in a channel can start a workflow, when it holds the text of the trigger.
-      channels.onUserMessage((channelId, text) => {
-        for (const r of db.all<WorkflowRow>(
-          "SELECT * FROM workflow WHERE enabled = 1 AND runs_on IS NULL",
-        )) {
-          const wf = toWorkflow(r)
-          const t = wf.trigger
-          if (
-            t.kind === "channel" &&
-            t.channelId === channelId &&
-            text.toLowerCase().includes(t.contains.toLowerCase()) &&
-            !wf.running
-          )
-            Effect.runFork(fire(wf, "channel", text).pipe(Effect.ignore))
-        }
-      })
-
       // The loop ends with the layer: after that the database is closed, and a tick fails.
       yield* Effect.forkScoped(
         Effect.forever(
@@ -768,7 +751,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             db.run(
               `UPDATE workflow SET name = ?, trigger = ?, steps = ?, edges = ?, notes = ?, enabled = ?, last_checked_at = ?, updated_at = ?, owner_kind = ?, owner_id = ? WHERE id = ?`,
               patch.name?.trim() ?? current.name,
-              patch.trigger ? JSON.stringify(patch.trigger) : current.trigger,
+              JSON.stringify(patch.trigger ?? triggerOf(current.trigger)),
               JSON.stringify(steps),
               JSON.stringify(edges),
               patch.notes ? JSON.stringify(patch.notes) : current.notes,

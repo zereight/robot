@@ -271,7 +271,7 @@ describe("a linked device and the workflows of the server (spec 012)", () => {
     ).toEqual([])
   })
 
-  test("a change may only name agents, places and model accounts of the server", async () => {
+  test("a change may only name agents and model accounts of the server", async () => {
     const p = await pair(true)
     const agent = value<Agent>(
       await p.onServer("agents.create", {
@@ -317,21 +317,6 @@ describe("a linked device and the workflows of the server (spec 012)", () => {
     expect(codeOf(await p.ask("workflows.create", withStep(agentStep("nobody"))))).toBe(
       "agent_not_found",
     )
-    expect(
-      codeOf(
-        await p.ask("workflows.create", {
-          ...withStep({ id: "p1", kind: "post", name: "P", x: 0, y: 0, channelId: "x", text: "" }),
-        }),
-      ),
-    ).toBe("channel_not_found")
-    expect(
-      codeOf(
-        await p.ask("workflows.create", {
-          ...gated(p.serverId),
-          trigger: { kind: "channel", channelId: "nowhere", contains: "go" },
-        }),
-      ),
-    ).toBe("channel_not_found")
     expect(codeOf(await p.ask("workflows.create", withStep(ask(account.id, "model-b"))))).toBe("ok")
     expect(codeOf(await p.ask("workflows.create", withStep(ask(account.id, "nope"))))).toBe(
       "model_not_found",

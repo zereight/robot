@@ -1,15 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import {
-  type ChannelMessage,
-  KEEP_GOING_MAX,
-  KEEP_GOING_MESSAGE,
-  type MessagePart,
-  messageText,
-} from "@robot/shared"
+import { KEEP_GOING_MAX, KEEP_GOING_MESSAGE, type MessagePart, messageText } from "@robot/shared"
 import { Effect } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Providers } from "./Providers.ts"
@@ -230,40 +223,5 @@ describe("keep going on open steps (spec 005)", () => {
     await s.settled()
     expect(prompts().length - before).toBe(1)
     expect(keptLines((await s.reply())?.parts ?? [])).toHaveLength(0)
-  })
-
-  test("a part of a channel job goes on before it is done, and the line is in the part", async () => {
-    const before = prompts().length
-    const s = await setup()
-    const bo = await s.make("Bo")
-    const lead = await s.make("Lia")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Launch",
-          topic: "Ship it",
-          memberIds: [lead.id, bo.id],
-          leadId: lead.id,
-        }),
-      ),
-    )
-    await s.run(Channels.use((c) => c.send(channel.id, "@bo PLAN:close job")))
-    await until(async () => {
-      const all = await s.tasks()
-      return all.length > 0 && all.every((x) => !["queued", "running"].includes(x.state))
-    })
-    const messages = await s.run(Channels.use((c) => c.history(channel.id)))
-    const reply = messages.filter((m: ChannelMessage) => m.agentId === bo.id).at(-1)
-    expect(reply?.status).toBe("done")
-    expect(keptLines(reply?.parts ?? [])).toHaveLength(1)
-    expect(messageText(reply as never)).toContain("Both steps are done.")
-    expect(
-      prompts()
-        .slice(before)
-        .some((p) => p.includes(KEEP_GOING_MESSAGE)),
-    ).toBe(true)
-    const tasks = await s.tasks()
-    expect(tasks.every((x) => x.state === "done")).toBe(true)
   })
 })

@@ -1,4 +1,4 @@
-import { cutChars } from "./check.ts"
+import { cutChars } from "./chars.ts"
 
 // Pictures from the web (spec 003, "Pictures from the web"). A picture in a Markdown text can
 // carry data in its address. So a picture from the web loads only when the user asks. The computer

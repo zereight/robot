@@ -42,7 +42,7 @@ describe("fields that the import does not make", () => {
     ])
   })
 
-  test("a version 2 file: channels, skills and the handbook are defined; their unknown fields are not", () => {
+  test("a version 2 file: skills and the handbook are defined; the channels of an older file are not", () => {
     const text = JSON.stringify({
       format: "robot-agents",
       version: 2,
@@ -55,13 +55,13 @@ describe("fields that the import does not make", () => {
       extra: 1,
     })
     expect(ignoredAgentFields(text)).toEqual([
+      { owner: null, field: "channels" },
       { owner: null, field: "extra" },
-      { owner: "Launch", field: "color" },
       { owner: "Sum", field: "icon" },
     ])
   })
 
-  test("a version 1 file: channels, skills and the handbook are not defined", () => {
+  test("a version 1 file: skills and the handbook are not defined", () => {
     const text = JSON.stringify({
       format: "robot-agents",
       version: 1,
@@ -151,27 +151,19 @@ describe("checklist items", () => {
     expect(checklistItemDone(item, { routine: () => undefined })).toBe(true)
   })
 
-  test("a step is done when it has an agent or a place, or is gone; a workflow when it is on", () => {
-    const workflow = (agentId: string, channelId: string, enabled = false) => ({
+  test("a step is done when it has an agent, or is gone; a workflow when it is on", () => {
+    const workflow = (agentId: string, enabled = false) => ({
       enabled,
-      steps: [
-        { id: "s1", kind: "agent" as const, agentId },
-        { id: "s2", kind: "post" as const, channelId },
-      ],
+      steps: [{ id: "s1", kind: "agent" as const, agentId }],
     })
     const agentItem = { kind: "stepAgent", stepId: "s1", name: "A" } as const
-    const placeItem = { kind: "stepPlace", stepId: "s2", name: "P" } as const
-    expect(checklistItemDone(agentItem, { workflow: workflow("", "") })).toBe(false)
-    expect(checklistItemDone(agentItem, { workflow: workflow("a", "") })).toBe(true)
-    expect(checklistItemDone(placeItem, { workflow: workflow("a", "") })).toBe(false)
-    expect(checklistItemDone(placeItem, { workflow: workflow("a", "c") })).toBe(true)
-    expect(
-      checklistItemDone({ ...agentItem, stepId: "gone" }, { workflow: workflow("", "") }),
-    ).toBe(true)
-    expect(checklistItemDone({ kind: "workflowOn" }, { workflow: workflow("", "") })).toBe(false)
-    expect(checklistItemDone({ kind: "workflowOn" }, { workflow: workflow("", "", true) })).toBe(
+    expect(checklistItemDone(agentItem, { workflow: workflow("") })).toBe(false)
+    expect(checklistItemDone(agentItem, { workflow: workflow("a") })).toBe(true)
+    expect(checklistItemDone({ ...agentItem, stepId: "gone" }, { workflow: workflow("") })).toBe(
       true,
     )
+    expect(checklistItemDone({ kind: "workflowOn" }, { workflow: workflow("") })).toBe(false)
+    expect(checklistItemDone({ kind: "workflowOn" }, { workflow: workflow("", true) })).toBe(true)
   })
 
   test("a step that lost an input is done when a connection leads to it, or when it is gone", () => {

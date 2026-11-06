@@ -3,7 +3,6 @@ import { existsSync } from "node:fs"
 import { Effect, Exit } from "effect"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
-import { Organization } from "./Organization.ts"
 import { Places } from "./Places.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
@@ -132,8 +131,8 @@ describe("Agents", () => {
       Object.fromEntries(
         (await t.run(Agents.use((a) => a.list(t.server.id, false)))).map((a) => [a.name, a.isMain]),
       )
-    const mainOf = (t: Awaited<ReturnType<typeof setup>>) =>
-      t.runtime.runPromise(Organization.use((o) => Effect.sync(() => o.mainAgent(t.server.id))))
+    const mainOf = async (t: Awaited<ReturnType<typeof setup>>) =>
+      (await t.run(Agents.use((a) => a.list(t.server.id, false)))).find((a) => a.isMain)?.id ?? null
 
     test("a new agent is not the main agent, and the server has none at the start", async () => {
       const t = await setup()

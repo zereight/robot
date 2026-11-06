@@ -25,11 +25,6 @@ const place = (name: string, extra: Partial<Place> = {}): Place => ({
 
 const sections = (): PlaceSection[] => [
   {
-    id: "channels",
-    places: [place("c1", { kind: "channel", pinRank: 1 }), place("c2", { kind: "channel" })],
-    sections: [],
-  },
-  {
     id: "agents",
     places: [place("a1"), place("a2", { pinRank: 0 })],
     sections: [
@@ -50,21 +45,20 @@ describe("pins", () => {
   })
 
   test("the pinned places come from every section, by rank", () => {
-    expect(pinnedPlaces(sections()).map((p) => p.id)).toEqual(["a2", "c1"])
+    expect(pinnedPlaces(sections()).map((p) => p.id)).toEqual(["a2"])
   })
 
   test("a pinned place leaves its section", () => {
     const rest = withoutPinned(sections())
-    expect(rest[0]?.places.map((p) => p.id)).toEqual(["c2"])
-    expect(rest[1]?.places.map((p) => p.id)).toEqual(["a1"])
-    expect(rest[1]?.sections[0]?.places.map((p) => p.id)).toEqual(["a3", "a4"])
+    expect(rest[0]?.places.map((p) => p.id)).toEqual(["a1"])
+    expect(rest[0]?.sections[0]?.places.map((p) => p.id)).toEqual(["a3", "a4"])
   })
 
   test("a part with no pinned place stays the same object", () => {
     const all = sections()
     const rest = withoutPinned(all)
-    expect(rest[1]?.sections[0]).toBe(all[1]?.sections[0])
-    const none = [{ ...(all[0] as PlaceSection), places: [place("c9", { kind: "channel" })] }]
+    expect(rest[0]?.sections[0]).toBe(all[0]?.sections[0])
+    const none = [{ ...(all[0] as PlaceSection), places: [place("c9")] }]
     expect(withoutPinned(none)[0]).toBe(none[0])
   })
 })
@@ -84,7 +78,7 @@ describe("order of places", () => {
     const all = sections()
     expect(listOfPlace(all, { kind: "agent", id: "a4" }).map((p) => p.id)).toEqual(["a3", "a4"])
     expect(listOfPlace(all, { kind: "agent", id: "a1" }).map((p) => p.id)).toEqual(["a1"])
-    expect(listOfPlace(all, { kind: "channel", id: "c1" }).map((p) => p.id)).toEqual(["a2", "c1"])
+    expect(listOfPlace(all, { kind: "agent", id: "a2" }).map((p) => p.id)).toEqual(["a2"])
     expect(listOfPlace(all, { kind: "agent", id: "none" })).toEqual([])
   })
 

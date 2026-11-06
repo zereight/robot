@@ -32,7 +32,6 @@ import { SettingsStore } from "./Settings.ts"
 export interface Notice {
   readonly kind: NotifyKind
   readonly serverId: string
-  readonly channelId?: string | null
   readonly title: string
   readonly body: string
   /** The place to open on a click. A notice with a page opens that page instead. */
@@ -45,11 +44,10 @@ export interface Notice {
   readonly reason?: { readonly code: string; readonly detail: string }
 }
 
-/** A request for attention, as the chat and the channels report it. */
+/** A request for attention, as the chat reports it. */
 export interface WaitingInput {
   readonly agentId: string
   readonly serverId: string
-  readonly channelId: string | null
   readonly callId: string
   readonly kind: "approval" | "question"
   /** The full text of the step or of the question. The island cuts it. */
@@ -68,22 +66,19 @@ export interface WaitingInput {
 
 interface WaitingItem extends IslandAttention {
   readonly serverId: string
-  readonly channelId: string | null
-  /** When the request began to wait. The Today page orders its first group by it. */
+  /** When the request began to wait. */
   readonly askedAt: number
   /** The name of the other computer when the task runs there (spec 019), or null. */
   readonly from: string | null
 }
 
-/** A request that waits, as the Today page needs it (spec 021). */
+/** A request that waits. */
 export interface WaitingRequest {
   readonly agentId: string
   readonly callId: string
   readonly kind: "approval" | "question"
   /** The text of the step or of the question, cut by the island rules. */
   readonly summary: string
-  /** The channel name, or null for a direct chat. */
-  readonly place: string | null
   readonly target: PlaceTarget
   readonly askedAt: number
   readonly from: string | null
@@ -102,7 +97,7 @@ export interface NotifierService {
   notify(notice: Notice): void
   /**
    * A notice of a linked server (spec 012, 015). It shows by the settings of this computer: the
-   * kind, the focus of the window and the mute of that server or channel. It names the server, and
+   * kind, the focus of the window and the mute of that server. It names the server, and
    * it shows once for a request that waits, also when another device answered it.
    */
   notifyLinked(source: NoticeSource, notice: WireNotice): void
@@ -165,48 +160,24 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         return row && face ? { id: row.id, name: row.name, face } : undefined
       }
 
-      const channelName = (id: string | null | undefined) =>
-        id
-          ? (db.get<{ name: string }>("SELECT name FROM channel WHERE id = ?", id)?.name ?? null)
-          : null
-
-      /** The running task of an agent: its place, the label of its plan step, and when it began. */
+      /** The running task of an agent: the label of its plan step, and when it began. */
       const runningTask = (agentId: string) =>
         db.get<{
           id: string
-          source: string
-          source_id: string | null
           parent_id: string | null
           label: string
           started_at: number | null
         }>(
-          `SELECT id, source, source_id, parent_id, label, started_at FROM task
+          `SELECT id, parent_id, label, started_at FROM task
            WHERE agent_id = ? AND state IN ('running', 'waiting')
            ORDER BY started_at DESC, rowid DESC LIMIT 1`,
           agentId,
         )
-      /** The channel of a task, or null when it works in a direct chat. */
-      const taskChannel = (task: { source: string; source_id: string | null } | undefined) => {
-        if (!task?.source_id) return null
-        if (task.source === "channel") return task.source_id
-        if (task.source === "routine")
-          return (
-            db.get<{ channel_id: string | null }>(
-              "SELECT channel_id FROM routine WHERE id = ?",
-              task.source_id,
-            )?.channel_id ?? null
-          )
-        return null
-      }
-      const targetOf = (agentId: string, channelId: string | null): PlaceTarget =>
-        channelId ? { kind: "channel", id: channelId } : { kind: "agent", id: agentId }
       /** When an agent without a task row began to work, for the time of its row. */
       const began = new Map<string, number>()
 
       const rowOf = (agent: IslandAgent): IslandRow => {
         const task = runningTask(agent.id)
-        const channelId = taskChannel(task)
-        const place = channelName(channelId)
         const tool = activity.stepOf(agent.id)
         const doing: IslandDoing =
           task?.parent_id && task.label.trim() !== ""
@@ -220,8 +191,8 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         const quiet = task ? activity.quietOf(task.id) : undefined
         return {
           agent,
-          place,
-          target: targetOf(agent.id, place === null ? null : channelId),
+          place: null,
+          target: { kind: "agent", id: agent.id },
           doing,
           since,
           quiet: quiet ? { name: quiet.name, seconds: quiet.seconds } : null,
@@ -237,9 +208,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           working: agents.slice(0, ISLAND_WORKING_MAX),
           count: agents.length,
           rows: agents.slice(0, ISLAND_ROWS_MAX).map(rowOf),
-          waiting: waiting.map(
-            ({ serverId: _s, channelId: _c, askedAt: _a, from: _f, ...item }) => item,
-          ),
+          waiting: waiting.map(({ serverId: _s, askedAt: _a, from: _f, ...item }) => item),
           // The result card is for the mode "always" only.
           result: mode === "always" ? result : null,
         }
@@ -265,7 +234,6 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         if (kind === "teams_link") return
         bus.emit("notice", {
           kind,
-          channelId: n.channelId ?? null,
           title: n.title,
           body: bodyOf(n),
           ...(n.target ? { target: n.target } : {}),
@@ -285,7 +253,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         // A kind that was added after the setting was saved has no value and counts as on.
         if (current().notifyKinds[n.kind] === false) return
         if (platform.isFocused()) return
-        if (isMuted(mutes(), n.serverId, n.channelId ?? null, Date.now())) return
+        if (isMuted(mutes(), n.serverId, Date.now())) return
         platform.notify({ title: n.title, body: bodyOf(n) }, () => {
           platform.showWindow()
           if (n.page) bus.emit("app.openPage", { page: n.page })
@@ -306,7 +274,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           id: ++resultId,
           kind: n.kind,
           agent,
-          place: channelName(n.channelId),
+          place: null,
           line: n.kind === "reply" ? firstLine(n.body) : "",
           reason: n.kind === "reply" ? null : (n.reason ?? null),
           target: n.target,
@@ -329,7 +297,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           }
           if (current().notifyKinds[notice.kind] === false) return
           if (platform.isFocused()) return
-          if (isMuted(mutes(), source.serverId, notice.channelId, Date.now())) return
+          if (isMuted(mutes(), source.serverId, Date.now())) return
           platform.notify(
             {
               title: `${notice.title} · ${source.serverName}`,
@@ -350,7 +318,6 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         waitingNotices: () =>
           waiting.map((w) => ({
             kind: w.kind,
-            channelId: w.channelId,
             title: w.agent.name,
             body: BODY(w.summary),
             target: w.target,
@@ -363,7 +330,6 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             callId: w.callId,
             kind: w.kind,
             summary: w.summary,
-            place: w.place,
             target: w.target,
             askedAt: w.askedAt,
             from: w.from,
@@ -379,7 +345,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             ...rest,
             agent,
             summary: attentionText(input.kind, summary),
-            place: channelName(input.channelId),
+            place: null,
             // A request of the other computer never has "Always allow" here, whatever the caller says.
             always: input.always && from === undefined,
             // A request that is seen again keeps the time it began to wait.
@@ -394,7 +360,6 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             {
               kind: item.kind,
               serverId: item.serverId,
-              channelId: item.channelId,
               title: from ? `${item.agent.name} · ${from}` : item.agent.name,
               body: summary,
               target: item.target,

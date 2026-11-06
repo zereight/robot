@@ -10,7 +10,7 @@ import { useUi } from "../state/ui.tsx"
  */
 export const useParticipants = (owner: () => WorkflowOwner | null) => {
   const agents = useAgents()
-  return createMemo(() => workflowParticipants(owner(), { agents: agents.agents(), orgs: [] }))
+  return createMemo(() => workflowParticipants(owner(), { agents: agents.agents() }))
 }
 
 /**

@@ -268,7 +268,6 @@ describe("the mark of a turn", () => {
 
   test("the starter comes from the source of the task", () => {
     expect(starterOf("chat")).toBe("user")
-    expect(starterOf("channel")).toBe("user")
     expect(starterOf("routine")).toBe("routine")
     expect(starterOf("workflow")).toBe("workflow")
     // A message from Teams is a turn that the user did not start (spec 007, 028).

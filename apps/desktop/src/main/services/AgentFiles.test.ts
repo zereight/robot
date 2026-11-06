@@ -4,7 +4,6 @@ import { join } from "node:path"
 import {
   AGENT_FILE_MAX_AGENTS,
   AGENT_FILE_MAX_BYTES,
-  AGENT_FILE_MAX_CHANNELS,
   AGENT_NAME_MAX,
   type AgentFileFailure,
   type AgentFilePreview,
@@ -18,7 +17,6 @@ import { Effect, Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { AgentFiles } from "./AgentFiles.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Checklists } from "./Checklists.ts"
 import { Database } from "./Database.ts"
 import { Handbook } from "./Handbook.ts"
@@ -179,7 +177,7 @@ describe("export", () => {
 
     const path = join(app.dataDir, "agents.json")
     const result = await app.exportTo(path, [ada.id])
-    expect(result).toEqual({ path, count: 1, channels: 0, skills: 0, handbook: false })
+    expect(result).toEqual({ path, count: 1, skills: 0, handbook: false })
 
     const text = readFileSync(path, "utf8")
     const parsed = JSON.parse(text)
@@ -271,7 +269,7 @@ describe("export", () => {
     expect(existsSync(path)).toBe(false)
 
     const cancelled = await app.exportTo(undefined as unknown as string, [ada.id])
-    expect(cancelled).toEqual({ path: null, count: 0, channels: 0, skills: 0, handbook: false })
+    expect(cancelled).toEqual({ path: null, count: 0, skills: 0, handbook: false })
   })
 })
 
@@ -312,7 +310,7 @@ describe("import", () => {
     ])
 
     const result = await app.importFile(path)
-    expect(result).toEqual({ agents: 2, routines: 2, channels: 0, skills: 0, handbook: false })
+    expect(result).toEqual({ agents: 2, routines: 2, skills: 0, handbook: false })
 
     const agents = await app.list()
     expect(agents.map((a) => a.name)).toEqual(["Ada", "Bob"])
@@ -806,36 +804,12 @@ describe("review before an import (spec 014)", () => {
   })
 })
 
-describe("team file: channels, skills and the handbook", () => {
-  /** Three agents; two channels; three skills; a handbook. */
+describe("team file: skills and the handbook", () => {
+  /** Three agents; three skills; a handbook. */
   const team = async (app: App) => {
     const ada = await app.make("Ada")
     const bob = await app.make("Bob")
     const cy = await app.make("Cy")
-    const duo = await app.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: app.server.id,
-          name: "Duo",
-          topic: "Two of us",
-          instructions: "Be brief.",
-          memberIds: [ada.id, bob.id],
-          leadId: ada.id,
-        }),
-      ),
-    )
-    await app.run(Channels.use((c) => c.update(duo.id, { reviewParts: true })))
-    await app.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: app.server.id,
-          name: "Trio",
-          topic: "",
-          memberIds: [ada.id, bob.id, cy.id],
-          leadId: null,
-        }),
-      ),
-    )
     const skill = (name: string, agentIds: string[] | null) =>
       app.run(
         Skills.use((k) =>
@@ -857,13 +831,12 @@ describe("team file: channels, skills and the handbook", () => {
     app: App,
     path: string,
     agentIds: string[],
-    parts: { channels?: boolean; skills?: boolean; handbook?: boolean },
+    parts: { skills?: boolean; handbook?: boolean },
   ) => {
     app.pick.save = path
     return app.run(AgentFiles.use((f) => f.export({ serverId: app.server.id, agentIds, ...parts })))
   }
 
-  const channelsOf = (app: App) => app.run(Channels.use((c) => c.list(app.server.id)))
   const skillsOf = (app: App) => app.run(Skills.use((k) => k.list(app.server.id)))
   const handbookOf = (app: App) => app.run(Handbook.use((h) => h.get(app.server.id)))
 
@@ -873,7 +846,6 @@ describe("team file: channels, skills and the handbook", () => {
     path: string,
     ticks: {
       agents?: number[]
-      channels?: number[]
       skills?: number[]
       handbook?: boolean
     } = {},
@@ -886,7 +858,6 @@ describe("team file: channels, skills and the handbook", () => {
           serverId: app.server.id,
           model: app.model,
           pick: agents.map((index) => ({ index, instructions: true, routines: [] })),
-          channels: ticks.channels ?? (preview?.channels ?? []).map((_, i) => i),
           skills: ticks.skills ?? (preview?.skills ?? []).map((_, i) => i),
           handbook: ticks.handbook ?? false,
         }),
@@ -894,12 +865,12 @@ describe("team file: channels, skills and the handbook", () => {
     )
   }
 
-  test("with no tick box the file holds no channel, skill or handbook", async () => {
+  test("with no tick box the file holds no skill or handbook", async () => {
     const app = await setup()
     const { ada, bob } = await team(app)
     const path = join(app.dataDir, "plain.json")
     const result = await exportTeam(app, path, [ada.id, bob.id], {})
-    expect(result).toEqual({ path, count: 2, channels: 0, skills: 0, handbook: false })
+    expect(result).toEqual({ path, count: 2, skills: 0, handbook: false })
     expect(Object.keys(JSON.parse(readFileSync(path, "utf8"))).sort()).toEqual([
       "agents",
       "format",
@@ -907,29 +878,17 @@ describe("team file: channels, skills and the handbook", () => {
     ])
   })
 
-  test("the tick boxes add the channels whose members are all picked, the skills they may use and the handbook", async () => {
+  test("the tick boxes add the skills they may use and the handbook", async () => {
     const app = await setup()
     const { ada, bob } = await team(app)
     const path = join(app.dataDir, "team.json")
     const result = await exportTeam(app, path, [ada.id, bob.id], {
-      channels: true,
       skills: true,
       handbook: true,
     })
-    expect(result).toEqual({ path, count: 2, channels: 1, skills: 2, handbook: true })
+    expect(result).toEqual({ path, count: 2, skills: 2, handbook: true })
     const parsed = JSON.parse(readFileSync(path, "utf8"))
     expect(parsed.version).toBe(2)
-    // The channel with the third agent is not in the file. The file holds no message or section.
-    expect(parsed.channels).toEqual([
-      {
-        name: "Duo",
-        topic: "Two of us",
-        instructions: "Be brief.",
-        reviewParts: true,
-        members: ["Ada", "Bob"],
-        lead: "Ada",
-      },
-    ])
     // A skill for all agents is written for the agents in the file only. The skill of the third
     // agent is not in the file.
     expect(parsed.skills).toEqual([
@@ -952,12 +911,11 @@ describe("team file: channels, skills and the handbook", () => {
   test("each tick box works alone; an empty handbook is not written", async () => {
     const app = await setup()
     const { ada, bob } = await team(app)
-    const only = async (parts: { channels?: boolean; skills?: boolean; handbook?: boolean }) => {
+    const only = async (parts: { skills?: boolean; handbook?: boolean }) => {
       const path = join(app.dataDir, `only-${JSON.stringify(parts).length}.json`)
       await exportTeam(app, path, [ada.id, bob.id], parts)
       return Object.keys(JSON.parse(readFileSync(path, "utf8"))).sort()
     }
-    expect(await only({ channels: true })).toEqual(["agents", "channels", "format", "version"])
     expect(await only({ skills: true })).toEqual(["agents", "format", "skills", "version"])
     expect(await only({ handbook: true })).toEqual(["agents", "format", "handbook", "version"])
     await app.run(Handbook.use((h) => h.save(app.server.id, "", "page")))
@@ -967,12 +925,10 @@ describe("team file: channels, skills and the handbook", () => {
     expect(JSON.parse(readFileSync(path, "utf8")).handbook).toBeUndefined()
   })
 
-  test("a key in a channel, a skill or the handbook is hidden in the file", async () => {
+  test("a key in a skill or the handbook is hidden in the file", async () => {
     const app = await setup()
     const { ada, bob } = await team(app)
-    const duo = (await channelsOf(app)).find((c) => c.name === "Duo")
     // A text that was saved before the key was stored can still hold it.
-    app.db.run("UPDATE channel SET instructions = ? WHERE id = ?", `Use ${KEY}.`, duo?.id ?? "")
     app.db.run("UPDATE skill SET instructions = ? WHERE name = 'AdaOnly'", `Send ${KEY}.`)
     app.db.run(
       "INSERT INTO handbook_version (id, server_id, text, source, created_at) VALUES ('h9', ?, ?, 'page', ?)",
@@ -981,44 +937,17 @@ describe("team file: channels, skills and the handbook", () => {
       Date.now() + 1000,
     )
     const path = join(app.dataDir, "hidden.json")
-    await exportTeam(app, path, [ada.id, bob.id], { channels: true, skills: true, handbook: true })
+    await exportTeam(app, path, [ada.id, bob.id], { skills: true, handbook: true })
     const text = readFileSync(path, "utf8")
     expect(text).not.toContain(KEY)
     expect(text).toContain("[redacted]")
   })
 
-  test("a file over the limit of 40 channels is not written", async () => {
-    const app = await setup()
-    const ada = await app.make("Ada")
-    for (let i = 0; i < AGENT_FILE_MAX_CHANNELS + 1; i++)
-      await app.run(
-        Channels.use((c) =>
-          c.create({
-            serverId: app.server.id,
-            name: `Channel ${i}`,
-            topic: "",
-            memberIds: [ada.id],
-            leadId: null,
-          }),
-        ),
-      )
-    const path = join(app.dataDir, "many.json")
-    app.pick.save = path
-    const result = await app.exit(
-      AgentFiles.use((f) =>
-        f.export({ serverId: app.server.id, agentIds: [ada.id], channels: true }),
-      ),
-    )
-    expect(failure(result)?.code).toBe("agent_file_too_many_channels")
-    expect(existsSync(path)).toBe(false)
-  })
-
-  test("the review lists the channels, skills and handbook of the file", async () => {
+  test("the review lists the skills and handbook of the file", async () => {
     const source = await setup()
     const { ada, bob, cy } = await team(source)
     const path = join(source.dataDir, "team.json")
     await exportTeam(source, path, [ada.id, bob.id, cy.id], {
-      channels: true,
       skills: true,
       handbook: true,
     })
@@ -1026,10 +955,6 @@ describe("team file: channels, skills and the handbook", () => {
     const app = await setup()
     const preview = await app.openFile(path)
     expect(preview?.version).toBe(2)
-    expect(preview?.channels.map((c) => [c.name, c.members, c.lead, c.reviewParts])).toEqual([
-      ["Duo", [0, 1], 0, true],
-      ["Trio", [0, 1, 2], null, false],
-    ])
     expect(preview?.skills.map((k) => [k.name, k.agents])).toEqual([
       ["AdaOnly", [0]],
       ["CyOnly", [2]],
@@ -1044,12 +969,12 @@ describe("team file: channels, skills and the handbook", () => {
     expect(preview?.notImported).toEqual([])
   })
 
-  test("import makes the ticked channels with their members and lead, and skills that are off", async () => {
+  test("import makes the ticked skills, and they are off", async () => {
     const source = await setup()
     const { ada, bob, cy } = await team(source)
     const path = join(source.dataDir, "team.json")
-    // Ada and Bob only: the channel "Duo" and two skills come, the channel "Trio" does not.
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
+    // Ada and Bob only: two skills come.
+    await exportTeam(source, path, [ada.id, bob.id], { skills: true })
     void cy
 
     const app = await setup()
@@ -1057,19 +982,6 @@ describe("team file: channels, skills and the handbook", () => {
     expect(Exit.isSuccess(result)).toBe(true)
     const agents = await app.list()
     const id = (name: string) => agents.find((a) => a.name === name)?.id ?? ""
-
-    const channels = await channelsOf(app)
-    expect(channels.map((c) => c.name)).toEqual(["Duo"])
-    expect(channels[0]).toMatchObject({
-      topic: "Two of us",
-      instructions: "Be brief.",
-      reviewParts: true,
-      memberIds: [id("Ada"), id("Bob")],
-      leadId: id("Ada"),
-      sectionId: null,
-    })
-    // The file holds no message.
-    expect(await app.run(Channels.use((c) => c.history(channels[0]?.id ?? "")))).toEqual([])
 
     const skills = await skillsOf(app)
     expect(skills.map((k) => [k.name, k.enabled, k.agentIds])).toEqual([
@@ -1084,7 +996,7 @@ describe("team file: channels, skills and the handbook", () => {
     const source = await setup()
     const { ada, bob } = await team(source)
     const path = join(source.dataDir, "team.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
+    await exportTeam(source, path, [ada.id, bob.id], { skills: true })
     const app = await setup()
     const preview = await app.openFile(path)
     const result = await app.run(
@@ -1097,12 +1009,11 @@ describe("team file: channels, skills and the handbook", () => {
             instructions: true,
             routines: [],
           })),
-          channels: [0],
           skills: [0, 1],
         }),
       ),
     )
-    expect(result).toEqual({ agents: 2, routines: 0, channels: 1, skills: 2, handbook: false })
+    expect(result).toEqual({ agents: 2, routines: 0, skills: 2, handbook: false })
   })
 
   test("a part that is not ticked is not made", async () => {
@@ -1110,65 +1021,30 @@ describe("team file: channels, skills and the handbook", () => {
     const { ada, bob } = await team(source)
     const path = join(source.dataDir, "team.json")
     await exportTeam(source, path, [ada.id, bob.id], {
-      channels: true,
       skills: true,
       handbook: true,
     })
     const app = await setup()
-    const result = await importTeam(app, path, { channels: [], skills: [1] })
+    const result = await importTeam(app, path, { skills: [1] })
     expect(Exit.isSuccess(result)).toBe(true)
-    expect(await channelsOf(app)).toEqual([])
     expect((await skillsOf(app)).map((k) => k.name)).toEqual(["Everyone"])
     expect((await handbookOf(app)).text).toBe("")
   })
 
-  test("a channel is made without a member that is not ticked; a lead that is not made leaves none", async () => {
+  test("a skill with no agent left is not made", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)
     const path = join(source.dataDir, "team.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
+    await exportTeam(source, path, [ada.id, bob.id], { skills: true })
 
     const app = await setup()
-    // Only Bob is ticked (place 1). Ada, the lead, is not made.
+    // Only Bob is ticked (place 1). The skill "AdaOnly" needs Ada, so it has no agent left.
+    await app.openFile(path)
     const result = await importTeam(app, path, { agents: [1] })
     expect(Exit.isSuccess(result)).toBe(true)
-    const [bobNow] = await app.list()
-    const [channel] = await channelsOf(app)
-    expect(channel).toMatchObject({ name: "Duo", memberIds: [bobNow?.id], leadId: null })
-    // A skill is made for the agents that are made.
-    const skills = await skillsOf(app)
-    expect(skills.map((k) => [k.name, k.agentIds])).toEqual([["Everyone", [bobNow?.id ?? ""]]])
-  })
-
-  test("a channel with no member left and a skill with no agent left are not made", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    // A channel of Ada alone: when Ada is not ticked, it has no member left.
-    await source.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: source.server.id,
-          name: "Solo",
-          topic: "",
-          memberIds: [ada.id],
-          leadId: ada.id,
-        }),
-      ),
-    )
-    const path = join(source.dataDir, "team.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
-
-    const app = await setup()
-    // Only Bob is ticked (place 1). "Duo" keeps Bob. "Solo" has no member left. The skill
-    // "AdaOnly" needs Ada, so it has no agent left.
-    const preview = await app.openFile(path)
-    expect(preview?.channels.map((c) => c.name)).toEqual(["Duo", "Solo"])
-    const result = await importTeam(app, path, { agents: [1] })
-    expect(Exit.isSuccess(result)).toBe(true)
-    expect((await channelsOf(app)).map((c) => c.name)).toEqual(["Duo"])
     expect((await skillsOf(app)).map((k) => k.name)).toEqual(["Everyone"])
 
-    // With no agent ticked, no channel or skill can be made. Nothing at all is refused.
+    // With no agent ticked, no skill can be made. Nothing at all is refused.
     const bare = await setup()
     await bare.openFile(path)
     const nothing = await bare.exit(
@@ -1177,42 +1053,31 @@ describe("team file: channels, skills and the handbook", () => {
           serverId: bare.server.id,
           model: null,
           pick: [],
-          channels: [0],
           skills: [0],
         }),
       ),
     )
     expect(failure(nothing)?.code).toBe("import_nothing_picked")
-    expect(await channelsOf(bare)).toEqual([])
     expect(await skillsOf(bare)).toEqual([])
   })
 
-  test("a name that is taken gets a number, for a channel and for a skill", async () => {
+  test("a name that is taken gets a number, for a skill", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)
     const path = join(source.dataDir, "team.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
+    await exportTeam(source, path, [ada.id, bob.id], { skills: true })
 
     // The same file twice in one app: the second import numbers the names.
     const app = await setup()
     await importTeam(app, path)
     const again = await app.openFile(path)
-    expect(again?.channels.map((c) => [c.name, c.fileName])).toEqual([["Duo 2", "Duo"]])
     expect(again?.skills.map((k) => k.name)).toEqual(["AdaOnly 2", "Everyone 2"])
     await importTeam(app, path)
-    expect((await channelsOf(app)).map((c) => c.name)).toEqual(["Duo", "Duo 2"])
     expect((await skillsOf(app)).map((k) => k.name)).toEqual([
       "AdaOnly",
       "AdaOnly 2",
       "Everyone",
       "Everyone 2",
-    ])
-    // The new agents are numbered too, and the second channel uses them.
-    const second = (await channelsOf(app)).find((c) => c.name === "Duo 2")
-    const agents = await app.list()
-    expect(second?.memberIds).toEqual([
-      agents.find((a) => a.name === "Ada 2")?.id ?? "",
-      agents.find((a) => a.name === "Bob 2")?.id ?? "",
     ])
   })
 
@@ -1275,7 +1140,7 @@ describe("team file: channels, skills and the handbook", () => {
         f.import({ serverId: app.server.id, model: null, pick: [], handbook: true }),
       ),
     )
-    expect(result).toEqual({ agents: 0, routines: 0, channels: 0, skills: 0, handbook: true })
+    expect(result).toEqual({ agents: 0, routines: 0, skills: 0, handbook: true })
     expect((await handbookOf(app)).text).toBe("Answer in Korean.")
     expect(await app.list()).toEqual([])
   })
@@ -1288,19 +1153,16 @@ describe("team file: channels, skills and the handbook", () => {
         format: "robot-agents",
         version: 2,
         agents: [{ name: "Ada" }],
-        channels: [{ name: "Ops", instructions: `Use ${SECRET_LOOKALIKE}.`, members: ["Ada"] }],
         skills: [{ name: "Send", instructions: `Key ${SECRET_LOOKALIKE}`, agents: ["Ada"] }],
         handbook: `The key is ${SECRET_LOOKALIKE}.`,
       }),
     )
     const preview = await app.openFile(path)
-    expect(preview?.channels[0]?.secretRemoved).toBe(true)
     expect(preview?.skills[0]?.secretRemoved).toBe(true)
     expect(preview?.handbook?.secretRemoved).toBe(true)
     expect(preview?.handbook?.text).not.toContain(SECRET_LOOKALIKE)
     const result = await importTeam(app, path, { handbook: true })
     expect(Exit.isSuccess(result)).toBe(true)
-    expect((await channelsOf(app))[0]?.instructions).toBe("Use [redacted].")
     expect((await skillsOf(app))[0]?.instructions).toBe("Key [redacted]")
     expect((await handbookOf(app)).text).toBe("The key is [redacted].")
   })
@@ -1319,7 +1181,6 @@ describe("team file: channels, skills and the handbook", () => {
     )
     const preview = await app.openFile(path)
     expect(preview?.version).toBe(1)
-    expect(preview?.channels).toEqual([])
     expect(preview?.handbook).toBeNull()
     expect(preview?.notImported).toEqual([
       { reason: "unknown_field", owner: null, field: "channels" },
@@ -1327,49 +1188,18 @@ describe("team file: channels, skills and the handbook", () => {
     ])
     const result = await importTeam(app, path)
     expect(Exit.isSuccess(result)).toBe(true)
-    expect(await channelsOf(app)).toEqual([])
   })
 
   test("a part that the file does not hold is refused", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)
     const path = join(source.dataDir, "team.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true })
+    await exportTeam(source, path, [ada.id, bob.id], { skills: true })
     const app = await setup()
-    const bad = await importTeam(app, path, { channels: [4] })
+    const bad = await importTeam(app, path, { skills: [4] })
     expect(failure(bad)?.code).toBe("invalid_input")
     const noHandbook = await importTeam(app, path, { handbook: true })
     expect(failure(noHandbook)?.code).toBe("invalid_input")
     expect(await app.list()).toEqual([])
-  })
-
-  test("an import that stops at a channel keeps what was made and names the channel", async () => {
-    const source = await setup()
-    const { ada, bob } = await team(source)
-    const path = join(source.dataDir, "team.json")
-    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
-    const app = await setup()
-    await app.openFile(path)
-    // A trigger makes every new channel fail, as a full disk would.
-    app.db.run(
-      "CREATE TRIGGER no_channels BEFORE INSERT ON channel BEGIN SELECT RAISE(ABORT, 'full'); END",
-    )
-    const result = await app.exit(
-      AgentFiles.use((f) =>
-        f.import({
-          serverId: app.server.id,
-          model: app.model,
-          pick: [0, 1].map((index) => ({ index, instructions: true, routines: [] })),
-          channels: [0],
-          skills: [0],
-        }),
-      ),
-    )
-    const error = failure(result)
-    expect(error?.code).toBe("agent_file_failed")
-    const detail = JSON.parse(error?.detail ?? "{}") as AgentFileFailure
-    expect(detail).toMatchObject({ kind: "channel", name: "Duo", made: 2, madeChannels: 0 })
-    expect((await app.list()).map((a) => a.name)).toEqual(["Ada", "Bob"])
-    expect(await skillsOf(app)).toEqual([])
   })
 })

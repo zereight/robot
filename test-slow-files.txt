@@ -2,13 +2,10 @@
 # `bun run test:fast` skips these via --path-ignore-patterns; `bun run test:slow` runs only
 # these. `bun run test` still runs everything, and CI runs the full suite. One path per line,
 # relative to the repository root. Re-measure before adding or removing a line.
-apps/desktop/scripts/judge-items-lib.test.ts
 apps/desktop/src/main/link/changes.test.ts
 apps/desktop/src/main/link/phone.test.ts
 apps/desktop/src/main/runtimes/readonly.test.ts
 apps/desktop/src/main/runtimes/run.test.ts
-apps/desktop/src/main/services/ChannelCheck.test.ts
-apps/desktop/src/main/services/ChannelReview.test.ts
 apps/desktop/src/main/services/Chat.test.ts
 apps/desktop/src/main/services/Decision.test.ts
 apps/desktop/src/main/services/Devices.test.ts
@@ -27,7 +24,6 @@ apps/desktop/src/main/services/TeamsAnswers.test.ts
 apps/desktop/src/main/services/TeamsLink.test.ts
 apps/desktop/src/main/services/TeamsPause.test.ts
 apps/desktop/src/main/services/Threads.test.ts
-apps/desktop/src/main/services/Today.test.ts
 apps/desktop/src/main/services/Tools.test.ts
 apps/desktop/src/main/services/ToolsConnections.test.ts
 apps/desktop/src/main/services/WorkflowSteps.test.ts

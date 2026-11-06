@@ -26,8 +26,6 @@ const condition = (name: string, text = "haiku", mode: "contains" | "ask" = "con
   ({ kind: "condition", name, x: 0, y: 0, mode, text }) satisfies WorkflowFileStep
 const approval = (name: string, message = "Go on?") =>
   ({ kind: "approval", name, x: 0, y: 0, message }) satisfies WorkflowFileStep
-const post = (name: string) =>
-  ({ kind: "post", name, x: 0, y: 0, text: "{{input}}" }) satisfies WorkflowFileStep
 const notify = (name: string) =>
   ({ kind: "notify", name, x: 0, y: 0, title: "Done" }) satisfies WorkflowFileStep
 const at = <T extends WorkflowFileStep>(step: T, x: number, y: number): T => ({ ...step, x, y })
@@ -64,7 +62,7 @@ type CcFile = {
 
 const write = (
   workflow: WorkflowFileWorkflow,
-  trigger: "manual" | "schedule" | "channel" = workflow.trigger.kind,
+  trigger: "manual" | "schedule" = workflow.trigger.kind,
 ) => {
   const result = writeCcWorkflowFile({ workflow, trigger, now: NOW })
   return { ...result, file: JSON.parse(result.text) as CcFile }
@@ -216,19 +214,16 @@ describe("connections", () => {
     ])
   })
 
-  test("a post step and a notify step are not written, and the steps around them stay joined", () => {
-    const steps = [agent("A"), notify("Tell"), post("Share"), agent("B")]
-    const { file, notExported } = write(make(steps, [link(1, 2), link(2, 3), link(3, 4)]))
-    expect(file.nodes.map((n) => n.id)).toEqual(["start", "step-1", "step-4", "end"])
+  test("a notify step is not written, and the steps around it stay joined", () => {
+    const steps = [agent("A"), notify("Tell"), agent("B")]
+    const { file, notExported } = write(make(steps, [link(1, 2), link(2, 3)]))
+    expect(file.nodes.map((n) => n.id)).toEqual(["start", "step-1", "step-3", "end"])
     expect(edges(file)).toEqual([
       "start:output>step-1",
-      "step-1:output>step-4",
-      "step-4:output>end",
+      "step-1:output>step-3",
+      "step-3:output>end",
     ])
-    expect(notExported).toEqual([
-      { kind: "step", step: 2, stepKind: "notify", name: "Tell" },
-      { kind: "step", step: 3, stepKind: "post", name: "Share" },
-    ])
+    expect(notExported).toEqual([{ kind: "step", step: 2, stepKind: "notify", name: "Tell" }])
   })
 
   test("a step that is not written and has two steps after it joins both; the branch stays", () => {
@@ -260,7 +255,7 @@ describe("connections", () => {
   })
 
   test("a workflow of only steps that are not written is the start node joined to the end node", () => {
-    const { file } = write(make([post("Share"), notify("Tell")], [link(1, 2)]))
+    const { file } = write(make([notify("Share"), notify("Tell")], [link(1, 2)]))
     expect(edges(file)).toEqual(["start:output>end"])
   })
 })
@@ -289,10 +284,9 @@ describe("what the file does not hold", () => {
     ])
   })
 
-  test("the trigger is listed by the kind of the app, also when the file holds the manual trigger", () => {
-    // A message trigger is written as "manual" in a ROBot file. The list still names it.
-    expect(write(make([]), "channel").notExported).toEqual([
-      { kind: "trigger", trigger: "channel" },
+  test("the trigger is listed by the kind of the app", () => {
+    expect(write(make([]), "schedule").notExported).toEqual([
+      { kind: "trigger", trigger: "schedule" },
     ])
     expect(write(make([]), "manual").notExported).toEqual([])
   })

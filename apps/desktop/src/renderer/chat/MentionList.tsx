@@ -1,4 +1,4 @@
-import type { Agent, MentionEntry } from "@robot/shared"
+import type { Agent } from "@robot/shared"
 import { For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import styles from "./mentions.module.css"
@@ -9,34 +9,30 @@ import styles from "./mentions.module.css"
  */
 export const MentionList = (props: {
   label: string
-  entries: readonly MentionEntry<Agent>[]
+  entries: readonly Agent[]
   highlight: number
-  onPick: (entry: MentionEntry<Agent>) => void
+  onPick: (agent: Agent) => void
 }) => (
   <div class={styles.mentions} role="listbox" aria-label={props.label} data-testid="mention-list">
     <For each={props.entries}>
-      {(entry, index) => (
-        <Show when={entry.kind === "member" ? entry.member : undefined}>
-          {(member) => (
-            <button
-              type="button"
-              role="option"
-              class={styles.mention}
-              aria-selected={props.highlight === index()}
-              // The box keeps the focus, so a click does not end the typing.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => props.onPick(entry)}
-              data-testid="mention-option"
-              data-member={member().name}
-            >
-              <Face face={member().face} image={member().faceImage} size={20} />
-              <span class={styles.mentionName}>@{member().name}</span>
-              <Show when={member().role}>
-                <span class={styles.mentionRole}>{member().role}</span>
-              </Show>
-            </button>
-          )}
-        </Show>
+      {(member, index) => (
+        <button
+          type="button"
+          role="option"
+          class={styles.mention}
+          aria-selected={props.highlight === index()}
+          // The box keeps the focus, so a click does not end the typing.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => props.onPick(member)}
+          data-testid="mention-option"
+          data-member={member.name}
+        >
+          <Face face={member.face} image={member.faceImage} size={20} />
+          <span class={styles.mentionName}>@{member.name}</span>
+          <Show when={member.role}>
+            <span class={styles.mentionRole}>{member.role}</span>
+          </Show>
+        </button>
       )}
     </For>
   </div>

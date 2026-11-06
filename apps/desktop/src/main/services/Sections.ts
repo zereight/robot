@@ -26,7 +26,7 @@ interface SectionRow {
 }
 
 export interface SectionsService {
-  /** Every user section of a server: agent sections, then channel sections, each in order. */
+  /** Every user section of a server, in order. */
   list(serverId: string): Effect.Effect<readonly UserSection[]>
   create(input: SectionCreate): Effect.Effect<UserSection, AppError>
   rename(id: string, name: string): Effect.Effect<UserSection, AppError>
@@ -89,9 +89,8 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
           kind,
         )
 
-      const tableOf = (kind: PlaceKind) => (kind === "agent" ? "agent" : "channel")
-      const missing = (kind: PlaceKind) =>
-        new AppError({ code: kind === "agent" ? "agent_not_found" : "channel_not_found" })
+      const tableOf = (_kind: PlaceKind) => "agent"
+      const missing = (_kind: PlaceKind) => new AppError({ code: "agent_not_found" })
 
       interface PlaceRow {
         server_id: string
@@ -121,7 +120,7 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
             .map((r) => ({ kind, ...r }))
         const rows =
           row.pinned === 1
-            ? [...pick("agent", "pinned = 1"), ...pick("channel", "pinned = 1")]
+            ? pick("agent", "pinned = 1")
             : pick(place.kind, "pinned = 0 AND place_section_id IS ?", row.place_section_id)
         return orderByPosition(rows, (r) => r.place_position).map((r) => ({
           kind: r.kind,
@@ -221,7 +220,6 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
         db.transaction(() => {
           // The places move out first. The database also clears them if this were missed.
           db.run("UPDATE agent SET place_section_id = NULL WHERE place_section_id = ?", id)
-          db.run("UPDATE channel SET place_section_id = NULL WHERE place_section_id = ?", id)
           db.run("DELETE FROM place_section WHERE id = ?", id)
         })
         changed(found.server_id, found.kind)
@@ -242,21 +240,17 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
         place: PlaceRef,
         sectionId: string | null,
       ) {
-        const table = place.kind === "agent" ? "agent" : "channel"
+        const table = tableOf(place.kind)
         const owner = db.get<{ server_id: string }>(
           `SELECT server_id FROM ${table} WHERE id = ?`,
           place.id,
         )
-        if (!owner)
-          return yield* new AppError({
-            code: place.kind === "agent" ? "agent_not_found" : "channel_not_found",
-          })
+        if (!owner) return yield* missing(place.kind)
         const stored = yield* check(owner.server_id, place.kind, sectionId)
         db.run(`UPDATE ${table} SET place_section_id = ? WHERE id = ?`, stored, place.id)
         // A place comes last in its new section. A pinned place keeps its spot in "Pinned".
         if (placeRow(place)?.pinned === 0) putLast(place)
         changed(owner.server_id, place.kind)
-        if (place.kind === "channel") bus.emit("channels.changed", { channelId: place.id })
       })
 
       const pin = Effect.fn("Sections.pin")(function* (place: PlaceRef, pinned: boolean) {
@@ -265,8 +259,7 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
         if (row.pinned === (pinned ? 1 : 0)) return
         if (pinned) {
           const count = db.get<{ n: number }>(
-            `SELECT (SELECT COUNT(*) FROM agent WHERE server_id = ?1 AND pinned = 1 AND archived_at IS NULL)
-                  + (SELECT COUNT(*) FROM channel WHERE server_id = ?1 AND pinned = 1) AS n`,
+            "SELECT COUNT(*) AS n FROM agent WHERE server_id = ? AND pinned = 1 AND archived_at IS NULL",
             row.server_id,
           )?.n
           if (pinsFull(count ?? 0)) return yield* new AppError({ code: "pin_limit" })
@@ -278,7 +271,6 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
         )
         putLast(place)
         changed(row.server_id, place.kind)
-        if (place.kind === "channel") bus.emit("channels.changed", { channelId: place.id })
       })
 
       const order = Effect.fn("Sections.order")(function* (items: readonly PlaceRef[]) {

@@ -36,8 +36,6 @@ export const CACHED_METHODS = [
   "places.list",
   "agents.list",
   "agents.get",
-  "channels.list",
-  "channels.history",
   "chat.history",
   "tasks.list",
   "tasks.get",
@@ -53,11 +51,9 @@ export const defaultCanChange = (kind: DeviceKind): boolean => kind !== "phone"
 
 /**
  * Page buttons that a client cannot use on a linked server (spec 012, "What a client can do").
- * They show the muted line "Open this on <name>". Today, routines and usage are in this list.
- * The org chart (029) is not: a client shows the chart of the server, read only, from the ready
- * model that the server sends.
+ * They show the muted line "Open this on <name>". Routines and usage are in this list.
  */
-export const CLIENT_BLOCKED_PAGES = ["today", "routines", "usage"] as const
+export const CLIENT_BLOCKED_PAGES = ["routines", "usage"] as const
 
 /** A model that a device with the switch may pick (spec 012). It holds no key. */
 export interface ModelChoice {

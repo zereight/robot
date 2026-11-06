@@ -2,10 +2,9 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { attentionAnswers, type ChatMessage, type WireNotice } from "@robot/shared"
-import { Effect, Fiber } from "effect"
+import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
@@ -228,30 +227,6 @@ describe("system notifications", () => {
     await s.idle()
     expect(s.t.shell.notices.map((n) => n.title)).toEqual(["Ada"])
   })
-
-  test("an agent that mentions @you in a channel notifies", async () => {
-    const s = await setup()
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Ops",
-          topic: "",
-          memberIds: [s.agent.id],
-          leadId: null,
-        }),
-      ),
-    )
-    s.t.shell.focused = false
-    await s.run(Channels.use((c) => c.send(channel.id, "@Ada PING")))
-    await s.idle()
-    expect(s.t.shell.notices).toHaveLength(1)
-    expect(s.t.shell.notices[0]?.title).toContain("Ops")
-    await s.run(Notifier.use((n) => n.setMute("channel", channel.id, "forever")))
-    await s.run(Channels.use((c) => c.send(channel.id, "@Ada PING again")))
-    await s.idle()
-    expect(s.t.shell.notices).toHaveLength(1)
-  })
 })
 
 describe("status island", () => {
@@ -335,7 +310,6 @@ describe("notices of a linked server", () => {
   const source = { linkId: "link-1", serverId: "server-b", serverName: "MacBook 2" }
   const notice = (over: Partial<WireNotice> = {}): WireNotice => ({
     kind: "approval",
-    channelId: null,
     title: "Ada",
     body: "Run: ls",
     target: { kind: "agent", id: "agent-1", messageId: "m1" },
@@ -398,54 +372,6 @@ describe("notices of a linked server", () => {
     expect(s.t.shell.notices).toHaveLength(1)
   })
 
-  test("a part in review shows from a linked server, with the same off switch and mutes, and opens the part", async () => {
-    const s = await setup()
-    s.t.shell.focused = false
-    const review = plain({
-      kind: "part_review",
-      channelId: "channel-1",
-      title: "Ada · Launch",
-      body: "Write the intro",
-      target: { kind: "channel", id: "channel-1", messageId: "m9" },
-    })
-    await linked(s, review)
-    expect(s.t.shell.notices).toHaveLength(1)
-    expect(s.t.shell.notices[0]).toMatchObject({
-      title: "Ada · Launch · MacBook 2",
-      body: "Write the intro",
-    })
-    s.t.shell.notices[0]?.click()
-    expect(s.t.events.find((e) => e.event === "app.openPlace")?.payload).toEqual({
-      kind: "channel",
-      id: "channel-1",
-      messageId: "m9",
-      serverId: "server-b",
-    })
-    // The channel is muted: nothing more shows.
-    await s.run(Notifier.use((n) => n.setMute("server", "server-b", "1h")))
-    await linked(s, review)
-    expect(s.t.shell.notices).toHaveLength(1)
-    await s.run(Notifier.use((n) => n.setMute("server", "server-b", "off")))
-    // The kind is off: nothing shows.
-    await s.run(
-      SettingsStore.use((x) =>
-        x.update({
-          notifyKinds: {
-            reply: true,
-            mention: true,
-            approval: true,
-            question: true,
-            task_failed: true,
-            routine_failed: true,
-            part_review: false,
-          },
-        }),
-      ),
-    )
-    await linked(s, review)
-    expect(s.t.shell.notices).toHaveLength(1)
-  })
-
   test("a mute works per server: one computer muted, the other not", async () => {
     const s = await setup()
     s.t.shell.focused = false
@@ -458,16 +384,6 @@ describe("notices of a linked server", () => {
     await s.send("hello")
     await s.idle()
     expect(s.t.shell.notices).toHaveLength(2)
-  })
-
-  test("a mute of one channel on the server holds, the others still notify", async () => {
-    const s = await setup()
-    s.t.shell.focused = false
-    await s.run(Notifier.use((n) => n.setMute("channel", "ch-1", "8h")))
-    await linked(s, plain({ kind: "mention", channelId: "ch-1" }))
-    expect(s.t.shell.notices).toHaveLength(0)
-    await linked(s, plain({ kind: "mention", channelId: "ch-2" }))
-    expect(s.t.shell.notices).toHaveLength(1)
   })
 
   test("a request that waits notifies once, and not again after it was answered here", async () => {
@@ -548,10 +464,7 @@ describe("the island, other computers and Always allow", () => {
     await s.run(
       Notifier.use((n) =>
         Effect.sync(() =>
-          n.attention(
-            { ...item, always: true, serverId: s.local.id, channelId: null },
-            "MacBook 2",
-          ),
+          n.attention({ ...item, always: true, serverId: s.local.id }, "MacBook 2"),
         ),
       ),
     )
@@ -598,7 +511,6 @@ describe("the island, other computers and Always allow", () => {
             {
               agentId: shown.agentId,
               serverId: s.local.id,
-              channelId: null,
               callId: shown.callId,
               kind: shown.kind,
               summary: shown.summary,
@@ -676,7 +588,6 @@ describe("the island, other computers and Always allow", () => {
             { linkId: "link-1", serverId: "server-b", serverName: "MacBook 2" },
             {
               kind: "approval",
-              channelId: null,
               title: "Ada",
               body: "Run: ls",
               target: { kind: "agent", id: "agent-1", messageId: "m1" },
@@ -820,48 +731,6 @@ describe("status island: detail rows", () => {
     expect(state.rows).toHaveLength(5)
     expect(state.working).toHaveLength(3)
     for (const a of agents) await s.run(Chat.use((c) => c.stop(a.id)))
-  })
-
-  test("a part of a plan shows the label of its step, and the channel as place", async () => {
-    const s = await setup()
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Ops",
-          topic: "",
-          memberIds: [s.agent.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const parent = await s.run(
-      Tasks.use((x) =>
-        x.create({ agentId: s.agent.id, prompt: "job", source: "channel", sourceId: channel.id }),
-      ),
-    )
-    const part = await s.run(
-      Tasks.use((x) =>
-        x.create({
-          agentId: s.agent.id,
-          prompt: "do the thing",
-          label: "Write the tests",
-          source: "channel",
-          sourceId: channel.id,
-          parentId: parent.id,
-        }),
-      ),
-    )
-    const fiber = s.t.runtime.runFork(
-      Tasks.use((x) => x.run(part.id, s.agent.id, Effect.sleep("30 seconds"))),
-    )
-    await until(async () => (await s.island()).rows.length === 1)
-    const row = (await s.island()).rows[0]
-    expect(row?.place).toBe("Ops")
-    expect(row?.target).toEqual({ kind: "channel", id: channel.id })
-    expect(row?.doing).toEqual({ kind: "plan", label: "Write the tests" })
-    await s.run(Tasks.use((x) => x.stop(part.id)))
-    await s.t.runtime.runPromise(Fiber.await(fiber))
   })
 })
 

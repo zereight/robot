@@ -235,7 +235,7 @@ describe("the phone on a real computer", () => {
       () => view(phone, link.id).data.places,
       (p) => (p ?? []).some((s) => s.places.some((x) => x.id === pc.agent.id)),
     )
-    expect(places?.map((s) => s.id)).toEqual(["channels", "agents"])
+    expect(places?.map((s) => s.id)).toEqual(["agents"])
     expect(view(phone, link.id).data.agents?.map((a) => a.name)).toEqual(["Ada"])
 
     // Open the agent, send, and see the reply stream in.

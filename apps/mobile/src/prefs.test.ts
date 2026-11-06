@@ -57,8 +57,7 @@ describe("the settings of the phone", () => {
     expect(shouldNotify(off, { kind: "reply" })).toBe(true)
     // Kinds of screens that Phone 1 does not have show no notification.
     expect(notifyKindOf({ kind: "workflow_notice" })).toBeNull()
-    expect(shouldNotify(defaultPrefs, { kind: "part_review" })).toBe(false)
-    // A mention and a part review come from a channel. Channels are gone (spec 015).
+    // A mention comes from a channel. Channels are gone (spec 015).
     expect(shouldNotify(defaultPrefs, { kind: "mention" })).toBe(false)
   })
 

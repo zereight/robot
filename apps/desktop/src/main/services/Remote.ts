@@ -277,7 +277,6 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               if (serverId) {
                 for (const event of ["places.changed", "agents.changed", "tasks.changed"] as const)
                   bus.window(event, { serverId })
-                bus.window("channels.changed", { channelId: "" })
               }
             },
           },

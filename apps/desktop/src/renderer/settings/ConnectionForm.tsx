@@ -135,7 +135,6 @@ export const ConnectionFormDialog = (props: {
     address: address(),
     headers: kind() === "web" ? entriesOf(headers()) : [],
     agents: all() ? "all" : chosen(),
-    organizations: [],
   })
 
   // A Test shows the form as it was. A change makes it old, so it goes.

@@ -38,12 +38,8 @@ export interface RevealTarget {
   readonly id: string
 }
 
-/** Pages that are gone (spec 001). A layout saved with one of them opens the chats. */
-const GONE_PAGES: readonly Page[] = ["today", "orgchart"]
-const shownPage = (page: Page): Page => (GONE_PAGES.includes(page) ? "chats" : page)
-
 const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
-  const [ui, setUi] = createStore<UiState>({ ...initial, page: shownPage(initial.page) })
+  const [ui, setUi] = createStore<UiState>({ ...initial })
   // The linked servers come and go, and change state. A store keeps the rows (and their focus).
   const [servers, setServers] = createStore<Server[]>([...initialServers])
   const states = new Map<string, string | undefined>()
@@ -127,7 +123,7 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     if (!step) return
     update({
       serverId: step.serverId,
-      page: shownPage(step.page),
+      page: step.page,
       places: step.place ? { ...ui.places, [step.serverId]: step.place } : ui.places,
     })
   }
@@ -183,7 +179,7 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       const id = serverId ?? server()?.id
       if (id) update({ serverId: id, places: { ...ui.places, [id]: ref }, page: "chats" })
     },
-    selectPage: (page: Page) => update({ page: shownPage(page) }),
+    selectPage: (page: Page) => update({ page }),
     revealTarget,
     /** Opens the page of one routine or one workflow (spec 014). */
     reveal: (target: RevealTarget) => {

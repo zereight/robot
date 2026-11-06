@@ -7,10 +7,8 @@
 export const SYNC_KINDS = [
   "account",
   "agent",
-  "channel",
   "memory",
   "message",
-  "cmessage",
   "routine",
   "workflow",
   "task",
@@ -20,8 +18,6 @@ export const SYNC_KINDS = [
   "iversion",
   "hversion",
   "thread",
-  "org",
-  "orgunit",
 ] as const
 export type SyncKind = (typeof SYNC_KINDS)[number]
 
@@ -35,18 +31,14 @@ export type SyncMode = (typeof SYNC_MODES)[number]
 /** What one computer holds, for the start dialog. */
 export interface SyncCounts {
   readonly agents: number
-  readonly channels: number
   readonly messages: number
 }
 
 /** The kinds that a user knows by name. Only these count in "items that would be removed". */
 export const COUNTED_KINDS: readonly SyncKind[] = [
   "agent",
-  "channel",
-  "orgunit",
   "memory",
   "message",
-  "cmessage",
   "routine",
   "workflow",
 ]
@@ -93,7 +85,7 @@ export interface SyncStatus {
   readonly stoppedBy: boolean
   /** The other clock is off by this many minutes, when `attention` is `clock`. */
   readonly clockMinutes: number
-  /** For `attention` = `deletions`: how many agents and channels wait for a decision. */
+  /** For `attention` = `deletions`: how many agents wait for a decision. */
   readonly deletions: number
 }
 
@@ -130,7 +122,7 @@ export const SYNC_BACKUPS_KEEP = 3
 export const SYNC_CHANGES_MAX = 100
 /** Deletion records live this long, so a long offline time still deletes (spec: at least 90 days). */
 export const TOMBSTONE_KEEP_MS = 180 * 24 * 60 * 60 * 1000
-/** A sync that would delete this many agents and channels on one computer asks first. */
+/** A sync that would delete this many agents on one computer asks first. */
 export const GUARD_DELETE_MIN = 5
 /** How long the user has to answer "Sync with <name>?". */
 export const SYNC_DECISION_MS = 120_000

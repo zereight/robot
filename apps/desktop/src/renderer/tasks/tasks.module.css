@@ -200,27 +200,6 @@
   align-items: baseline;
 }
 
-.questions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.questions li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.questionBy,
-.questionReason {
-  color: var(--c-text-muted);
-  font-size: var(--text-xs);
-}
-
 .joinedTime {
   flex: none;
   color: var(--c-text-muted);

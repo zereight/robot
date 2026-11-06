@@ -26,7 +26,6 @@ import { parseOp } from "../sync/wire.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
@@ -1166,37 +1165,6 @@ describe("the browser for a subscription: the status island", () => {
     await until(async () => (await island(s)).count === 0)
     // The agent starts with no step, then the browser, then none again.
     expect(steps.filter((x, i) => x !== steps[i - 1])).toEqual([null, "browser", null])
-  })
-
-  test("in a channel the request names the channel and the browser", async () => {
-    const s = await chatSetup("claude_code", "ask_all")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Ops",
-          topic: "",
-          memberIds: [s.agent.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const steps = await watchSteps(s)
-    await s.run(Channels.use((c) => c.send(channel.id, `@Ada ${open}`)))
-    await until(async () => (await island(s)).waiting.length === 1)
-    const state = await island(s)
-    expect(state.waiting[0]).toMatchObject({
-      kind: "approval",
-      callId: "app-1",
-      step: "browser",
-      place: "Ops",
-    })
-    expect(state.rows[0]?.doing).toEqual({ kind: "tool", tool: "browser" })
-    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "allow")))
-    await until(async () => (await island(s)).count === 0)
-    expect((await island(s)).waiting).toEqual([])
-    expect(steps).toContain("browser")
-    expect(steps).not.toContain("connection")
   })
 })
 

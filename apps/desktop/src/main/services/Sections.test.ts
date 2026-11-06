@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { type PlaceKind, SECTION_NAME_MAX, SECTIONS_MAX } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { type PlaceKind, SECTION_NAME_MAX } from "@robot/shared"
+import { Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { AgentFiles } from "./AgentFiles.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
-import { Database } from "./Database.ts"
 import { Places } from "./Places.ts"
 import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
@@ -33,22 +31,9 @@ const setup = async () => {
         }),
       ),
     )
-  const channel = (name: string, sectionId?: string | null) =>
-    run(
-      Channels.use((c) =>
-        c.create({
-          serverId: server.id,
-          name,
-          topic: "",
-          memberIds: [],
-          leadId: null,
-          ...(sectionId !== undefined ? { sectionId } : {}),
-        }),
-      ),
-    )
   const move = (kind: PlaceKind, id: string, sectionId: string | null) =>
     run(Sections.use((s) => s.assign({ kind, id }, sectionId)))
-  const places = async (builtIn: "agents" | "channels") => {
+  const places = async (builtIn: "agents") => {
     const list = await run(Places.use((p) => p.list(server.id)))
     const found = list.find((s) => s.id === builtIn)
     if (!found) throw new Error("no section")
@@ -57,7 +42,7 @@ const setup = async () => {
       sections: found.sections.map((s) => ({ name: s.name, places: s.places.map((p) => p.name) })),
     }
   }
-  return { ...t, run, exit, server, section, agent, channel, move, places }
+  return { ...t, run, exit, server, section, agent, move, places }
 }
 
 const failCode = (exit: Exit.Exit<unknown, { code: string }>) =>
@@ -92,28 +77,6 @@ describe("make a section", () => {
         ),
       ).toBe("section_name_invalid")
     await t.section("agent", "a".repeat(SECTION_NAME_MAX))
-  })
-
-  test("a name is unique in one kind, ignoring case; the other kind may use it", async () => {
-    const t = await setup()
-    await t.section("agent", "Research")
-    const again = await t.exit(
-      Sections.use((s) => s.create({ serverId: t.server.id, kind: "agent", name: " research " })),
-    )
-    expect(failCode(again)).toBe("section_name_taken")
-    await t.section("channel", "Research")
-    expect((await t.places("channels")).sections.map((s) => s.name)).toEqual(["Research"])
-    expect((await t.places("agents")).sections.map((s) => s.name)).toEqual(["Research"])
-  })
-
-  test("one kind holds at most 20 sections; the other kind has its own 20", async () => {
-    const t = await setup()
-    for (let i = 0; i < SECTIONS_MAX; i++) await t.section("agent", `Section ${i}`)
-    const over = await t.exit(
-      Sections.use((s) => s.create({ serverId: t.server.id, kind: "agent", name: "One more" })),
-    )
-    expect(failCode(over)).toBe("section_limit")
-    await t.section("channel", "Fine")
   })
 
   test("a server that does not exist is refused", async () => {
@@ -163,16 +126,6 @@ describe("rename and order", () => {
     expect(await names()).toEqual(["C", "A", "B"])
   })
 
-  test("the two kinds keep their own order", async () => {
-    const t = await setup()
-    await t.section("agent", "A1")
-    const a2 = await t.section("agent", "A2")
-    await t.section("channel", "C1")
-    await t.run(Sections.use((s) => s.move(a2.id, "up")))
-    expect((await t.places("agents")).sections.map((s) => s.name)).toEqual(["A2", "A1"])
-    expect((await t.places("channels")).sections.map((s) => s.name)).toEqual(["C1"])
-  })
-
   test("a section made after a delete is still last", async () => {
     const t = await setup()
     await t.section("agent", "A")
@@ -215,107 +168,6 @@ describe("put places in sections", () => {
     await t.move("agent", ids[1] ?? "", r.id)
     expect((await t.places("agents")).sections[0]?.places).toEqual(["Cy", "Bo", "Ada"])
   })
-
-  test("a channel moves the same way", async () => {
-    const t = await setup()
-    const ops = await t.section("channel", "Ops")
-    const launch = await t.channel("Launch")
-    await t.channel("Chat")
-    await t.move("channel", launch.id, ops.id)
-    expect(await t.places("channels")).toEqual({
-      none: ["Chat"],
-      sections: [{ name: "Ops", places: ["Launch"] }],
-    })
-    const [listed] = (await t.run(Channels.use((c) => c.list(t.server.id)))).filter(
-      (c) => c.id === launch.id,
-    )
-    expect(listed?.sectionId).toBe(ops.id)
-  })
-
-  test("a place does not go in a section of the other kind", async () => {
-    const t = await setup()
-    const agentSection = await t.section("agent", "Research")
-    const channelSection = await t.section("channel", "Research")
-    const chan = await t.channel("Launch")
-    const ada = await t.agent("Ada")
-    const bad = await t.exit(
-      Sections.use((s) => s.assign({ kind: "channel", id: chan.id }, agentSection.id)),
-    )
-    expect(failCode(bad)).toBe("section_kind_mismatch")
-    const badAgent = await t.exit(
-      Sections.use((s) => s.assign({ kind: "agent", id: ada.id }, channelSection.id)),
-    )
-    expect(failCode(badAgent)).toBe("section_kind_mismatch")
-    expect((await t.places("channels")).none).toEqual(["Launch"])
-    expect((await t.places("agents")).none).toEqual(["Ada"])
-  })
-
-  test("a section of another server, or one that is gone, is refused", async () => {
-    const t = await setup()
-    const db = await t.run(Database.use((d) => Effect.succeed(d)))
-    db.run(
-      "INSERT INTO server (id, name, kind, position, created_at) VALUES ('other', 'Other', 'remote', 1, 1)",
-    )
-    const foreign = await t.run(
-      Sections.use((s) => s.create({ serverId: "other", kind: "agent", name: "Far" })),
-    )
-    const ada = await t.agent("Ada")
-    const exit = await t.exit(
-      Sections.use((s) => s.assign({ kind: "agent", id: ada.id }, foreign.id)),
-    )
-    expect(failCode(exit)).toBe("section_not_found")
-    const gone = await t.exit(Sections.use((s) => s.assign({ kind: "agent", id: ada.id }, "nope")))
-    expect(failCode(gone)).toBe("section_not_found")
-    const noAgent = await t.exit(Sections.use((s) => s.assign({ kind: "agent", id: "nope" }, null)))
-    expect(failCode(noAgent)).toBe("agent_not_found")
-    const noChannel = await t.exit(
-      Sections.use((s) => s.assign({ kind: "channel", id: "nope" }, null)),
-    )
-    expect(failCode(noChannel)).toBe("channel_not_found")
-  })
-
-  test("the form fields: create and edit take a section", async () => {
-    const t = await setup()
-    const research = await t.section("agent", "Research")
-    const ada = await t.agent("Ada", research.id)
-    expect(ada.sectionId).toBe(research.id)
-    const bo = await t.agent("Bo")
-    expect(bo.sectionId).toBeNull()
-    const edited = await t.run(Agents.use((a) => a.update(bo.id, { sectionId: research.id })))
-    expect(edited.sectionId).toBe(research.id)
-    const cleared = await t.run(Agents.use((a) => a.update(bo.id, { sectionId: null })))
-    expect(cleared.sectionId).toBeNull()
-    const kept = await t.run(Agents.use((a) => a.update(bo.id, { role: "Helps" })))
-    expect(kept.sectionId).toBeNull()
-    const bad = await t.exit(Agents.use((a) => a.update(bo.id, { sectionId: "nope" })))
-    expect(failCode(bad)).toBe("section_not_found")
-    const badNew = await t.exit(
-      Agents.use((a) =>
-        a.create({
-          serverId: t.server.id,
-          name: "Cy",
-          role: "",
-          instructions: "",
-          sectionId: "nope",
-        }),
-      ),
-    )
-    expect(failCode(badNew)).toBe("section_not_found")
-    // A refused create makes no agent.
-    expect((await t.places("agents")).none).toEqual(["Bo"])
-
-    const ops = await t.section("channel", "Ops")
-    const chan = await t.channel("Launch", ops.id)
-    expect(chan.sectionId).toBe(ops.id)
-    const moved = await t.run(Channels.use((c) => c.update(chan.id, { sectionId: null })))
-    expect(moved.sectionId).toBeNull()
-    const again = await t.run(Channels.use((c) => c.update(chan.id, { sectionId: ops.id })))
-    expect(again.sectionId).toBe(ops.id)
-    const same = await t.run(Channels.use((c) => c.update(chan.id, { topic: "New topic" })))
-    expect(same.sectionId).toBe(ops.id)
-    const wrong = await t.exit(Channels.use((c) => c.update(chan.id, { sectionId: research.id })))
-    expect(failCode(wrong)).toBe("section_kind_mismatch")
-  })
 })
 
 describe("delete a section", () => {
@@ -338,20 +190,6 @@ describe("delete a section", () => {
     expect((await t.run(Agents.use((x) => x.get(ada.id)))).sectionId).toBeNull()
     const gone = await t.exit(Sections.use((s) => s.remove(research.id)))
     expect(failCode(gone)).toBe("section_not_found")
-  })
-
-  test("a channel section keeps its channels too, and the other kind is not touched", async () => {
-    const t = await setup()
-    const ops = await t.section("channel", "Ops")
-    const same = await t.section("agent", "Ops")
-    await t.channel("Launch", ops.id)
-    await t.agent("Ada", same.id)
-    await t.run(Sections.use((s) => s.remove(ops.id)))
-    expect(await t.places("channels")).toEqual({ none: ["Launch"], sections: [] })
-    expect(await t.places("agents")).toEqual({
-      none: [],
-      sections: [{ name: "Ops", places: ["Ada"] }],
-    })
   })
 
   test("a deleted name can be used again", async () => {
@@ -469,26 +307,6 @@ describe("pinned places and the order of places", () => {
   }
   const pin = (kind: PlaceKind, id: string, pinned: boolean) =>
     Sections.use((s) => s.pin({ kind, id }, pinned))
-
-  test("a pinned place gets a rank, in the order of pinning", async () => {
-    const t = await setup()
-    const ada = await t.agent("Ada")
-    const bo = await t.agent("Bo")
-    const ops = await t.channel("Ops")
-    await t.run(pin("agent", bo.id, true))
-    await t.run(pin("channel", ops.id, true))
-    await t.run(pin("agent", ada.id, true))
-    const ranks = (await all(t)).filter((p) => p.pinRank !== undefined)
-    expect(ranks.sort((a, b) => (a.pinRank ?? 0) - (b.pinRank ?? 0)).map((p) => p.name)).toEqual([
-      "Bo",
-      "Ops",
-      "Ada",
-    ])
-    await t.run(pin("agent", bo.id, false))
-    const rest = await all(t)
-    expect(rest.find((p) => p.name === "Bo")?.pinRank).toBeUndefined()
-    expect(rest.find((p) => p.name === "Ops")?.pinRank).toBe(0)
-  })
 
   test("at 10 pinned places the next pin is refused; an archived place does not count", async () => {
     const t = await setup()

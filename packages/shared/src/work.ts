@@ -1,23 +1,14 @@
-import type { Verdict } from "./check.ts"
 import type { MessageKey } from "./i18n/en.ts"
-import {
-  type Decision,
-  type EndedAs,
-  isFinal,
-  type Task,
-  type TaskSource,
-  type TaskState,
-} from "./task.ts"
+import { type EndedAs, isFinal, type Task, type TaskSource, type TaskState } from "./task.ts"
 
 // ---------------------------------------------------------------------------------------------
 // The work record (spec 005, "Moments"; spec 002, "Recent work").
 // ---------------------------------------------------------------------------------------------
 
-export type MomentId = "given" | "started" | "ended" | "decided" | "judged" | "closed"
+export type MomentId = "given" | "started" | "ended" | "closed"
 
-/** Who gave a task: its lead (for a part), another agent, or the place it came from. */
+/** Who gave a task: another agent, or the place it came from. */
 export type GivenBy =
-  | { readonly kind: "lead"; readonly name: string }
   | { readonly kind: "agent" }
   | { readonly kind: "source"; readonly source: Exclude<TaskSource, "agent"> }
 
@@ -25,56 +16,23 @@ export type Moment =
   | { readonly id: "given"; readonly at: number; readonly by: GivenBy }
   | { readonly id: "started"; readonly at: number }
   | { readonly id: "ended"; readonly at: number; readonly how: EndedAs }
-  | {
-      readonly id: "decided"
-      readonly at: number
-      readonly decision: Decision
-      readonly text: string | null
-    }
-  | {
-      readonly id: "judged"
-      readonly at: number
-      readonly verdict: Verdict
-      readonly reason: string | null
-    }
   | { readonly id: "closed"; readonly at: number; readonly state: TaskState }
 
 /**
- * The moments of a task, in the order of the spec: Given, Started, Ended, Decided, Judged,
- * Closed. A moment that did not happen is left out. `leadName` is the name of the agent that gave
- * the task as a part of its plan, or null. A task of a chat, a routine or a workflow has no
- * decision and no verdict, so it has no such moments.
+ * The moments of a task, in the order of the spec: Given, Started, Ended, Closed. A moment that
+ * did not happen is left out.
  */
-export const taskMoments = (task: Task, leadName: string | null): Moment[] => {
+export const taskMoments = (task: Task): Moment[] => {
   const moments: Moment[] = [
     {
       id: "given",
       at: task.createdAt,
-      by:
-        leadName !== null
-          ? { kind: "lead", name: leadName }
-          : task.source === "agent"
-            ? { kind: "agent" }
-            : { kind: "source", source: task.source },
+      by: task.source === "agent" ? { kind: "agent" } : { kind: "source", source: task.source },
     },
   ]
   if (task.startedAt !== null) moments.push({ id: "started", at: task.startedAt })
   if (task.endedAt !== null && task.endedAs !== null)
     moments.push({ id: "ended", at: task.endedAt, how: task.endedAs })
-  if (task.decidedAt !== null && task.decision !== null)
-    moments.push({
-      id: "decided",
-      at: task.decidedAt,
-      decision: task.decision,
-      text: task.decision === "changes" ? task.decisionText : null,
-    })
-  if (task.judgedAt !== null && task.verdict !== null)
-    moments.push({
-      id: "judged",
-      at: task.judgedAt,
-      verdict: task.verdict,
-      reason: task.verdict === "not_met" ? task.verdictReason : null,
-    })
   if (isFinal(task.state) && task.finishedAt !== null)
     moments.push({ id: "closed", at: task.finishedAt, state: task.state })
   return moments
@@ -88,7 +46,6 @@ export type RecentWait = "approval" | "question" | "user"
 
 /** The place of the work that an agent does now, while a task waits behind it. */
 export type RecentPlace =
-  | { readonly kind: "channel"; readonly name: string }
   | { readonly kind: "routine"; readonly name: string }
   | { readonly kind: "workflow"; readonly name: string }
   | { readonly kind: "computer"; readonly name: string }
@@ -114,16 +71,8 @@ export interface RecentWorkRow {
 
 /** When a task last changed: the latest of the moments that it has. */
 export const lastChange = (
-  task: Pick<Task, "createdAt" | "startedAt" | "endedAt" | "decidedAt" | "judgedAt" | "finishedAt">,
-): number =>
-  Math.max(
-    task.createdAt,
-    task.startedAt ?? 0,
-    task.endedAt ?? 0,
-    task.decidedAt ?? 0,
-    task.judgedAt ?? 0,
-    task.finishedAt ?? 0,
-  )
+  task: Pick<Task, "createdAt" | "startedAt" | "endedAt" | "finishedAt">,
+): number => Math.max(task.createdAt, task.startedAt ?? 0, task.endedAt ?? 0, task.finishedAt ?? 0)
 
 /**
  * The words for the state of a row (spec 002): what a task that has not ended waits for, and the
@@ -134,8 +83,6 @@ export const behindWords = (
   place: RecentPlace,
 ): { readonly key: MessageKey; readonly params?: Record<string, string> } => {
   switch (place.kind) {
-    case "channel":
-      return { key: "recent.behind.channel", params: { name: place.name } }
     case "routine":
       return { key: "recent.behind.routine", params: { name: place.name } }
     case "workflow":
@@ -159,7 +106,6 @@ export const recentWords = (
   row: Pick<RecentWorkRow, "wait" | "behind"> & { readonly task: Pick<Task, "state"> },
 ): { readonly key: MessageKey; readonly params?: Record<string, string> } => {
   const { state } = row.task
-  if (state === "review") return { key: "recent.waits.review" }
   if (state === "waiting") {
     if (row.wait === "approval") return { key: "recent.waits.approval" }
     if (row.wait === "question") return { key: "recent.waits.question" }

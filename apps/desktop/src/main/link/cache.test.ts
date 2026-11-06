@@ -90,15 +90,6 @@ describe("the cache of a linked server", () => {
     expect(after.queue).toEqual([{ id: "q" }])
   })
 
-  test("the messages of a channel follow live messages too", () => {
-    const { cache } = make()
-    const key = cacheKey("channels.history", { channelId: "c1" })
-    cache.set("l", key, [message("a", 1)])
-    cache.applyEvent("l", "channel.message", { ...message("b", 2), channelId: "c1" })
-    cache.applyEvent("l", "channel.removed", { channelId: "c1", messageId: "a" })
-    expect((cache.get("l", key) as { id: string }[]).map((m) => m.id)).toEqual(["b"])
-  })
-
   test("a place keeps the newest messages, as many as a page", () => {
     const { cache } = make()
     const key = cacheKey("chat.history", { agentId: "agent-1" })

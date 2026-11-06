@@ -239,7 +239,6 @@ describe("what changes while the switch is on", () => {
     expect(patchTouchesLocked({ chatTitle: "Other" }, good)).toBe(true)
     expect(patchTouchesLocked({ chatKind: "group" }, good)).toBe(true)
     expect(patchTouchesLocked({ marker: "[X]" }, good)).toBe(true)
-    expect(patchTouchesLocked({ targetKind: "channel" }, good)).toBe(true)
   })
 
   test("the lists and the call text change at any time", () => {
@@ -256,10 +255,9 @@ describe("what changes while the switch is on", () => {
 })
 
 describe("the link of a place", () => {
-  test("it is for the agent or the channel it names, and only when it exists", () => {
+  test("it is for the agent it names, and only when it exists", () => {
     const view = { ...emptyTeamsView, exists: true, fields: good }
     expect(teamsLinksTo(view, "agent", "agent-1")).toBe(true)
-    expect(teamsLinksTo(view, "channel", "agent-1")).toBe(false)
     expect(teamsLinksTo(view, "agent", "agent-2")).toBe(false)
     expect(teamsLinksTo(emptyTeamsView, "agent", "agent-1")).toBe(false)
   })

@@ -18,15 +18,13 @@ import { appLayer } from "../layers.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
-import { Channels } from "./Channels.ts"
 import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
-import { Organization } from "./Organization.ts"
-import { Organizations } from "./Organizations.ts"
+import { readMainAgent } from "./mainAgent.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
@@ -634,59 +632,6 @@ describe("export and import", () => {
     expect(await b.run(Memory.use((m) => m.mode(id)))).toBe("ask")
   })
 
-  test("channel notes are in the archive and come back with their channel; a general item comes back general (spec 008, 014)", async () => {
-    const out = join(testPlatform().dataDir, "export-notes.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    const ada = await a.run(
-      Agents.use((x) =>
-        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
-      ),
-    )
-    const channel = await a.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: local.id,
-          name: "Launch",
-          topic: "",
-          memberIds: [ada.id],
-          leadId: null,
-        }),
-      ),
-    )
-    await a.run(Memory.use((m) => m.save(ada.id, "Launch is on Friday", undefined, channel.id)))
-    await a.run(Memory.use((m) => m.save(ada.id, "Likes tea")))
-    const [note] = await a.run(
-      Memory.use((m) => m.list(ada.id, undefined, { kind: "channel", id: channel.id })),
-    )
-    await a.run(Memory.use((m) => m.move(note?.id ?? "", null)))
-    await a.run(Memory.use((m) => m.move(note?.id ?? "", channel.id)))
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const [agent] = await b.run(Agents.use((x) => x.list(bLocal.id, false)))
-    const [kept] = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    const items = await b.run(Memory.use((m) => m.list(agent?.id ?? "")))
-    expect(
-      items.map((i) => [i.text, i.channel?.id ?? null, i.channel?.member ?? null]).sort(),
-    ).toEqual([
-      ["Launch is on Friday", kept?.id ?? "", true],
-      ["Likes tea", null, null],
-    ])
-    // The history keeps the channel of each row, with its name.
-    const rows = await b.run(Memory.use((m) => m.history(agent?.id ?? "")))
-    expect(
-      rows
-        .filter((r) => r.kind === "moved")
-        .map((r) => [r.channelBefore?.name ?? null, r.channelAfter?.name ?? null]),
-    ).toEqual([
-      [null, "Launch"],
-      ["Launch", null],
-    ])
-  })
-
   test("user sections and the places in them come back in the same order", async () => {
     const out = join(testPlatform().dataDir, "export-sections.zip")
     const a = app({ save: out })
@@ -715,224 +660,6 @@ describe("export and import", () => {
     ])
   })
 
-  test("the switch 'Ask up the line' comes back with the archive, and the rule beside it (spec 030, 014)", async () => {
-    const out = join(testPlatform().dataDir, "export-line.zip")
-    const a = app({ save: out })
-    await a.run(Organization.use((o) => o.setAskUpTheLine(true)))
-    await a.run(Data.use((d) => d.export()))
-    const b = app({ open: out })
-    expect(await b.run(Organization.use((o) => o.get))).toEqual({
-      handOff: "any",
-      askUpTheLine: false,
-    })
-    await b.run(Data.use((d) => d.import()))
-    expect(await b.run(Organization.use((o) => o.get))).toEqual({
-      handOff: "any",
-      askUpTheLine: true,
-    })
-  })
-
-  test("a channel comes back with no parent channel and no daily token limit, also from a file that holds them (spec 030, 'Migration', 014)", async () => {
-    const out = join(testPlatform().dataDir, "export-channel-tools.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    for (const name of ["Product", "Docs"])
-      await a.run(
-        Channels.use((c) =>
-          c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null }),
-        ),
-      )
-    // No version writes these columns now. A file made by hand holds them, as an old one did.
-    const db = await a.run(Database.use((d) => Effect.succeed(d)))
-    db.run(
-      "UPDATE channel SET parent_channel_id = (SELECT id FROM channel WHERE name = 'Product'), daily_token_limit = 50000 WHERE name = 'Docs'",
-    )
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const channels = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    expect(channels.map((c) => c.name).sort()).toEqual(["Docs", "Product"])
-    for (const channel of channels) {
-      expect("parentId" in channel).toBe(false)
-      expect("dailyTokenLimit" in channel).toBe(false)
-    }
-    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
-    expect(
-      bDb.all(
-        "SELECT name, parent_channel_id AS p FROM channel WHERE parent_channel_id IS NOT NULL",
-      ),
-    ).toEqual([])
-  })
-
-  test("organizations come back with their members, lead, parent, range, limit and tool lists (spec 030, 014)", async () => {
-    const out = join(testPlatform().dataDir, "export-orgs.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    const ada = await a.run(
-      Agents.use((x) => x.create({ serverId: local.id, name: "Ada", role: "", instructions: "" })),
-    )
-    const bo = await a.run(
-      Agents.use((x) => x.create({ serverId: local.id, name: "Bo", role: "", instructions: "" })),
-    )
-    const company = await a.run(
-      Organizations.use((o) =>
-        o.create({ serverId: local.id, name: "Company", memberIds: [ada.id], leadId: ada.id }),
-      ),
-    )
-    const support = await a.run(
-      Organizations.use((o) =>
-        o.create({
-          serverId: local.id,
-          name: "Support",
-          memberIds: [ada.id, bo.id],
-          leadId: bo.id,
-          parentId: company.id,
-          handOffRange: "own_lower",
-          dailyTokenLimit: 50_000,
-        }),
-      ),
-    )
-    const skill = await a.run(
-      Skills.use((s) =>
-        s.create(local.id, { name: "Notes", description: "", instructions: "Do it." }, [ada.id]),
-      ),
-    )
-    await a.run(Organizations.use((o) => o.setTool(support.id, "skill", skill.id, "on")))
-    await a.run(Organizations.use((o) => o.setTool(company.id, "skill", skill.id, "off")))
-    // A connection: the value of an organization is a column of its row, as for a skill (spec 018).
-    const db = await a.run(Database.use((d) => Effect.succeed(d)))
-    db.run(
-      `INSERT INTO tool_connection
-         (id, server_id, name, name_key, kind, command, agents, organizations, enabled, state, created_at)
-       VALUES ('c1', ?, 'Notes', 'notes', 'program', 'notes-server', '[]', ?, 1, 'connected', 1)`,
-      local.id,
-      JSON.stringify([{ id: support.id, value: "off" }]),
-    )
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const orgs = await b.run(Organizations.use((o) => o.list(bLocal.id)))
-    expect(orgs.map((o) => o.id)).toEqual([company.id, support.id])
-    expect(orgs.find((o) => o.id === support.id)).toMatchObject({
-      memberIds: [ada.id, bo.id],
-      leadId: bo.id,
-      parentId: company.id,
-      handOffRange: "own_lower",
-      dailyTokenLimit: 50_000,
-    })
-    const skills = await b.run(Skills.use((s) => s.list(bLocal.id)))
-    expect(skills.find((x) => x.id === skill.id)?.organizations).toEqual([
-      { id: support.id, value: "on" },
-      { id: company.id, value: "off" },
-    ])
-    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
-    expect(bDb.all("SELECT id, organizations, enabled FROM tool_connection")).toEqual([
-      { id: "c1", organizations: JSON.stringify([{ id: support.id, value: "off" }]), enabled: 0 },
-    ])
-  })
-
-  test("an archive with a loop or a fourth level of organizations comes back repaired, with a line in the organization log (spec 030, Repair)", async () => {
-    const out = join(testPlatform().dataDir, "export-broken-orgs.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    const make = (name: string, parentId: string | null) =>
-      a.run(
-        Organizations.use((o) =>
-          o.create({ serverId: local.id, name, memberIds: [], leadId: null, parentId }),
-        ),
-      )
-    const top = await make("Top", null)
-    const mid = await make("Mid", top.id)
-    const low = await make("Low", mid.id)
-    const deep = await make("Deep", null)
-    const left = await make("Left", null)
-    const right = await make("Right", null)
-    // The app refuses all of these, but an archive can hold them: the data is changed by hand.
-    const db = await a.run(Database.use((d) => Effect.succeed(d)))
-    db.run("UPDATE org_unit SET parent_id = ? WHERE id = ?", low.id, deep.id)
-    db.run("UPDATE org_unit SET parent_id = ? WHERE id = ?", right.id, left.id)
-    db.run("UPDATE org_unit SET parent_id = ? WHERE id = ?", left.id, right.id)
-    db.run("UPDATE org_unit SET created_at = 1000 WHERE id = ?", left.id)
-    db.run("UPDATE org_unit SET created_at = 2000 WHERE id = ?", right.id)
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const list = await b.run(Organizations.use((o) => o.list(bLocal.id)))
-    const name = new Map(list.map((o) => [o.id, o.name]))
-    // "Deep" would be on the fourth level, and of "Left" and "Right" the one made later lost its parent.
-    expect(list.map((o) => [o.name, o.parentId ? name.get(o.parentId) : null]).sort()).toEqual([
-      ["Deep", null],
-      ["Left", "Right"],
-      ["Low", "Mid"],
-      ["Mid", "Top"],
-      ["Right", null],
-      ["Top", null],
-    ])
-    const log = readFileSync(join(b.dataDir, "logs", "organizations.log"), "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as { event: string; organization: string; kind: string })
-      .sort((x, y) => x.organization.localeCompare(y.organization))
-    expect(log.map((l) => [l.event, l.organization, l.kind])).toEqual([
-      ["tree_repaired", "Deep", "levels"],
-      ["tree_repaired", "Right", "loop"],
-    ])
-  })
-
-  test("an archive with an agent in two organizations that are not on one line comes back repaired, with the tie order and a line in the organization log (spec 030, 'One line', Repair)", async () => {
-    const out = join(testPlatform().dataDir, "export-broken-line.zip")
-    const a = app({ save: out })
-    const local = await a.run(Servers.use((s) => s.local))
-    const ada = await a.run(
-      Agents.use((x) => x.create({ serverId: local.id, name: "Ada", role: "", instructions: "" })),
-    )
-    const make = (name: string, parentId: string | null) =>
-      a.run(
-        Organizations.use((o) =>
-          o.create({ serverId: local.id, name, memberIds: [], leadId: null, parentId }),
-        ),
-      )
-    const product = await make("Product", null)
-    const docs = await make("Docs", product.id)
-    const ops = await make("Ops", null)
-    const db = await a.run(Database.use((d) => Effect.succeed(d)))
-    // The app refuses this, but an archive can hold it: the data is changed by hand. "Ops" was made
-    // last, so it loses the agent, and the lead of "Ops" goes with it.
-    db.run("UPDATE org_unit SET created_at = 1000 WHERE id = ?", product.id)
-    db.run("UPDATE org_unit SET created_at = 2000 WHERE id = ?", docs.id)
-    db.run("UPDATE org_unit SET created_at = 3000 WHERE id = ?", ops.id)
-    for (const id of [product.id, docs.id, ops.id])
-      db.run("INSERT INTO org_member (org_id, agent_id, position) VALUES (?, ?, 0)", id, ada.id)
-    db.run("UPDATE org_unit SET lead_agent_id = ? WHERE id = ?", ada.id, ops.id)
-    await a.run(Data.use((d) => d.export()))
-
-    const b = app({ open: out })
-    await b.run(Data.use((d) => d.import()))
-    const bLocal = await b.run(Servers.use((s) => s.local))
-    const list = await b.run(Organizations.use((o) => o.list(bLocal.id)))
-    expect(list.map((o) => [o.name, o.memberIds.length, o.leadId]).sort()).toEqual([
-      ["Docs", 1, null],
-      ["Ops", 0, null],
-      ["Product", 1, null],
-    ])
-    const log = readFileSync(join(b.dataDir, "logs", "organizations.log"), "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map(
-        (line) =>
-          JSON.parse(line) as { event: string; organization: string; agent: string; kind: string },
-      )
-    expect(log.map((l) => [l.event, l.organization, l.agent, l.kind])).toEqual([
-      ["line_repaired", "Ops", "Ada", "line"],
-    ])
-  })
-
   test("the main agent comes back with the archive: the switch is on for the same agent (spec 002, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-main.zip")
     const a = app({ save: out })
@@ -954,28 +681,9 @@ describe("export and import", () => {
       ["Ada", true],
       ["Bo", false],
     ])
-    expect(await b.run(Organization.use((o) => Effect.sync(() => o.mainAgent(localB.id))))).toBe(
+    expect(await b.run(Database.use((d) => Effect.sync(() => readMainAgent(d, localB.id))))).toBe(
       ada.id,
     )
-  })
-
-  test("the hand-off rule comes back with the archive (spec 030, 014)", async () => {
-    const out = join(testPlatform().dataDir, "export-rule.zip")
-    const a = app({ save: out })
-    await a.run(Organization.use((o) => o.setHandOff("organizations")))
-    await a.run(Data.use((d) => d.export()))
-
-    // An empty profile holds the default until it imports the archive.
-    const b = app({ open: out })
-    expect(await b.run(Organization.use((o) => o.get))).toEqual({
-      handOff: "any",
-      askUpTheLine: false,
-    })
-    await b.run(Data.use((d) => d.import()))
-    expect(await b.run(Organization.use((o) => o.get))).toEqual({
-      handOff: "organizations",
-      askUpTheLine: false,
-    })
   })
 
   test("the notes and steps of a workflow come back; the links, the sync records and the computer of a workflow stay out of the archive (spec 014, 012, 019)", async () => {

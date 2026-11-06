@@ -71,15 +71,6 @@ export const StepSchema = Schema.Union([
   }),
   Schema.Struct({
     id: Id,
-    kind: Schema.Literal("post"),
-    name: Name,
-    ...Pos,
-    /** Empty when the step has no place yet ("Pick a place"). */
-    channelId: Schema.String,
-    text: Text,
-  }),
-  Schema.Struct({
-    id: Id,
     kind: Schema.Literal("notify"),
     name: Name,
     ...Pos,
@@ -89,7 +80,7 @@ export const StepSchema = Schema.Union([
 ])
 export type Step = typeof StepSchema.Type
 export type StepKind = Step["kind"]
-export const STEP_KINDS = ["agent", "condition", "approval", "post", "notify"] as const
+export const STEP_KINDS = ["agent", "condition", "approval", "notify"] as const
 
 /**
  * A text on the canvas. It has no connection, no node number and no effect on a run, and it does
@@ -113,7 +104,7 @@ export const EdgeSchema = Schema.Struct({
 export type Edge = typeof EdgeSchema.Type
 
 /**
- * "Record only" on a schedule or a message trigger: when it fires, no step runs and no model is
+ * "Record only" on a schedule trigger: when it fires, no step runs and no model is
  * called. The run history shows a run "Recorded". Run now still runs the workflow.
  */
 const RecordOnly = Schema.optionalKey(Schema.Boolean)
@@ -123,12 +114,6 @@ export const TriggerSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("schedule"),
     schedule: ScheduleSchema,
-    recordOnly: RecordOnly,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("channel"),
-    channelId: Schema.String,
-    contains: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
     recordOnly: RecordOnly,
   }),
 ])
@@ -168,7 +153,7 @@ export interface Workflow {
   readonly steps: readonly Step[]
   readonly edges: readonly Edge[]
   readonly notes: readonly Note[]
-  /** A schedule or channel trigger only fires while this is on. */
+  /** A schedule trigger only fires while this is on. */
   readonly enabled: boolean
   /** True while a run goes: the editor is read-only. */
   readonly running: boolean
@@ -176,8 +161,8 @@ export interface Workflow {
   /** The name of the other computer where it runs, when it syncs (019). Null: it runs here. */
   readonly runsOn: string | null
   /**
-   * The organization or the agent that owns the workflow, or null (spec 010). An owner that is
-   * gone counts as null, so it never names an organization or an agent that does not exist.
+   * The agent that owns the workflow, or null (spec 010). An owner that is gone counts as null, so
+   * it never names an agent that does not exist.
    */
   readonly owner: WorkflowOwner | null
 }
@@ -191,7 +176,7 @@ export interface WorkflowRun {
   readonly id: string
   readonly workflowId: string
   readonly state: RunState
-  /** What started the run: `manual`, `schedule`, or `channel`. */
+  /** What started the run: `manual` or `schedule`. */
   readonly trigger: string
   readonly triggerText: string
   readonly startedAt: number

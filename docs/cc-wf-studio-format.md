@@ -146,7 +146,7 @@ characters `a-z`, `A-Z`, `0-9`, `-` and `_`, at most 50 of them.
 | agent step, node number `n` | `subAgent`, id and name `step-n` | `description`: the name of the step, cut to 200 characters. `agentDefinition`: empty. The tool reads it as a part of the prompt, so an agent name here would come back into the prompt. `prompt`: the prompt cut to 10 000 characters, or the name of the step when the prompt is empty. `outputPorts`: 1. |
 | condition, node number `n` | `ifElse`, id and name `step-n` | `evaluationTarget`: `"The input of this step"`. `branches`: two entries. Entry 0 has `label` `"Yes"`. Entry 1 has `label` `"No"` and `condition` `"Otherwise"`. `outputPorts`: 2. See below for `condition` of entry 0. |
 | approval, node number `n` | `askUserQuestion`, id and name `step-n` | `questionText`: the message cut to 500 characters, or `"Do you approve?"` when it is empty. `options`: two entries, `"Approve"` with `description` `"Go on"` and `"Reject"` with `description` `"Stop"`. `outputPorts`: 2. |
-| post step, notify step | no node | The step is not written. See "Connections". |
+| notify step | no node | The step is not written. See "Connections". |
 | note | no node | Not written. |
 
 `condition` of entry 0 of an `ifElse`: in the mode `"contains"` it is

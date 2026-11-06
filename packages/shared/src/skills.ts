@@ -1,6 +1,5 @@
 /** Skills (spec 017): saved instructions that the user calls in a chat. */
 
-import type { OrgToolEntry } from "./orgTools.ts"
 import type { TaskSource } from "./task.ts"
 
 export const SKILL_NAME_MAX = 40
@@ -16,11 +15,6 @@ export interface Skill {
   readonly instructions: string
   /** The agents that may use the skill. `null` means all agents. */
   readonly agentIds: readonly string[] | null
-  /**
-   * The organizations in the list of the skill (spec 017, 030) with the value "On" or "Off". An
-   * organization that is not here has the value "Inherit". Empty for "All agents".
-   */
-  readonly organizations: readonly OrgToolEntry[]
   readonly enabled: boolean
   readonly createdAt: number
 }
@@ -103,20 +97,16 @@ export type SkillAfterAgentDelete =
  * that does not name the agent, stay as they are. The agent leaves the list of the others. A skill
  * that was only for this agent is deleted: no agent that still exists is left in its list.
  * `exists` tells whether an agent is still there, in the archive or not; an id of an agent that
- * went before this rule counts as gone. An organization that is still there and that is in the list
- * keeps the skill (spec 030): the skill is not only for this agent.
+ * went before this rule counts as gone.
  */
 export const skillAfterAgentDelete = (
   agentIds: readonly string[] | null,
   agentId: string,
   exists: (id: string) => boolean,
-  orgsLeft = 0,
 ): SkillAfterAgentDelete => {
   if (agentIds === null || !agentIds.includes(agentId)) return { kind: "same" }
   const rest = agentIds.filter((id) => id !== agentId)
-  return rest.some(exists) || orgsLeft > 0
-    ? { kind: "shorter", agentIds: rest }
-    : { kind: "delete" }
+  return rest.some(exists) ? { kind: "shorter", agentIds: rest } : { kind: "delete" }
 }
 
 /** What the agent reads before the text of a message with a skill chip. */
@@ -125,8 +115,8 @@ export const skillLead = (name: string, instructions: string) =>
 
 /**
  * The turns that read the skill list and the read-skill tool (spec 017, flow 8): a direct chat or
- * a thread that a person started, or that follows one. A channel, a routine, a workflow, a turn of
- * another agent and a check read neither.
+ * a thread that a person started, or that follows one. A routine, a workflow and a turn of another
+ * agent read neither.
  */
 export const skillPickSource = (source: TaskSource): boolean =>
   source === "chat" || source === "handover" || source === "teams" || source === "follow_up"

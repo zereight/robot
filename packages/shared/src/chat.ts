@@ -1,7 +1,6 @@
 import { Schema } from "effect"
 import type { SettingsNote } from "./agentSettings.ts"
 import type { KnowledgeNote } from "./knowledge.ts"
-import type { LeadAnswer, QuestionLead, QuestionPass } from "./leadAnswers.ts"
 import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
@@ -158,12 +157,6 @@ export type MessagePart =
       readonly knowledge?: KnowledgeNote
       /** Set when a message of the user in the chat answered this question card (spec 003). */
       readonly answeredInChat?: boolean
-      /**
-       * Set when the lead of the channel answered this question card in place of the user (spec
-       * 004, "Questions of members"): the card says "Answered by <lead>" with the reason, and
-       * offers "Correct".
-       */
-      readonly answeredByLead?: LeadAnswer
       /** Set when a protected card ended: the value was saved, or the user cancelled (spec 020). */
       readonly secret?: "saved" | "cancelled"
       /** Set for the settings tool: what the call changed, so the chat shows a line with Undo. */
@@ -245,26 +238,6 @@ export type ToolAsk =
       readonly question: string
       readonly choices: readonly string[]
       readonly askedAt?: number
-      /**
-       * Set while the lead of the channel, or an agent on the line (spec 030), looks at the
-       * question (spec 004, "Questions of members"). The card says "<agent> looks at it" and shows
-       * a spinner. The user can still
-       * answer it. The card is not in "Needs you" and makes no notification in that time.
-       */
-      readonly lead?: QuestionLead
-      /**
-       * Set when the lead, or the last agent on the line, passed the question to the user: the
-       * card is a normal question with the pass lines. The kind of the pass is data (spec 030).
-       */
-      readonly passed?: QuestionPass
-      /**
-       * Every pass of this question so far, oldest first (spec 030, "Ask up the line"). The card
-       * shows one line for each, under "<agent> looks at it" while an agent looks, and with the
-       * question when it waits for the user. `passed` is the last of them.
-       */
-      readonly passes?: readonly QuestionPass[]
-      /** Set when the line took its time: the card shows "No agent on the line answered in time." */
-      readonly lineLate?: boolean
     }
   /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
   | {

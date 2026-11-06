@@ -452,6 +452,5 @@ describe("a computer that opens a linked server", () => {
     expect(!places.ok && places.error.code).toBe("not_allowed")
     // The window is told to read its lists again, so it drops what it showed of that server.
     expect(countOf("places.changed")).toBeGreaterThan(toldBefore)
-    expect(countOf("channels.changed")).toBeGreaterThan(0)
   })
 })
