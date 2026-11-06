@@ -243,8 +243,8 @@ It does not read the agent of a step, the trigger, the notes or the places on th
 | --- | --- |
 | Every run ends | A loop: a connection path that comes back to a step. Or a step that waits for an input that never ends. A workflow has no loop step and no loop limit in this version, so every loop is a problem. |
 | Each wait has a way out | A wait for approval with no way out. "Reject" is a way out, and every wait for approval has it in this version, so this item always passes now. A run that waits also ends with Stop, and at a restart of the app (see "Rules"). |
-| Each step and each branch can run | A step that is skipped in every run. Or a branch of a condition that goes to no step, so a run that takes it ends there. |
-| No step reads a result that was not made | A path on which a step gets no result from the steps before it, and the step uses one. A step uses a result when it is a condition, a notify step, or an agent step or model step whose prompt holds `{{input}}`. It gets none when it has no input, or when each input that passes on is a failed agent step with "Continue on failure". |
+| Each step and each branch can run | A step that is skipped in every run. A branch of a condition with no step is not a problem: a run that takes it ends there, as a filter does. |
+| No step reads a result that was not made | A path on which a step gets no result from the steps before it, and the step uses one. A step uses a result when it is a condition, or an agent step or model step whose prompt holds `{{input}}`. It gets none when it has no input, or when each input that passes on is a failed agent step with "Continue on failure". A wait for approval, a notify step and a condition pass their input on without a change, so an empty result goes through them. |
 
 ### States
 
@@ -254,11 +254,11 @@ works while the workflow is read-only.
 
 | State | What the user sees |
 | --- | --- |
-| Not checked | A muted "Not checked". This is the state after a change of the graph, after an import, and for a new workflow. |
-| Checking | A spinner and "Checking…". The user can edit the graph. A change stops the check, and the state goes back to "Not checked". |
-| Passed | "Passed" and the line "No problem found in the steps and connections." |
-| Problem found | "Problem found", the message of the problem and the path (see "Result"). |
-| Could not check | "Could not check" and the message of the limit (see "Limits of the check"). |
+| Not checked | A muted "Not checked" ("검사 안 함"). This is the state after a change of the graph, after an import, and for a new workflow. |
+| Checking | A spinner and "Checking…" ("검사 중…"). The user can edit the graph. A change stops the check, and the state goes back to "Not checked". |
+| Passed | "Passed" (통과) and the line "No problem found in the steps and connections." ("단계와 연결에서 문제를 찾지 못했어요.") |
+| Problem found | "Problem found" ("문제 발견"), the message of the problem and the path (see "Result"). |
+| Could not check | "Could not check" ("검사할 수 없음") and the message of the limit (see "Limits of the check"). |
 
 A change of the graph is a change of a step, of a connection, of a branch, or of a field that the
 check reads. A change of a note, of a name, of a place on the canvas or of the agent of a step is
@@ -266,8 +266,10 @@ not a change of the graph for the check.
 
 ### Result
 
-- **Passed**: a panel lists the four items, each with "Passed", and the text of "What the check
-  cannot prove".
+- **Passed**: a panel lists the four items, each with "Passed" ("통과"), and the text of "What the check
+  cannot prove". The items are: "Every run ends" ("모든 실행이 끝남"), "Each wait has a way out"
+  ("모든 대기에 빠져나갈 길이 있음"), "Each step can run" ("모든 단계가 실행될 수 있음") and "No step reads a
+  result that was not made" ("만들어지지 않은 결과를 읽는 단계 없음").
 - **Problem found**: the panel shows one problem: the first problem in the order of the table
   above, with the shortest path to it. It shows the message and the path. The path is a numbered
   list. Each line is one step of the path, in order, with what happens at it. The canvas marks each
@@ -285,7 +287,6 @@ Messages (`<n>` and `<m>` are node numbers, `<name>` is the name of a step):
 | Loop | Steps `<list>` make a loop. A run can never leave it. | `<list>`단계가 반복 고리를 만들어요. 실행이 이 고리를 벗어날 수 없어요. |
 | Waits forever | Step `<n>` "`<name>`" waits for step `<m>`, and step `<m>` never ends on this path. | `<n>`단계 "`<name>`"이(가) `<m>`단계를 기다리지만, 이 경로에서 `<m>`단계가 끝나지 않아요. |
 | Never runs | Step `<n>` "`<name>`" never runs. On every path, step `<m>` "`<name>`" takes the branch `<yes or no>`. | `<n>`단계 "`<name>`"은(는) 실행되지 않아요. 모든 경로에서 `<m>`단계 "`<name>`"이(가) `<yes or no>` 분기로 가요. |
-| Branch to no step | The branch `<yes or no>` of step `<m>` "`<name>`" goes to no step. A run that takes it ends there. | `<m>`단계 "`<name>`"의 `<yes or no>` 분기에 연결된 단계가 없어요. 이 분기로 가면 실행이 거기서 끝나요. |
 | No result | Step `<n>` "`<name>`" uses the result of the steps before it, but on this path it gets none. | `<n>`단계 "`<name>`"은(는) 이전 단계의 결과를 쓰지만, 이 경로에서는 받는 결과가 없어요. |
 
 Lines of the path:
@@ -308,8 +309,10 @@ Lines of the path:
   checks the saved graph first. This holds for every way that a run starts: Run in the editor, a
   schedule, a web hook, and the tool of the assistant.
 - "Passed" or "Could not check": the run starts.
-- "Problem found": the run does not run a step. It fails at once with the reason "The check found
-  a problem. Open the workflow to see it." The editor shows the problem.
+- "Problem found" in the item "No step reads a result that was not made": the run starts. The editor
+  shows the problem. A step with an empty input is the choice of the user.
+- Any other "Problem found": the run does not run a step. It fails at once with the reason "The check found
+  a problem. Open the workflow to see it." ("검사에서 문제를 찾았어요. 워크플로우를 열어 확인하세요.") The editor shows the problem.
 - The app keeps the result for the saved graph. The next run of the same graph uses that result
   and does not check again. So a workflow with "Problem found" fails each run until the user
   changes the graph or turns the switch off.
@@ -566,18 +569,23 @@ a new issue. ROBot runs no service on the internet for this (000).
 - Set the condition "Polite?" to the mode "contains text" with an empty text: "Check" shows
   "Problem found". The message says that the step on the branch `no` never runs. The path has the
   steps 1 and 2, and the canvas marks them with 1 and 2 and marks the step of the problem.
-- Remove the connection of the branch `no`: the message says that the branch `no` goes to no step.
-- An agent step with "Continue on failure", and after it a notify step: "Check" finds "No result".
-  The path ends with "Step 1 "Draft" fails, and the run goes on." and the notify step.
+- Remove the connection of the branch `no`: "Check" shows "Passed". A run that takes the branch `no` ends there.
+- An agent step with "Continue on failure", and after it an agent step whose prompt holds `{{input}}`:
+  "Check" finds "No result". The path ends with "Step 1 "Draft" fails, and the run goes on." and
+  the second agent step. With a notify step after the first step, "Check" shows "Passed".
+- An agent step with "Continue on failure", then a wait for approval, then an agent step whose prompt
+  holds `{{input}}`: "Check" finds "No result".
 - An agent step with no input whose prompt holds `{{input}}`: "Check" finds "No result".
 - Set the language to Korean: the state, the message and the lines of the path are Korean. `yes`
   and `no` stay English.
 - Change a step after a pass: the state is "Not checked". Move a step or edit a note: the state
   stays "Passed".
-- With the switch "Check before a run" on, make the graph of the "Problem found" case above and
-  press Run: the run fails at once with "The check found a problem. Open the workflow to see it.",
+- With the switch "Check before a run" on, make the graph of the "Never runs" case above (the
+  condition with an empty text) and press Run: the run fails at once with "The check found a problem. Open the workflow to see it.",
   and no step runs. Run it again: the app does not check again, and the run fails with the same
   reason. Turn the switch off and run: the run starts.
+- With the switch on, run the graph of the "No result" case: the run starts, and the editor shows the
+  problem.
 - A schedule fires for a workflow that is "Not checked" and has no problem: the app checks, and the
   run starts. The next run does not check again.
 - A workflow of 30 agent steps with no connections, so that all 30 run at the same time: "Check"

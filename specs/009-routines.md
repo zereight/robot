@@ -98,7 +98,7 @@ It does not read the prompt, and it does not run a watch.
 
 - A schedule starts a run at each of its times. A watch can start a run at each of its checks.
   The time of a check of a watch is not fixed, so the check counts a watch as due at any minute.
-- A run takes an unknown time. It can end at any time, or go on until a limit of 005 stops it.
+- The check does not read how long a run takes. It counts only runs that are due in the same minute.
 - The runs of one agent wait for each other in the queue of the agent (005). A run of a routine
   that is still going, or still queued, when the next run of the same routine is due, makes that
   run Skipped (see "Rules").
@@ -110,7 +110,7 @@ It does not read the prompt, and it does not run a watch.
 
 | Item | A problem is |
 | --- | --- |
-| Runs do not overlap | Two routines of one agent that can be due in the same minute. One run then waits for the other, and it can be Skipped. A schedule and a watch of one agent are always such a pair. |
+| Runs do not overlap | Two schedules of one agent that are due in the same minute. One run then waits for the other, and it can be Skipped. A watch is not part of this item, because the time of its checks is not fixed. |
 | Every run ends | The silent limit is "Never". Then a run that shows no sign of life never ends, and each later run of the routine is Skipped. A run that waits for the user is not a problem: the user answers it or stops it. |
 | No loop of routines | A watch routine that watches a file or a folder that a run of the same routine can change. Or two or more watch routines in a ring, in which a run of each one can change what the next one watches. |
 | Runs at once stay in the limit | A minute in which more routines of different agents can be due than "Agents working at once" allows. The other runs then wait for a free slot, and they can be Skipped. |
@@ -120,7 +120,7 @@ It does not read the prompt, and it does not run a watch.
 - The detail of a routine has the control "Check". It shows the states of a workflow check: "Not
   checked", "Checking…", "Passed", "Problem found" and "Could not check" (010, "Check").
 - **Passed**: the line "No problem found in the triggers of the routines.", the four items with
-  "Passed", and the text of "What the check cannot prove".
+  "Passed" ("통과"), and the text of "What the check cannot prove". The Korean of the line is "루틴의 트리거에서 문제를 찾지 못했어요." The items are: "Runs do not overlap" ("실행이 겹치지 않음"), "Every run ends" ("모든 실행이 끝남"), "No loop of routines" ("루틴 반복 고리 없음") and "Runs at once stay in the limit" ("동시 실행이 한도 안에 있음").
 - **Problem found**: one problem: the first in the order of the table above, with the shortest
   path to it. The detail shows the message and the path. The path is a numbered list. Each line
   has a time and one routine, with what happens. The routines list marks each routine of the path
