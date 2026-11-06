@@ -147,9 +147,8 @@ const placeGroup = (org: ChartOrg, m: Metrics, rowMaxCells: number): Group => {
   const others = org.nodes.filter((n) => n !== lead)
   const slots = others.length + (org.more.length > 0 ? 1 : 0)
   const widest = Math.max(1, Math.floor((rowMaxCells - m.gutter) / (m.agentW + m.gutter)))
-  // A small team stands in one or two columns, so that a chart of a few agents is not wide and
-  // "Fit to view" keeps the text large enough to read. A full organization node (12 and the tile) has 4.
-  const cols = Math.min(widest, slots <= 2 ? 1 : slots <= 6 ? 2 : slots <= 12 ? 3 : 4)
+  // The agents of one level stand side by side in one row. Only a row wider than the limit wraps.
+  const cols = Math.max(1, Math.min(widest, slots))
   const gridW = m.gutter + cols * (m.agentW + m.gutter)
   let w = Math.max(gridW, m.headW + 2)
   // An odd width puts the middle of the header and of the lead on the middle of a cell.

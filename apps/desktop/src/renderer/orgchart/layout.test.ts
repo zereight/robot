@@ -471,6 +471,16 @@ describe("the parts of the page", () => {
     expect(lead.x + lead.w / 2).toBe(docs.x + docs.w / 2)
   })
 
+  test("the agents of one level stand side by side in one row", () => {
+    const docs = place("o:Docs")
+    const kids = layout.nodes.filter((n) => n.kind === "agent" && n.parent === "o:Docs")
+    const lead = place(copyKey("o:Docs", "a01"))
+    const members = kids.filter((k) => k.rect.y !== lead.y)
+    expect(members.length).toBeGreaterThan(1)
+    expect(new Set(members.map((k) => k.rect.y)).size).toBe(1)
+    expect(members[0]?.rect.y).toBeGreaterThan(docs.y)
+  })
+
   test("an agent in two organization nodes has two nodes that do not meet", () => {
     const a = place(copyKey("o:Docs", "a02"))
     const b = place(copyKey("o:Ops", "a02"))

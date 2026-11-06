@@ -230,6 +230,9 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 - No face, name, role line, task label, header, count or tile covers another. No line passes through
   a node. This holds with the setting "reduce motion" on and off (013), with 1 agent, 6 agents and
   40 agents, with an organization node of 12 agents, and with 20 organization nodes.
+- The agents of one level in an organization node (the agents under the lead, or all agents when
+  there is no lead) stand side by side in one row. A row that is wider than the limit below goes to
+  the next row.
 - Organization nodes that do not fit in one row go to the next row. A row is at most 1,600 px wide at
   zoom 100%.
 - The same data gives the same layout, also on two computers (019). Saved positions (see "Arrange,
