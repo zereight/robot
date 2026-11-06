@@ -22,7 +22,8 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
     is archived stays a member, and every rule below skips it while it is archived.
   - **Lead**: one member, or none. An archived lead counts as no lead. A member that is removed
     from the organization is no longer its lead. The lead of an organization is not the lead of a
-    channel (004). One agent can be both.
+    channel (004). One agent can be both. The lead of an organization has the
+    team tools for its members (037, "Team tools").
   - A channel and an organization are independent. The members of a channel are not an
     organization, and the app never makes one from the other, except in "Migration".
 - **Parent organization**: a field of an organization. An organization with a parent organization

@@ -38,6 +38,7 @@ import {
   hostOf,
   insideWorkspace,
   isLeadOrder,
+  isLooser,
   isPlainField,
   isSecretName,
   isSecretValue,
@@ -47,6 +48,7 @@ import {
   KNOWLEDGE_SOURCES,
   KNOWLEDGE_TURN_CHANGES_MAX,
   type KnowledgeNote,
+  MAKE_AGENT_ARGS,
   MANAGE_STEP,
   type ManageStep,
   MEMORY_TEXT_MAX,
@@ -54,6 +56,7 @@ import {
   makePlaces,
   nameKey,
   noCheckReason,
+  PERMISSION_LEVELS,
   type PermissionLevel,
   type PlaceEnv,
   parseOrigin,
@@ -83,6 +86,7 @@ import {
   type SecretAsk,
   type SecretMethod,
   type SensitiveLabel,
+  type SettingChange,
   type SettingsNote,
   sendDecision,
   sendsData,
@@ -90,6 +94,8 @@ import {
   skillPickSource,
   starterWorkflowName,
   type TaskSource,
+  TEAM_STEP,
+  type TeamStep,
   type ToolAsk,
   type TurnMark,
   UNKNOWN_TOOL_TEXT,
@@ -163,6 +169,11 @@ export interface ToolContext {
    * with no such place (a channel) does not get the settings tool.
    */
   readonly onSettings?: (callId: string, note: SettingsNote) => void
+  /**
+   * Records what a team tool changed, so the chat or the channel of the lead shows a line with
+   * Undo (spec 037, "Team tools").
+   */
+  readonly onTeamLine?: (callId: string, note: SettingsNote) => void
   /** The article changes that this turn made so far. A turn makes at most 5. */
   readonly knowledgeChanges: { count: number }
   /**
@@ -266,7 +277,7 @@ export interface Messenger {
  * and a rule that cannot be read asks the user, also at "Full access".
  */
 export interface GuardedRequest<A> {
-  readonly step: GuardedStep | ManageStep
+  readonly step: GuardedStep | ManageStep | TeamStep
   /** A short text for the action log (spec 014). It holds no instruction and no prompt. */
   readonly target: string
   /** The whole change in words, for the card, when `target` is too short for it (spec 037). */
@@ -302,12 +313,14 @@ export interface ToolsService {
     knowledge: boolean
     settings?: boolean
     manage?: boolean
-    /** The team tools of the lead of a channel (spec 037). */
+    /** The team tools of the lead of a channel or of an organization (spec 037). */
     team?: boolean
     /** Only the team tools: the plan turn of a lead has no other tool. */
     teamOnly?: boolean
     skills?: boolean
   }): readonly ToolDef[]
+  /** Whether the agent leads a team: a channel or an organization (spec 037, "Team tools"). */
+  leadsTeam(agentId: string): boolean
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
   /**
    * Asks about a step that a vendor program wants to take, by the permission level and the risk.
@@ -817,16 +830,25 @@ const MANAGE_DEFS: readonly ToolDef[] = [
   },
 ]
 
-/** The team tools of the lead of a channel (spec 037, "Team tools"). */
-const CHANNEL_ARG = str("The name of the channel. Only needed when you lead more than one channel.")
+/** The team tools of a lead of a channel or of an organization (spec 037, "Team tools"). */
+const TEAM_ARG = str(
+  'The name of the team: a channel or an organization that you lead. Only needed when you lead more than one. When two teams have the same name, add " (channel)" or " (organization)".',
+)
+const MEMBER_ARG = str("The name of the member.")
+const PERMISSION_ARG = {
+  type: "string",
+  enum: [...PERMISSION_LEVELS],
+  description:
+    "The permission level. It cannot be higher than your own level. Default for a new member: ask_risky.",
+}
 const TEAM_DEFS: readonly ToolDef[] = [
   {
     name: "make_team_member",
     description:
-      "Ask the user to make a new agent and add it to your channel as a member. The user reads the whole change and allows or denies it; nothing is made before that. Make a member only when the job needs one. You cannot set its permission level or its workspace. When the user denies it, do not ask again for the same agent.",
+      "Make a new agent and add it to your team as a member. It works at once, and the user sees a line in your chat. Make a member only when the job needs one. You cannot set its workspace.",
     schema: object(
       {
-        channel: CHANNEL_ARG,
+        team: TEAM_ARG,
         name: str("The name, 1 to 40 characters. No other agent may have it."),
         role: str("The role line, up to 120 characters: what this member is for."),
         instructions: str("The whole instructions of the new member."),
@@ -835,6 +857,7 @@ const TEAM_DEFS: readonly ToolDef[] = [
         account: str("The name of a connected model account."),
         model: str('The model, in loose words if needed, for example "Sonnet".'),
         effort: str("An effort level that the model takes. Default: the middle level."),
+        permission: PERMISSION_ARG,
       },
       ["name", "model"],
     ),
@@ -842,21 +865,74 @@ const TEAM_DEFS: readonly ToolDef[] = [
   {
     name: "change_team_member",
     description:
-      "Ask the user to change the role line or the instructions of one member of your channel. You cannot change yourself, the main agent, or a member that leads another channel. The user reads the change and allows or denies it.",
+      "Change one member of your team that is not archived. It works at once, and the user can undo it from the line in your chat. Give only the fields that change. You cannot change yourself or the main agent.",
     schema: object(
       {
-        channel: CHANNEL_ARG,
-        name: str("The name of the member."),
+        team: TEAM_ARG,
+        member: MEMBER_ARG,
+        name: str("The new name, 1 to 40 characters."),
         role: str("The new role line, up to 120 characters."),
         instructions: str("The whole new instructions."),
+        face_shape: { type: "integer", description: "The shape of the face, 1 to 6." },
+        face_hue: { type: "integer", description: "The colour of the face, 1 to 10." },
+        account: str("The name of a connected model account."),
+        model: str('The model, in loose words if needed, for example "Sonnet".'),
+        effort: str("An effort level that the model takes."),
+        permission: PERMISSION_ARG,
       },
-      ["name"],
+      ["member"],
     ),
+  },
+  {
+    name: "remove_team_member",
+    description:
+      "Take a member out of your team. The agent stays, with its history and workspace. You cannot remove yourself or the main agent.",
+    schema: object({ team: TEAM_ARG, member: MEMBER_ARG }, ["member"]),
+  },
+  {
+    name: "archive_team_member",
+    description:
+      "Archive a member of your team, as the user does. It works at once, and the user can undo it from the line in your chat. Archive is the end of a member for you: you cannot delete an agent. Archived members do not count in your limit of 20 members.",
+    schema: object({ team: TEAM_ARG, member: MEMBER_ARG }, ["member"]),
+  },
+  {
+    name: "restore_team_member",
+    description:
+      "Restore an archived member of your team, with its history, workspace and section.",
+    schema: object({ team: TEAM_ARG, member: MEMBER_ARG }, ["member"]),
   },
 ]
 
-/** A channel holds at most this many members that one lead made (spec 037, "Team tools"). */
-const TEAM_MADE_MAX = 5
+/** The fields of "Change a team member": the fields of "Change an agent", and the level. */
+const TEAM_CHANGE_ARGS: readonly string[] = [...MAKE_AGENT_ARGS, "permission"]
+
+/** A team holds at most this many active members that its lead made (spec 037, "Team tools"). */
+const TEAM_MADE_MAX = 20
+
+/** A team of a lead (spec 037, "Team tools"): a channel or an organization that it leads. */
+interface Team {
+  readonly kind: "channel" | "organization"
+  readonly id: string
+  readonly name: string
+}
+
+/** The lead of a team call. */
+interface TeamLead {
+  readonly id: string
+  readonly server_id: string
+  readonly name: string
+  readonly permission: PermissionLevel
+}
+
+/** A member that a team call names. */
+interface TeamMember {
+  readonly id: string
+  readonly name: string
+  readonly archived_at: number | null
+}
+
+const isPermission = (value: string): value is PermissionLevel =>
+  (PERMISSION_LEVELS as readonly string[]).includes(value)
 
 const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
 
@@ -2298,79 +2374,186 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
-      /** The channels that this agent leads and is a member of, by name. */
-      const ledChannels = (agentId: string) =>
-        db.all<{ id: string; name: string }>(
-          `SELECT c.id, c.name FROM channel c
-           JOIN channel_member m ON m.channel_id = c.id AND m.agent_id = c.lead_agent_id
-           WHERE c.lead_agent_id = ? ORDER BY c.name_key`,
-          agentId,
-        )
+      /**
+       * The teams that this agent leads (spec 037, "Team tools"): each channel and each
+       * organization that has it as its lead and as a member, by name.
+       */
+      const ledTeams = (agentId: string): readonly Team[] => [
+        ...db
+          .all<{ id: string; name: string }>(
+            `SELECT c.id, c.name FROM channel c
+             JOIN channel_member m ON m.channel_id = c.id AND m.agent_id = c.lead_agent_id
+             WHERE c.lead_agent_id = ? ORDER BY c.name_key`,
+            agentId,
+          )
+          .map((c) => ({ kind: "channel" as const, ...c })),
+        ...db
+          .all<{ id: string; name: string }>(
+            `SELECT o.id, o.name FROM org_unit o
+             JOIN org_member m ON m.org_id = o.id AND m.agent_id = o.lead_agent_id
+             WHERE o.lead_agent_id = ? ORDER BY o.name_key`,
+            agentId,
+          )
+          .map((o) => ({ kind: "organization" as const, ...o })),
+      ]
 
-      /** The channel a team call names, or the reason that it names none (spec 037). */
-      const teamChannel = (
-        agentId: string,
+      const teamLabel = (team: Team) => `${team.name} (${team.kind})`
+
+      /** The members of a team, with the table that holds them. */
+      const memberTable = (team: Team) =>
+        team.kind === "channel"
+          ? { table: "channel_member", key: "channel_id" }
+          : { table: "org_member", key: "org_id" }
+
+      const teamChanged = (team: Team, serverId: string) =>
+        team.kind === "channel"
+          ? bus.emit("channels.changed", { channelId: team.id })
+          : bus.emit("organizations.changed", { serverId })
+
+      /**
+       * The lead and the team of a team call, or what the model reads when there is none. An agent
+       * that leads no team does not know the tools.
+       */
+      const teamCall = (
+        ctx: ToolContext,
+        call: ToolCall,
         args: Record<string, unknown>,
-      ): { id: string; name: string } | string => {
-        const led = ledChannels(agentId)
-        if (led.length === 0) return "unknown"
-        const wanted = text(args, "channel").trim().toLowerCase()
-        const only = led[0]
-        if (!wanted) {
-          return led.length === 1 && only
-            ? only
-            : `Name the channel. You lead: ${led.map((c) => c.name).join(", ")}.`
-        }
-        return (
-          led.find((c) => c.name.toLowerCase() === wanted) ??
-          `You do not lead a channel named "${text(args, "channel")}". You lead: ${led.map((c) => c.name).join(", ")}.`
+      ): { lead: TeamLead; team: Team } | ToolOutcome => {
+        const led = ledTeams(ctx.agentId)
+        const lead = db.get<TeamLead>(
+          "SELECT id, server_id, name, permission FROM agent WHERE id = ?",
+          ctx.agentId,
         )
+        if (led.length === 0 || !lead) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const list = `You lead: ${led.map(teamLabel).join(", ")}.`
+        const wanted = text(args, "team").trim().toLowerCase()
+        if (!wanted) {
+          const only = led[0]
+          return led.length === 1 && only
+            ? { lead, team: only }
+            : { output: `Name the team. ${list}`, failed: true }
+        }
+        const found = led.filter(
+          (t) => t.name.toLowerCase() === wanted || teamLabel(t).toLowerCase() === wanted,
+        )
+        const [team] = found
+        if (found.length === 1 && team) return { lead, team }
+        return {
+          output:
+            found.length === 0
+              ? `You do not lead a team named "${text(args, "team")}". ${list}`
+              : `More than one team has this name. Add " (channel)" or " (organization)". ${list}`,
+          failed: true,
+        }
       }
 
-      /** "Make a team member" (spec 037, "Team tools"): a made agent that joins the channel. */
+      /**
+       * The member that a call names: an agent of the team that is not the lead and not the main
+       * agent, or the reason that nothing changed.
+       */
+      const teamMember = (
+        lead: TeamLead,
+        team: Team,
+        args: Record<string, unknown>,
+      ): TeamMember | string => {
+        const name = text(args, "member").trim()
+        const { table, key } = memberTable(team)
+        const member = db.get<TeamMember>(
+          `SELECT a.id, a.name, a.archived_at FROM ${table} m JOIN agent a ON a.id = m.agent_id
+           WHERE m.${key} = ? AND a.name_key = ?`,
+          team.id,
+          nameKey(name),
+        )
+        if (!member) return `Nothing changed. "${name}" is not a member of ${teamLabel(team)}.`
+        if (member.id === lead.id || organization.mainAgent(lead.server_id) === member.id)
+          return "Nothing changed. You cannot change yourself or the main agent."
+        return member
+      }
+
+      /** A permission level of a call, or the reason that it cannot be set (spec 037). */
+      const teamLevel = (lead: TeamLead, value: unknown): PermissionLevel | string => {
+        const level = PERMISSION_LEVELS.find((l) => l === value)
+        if (!level) return `The permission level must be one of: ${PERMISSION_LEVELS.join(", ")}.`
+        if (isLooser(level, lead.permission))
+          return `The permission level cannot be higher than your own level, ${lead.permission}.`
+        return level
+      }
+
+      /** The action log text of a change: it names no instruction text (spec 014). */
+      const teamSummary = (changes: readonly SettingChange[]) =>
+        changeSummary(
+          changes.map((c) => (c.field === "instructions" ? { ...c, after: "(new text)" } : c)),
+        )
+
+      /**
+       * A team step (spec 037, "Team tools"): it makes no request and runs at once, at every level
+       * except "Read only". It has an entry in the action log.
+       */
+      const teamStep = <A>(
+        ctx: ToolContext,
+        call: ToolCall,
+        target: string,
+        work: () => Promise<A>,
+      ) => guarded(ctx, call.id, { step: TEAM_STEP, target, work })
+
+      /** The line in the chat or the channel of the lead: the change, with Undo (spec 037, flow 4). */
+      const teamLine = (
+        ctx: ToolContext,
+        call: ToolCall,
+        member: { id: string; name: string },
+        note: SettingsNote,
+      ) => ctx.onTeamLine?.(call.id, { ...note, member: { id: member.id, name: member.name } })
+
+      /** "Make a team member" (spec 037, "Team tools"): a made agent that joins the team. */
       const makeTeamMemberTool = async (
         ctx: ToolContext,
         call: ToolCall,
         args: Record<string, unknown>,
       ): Promise<ToolOutcome> => {
-        const channel = teamChannel(ctx.agentId, args)
-        if (channel === "unknown") return { output: `Unknown tool: ${call.name}`, failed: true }
-        if (typeof channel === "string") return { output: channel, failed: true }
-        const { channel: _channel, ...fields } = args
-        const caller = db.get<{ server_id: string; name: string }>(
-          "SELECT server_id, name FROM agent WHERE id = ?",
-          ctx.agentId,
-        )
-        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
-        const made = db.get<{ n: number }>(
-          `SELECT COUNT(*) AS n FROM channel_member m JOIN agent a ON a.id = m.agent_id
-           WHERE m.channel_id = ? AND a.made_by = ?`,
-          channel.id,
-          caller.name,
-        )?.n
-        if ((made ?? 0) >= TEAM_MADE_MAX)
-          return { output: "Too many team members. Ask the user.", failed: true }
-        const members =
+        const found = teamCall(ctx, call, args)
+        if ("output" in found) return found
+        const { lead, team } = found
+        const { team: _team, permission, ...fields } = args
+        const { table, key } = memberTable(team)
+        const made =
           db.get<{ n: number }>(
-            "SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = ?",
-            channel.id,
+            `SELECT COUNT(*) AS n FROM ${table} m JOIN agent a ON a.id = m.agent_id
+             WHERE m.${key} = ? AND a.made_by = ? AND a.archived_at IS NULL`,
+            team.id,
+            lead.name,
           )?.n ?? 0
-        if (members >= CLIENT_CHANNEL_MEMBERS_MAX)
-          return {
-            output: "Nothing made. The channel has the most members it can hold.",
-            failed: true,
-          }
+        if (made >= TEAM_MADE_MAX)
+          return { output: "Too many team members. Ask the user.", failed: true }
+        if (team.kind === "channel") {
+          const members =
+            db.get<{ n: number }>(
+              "SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = ?",
+              team.id,
+            )?.n ?? 0
+          if (members >= CLIENT_CHANNEL_MEMBERS_MAX)
+            return {
+              output: "Nothing made. The channel has the most members it can hold.",
+              failed: true,
+            }
+        }
+        const level = permission === undefined ? undefined : teamLevel(lead, permission)
+        if (level !== undefined && !isPermission(level))
+          return { output: `Nothing made. ${level}`, failed: true }
         const plan = await settle(agentSettings.planNew(ctx.agentId, fields))
         if (plan.kind === "refused") return { output: plan.reason, failed: true }
-        const made1 = await guarded(ctx, call.id, {
-          step: MANAGE_STEP,
-          target: `Make team member: ${plan.create.name}`,
-          card: `Requested by the lead "${caller.name}" for the channel "${channel.name}".\n${plan.detail}`,
-          work: async () => {
+        const agent = await teamStep(
+          ctx,
+          call,
+          `${teamLabel(team)}: made "${plan.create.name}"; role: ${plan.create.role || "none"}; model: ${plan.create.model.model}; permission: ${level ?? "default"}`,
+          async () => {
             const agent = await settle(
               agents.create(
-                { serverId: caller.server_id, ...plan.create },
-                { madeBy: caller.name },
+                {
+                  serverId: lead.server_id,
+                  ...plan.create,
+                  ...(level !== undefined ? { permission: level } : {}),
+                },
+                { madeBy: lead.name },
               ),
             ).catch((error) => {
               if (error instanceof AppError && error.code === "agent_name_taken")
@@ -2379,88 +2562,142 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             })
             const position =
               db.get<{ n: number }>(
-                "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM channel_member WHERE channel_id = ?",
-                channel.id,
+                `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM ${table} WHERE ${key} = ?`,
+                team.id,
               )?.n ?? 0
             db.run(
-              "INSERT INTO channel_member (channel_id, agent_id, position) VALUES (?, ?, ?)",
-              channel.id,
+              `INSERT INTO ${table} (${key}, agent_id, position) VALUES (?, ?, ?)`,
+              team.id,
               agent.id,
               position,
             )
-            bus.emit("channels.changed", { channelId: channel.id })
+            teamChanged(team, lead.server_id)
             return agent
           },
-        })
+        )
         return {
-          output: `Made the agent "${made1.name}" and added it to the channel "${channel.name}". Give it a part in your plan.`,
+          output: `Made the agent "${agent.name}" and added it to ${teamLabel(team)}. Give it work.`,
           failed: false,
         }
       }
 
-      /** "Change a team member" (spec 037, "Team tools"): the role line and instructions only. */
+      /** "Change a team member" (spec 037, "Team tools"): the fields of "Change an agent" and the level. */
       const changeTeamMemberTool = async (
         ctx: ToolContext,
         call: ToolCall,
         args: Record<string, unknown>,
       ): Promise<ToolOutcome> => {
-        const channel = teamChannel(ctx.agentId, args)
-        if (channel === "unknown") return { output: `Unknown tool: ${call.name}`, failed: true }
-        if (typeof channel === "string") return { output: channel, failed: true }
-        const extra = Object.keys(args).filter(
-          (k) => !["channel", "name", "role", "instructions"].includes(k),
-        )
+        const found = teamCall(ctx, call, args)
+        if ("output" in found) return found
+        const { lead, team } = found
+        const { team: _team, member: _member, permission, ...fields } = args
+        const extra = Object.keys(fields).filter((k) => !TEAM_CHANGE_ARGS.includes(k))
         if (extra.length > 0)
           return {
-            output: `Nothing changed. A team member has no field ${extra.join(", ")} here. You may change role and instructions.`,
+            output: `Nothing changed. A team member has no field ${extra.join(", ")}. It takes: ${TEAM_CHANGE_ARGS.join(", ")}.`,
             failed: true,
           }
-        const name = text(args, "name").trim()
-        const target = db.get<{ id: string; name: string }>(
-          `SELECT a.id, a.name FROM channel_member m JOIN agent a ON a.id = m.agent_id
-           WHERE m.channel_id = ? AND a.name_key = ? AND a.archived_at IS NULL`,
-          channel.id,
-          nameKey(name),
-        )
-        if (!target)
+        const member = teamMember(lead, team, args)
+        if (typeof member === "string") return { output: member, failed: true }
+        if (member.archived_at !== null)
           return {
-            output: `Nothing changed. "${name}" is not a member of the channel "${channel.name}" that is not archived.`,
+            output: `Nothing changed. "${member.name}" is archived. Restore it first.`,
             failed: true,
           }
-        const caller = db.get<{ server_id: string; name: string }>(
-          "SELECT server_id, name FROM agent WHERE id = ?",
-          ctx.agentId,
-        )
-        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
-        if (
-          target.id === ctx.agentId ||
-          organization.mainAgent(caller.server_id) === target.id ||
-          ledChannels(target.id).length > 0
-        )
-          return {
-            output:
-              "Nothing changed. You cannot change yourself, the main agent, or a member that leads a channel.",
-            failed: true,
-          }
-        const { plan } = await settle(
-          agentSettings.plan(target.id, {
-            ...(args.role !== undefined ? { role: args.role } : {}),
-            ...(args.instructions !== undefined ? { instructions: args.instructions } : {}),
-          }),
-        )
-        if (plan.kind === "read")
-          return { output: "Nothing changed. Give a role or instructions.", failed: true }
-        if (plan.kind === "unchanged")
-          return { output: "Nothing changed: these values are set already.", failed: false }
+        const level = permission === undefined ? undefined : teamLevel(lead, permission)
+        if (level !== undefined && !isPermission(level))
+          return { output: `Nothing changed. ${level}`, failed: true }
+        const { plan } = await settle(agentSettings.plan(member.id, fields))
         if (plan.kind === "refused") return { output: plan.reason, failed: true }
-        await guarded(ctx, call.id, {
-          step: MANAGE_STEP,
-          target: `Change team member: ${target.name}`,
-          card: `Requested by the lead "${caller.name}" for the channel "${channel.name}".\n${changeSummary(plan.changes)}`,
-          work: () => settle(agentSettings.apply(target.id, plan.changes, "chat")),
+        const before = (await settle(agents.get(member.id))).permission
+        const changes: SettingChange[] = [
+          ...(plan.kind === "changes" ? plan.changes : []),
+          ...(level !== undefined && level !== before
+            ? [{ field: "permission" as const, before, after: level }]
+            : []),
+        ]
+        if (changes.length === 0)
+          return plan.kind === "read" && level === undefined
+            ? { output: "Nothing changed. Give a field to change.", failed: true }
+            : { output: "Nothing changed: these values are set already.", failed: false }
+        const note = await teamStep(
+          ctx,
+          call,
+          `${teamLabel(team)}: changed "${member.name}": ${teamSummary(changes)}`,
+          () => settle(agentSettings.apply(member.id, changes, "chat")),
+        )
+        teamLine(ctx, call, member, note)
+        return {
+          output: `Changed "${member.name}": ${teamSummary(changes)}. It counts from its next turn.`,
+          failed: false,
+        }
+      }
+
+      /** "Remove a team member" (spec 037, "Team tools"): the agent stays. */
+      const removeTeamMemberTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const found = teamCall(ctx, call, args)
+        if ("output" in found) return found
+        const { lead, team } = found
+        const member = teamMember(lead, team, args)
+        if (typeof member === "string") return { output: member, failed: true }
+        // A member that works in the channel stays until its part ends (spec 004).
+        if (
+          team.kind === "channel" &&
+          db.get(
+            `SELECT 1 AS x FROM task WHERE source = 'channel' AND source_id = ? AND agent_id = ?
+             AND state IN ('queued', 'running', 'waiting')`,
+            team.id,
+            member.id,
+          )
+        )
+          return {
+            output: `Nothing changed. "${member.name}" works in this channel now. Remove it when its part ends.`,
+            failed: true,
+          }
+        const { table, key } = memberTable(team)
+        await teamStep(ctx, call, `${teamLabel(team)}: removed "${member.name}"`, async () => {
+          db.run(`DELETE FROM ${table} WHERE ${key} = ? AND agent_id = ?`, team.id, member.id)
+          teamChanged(team, lead.server_id)
         })
         return {
-          output: `Changed "${target.name}": ${changeSummary(plan.changes.map((c) => (c.field === "instructions" ? { ...c, after: "(new text)" } : c)))}. It counts from its next turn.`,
+          output: `Removed "${member.name}" from ${teamLabel(team)}. The agent stays.`,
+          failed: false,
+        }
+      }
+
+      /** "Archive a team member" and "Restore a team member" (spec 037, "Team tools"). */
+      const archiveTeamMemberTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+        archive: boolean,
+      ): Promise<ToolOutcome> => {
+        const found = teamCall(ctx, call, args)
+        if ("output" in found) return found
+        const { lead, team } = found
+        const member = teamMember(lead, team, args)
+        if (typeof member === "string") return { output: member, failed: true }
+        if ((member.archived_at !== null) === archive)
+          return {
+            output: `Nothing changed: "${member.name}" is ${archive ? "archived" : "not archived"} already.`,
+            failed: false,
+          }
+        const changes: SettingChange[] = [{ field: "archived", before: !archive, after: archive }]
+        const note = await teamStep(
+          ctx,
+          call,
+          `${teamLabel(team)}: ${archive ? "archived" : "restored"} "${member.name}"`,
+          () => settle(agentSettings.apply(member.id, changes, "chat")),
+        )
+        teamLine(ctx, call, member, note)
+        return {
+          output: archive
+            ? `Archived "${member.name}". It does not count in your limit now. You can restore it at any time.`
+            : `Restored "${member.name}" with its history and workspace.`,
           failed: false,
         }
       }
@@ -3035,6 +3272,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await makeTeamMemberTool(ctx, call, args)
           case "change_team_member":
             return await changeTeamMemberTool(ctx, call, args)
+          case "remove_team_member":
+            return await removeTeamMemberTool(ctx, call, args)
+          case "archive_team_member":
+            return await archiveTeamMemberTool(ctx, call, args, true)
+          case "restore_team_member":
+            return await archiveTeamMemberTool(ctx, call, args, false)
           case "make_workflow":
             return await makeWorkflowTool(ctx, call, args)
           case "read_article":
@@ -3122,6 +3365,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
                 ...(options.manage ? MANAGE_DEFS : []),
                 ...(options.team ? TEAM_DEFS : []),
               ],
+        leadsTeam: (agentId) => ledTeams(agentId).length > 0,
         execute,
         guarded,
         bridge: (ctx, show) => {
@@ -3135,8 +3379,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               ),
               // The main agent gets the manage tools on every runtime (spec 037).
               ...(isMainAgent(ctx.agentId) ? MANAGE_DEFS : []),
-              // The lead of a channel gets the team tools (spec 037).
-              ...(ledChannels(ctx.agentId).length > 0 ? TEAM_DEFS : []),
+              // The lead of a channel or of an organization gets the team tools (spec 037).
+              ...(ledTeams(ctx.agentId).length > 0 ? TEAM_DEFS : []),
             ],
             call: async (name, args) => {
               const call: ToolCall = { id: `app-${++count}`, name, input: JSON.stringify(args) }

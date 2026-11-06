@@ -1704,6 +1704,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
               onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
               onSettings: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
+              onTeamLine: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
               knowledgeChanges: { count: 0 },
               turn: mark,
               taskId: task.id,
@@ -1791,6 +1792,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   settings: !isRuntime,
                   // The manage tools are for the main agent (spec 037).
                   manage: !isRuntime && organization.mainAgent(agent.server_id) === agentId,
+                  // The lead of a channel or of an organization gets the team tools (spec 037).
+                  team: !isRuntime && tools.leadsTeam(agentId),
                   // The tool to read a skill goes with its list (spec 017, flow 8).
                   skills: skillList !== "",
                 }),

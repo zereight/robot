@@ -1109,6 +1109,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               words: () => tasks.userWords(o.taskId),
               onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
               onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
+              // A team tool of the lead shows its line with Undo here (spec 037, "Team tools").
+              onTeamLine: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
               knowledgeChanges: { count: 0 },
               turn: mark,
               taskId: o.taskId,
@@ -1131,7 +1133,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 model: agent.model_name,
                 effort: agent.model_effort,
                 system: teamOnly
-                  ? `${o.system}\n\nIf the job needs a member that the channel does not have, you may ask the user for one with make_team_member, and for a changed role with change_team_member. Then answer or reply with the plan.`
+                  ? `${o.system}\n\nIf the job needs a member that the channel does not have, make one with make_team_member. Change a member with change_team_member. Then answer or reply with the plan.`
                   : useTools
                     ? [
                         `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
@@ -2522,10 +2524,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               tasks.replied(task.id)
               return
             }
-            // The reply becomes the plan message, and each part becomes a task of a member.
+            // The reply becomes the plan message, and each part becomes a task of a member. The
+            // line of a team tool stays, with its Undo (spec 037, "Team tools").
+            const lines = (JSON.parse(messageRow(reply.id)?.parts ?? "[]") as MessagePart[]).filter(
+              (p) => p.kind === "tool" && p.settings,
+            )
             db.run(
               "UPDATE channel_message SET kind = 'plan', parts = ?, task_id = ? WHERE id = ?",
-              JSON.stringify([{ kind: "text", text: planText(plan) }]),
+              JSON.stringify([...lines, { kind: "text", text: planText(plan) }]),
               task.id,
               reply.id,
             )

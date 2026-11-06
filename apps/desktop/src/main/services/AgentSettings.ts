@@ -8,9 +8,11 @@ import {
   type InstructionSource,
   type InstructionVersion,
   isAppSettingField,
+  isTeamSettingField,
   type MakeAgentPlan,
   type MessagePart,
   nameKey,
+  type PermissionLevel,
   planMakeAgent,
   planSettings,
   type SettingChange,
@@ -155,8 +157,18 @@ export class AgentSettings extends Context.Service<AgentSettings, AgentSettingsS
           return current
         })
 
-      const fieldValue = (current: SettingsCurrent, field: SettingChange["field"]): SettingValue =>
-        isAppSettingField(field) ? current.app[field] : current[field]
+      const fieldValue = (
+        agent: Agent,
+        current: SettingsCurrent,
+        field: SettingChange["field"],
+      ): SettingValue =>
+        isTeamSettingField(field)
+          ? field === "permission"
+            ? agent.permission
+            : agent.archived
+          : isAppSettingField(field)
+            ? current.app[field]
+            : current[field]
 
       const plan = Effect.fn("AgentSettings.plan")(function* (
         agentId: string,
@@ -192,8 +204,13 @@ export class AgentSettings extends Context.Service<AgentSettings, AgentSettingsS
             else if (field === "instructions") patch.instructions = value as string
             else if (field === "face") patch.face = value as Face
             else if (field === "model") patch.model = value as AgentModel | null
+            else if (field === "permission") patch.permission = value as PermissionLevel
           }
           if (Object.keys(patch).length > 0) yield* agents.update(agentId, patch, { source })
+          // Archive and Restore of a member (spec 037, "Team tools").
+          for (const { field, value } of values)
+            if (field === "archived")
+              yield* value === true ? agents.archive(agentId) : agents.restore(agentId)
           // A change of the app settings applies at once.
           if (Object.keys(app).length > 0) yield* settings.update(app as SettingsPatch)
         })
@@ -215,24 +232,37 @@ export class AgentSettings extends Context.Service<AgentSettings, AgentSettingsS
         return note
       })
 
+      /** The line of a call: in a chat, or in a channel for a team tool of the lead (spec 037). */
       const partOf = (agentId: string, messageId: string, callId: string) => {
-        const row = db.get<{ parts: string; agent_id: string; status: string }>(
-          "SELECT parts, agent_id, status FROM message WHERE id = ?",
-          messageId,
-        )
-        if (!row || row.agent_id !== agentId) return undefined
-        const parts = JSON.parse(row.parts) as MessagePart[]
-        const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
-        const part = parts[index] as ToolPart | undefined
-        return part?.settings
-          ? { parts, index, part, note: part.settings, streaming: row.status === "streaming" }
-          : undefined
+        for (const table of ["message", "channel_message"] as const) {
+          const row = db.get<{ parts: string; agent_id: string | null; status: string }>(
+            `SELECT parts, agent_id, status FROM ${table} WHERE id = ?`,
+            messageId,
+          )
+          if (!row) continue
+          if (row.agent_id !== agentId) return undefined
+          const parts = JSON.parse(row.parts) as MessagePart[]
+          const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+          const part = parts[index] as ToolPart | undefined
+          return part?.settings
+            ? {
+                table,
+                parts,
+                index,
+                part,
+                note: part.settings,
+                streaming: row.status === "streaming",
+              }
+            : undefined
+        }
+        return undefined
       }
 
       const stateOf = (agent: Agent, current: SettingsCurrent, note: SettingsNote) => {
         if (note.undone) return "undone" as const
         for (const change of note.changes) {
-          if (!same(fieldValue(current, change.field), change.after)) return "changed" as const
+          if (!same(fieldValue(agent, current, change.field), change.after))
+            return "changed" as const
           // The text can come back to the same words through another change.
           if (change.field === "instructions" && note.versionId) {
             const newest = newestVersion(db, agent.id)
@@ -246,7 +276,7 @@ export class AgentSettings extends Context.Service<AgentSettings, AgentSettingsS
         Effect.gen(function* () {
           const found = partOf(agentId, messageId, callId)
           if (!found) return "undone" as SettingsLineState
-          const agent = yield* agents.get(agentId)
+          const agent = yield* agents.get(found.note.member?.id ?? agentId)
           return stateOf(agent, yield* currentOf(agent), found.note)
         }).pipe(Effect.orElseSucceed((): SettingsLineState => "undone"))
 
@@ -257,20 +287,21 @@ export class AgentSettings extends Context.Service<AgentSettings, AgentSettingsS
       ) {
         const found = partOf(agentId, messageId, callId)
         if (!found) return yield* new AppError({ code: "settings_not_found" })
-        const agent = yield* agents.get(agentId)
+        // The line of a team tool changed a member, not the agent of the chat (spec 037).
+        const agent = yield* agents.get(found.note.member?.id ?? agentId)
         const state = stateOf(agent, yield* currentOf(agent), found.note)
         if (state === "undone") return yield* new AppError({ code: "settings_undone" })
         if (state === "changed") return yield* new AppError({ code: "settings_changed_again" })
         // The reply still streams, and its turn would write over the line.
         if (found.streaming) return yield* new AppError({ code: "agent_working" })
         yield* write(
-          agentId,
+          agent.id,
           found.note.changes.map((c) => ({ field: c.field, value: c.before })),
           "undo",
         )
         const parts = found.parts.slice()
         parts[found.index] = { ...found.part, settings: { ...found.note, undone: true } }
-        db.run("UPDATE message SET parts = ? WHERE id = ?", JSON.stringify(parts), messageId)
+        db.run(`UPDATE ${found.table} SET parts = ? WHERE id = ?`, JSON.stringify(parts), messageId)
       })
 
       return AgentSettings.of({

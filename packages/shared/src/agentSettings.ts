@@ -44,9 +44,15 @@ export const APP_SETTING_FIELDS = [
   "compactPlaces",
   "reduceMotion",
 ] as const
+/**
+ * The fields of a member that only a lead changes with the team tools (spec 037, "Team tools"):
+ * the permission level, and whether the member is archived. The settings tool has neither.
+ */
+export const TEAM_SETTING_FIELDS = ["permission", "archived"] as const
 export type AgentSettingField = (typeof AGENT_SETTING_FIELDS)[number]
 export type AppSettingField = (typeof APP_SETTING_FIELDS)[number]
-export type SettingField = AgentSettingField | AppSettingField
+export type TeamSettingField = (typeof TEAM_SETTING_FIELDS)[number]
+export type SettingField = AgentSettingField | AppSettingField | TeamSettingField
 
 export type SettingValue = string | boolean | Face | AgentModel | null
 
@@ -58,15 +64,20 @@ export interface SettingChange {
 }
 
 /**
- * What one call of the settings tool changed. The chat shows it as a muted line with Undo.
- * `versionId` is the version of the instructions that the call made, when it changed them.
- * `undone` is set when the user pressed Undo.
+ * What one call of the settings tool or of a team tool changed. The chat shows it as a muted line
+ * with Undo. `versionId` is the version of the instructions that the call made, when it changed
+ * them. `undone` is set when the user pressed Undo. `member` is set for a team tool (spec 037): the
+ * id and the name of the member that changed. Without it, the agent of the chat changed.
  */
 export interface SettingsNote {
   readonly changes: readonly SettingChange[]
   readonly versionId?: string
   readonly undone?: boolean
+  readonly member?: { readonly id: string; readonly name: string }
 }
+
+export const isTeamSettingField = (field: string): field is TeamSettingField =>
+  (TEAM_SETTING_FIELDS as readonly string[]).includes(field)
 
 /** The state of the Undo of a settings line. */
 export type SettingsLineState = "ready" | "undone" | "changed"

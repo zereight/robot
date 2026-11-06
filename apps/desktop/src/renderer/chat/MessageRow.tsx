@@ -1118,8 +1118,18 @@ const changeText = (t: Translate, change: SettingChange): string => {
       return t(change.after ? "chat.settings.compactPlaces.on" : "chat.settings.compactPlaces.off")
     case "reduceMotion":
       return pair("chat.settings.reduceMotion", option("settings.reduceMotion"))
+    case "permission":
+      return pair("chat.settings.permission", option("agents.permission"))
+    case "archived":
+      return t(change.after ? "chat.settings.archived" : "chat.settings.restored")
   }
 }
+
+/** The line of a team tool names the member that it changed (spec 037, "Team tools"). */
+const noteText = (t: Translate, note: SettingsNote, change: SettingChange): string =>
+  note.member
+    ? t("chat.settings.member", { member: note.member.name, change: changeText(t, change) })
+    : changeText(t, change)
 
 /**
  * What a call of the settings tool changed: a muted line with Undo (spec 002). Undo is off when a
@@ -1166,7 +1176,7 @@ const SettingsLine = (props: {
   return (
     <div class={styles.knowledgeLine} data-testid="settings-line" data-state={state() ?? ""}>
       <For each={props.note.changes}>
-        {(change) => <span data-testid="settings-change">{changeText(t, change)}</span>}
+        {(change) => <span data-testid="settings-change">{noteText(t, props.note, change)}</span>}
       </For>
       <Show when={state()}>
         {(s) => (

@@ -8,9 +8,11 @@ import {
 } from "@robot/shared"
 import { Effect } from "effect"
 import { ActionLog } from "./ActionLog.ts"
+import { AgentSettings } from "./AgentSettings.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
+import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -57,9 +59,13 @@ const server = Bun.serve({
     }
     bodies.push(body)
     const last = body.messages.at(-1)
+    // "THEN <text>" in a user text is the answer after the tool calls; "Done." when there is none.
+    const then = body.messages
+      .map((m) => /THEN (.*)$/s.exec(String(m.content ?? ""))?.[1])
+      .findLast(Boolean)
     if (last?.role === "tool")
-      return sse([{ choices: [{ delta: { content: "Done." } }] }, "[DONE]"])
-    const match = /CALLS (\[.*\])/.exec(String(last?.content ?? ""))
+      return sse([{ choices: [{ delta: { content: then ?? "Done." } }] }, "[DONE]"])
+    const match = /CALLS (\[.*?\])(?: THEN |$)/s.exec(String(last?.content ?? ""))
     if (!match) return sse([{ choices: [{ delta: { content: "ok" } }] }, "[DONE]"])
     const calls = JSON.parse(match[1] as string) as { name: string; args: unknown }[]
     return sse([
@@ -412,21 +418,27 @@ describe("an agent on a vendor runtime (the tools that the program calls through
   })
 })
 
-describe("the team tools of the lead of a channel (spec 037)", () => {
+describe("the team tools of a lead (spec 037, 030, 004)", () => {
+  const madeBy = (s: Awaited<ReturnType<typeof setup>>, name: string, by: string | null) =>
+    s.run(
+      Agents.use((a) =>
+        a.create(
+          {
+            serverId: s.local.id,
+            name,
+            role: "Writer",
+            instructions: "Write.",
+            model: { accountId: s.account.id, model: "mock-fast", effort: null },
+          },
+          by ? { madeBy: by } : undefined,
+        ),
+      ),
+    )
+
   /** Ada leads the channel "Crew" with Bo; Ada is not the main agent. */
   const crew = async (permission: PermissionLevel = "ask_risky") => {
     const s = await setup(permission, false)
-    const bo = await s.run(
-      Agents.use((a) =>
-        a.create({
-          serverId: s.local.id,
-          name: "Bo",
-          role: "Writer",
-          instructions: "Write.",
-          model: { accountId: s.account.id, model: "mock-fast", effort: null },
-        }),
-      ),
-    )
+    const bo = await madeBy(s, "Bo", null)
     const channel = await s.run(
       Channels.use((c) =>
         c.create({
@@ -438,319 +450,278 @@ describe("the team tools of the lead of a channel (spec 037)", () => {
         }),
       ),
     )
-    const members = async () =>
-      (await s.run(Channels.use((c) => c.get(channel.id)))).memberIds.length
-    return { ...s, bo, channel, members }
+    const memberIds = async () => (await s.run(Channels.use((c) => c.get(channel.id)))).memberIds
+    const find = async (name: string) =>
+      (await s.run(Agents.use((a) => a.list(s.local.id, false)))).find((a) => a.name === name) ??
+      (await s.run(Agents.use((a) => a.list(s.local.id, true)))).find((a) => a.name === name)
+    const log = () => s.run(ActionLog.use((l) => l.list()))
+    return { ...s, bo, channel, memberIds, find, log }
   }
 
-  test("Allow makes the agent, adds it to the channel and marks it as made by the lead", async () => {
-    const s = await crew()
-    const waiting = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
-    expect(waiting?.state).toBe("waiting")
-    const summary = (waiting?.ask as unknown as { summary: string } | undefined)?.summary ?? ""
-    expect(summary).toContain("Ada")
-    expect(summary).toContain("Crew")
-    expect(await s.names()).toEqual(["Ada", "Bo"])
-    expect(await s.members()).toBe(2)
-    await s.answer("allow")
-    expect(await s.names()).toEqual(["Ada", "Bo", "Rita"])
-    expect(await s.members()).toBe(3)
-    expect((await s.agents()).find((a) => a.name === "Rita")?.madeBy).toBe("Ada")
-  })
-
-  test("Deny makes nothing", async () => {
-    const s = await crew()
-    await s.sendAndSettle(call("make_team_member", NEW_AGENT))
-    await s.answer("deny")
-    expect(await s.names()).toEqual(["Ada", "Bo"])
-    expect(await s.members()).toBe(2)
-  })
-
-  test("a role change of a member asks first and applies after Allow", async () => {
-    const s = await crew()
-    const waiting = await s.sendAndSettle(
-      call("change_team_member", { name: "Bo", role: "Editor" }),
+  /** Ada leads the organization "Lab" with Bo, and leads no channel. */
+  const lab = async () => {
+    const s = await setup("ask_risky", false)
+    const bo = await madeBy(s, "Bo", null)
+    const org = await s.run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: s.local.id,
+          name: "Lab",
+          memberIds: [s.agent.id, bo.id],
+          leadId: s.agent.id,
+        }),
+      ),
     )
-    expect(waiting?.state).toBe("waiting")
-    await s.answer("allow")
-    expect((await s.agents()).find((a) => a.name === "Bo")?.role).toBe("Editor")
-  })
+    const memberIds = async () => (await s.run(Organizations.use((o) => o.get(org.id)))).memberIds
+    return { ...s, bo, org, memberIds }
+  }
 
-  test("a field outside role and instructions, the lead itself and an outsider are refused", async () => {
+  const offered = (name: string) =>
+    bodies.some((b) => b.tools?.some((tool) => tool.function.name === name))
+
+  test("make: no card; the member exists at once, joins the channel and shows Made by", async () => {
     const s = await crew()
-    const model = await s.sendAndSettle(
-      call("change_team_member", { name: "Bo", model: "o3-mini" }),
+    const part = await s.sendAndSettle(
+      call("make_team_member", { ...NEW_AGENT, role: "Tester", permission: "ask_all" }),
     )
-    expect(model?.state).toBe("failed")
-    const self = await s.sendAndSettle(call("change_team_member", { name: "Ada", role: "X" }))
-    expect(self?.state).toBe("failed")
-    const none = await s.sendAndSettle(call("change_team_member", { name: "Zed", role: "X" }))
-    expect(none?.state).toBe("failed")
-    expect((await s.agents()).find((a) => a.name === "Bo")?.role).toBe("Writer")
+    expect(part?.state).toBe("done")
+    expect(part?.ask).toBeUndefined()
+    const rita = await s.find("Rita")
+    expect(rita).toMatchObject({ role: "Tester", madeBy: "Ada", permission: "ask_all" })
+    expect(await s.memberIds()).toContain(rita?.id ?? "")
+    const [entry] = await s.log()
+    expect(entry).toMatchObject({ kind: "team", decidedBy: "level", result: "ran" })
+    expect(entry?.target).toContain("Crew")
+    expect(entry?.target).toContain("Rita")
   })
 
-  test("the sixth member that the lead made in one channel is refused", async () => {
+  test("make: a permission level higher than the level of the lead is refused", async () => {
     const s = await crew()
-    const ids = [s.agent.id, s.bo.id]
-    for (let i = 0; i < 5; i++) {
-      const made = await s.run(
-        Agents.use((a) =>
-          a.create(
-            {
-              serverId: s.local.id,
-              name: `Made${i}`,
-              role: "",
-              instructions: "",
-              model: { accountId: s.account.id, model: "mock-fast", effort: null },
-            },
-            { madeBy: "Ada" },
-          ),
-        ),
-      )
-      ids.push(made.id)
-    }
-    await s.run(Channels.use((c) => c.update(s.channel.id, { memberIds: ids })))
-    const part = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
+    const part = await s.sendAndSettle(
+      call("make_team_member", { ...NEW_AGENT, permission: "full" }),
+    )
     expect(part?.state).toBe("failed")
-    expect(part?.output).toContain("Too many team members. Ask the user.")
-    expect(await s.names()).not.toContain("Rita")
+    expect(part?.output).toContain("permission")
+    expect(await s.find("Rita")).toBeUndefined()
+  })
+
+  test("change: the model changes at once, the chat shows a line, and Undo puts it back", async () => {
+    const s = await crew()
+    const part = await s.sendAndSettle(
+      call("change_team_member", { member: "Bo", model: "o3-mini", role: "Editor" }),
+    )
+    expect(part?.state).toBe("done")
+    expect(part?.ask).toBeUndefined()
+    expect(await s.find("Bo")).toMatchObject({ role: "Editor", model: { model: "o3-mini" } })
+    expect(part?.settings?.member?.id).toBe(s.bo.id)
+    expect(part?.settings?.changes.map((c) => c.field).sort()).toEqual(["model", "role"])
+    expect(await s.log()).toMatchObject([{ kind: "team", decidedBy: "level", result: "ran" }])
+    const message = await s.reply()
+    await s.run(AgentSettings.use((x) => x.undo(s.agent.id, message?.id ?? "", "call_1")))
+    expect(await s.find("Bo")).toMatchObject({ role: "Writer", model: { model: "mock-fast" } })
+  })
+
+  test("change in a channel turn: the channel shows the line, and Undo puts it back", async () => {
+    const s = await crew()
+    await s.run(
+      Channels.use((c) =>
+        c.send(s.channel.id, call("change_team_member", { member: "Bo", role: "Editor" })),
+      ),
+    )
+    const lead = async () =>
+      (await s.run(Channels.use((c) => c.history(s.channel.id)))).find(
+        (m) => m.agentId === s.agent.id && m.status === "done",
+      )
+    await until(async () => (await lead()) !== undefined)
+    const message = await lead()
+    const part = message?.parts.find((p): p is ToolPart => p.kind === "tool" && p.id === "call_1")
+    expect(part?.state).toBe("done")
+    expect((await s.find("Bo"))?.role).toBe("Editor")
+    expect(part?.settings?.member?.id).toBe(s.bo.id)
+    const id = message?.id ?? ""
+    const state = (x: AgentSettings["Service"]) => x.lineState(s.agent.id, id, "call_1")
+    expect(await s.run(AgentSettings.use(state))).toBe("ready")
+    await s.run(AgentSettings.use((x) => x.undo(s.agent.id, id, "call_1")))
+    expect((await s.find("Bo"))?.role).toBe("Writer")
+    expect(await s.run(AgentSettings.use(state))).toBe("undone")
+  })
+
+  test("change in a channel turn, then a plan: the plan message keeps the line", async () => {
+    const s = await crew()
+    const plan = JSON.stringify({ plan: "Edit it.", parts: [{ member: "Bo", prompt: "Edit." }] })
+    await s.run(
+      Channels.use((c) =>
+        c.send(
+          s.channel.id,
+          `${call("change_team_member", { member: "Bo", role: "Editor" })} THEN ${plan}`,
+        ),
+      ),
+    )
+    const planMessage = async () =>
+      (await s.run(Channels.use((c) => c.history(s.channel.id)))).find((m) => m.kind === "plan")
+    await until(async () => (await planMessage()) !== undefined)
+    const message = await planMessage()
+    const part = message?.parts.find((p): p is ToolPart => p.kind === "tool" && p.id === "call_1")
+    expect(part?.settings?.member?.id).toBe(s.bo.id)
+    expect(message?.parts.some((p) => p.kind === "text" && p.text.includes("Bo"))).toBe(true)
+    const id = message?.id ?? ""
+    await s.run(AgentSettings.use((x) => x.undo(s.agent.id, id, "call_1")))
+    expect((await s.find("Bo"))?.role).toBe("Writer")
+  })
+
+  test("change: a permission level up to the level of the lead works, a higher one is refused", async () => {
+    const s = await crew()
+    const lower = await s.sendAndSettle(
+      call("change_team_member", { member: "Bo", permission: "ask_all" }),
+    )
+    expect(lower?.state).toBe("done")
+    expect((await s.find("Bo"))?.permission).toBe("ask_all")
+    const higher = await s.sendAndSettle(
+      call("change_team_member", { member: "Bo", permission: "full" }),
+    )
+    expect(higher?.state).toBe("failed")
+    expect(higher?.output).toContain("permission")
+    expect((await s.find("Bo"))?.permission).toBe("ask_all")
+  })
+
+  test("change: an app setting is not a field of a member", async () => {
+    const s = await crew()
+    const part = await s.sendAndSettle(call("change_team_member", { member: "Bo", theme: "dark" }))
+    expect(part?.state).toBe("failed")
+  })
+
+  test("the lead itself, the main agent and an agent outside the team are refused", async () => {
+    const s = await crew()
+    const main = await madeBy(s, "Max", null)
+    await s.run(Agents.use((a) => a.update(main.id, { isMain: true })))
+    await s.run(
+      Channels.use((c) => c.update(s.channel.id, { memberIds: [s.agent.id, s.bo.id, main.id] })),
+    )
+    await madeBy(s, "Zed", null)
+    for (const member of ["Ada", "Max", "Zed"]) {
+      for (const tool of [
+        "change_team_member",
+        "archive_team_member",
+        "remove_team_member",
+      ] as const) {
+        const part = await s.sendAndSettle(
+          call(tool, tool === "change_team_member" ? { member, role: "X" } : { member }),
+        )
+        expect(part?.state).toBe("failed")
+      }
+    }
+    expect((await s.find("Max"))?.archived).toBe(false)
+    expect((await s.find("Zed"))?.role).toBe("Writer")
+    expect(await s.memberIds()).toContain(main.id)
+  })
+
+  test("remove: the member leaves the team and the agent stays", async () => {
+    const s = await crew()
+    const part = await s.sendAndSettle(call("remove_team_member", { member: "Bo" }))
+    expect(part?.state).toBe("done")
+    expect(await s.memberIds()).toEqual([s.agent.id])
+    expect((await s.find("Bo"))?.archived).toBe(false)
+    expect(await s.log()).toMatchObject([{ kind: "team", result: "ran" }])
+  })
+
+  test("archive and restore: at once, Undo of the archive restores, and no tool deletes", async () => {
+    const s = await crew()
+    const part = await s.sendAndSettle(call("archive_team_member", { member: "Bo" }))
+    expect(part?.state).toBe("done")
+    expect((await s.find("Bo"))?.archived).toBe(true)
+    expect(part?.settings?.member?.id).toBe(s.bo.id)
+    const message = await s.reply()
+    await s.run(AgentSettings.use((x) => x.undo(s.agent.id, message?.id ?? "", "call_1")))
+    expect((await s.find("Bo"))?.archived).toBe(false)
+    await s.run(Agents.use((a) => a.archive(s.bo.id)))
+    const back = await s.sendAndSettle(call("restore_team_member", { member: "Bo" }))
+    expect(back?.state).toBe("done")
+    expect((await s.find("Bo"))?.archived).toBe(false)
+    const names = await s.run(
+      Tools.use((x) =>
+        Effect.sync(() =>
+          x.defs({ memory: true, knowledge: false, team: true }).map((d) => d.name),
+        ),
+      ),
+    )
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "make_team_member",
+        "change_team_member",
+        "remove_team_member",
+        "archive_team_member",
+        "restore_team_member",
+      ]),
+    )
+    expect(names.some((n) => n.startsWith("delete"))).toBe(false)
   })
 
   test("at Read only the call is refused with no card, and the log says so", async () => {
-    const s = await setup("read_only")
-    const part = await s.sendAndSettle(call("make_agent", NEW_AGENT))
+    const s = await crew("read_only")
+    const part = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
     expect(part?.state).toBe("failed")
     expect(part?.output).toContain("Refused: read only")
-    expect(await s.names()).toEqual(["Ada"])
-    expect(await s.run(ActionLog.use((l) => l.list()))).toMatchObject([
-      { kind: "manage", decidedBy: "level", result: "refused" },
-    ])
+    expect(part?.ask).toBeUndefined()
+    expect(await s.find("Rita")).toBeUndefined()
+    expect(await s.log()).toMatchObject([{ kind: "team", decidedBy: "level", result: "refused" }])
   })
 
-  test("a call that fails a check makes no card and no agent", async () => {
-    const s = await setup()
-    const part = await s.sendAndSettle(call("make_agent", { ...NEW_AGENT, name: "Ada" }))
-    expect(part?.state).toBe("failed")
-    expect(part?.output).toStartWith("Nothing made.")
-    expect(part?.output).toContain("Another agent")
-    const field = await s.sendAndSettle(call("make_agent", { ...NEW_AGENT, permission: "full" }))
-    expect(field?.state).toBe("failed")
-    expect(field?.output).toContain("permission")
-    expect(await s.names()).toEqual(["Ada"])
-    expect(await s.run(ActionLog.use((l) => l.list()))).toEqual([])
+  test("the 21st active member that the lead made is refused; after an archive the call works", async () => {
+    const s = await crew()
+    const ids = [s.agent.id, s.bo.id]
+    for (let i = 0; i < 20; i++) ids.push((await madeBy(s, `Made${i}`, "Ada")).id)
+    await s.run(Channels.use((c) => c.update(s.channel.id, { memberIds: ids })))
+    const full = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
+    expect(full?.state).toBe("failed")
+    expect(full?.output).toContain("Too many team members. Ask the user.")
+    expect(await s.find("Rita")).toBeUndefined()
+    const archived = await s.sendAndSettle(call("archive_team_member", { member: "Made0" }))
+    expect(archived?.state).toBe("done")
+    const made = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
+    expect(made?.state).toBe("done")
+    expect(await s.find("Rita")).toBeDefined()
   })
 
-  test("only the main agent has the tools", async () => {
-    const main = await setup()
-    const other = await setup("ask_risky", false)
-    const names = (s: typeof main, manage: boolean) =>
-      s.run(
-        Tools.use((x) =>
-          Effect.sync(() => x.defs({ memory: true, knowledge: false, manage }).map((d) => d.name)),
-        ),
-      )
-    expect(await names(main, true)).toEqual(expect.arrayContaining(["make_agent", "read_agent"]))
-    expect(await names(other, false)).not.toContain("make_agent")
-    expect(await names(other, false)).not.toContain("read_agent")
-    // The chat offers the tools to the main agent only.
-    const offered = (name: string) =>
-      bodies.some((b) => b.tools?.some((tool) => tool.function.name === name))
+  test("the lead of an organization gets the tools in its direct chat; the member joins the organization", async () => {
+    const s = await lab()
     bodies.length = 0
-    await other.sendAndSettle(call("list_agents", {}))
-    expect(offered("make_agent")).toBe(false)
-    bodies.length = 0
-    await main.sendAndSettle(call("list_agents", {}))
-    expect(offered("make_agent")).toBe(true)
-    expect(offered("read_agent")).toBe(true)
-    // A model that is not the main agent calls the tool anyway: the app does not know it.
-    const part = await other.sendAndSettle(call("make_agent", NEW_AGENT))
-    expect(part?.state).toBe("failed")
-    expect(part?.output).toContain("Unknown tool")
-    expect(await other.names()).toEqual(["Ada"])
-  })
-})
-
-describe('the manage tool "read_agent" (spec 037)', () => {
-  test("it reads the fields of another agent and needs no card, also at Read only", async () => {
-    const s = await setup("read_only")
-    await s.run(
-      Agents.use((a) =>
-        a.create({
-          serverId: s.local.id,
-          name: "Bo",
-          role: "Tester",
-          instructions: "Run the tests.",
-          model: { accountId: s.account.id, model: "mock-fast", effort: null },
-        }),
-      ),
-    )
-    const part = await s.sendAndSettle(call("read_agent", { name: "bo" }))
+    const part = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
+    expect(offered("make_team_member")).toBe(true)
+    expect(offered("archive_team_member")).toBe(true)
     expect(part?.state).toBe("done")
-    expect(part?.output).toContain("Bo")
-    expect(part?.output).toContain("Tester")
-    expect(part?.output).toContain("Run the tests.")
-    expect(part?.output).toContain("mock-fast")
-    expect(await s.run(ActionLog.use((l) => l.list()))).toEqual([])
-    const missing = await s.sendAndSettle(call("read_agent", { name: "Nobody" }))
-    expect(missing?.state).toBe("failed")
-  })
-})
-
-describe("an agent on a vendor runtime (the tools that the program calls through the app)", () => {
-  const bridgeOf = (s: Awaited<ReturnType<typeof setup>>) => {
-    const context: ToolContext = {
-      agentId: s.agent.id,
-      workspace: s.agent.workspace,
-      permission: "full",
-      signal: new AbortController().signal,
-      onWaiting: () => {},
-      onMemory: () => {},
-      onKnowledge: () => {},
-      knowledgeChanges: { count: 0 },
-      turn: newTurnMark("user"),
-      taskId: null,
-    }
-    return s.run(Tools.use((x) => Effect.succeed(x.bridge(context, () => {}))))
-  }
-
-  test("the main agent gets the manage tools, and a read works", async () => {
-    const s = await setup()
-    const bridge = await bridgeOf(s)
-    const names = bridge.tools.map((t) => t.name)
-    expect(names).toEqual(expect.arrayContaining(["make_agent", "read_agent", "list_agents"]))
-    const signal = new AbortController().signal
-    const read = await bridge.call("read_agent", { name: "Ada" }, signal)
-    expect(read.failed).toBe(false)
-    expect(read.output).toContain("Be brief.")
+    const rita = (await s.agents()).find((a) => a.name === "Rita")
+    expect(await s.memberIds()).toContain(rita?.id ?? "")
+    const removed = await s.sendAndSettle(call("remove_team_member", { member: "Bo" }))
+    expect(removed?.state).toBe("done")
+    expect(await s.memberIds()).not.toContain(s.bo.id)
   })
 
-  test("another agent does not get them, and a call is unknown to the app", async () => {
-    const s = await setup("ask_risky", false)
-    const bridge = await bridgeOf(s)
-    const names = bridge.tools.map((t) => t.name)
-    expect(names).not.toContain("make_agent")
-    expect(names).not.toContain("read_agent")
-    const signal = new AbortController().signal
-    const made = await bridge.call("make_agent", NEW_AGENT, signal)
-    expect(made.failed).toBe(true)
-    expect(made.output).toContain("Unknown tool")
-    expect(await s.names()).toEqual(["Ada"])
-  })
-})
-
-describe("the team tools of the lead of a channel (spec 037)", () => {
-  /** Ada leads the channel "Crew" with Bo; Ada is not the main agent. */
-  const crew = async (permission: PermissionLevel = "ask_risky") => {
-    const s = await setup(permission, false)
-    const bo = await s.run(
-      Agents.use((a) =>
-        a.create({
+  test("a lead of more than one team names the team in each call", async () => {
+    const s = await crew()
+    await s.run(
+      Organizations.use((o) =>
+        o.create({
           serverId: s.local.id,
-          name: "Bo",
-          role: "Writer",
-          instructions: "Write.",
-          model: { accountId: s.account.id, model: "mock-fast", effort: null },
-        }),
-      ),
-    )
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Crew",
-          topic: "",
-          memberIds: [s.agent.id, bo.id],
+          name: "Lab",
+          memberIds: [s.agent.id],
           leadId: s.agent.id,
         }),
       ),
     )
-    const members = async () =>
-      (await s.run(Channels.use((c) => c.get(channel.id)))).memberIds.length
-    return { ...s, bo, channel, members }
-  }
-
-  test("Allow makes the agent, adds it to the channel and marks it as made by the lead", async () => {
-    const s = await crew()
-    const waiting = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
-    expect(waiting?.state).toBe("waiting")
-    const summary = (waiting?.ask as unknown as { summary: string } | undefined)?.summary ?? ""
-    expect(summary).toContain("Ada")
-    expect(summary).toContain("Crew")
-    expect(await s.names()).toEqual(["Ada", "Bo"])
-    expect(await s.members()).toBe(2)
-    await s.answer("allow")
-    expect(await s.names()).toEqual(["Ada", "Bo", "Rita"])
-    expect(await s.members()).toBe(3)
-    expect((await s.agents()).find((a) => a.name === "Rita")?.madeBy).toBe("Ada")
+    const unnamed = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
+    expect(unnamed?.state).toBe("failed")
+    expect(unnamed?.output).toContain("Crew")
+    expect(unnamed?.output).toContain("Lab")
+    const named = await s.sendAndSettle(call("make_team_member", { ...NEW_AGENT, team: "Lab" }))
+    expect(named?.state).toBe("done")
+    expect(await s.memberIds()).not.toContain((await s.find("Rita"))?.id)
   })
 
-  test("Deny makes nothing", async () => {
-    const s = await crew()
-    await s.sendAndSettle(call("make_team_member", NEW_AGENT))
-    await s.answer("deny")
-    expect(await s.names()).toEqual(["Ada", "Bo"])
-    expect(await s.members()).toBe(2)
-  })
-
-  test("a role change of a member asks first and applies after Allow", async () => {
-    const s = await crew()
-    const waiting = await s.sendAndSettle(
-      call("change_team_member", { name: "Bo", role: "Editor" }),
-    )
-    expect(waiting?.state).toBe("waiting")
-    await s.answer("allow")
-    expect((await s.agents()).find((a) => a.name === "Bo")?.role).toBe("Editor")
-  })
-
-  test("a field outside role and instructions, the lead itself and an outsider are refused", async () => {
-    const s = await crew()
-    const model = await s.sendAndSettle(
-      call("change_team_member", { name: "Bo", model: "o3-mini" }),
-    )
-    expect(model?.state).toBe("failed")
-    const self = await s.sendAndSettle(call("change_team_member", { name: "Ada", role: "X" }))
-    expect(self?.state).toBe("failed")
-    const none = await s.sendAndSettle(call("change_team_member", { name: "Zed", role: "X" }))
-    expect(none?.state).toBe("failed")
-    expect((await s.agents()).find((a) => a.name === "Bo")?.role).toBe("Writer")
-  })
-
-  test("the sixth member that the lead made in one channel is refused", async () => {
-    const s = await crew()
-    for (let i = 0; i < 5; i++) {
-      const made = await s.run(
-        Agents.use((a) =>
-          a.create(
-            {
-              serverId: s.local.id,
-              name: `Made${i}`,
-              role: "",
-              instructions: "",
-              model: { accountId: s.account.id, model: "mock-fast", effort: null },
-            },
-            { madeBy: "Ada" },
-          ),
-        ),
-      )
-      s.run(
-        Channels.use((c) =>
-          c.update(s.channel.id, { memberIds: [...[s.agent.id, s.bo.id], made.id] }),
-        ),
-      )
-    }
-    expect(true).toBe(true)
-  })
-
-  test("at Read only the call is refused and no card shows", async () => {
-    const s = await crew("read_only")
-    const part = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
-    expect(part?.state).toBe("failed")
-    expect(await s.names()).toEqual(["Ada", "Bo"])
-  })
-
-  test("an agent that leads no channel gets neither the tools nor the calls", async () => {
+  test("an agent that leads no team gets neither the tools nor the calls", async () => {
     const s = await setup("ask_risky", false)
+    bodies.length = 0
     const part = await s.sendAndSettle(call("make_team_member", NEW_AGENT))
+    expect(offered("make_team_member")).toBe(false)
     expect(part?.state).toBe("failed")
     expect(part?.output).toContain("Unknown tool")
     expect(await s.names()).toEqual(["Ada"])
