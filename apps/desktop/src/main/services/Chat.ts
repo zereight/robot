@@ -3533,7 +3533,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           "SELECT agent_id, state FROM task WHERE id = ?",
           taskId,
         )
-        if (!task || task.state !== "running") return undefined
+        if (task?.state !== "running") return undefined
         const place = mainOf(task.agent_id)
         const turn = live.get(keyOf(place))
         return turn && !turn.fromTeams ? { place, turn } : undefined
