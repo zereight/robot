@@ -694,3 +694,10 @@ implementer made to continue. A spec author answers by changing the spec.
 | 013 | The default choice of the decision model was "Lead's model", which is gone (R1). Which label does it have now? | "Off". |
 | 022 | The dot in the profile menu meant "Needs you" of Today, which is deleted (R1). What does it mean now? | A task of the profile waits for the user (005). |
 | 038 | The word "place" now means a routine, a workflow, or the direct chat of an agent (R1). Does a message of an outside program go only to the direct chat of an agent? | Yes (023). |
+| 001, 010 | Does the agent list stay as a page when the Workflows page is the home (`docs/proposal-workflow-first.md`)? | Open. Needs the owner. Proposed: it stays and is not the home. |
+| 010 | Can a workflow step name another agent, or only skills that the owner runs? | Open. Needs the owner. Proposed: skills only; "send message" inside the step reaches another agent. |
+| 010, 002 | A workflow must have an owner. What does the delete of an owner do? | Open. Needs the owner. Proposed: the confirm asks for a new owner for each workflow. |
+| 008, 010 | One owner has many workflows and one memory scope. Does a memory item name its workflow? | Open. Needs the owner. Proposed: yes, as a filter only. |
+| 003, 010 | Is the chat on the canvas one thread for each workflow, or the main thread of the owner? | Open. Needs the owner. Proposed: one thread for each workflow. |
+| 010, 014 | A workflow file holds agent names. What does it hold when steps name skills? | Open. Needs the owner. Proposed: skill texts for each step and the owner by name. |
+| 010 | What must the Check prove besides a step that never runs and a loop? | Open. Needs the owner. Each added property is a change to "What the check finds". |
