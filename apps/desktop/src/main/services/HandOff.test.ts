@@ -872,3 +872,27 @@ describe("the lead steers or cancels a running order (spec 030)", () => {
     expect((await s.call("P", "steer_order", { to: "D", text: "More." })).state).toBe("failed")
   })
 })
+
+describe("the accepted results a lead reads (spec 030)", () => {
+  test("a lead reads the results it accepted in later turns, and only those", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    // Not accepted yet: the lead reads no list.
+    systems.length = 0
+    await s.send("P", "hello")
+    await s.quiet()
+    expect(systems.some((x) => x.includes("that you accepted"))).toBe(false)
+    await s.call("P", "review_result", { from: "D", accepted: true })
+    systems.length = 0
+    await s.send("P", "hello again")
+    await s.quiet()
+    const lead = systems.find((x) => x.includes("that you accepted")) ?? ""
+    expect(lead).toContain("- D: ok")
+    // The member does not read the list of its lead.
+    systems.length = 0
+    await s.send("D", "hello")
+    await s.quiet()
+    expect(systems.some((x) => x.includes("that you accepted"))).toBe(false)
+  })
+})

@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs"
 import { basename, dirname, extname, join, sep } from "node:path"
 import {
+  ACCEPTED_RESULTS_MAX,
+  type AcceptedResult,
   type AgentMessageKind,
   type AgentModel,
   ATTACH_BYTES,
   ATTACH_MAX,
+  acceptedResultsLead,
   askAllowsAlways,
   askKind,
   askStep,
@@ -1621,6 +1624,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               CHAIN_LIMIT_RULE,
               // The main agent is told what the hand-off rule means for it (spec 030).
               organization.told(agentId),
+              // A lead reads the results that it accepted, so it does not order them again (spec 030).
+              acceptedResultsLead(acceptedOf(agentId)),
               connected?.rule() ?? "",
               // A task of a routine, a workflow or another agent can say that it was blocked.
               toldAboutBlocked(task) ? BLOCKED_RULE : "",
@@ -3526,6 +3531,24 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           )
         },
       })
+
+      /** The results that this lead accepted, newest first (spec 030). */
+      const acceptedOf = (leadId: string): AcceptedResult[] =>
+        db
+          .all<{ name: string; parts: string | null }>(
+            `SELECT a.name AS name, m.parts AS parts
+             FROM task t
+             JOIN agent a ON a.id = t.agent_id
+             LEFT JOIN message m ON m.id = t.message_id
+             WHERE t.source = 'agent' AND t.source_id = ? AND t.verdict = 'met' AND t.origin IS NULL
+             ORDER BY t.judged_at DESC LIMIT ?`,
+            leadId,
+            ACCEPTED_RESULTS_MAX,
+          )
+          .map((r) => ({
+            member: r.name,
+            line: r.parts ? messageText({ parts: JSON.parse(r.parts) as MessagePart[] }) : "",
+          }))
 
       /** The turn that runs a task of an agent order now, or undefined. */
       const turnOfTask = (taskId: string) => {
