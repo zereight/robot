@@ -23,6 +23,7 @@ spec-writer slice changes the specs. This note changes no behaviour.
 | 14 | The TLA module holds the graph, the prompts as strings, and the rules of the check. |
 | 15 | The app writes the standard rules (no deadlock, every node can run, every approval node comes before its effect). The user adds more in the module. |
 | 16 | No migration of old data. |
+| 17 | A text node can use tools: shell, files, browser and memory (007, 008). A decision node uses none. |
 
 ## The model
 
@@ -89,7 +90,8 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 1. A node has a name, a prompt, a provider, a model and a reasoning level (006).
 2. At run time the app sends the responsible document and the node prompt to the model of the
    node. The node gets the input of the step before it.
-3. Open question 1 says what tools a node can use.
+3. A text node can use the tools of 007 in the folder and at the level of the workflow (open
+   question 1).
 
 ### Decision node
 
@@ -144,10 +146,10 @@ the app.
 
 These are also in `docs/spec-questions.md`. Do not guess them in a spec.
 
-1. **Tools.** Can a node use tools (shell, files, browser, memory)? If yes, which workspace folder
-   and which permission level does it use? Proposed: a workspace folder and a permission level
-   for each workflow, and a node uses them. The owner has not answered this yet. W1 and W2 wait
-   for it.
+1. **Folder and level.** A node uses tools (decision 17). Which workspace folder and which
+   permission level does it use? Proposed: one folder and one level for each workflow, set by the
+   user, with the same levels as 007. A node cannot change them. A proposal of self-improvement
+   cannot change them (002 rule, kept). W1 and W2 wait for this answer.
 
 ## Notes
 
