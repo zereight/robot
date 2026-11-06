@@ -471,3 +471,23 @@ decision. Earlier rows of this list about these areas do not apply now.
 | 037 | The main agent, a lead of a channel or of an organization, and outside programs had manage tools for agents, channels and routines. Leads had team tools that worked with no request. | Owner decision 2. Only the main agent and outside programs have manage tools. They change agents and routines, and make workflows. Each change is a request that the user allows. No channel tools and no team tools. |
 | 038 | An event arrived at "a place". A post step could have no place. An event that could not be read showed a line as Today does. | Owner decision 2. A place is a routine, a workflow, or the direct chat of an agent. The post step and the Today reference are gone. |
 | 039 | The spinner examples named a channel step and the channel view. | Owner decision 2. The channel words are gone. |
+
+## Rebuild R3: a check for workflows and routines
+
+Owner decision 3 in [docs/rebuild-plan.md](rebuild-plan.md): the library `tla-ts` (MIT, a
+TypeScript replacement of TLC) is a check tool for workflows and routines. It is not the engine
+that runs them. The specs say "the app checks"; they do not name the library. The code slice C4
+builds the check with `tla-ts`: it makes a TLA+ model from the graph or the routines, and uses
+`check({ source, config })`. The status `"success"` is "Passed". The status `"deadlock"` or
+`"invariant-violation"`, with its trace, is "Problem found" with the path. The app needs no Java,
+no `tla2tools.jar` and no agent for it.
+
+| Spec | Before | Now |
+| --- | --- | --- |
+| 010 | The workflow starter "TLA+ check" asked an agent to write a TLA+ model and to run TLC with Java and `tla2tools.jar`. The menu of the Workflows page had "New from a starter" and its dialog. | The starter, the menu choice, the dialog and their acceptance lines are gone. No other workflow starter exists. The code and the texts of the starter go in C4. |
+| 010 | No check of a workflow. | The control "Check" in the editor checks every way that a run can go: every run ends, each wait has a way out, each step and branch can run, and no step reads a result that was not made. The result is Passed, or the problem with its path marked on the canvas, in English and Korean. States: Not checked, Checking, Passed, Problem found, Could not check (limit 1,000,000 states or 60 seconds). |
+| 010 | No check before a run. | The switch "Check before a run" (on by default) checks the saved graph before the first run after a change. "Problem found" fails the run at once with the reason, and no step runs. "Could not check" lets the run start. |
+| 010 | "A step starts when all its inputs are done." | The rule now says what the code does: a step waits until each input has ended, runs when at least one input passes on, and is skipped when none does. The check uses this rule. |
+| 010, 009 | — | The result of a check stays on the computer. It does not sync, and no workflow file, CC Workflow Studio file or agent file holds it. The switch syncs and is in the export of the data. |
+| 009 | No check of routines. | The control "Check" in the detail of a routine checks the next 7 days: runs of one agent that can overlap, a silent limit of "Never", watch routines that can start each other in a loop, and more runs due at once than "Agents working at once". The app also checks after a save and after Resume. A result never stops a save, a resume or a run. |
+| Glossary | "Starter" also made a workflow. | "Starter" fills the new agent form only. "Check" (검사) is new, with its states. |
