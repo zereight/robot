@@ -2458,14 +2458,13 @@ export const en = {
   "recent.behind.computer": "Waits behind the task on {name}",
   "settings.section.decision": "Decision model",
   "decision.hint":
-    "A decision model is a small model that answers fast. ROBot uses it to pick who takes a job in a channel when you name nobody. It is off by default.",
+    "A decision model is a small model that answers fast. ROBot uses it for computer use and permission checks. It is off by default.",
   "decision.choice": "Decision model",
-  "decision.choice.off": "Lead's model",
+  "decision.choice.off": "Off",
   "decision.choice.openrouter": "Jev through OpenRouter",
-  "decision.off.hint":
-    "Off. The lead's model decides, and ROBot sends nothing to a decision model.",
+  "decision.off.hint": "Off. ROBot sends nothing to a decision model.",
   "decision.sends":
-    "When this is on, the channel name and topic, the last messages of the channel, the job, and the name and role line of each member go to OpenRouter and TypeSafe, and their terms apply. ROBot does not store the answers. Text that looks like a key is hidden first.",
+    "When this is on, the step to decide and its options go to OpenRouter and TypeSafe, and their terms apply. ROBot does not store the answers. Text that looks like a key is hidden first.",
   "decision.key": "OpenRouter API key",
   "decision.key.saved": "A key is saved on this computer.",
   "decision.key.none": "No key is saved.",
@@ -2473,9 +2472,9 @@ export const en = {
   "decision.key.save": "Save key",
   "decision.key.remove": "Remove key",
   "decision.model": "Model name",
-  "decision.model.hint": "The default is {model}. Without a model name, the lead's model decides.",
+  "decision.model.hint": "The default is {model}.",
   "decision.test": "Test",
-  "decision.test.hint": "Sends one real request with three made-up members to the saved choice.",
+  "decision.test.hint": "Sends one real request with three made-up options to the saved choice.",
   "decision.test.run": "Test",
   "decision.test.running": "Testing…",
   "decision.test.ok": "Chose {member} ({percent}%) in {ms} ms.",
@@ -2486,7 +2485,7 @@ export const en = {
   "decision.test.reason.service_error":
     "OpenRouter refused the request (error code {code}). Check the key and the model name.",
   "decision.test.reason.unreadable": "The answer could not be read.",
-  "decision.test.reason.unsure": "The model was unsure, so the lead would decide.",
+  "decision.test.reason.unsure": "The model was unsure, so ROBot would ask you.",
   "settings.section.skills": "Skills",
   "skills.empty":
     "A skill is a set of instructions that you save once and call with a slash in a chat.",

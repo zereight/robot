@@ -1,6 +1,5 @@
 import {
   type Agent,
-  type Channel,
   isLimitProblem,
   type MessageKey,
   problemField,
@@ -110,14 +109,7 @@ export const TeamsSection = () => {
     (serverId) => call("agents.list", { serverId, archived: false }),
     { initialValue: [] as readonly Agent[] },
   )
-  const [channels, { refetch: refetchChannels }] = createResource(
-    () => ui.localServer()?.id,
-    (serverId) => call("channels.list", { serverId }),
-    { initialValue: [] as readonly Channel[] },
-  )
   onCleanup(window.robot.on("agents.changed", () => void refetchAgents()))
-  onCleanup(window.robot.on("channels.changed", () => void refetchChannels()))
-  onCleanup(window.robot.on("places.changed", () => void refetchChannels()))
   // The page hides when the user leaves this part: no Teams page stays on its own.
   onCleanup(() => {
     void call("teams.hidePage").catch(() => {})
@@ -127,9 +119,8 @@ export const TeamsSection = () => {
   /** The switch refused: every reason shows under its field. */
   const [showReasons, setShowReasons] = createSignal(false)
   const [dialog, setDialog] = createSignal<"on" | "signOut" | "remove">()
-  /** The kind of target in the form. It differs from the saved kind until a target is picked. */
-  const [pickedKind, setPickedKind] = createSignal<TeamsTargetKind>()
-  const kind = (): TeamsTargetKind => pickedKind() ?? fields().targetKind ?? "agent"
+  /** The only target is the direct chat of an agent (spec 028). */
+  const kind = (): TeamsTargetKind => "agent"
 
   /** Runs a call and shows the reason when it fails. */
   const run = async (action: () => Promise<unknown>) => {
@@ -275,12 +266,9 @@ export const TeamsSection = () => {
     ui.selectPage("tasks")
   }
 
-  const targetList = () =>
-    kind() === "agent"
-      ? agents().map((a) => ({ id: a.id, name: a.name }))
-      : channels().map((c) => ({ id: c.id, name: c.name }))
+  const targetList = () => agents().map((a) => ({ id: a.id, name: a.name }))
   const pickedAgent = () =>
-    kind() === "agent" ? agents().find((a) => a.id === fields().targetId) : undefined
+    fields().targetKind === kind() ? agents().find((a) => a.id === fields().targetId) : undefined
 
   const Facts = (props: { keys: readonly MessageKey[]; testId: string }) => (
     <ol class={teamStyles.facts} data-testid={props.testId}>
@@ -433,21 +421,6 @@ export const TeamsSection = () => {
         <div class={teamStyles.field} data-testid="teams-target">
           <div class={teamStyles.fieldBar}>
             <span class={styles.label}>{t("teams.target")}</span>
-            <Segmented
-              label={t("teams.target")}
-              testId="teams-target-kind"
-              value={kind()}
-              onChange={(next) => {
-                setPickedKind(next)
-                // A saved target of the other kind goes: its id would not fit.
-                if (fields().targetKind !== null && fields().targetKind !== next)
-                  void commit({ targetKind: next })
-              }}
-              options={[
-                { value: "agent", label: t("teams.target.agent"), disabled: locked() },
-                { value: "channel", label: t("teams.target.channel"), disabled: locked() },
-              ]}
-            />
           </div>
           <select
             class={teamStyles.select}
@@ -463,7 +436,7 @@ export const TeamsSection = () => {
               value=""
               selected={fields().targetId === null || fields().targetKind !== kind()}
             >
-              {kind() === "agent" ? t("teams.target.pickAgent") : t("teams.target.pickChannel")}
+              {t("teams.target.pickAgent")}
             </option>
             <For each={targetList()}>
               {(target) => (

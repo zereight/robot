@@ -2436,14 +2436,13 @@ export const ko: Record<MessageKey, string> = {
   "recent.behind.computer": "{name}의 작업 뒤에서 기다려요",
   "settings.section.decision": "결정 모델",
   "decision.hint":
-    "결정 모델은 빠르게 답하는 작은 모델이에요. 채널에서 누구도 부르지 않았을 때 ROBot이 누가 일을 맡을지 고르는 데 써요. 기본값은 꺼짐이에요.",
+    "결정 모델은 빠르게 답하는 작은 모델이에요. ROBot은 컴퓨터 사용과 권한 확인에 써요. 기본값은 꺼짐이에요.",
   "decision.choice": "결정 모델",
-  "decision.choice.off": "리드의 모델",
+  "decision.choice.off": "끄기",
   "decision.choice.openrouter": "OpenRouter의 Jev",
-  "decision.off.hint":
-    "꺼져 있어요. 리드의 모델이 정하고, ROBot은 결정 모델에 아무것도 보내지 않아요.",
+  "decision.off.hint": "꺼져 있어요. ROBot은 결정 모델에 아무것도 보내지 않아요.",
   "decision.sends":
-    "켜 두면 채널 이름과 주제, 채널의 마지막 메시지, 일의 내용, 멤버의 이름과 역할이 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. ROBot은 답을 저장하지 않아요. 키처럼 보이는 글은 먼저 가려요.",
+    "켜 두면 정할 단계와 그 선택지가 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. ROBot은 답을 저장하지 않아요. 키처럼 보이는 글은 먼저 가려요.",
   "decision.key": "OpenRouter API 키",
   "decision.key.saved": "이 컴퓨터에 키가 저장돼 있어요.",
   "decision.key.none": "저장된 키가 없어요.",
@@ -2451,9 +2450,9 @@ export const ko: Record<MessageKey, string> = {
   "decision.key.save": "키 저장",
   "decision.key.remove": "키 지우기",
   "decision.model": "모델 이름",
-  "decision.model.hint": "기본값은 {model}이에요. 모델 이름이 없으면 리드의 모델이 정해요.",
+  "decision.model.hint": "기본값은 {model}이에요.",
   "decision.test": "테스트",
-  "decision.test.hint": "저장된 설정으로 가상의 멤버 세 명을 담은 실제 요청을 한 번 보내요.",
+  "decision.test.hint": "저장된 설정으로 가상의 선택지 세 개를 담은 실제 요청을 한 번 보내요.",
   "decision.test.run": "테스트",
   "decision.test.running": "테스트하는 중…",
   "decision.test.ok": "{member}을(를) 골랐어요 ({percent}%, {ms}ms).",
@@ -2464,7 +2463,7 @@ export const ko: Record<MessageKey, string> = {
   "decision.test.reason.service_error":
     "OpenRouter가 요청을 거절했어요 (오류 코드 {code}). 키와 모델 이름을 확인하세요.",
   "decision.test.reason.unreadable": "답을 읽을 수 없었어요.",
-  "decision.test.reason.unsure": "모델이 확신하지 못해서 리드가 정하게 돼요.",
+  "decision.test.reason.unsure": "모델이 확신하지 못해서 ROBot이 사용자에게 물어보게 돼요.",
   "settings.section.skills": "스킬",
   "skills.empty": "스킬은 한 번 저장해 두고 채팅에서 슬래시로 부르는 지시 사항 모음이에요.",
   "skills.hint":

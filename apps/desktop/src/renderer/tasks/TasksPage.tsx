@@ -15,7 +15,7 @@ import {
   taskTimes,
   taskTree,
 } from "@robot/shared"
-import { Eye, OctagonX } from "lucide-solid"
+import { OctagonX } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -31,7 +31,6 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
-import { useEndRequest, useReview } from "../review/Review.tsx"
 import shell from "../shell/shell.module.css"
 import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useAgents } from "../state/agents.tsx"
@@ -57,16 +56,11 @@ const reasonKey = (task: Task): MessageKey =>
     ? (`error.${task.error.code}` as MessageKey)
     : "error.unknown"
 
-/** The icon of a state that has one: a part in review has an eye, a blocked task a stop sign. */
+/** The icon of a state that has one: a blocked task has a stop sign. */
 const StateIcon = (props: { state: Task["state"] }) => (
-  <>
-    <Show when={props.state === "review"}>
-      <Eye size={12} aria-hidden="true" />
-    </Show>
-    <Show when={props.state === "blocked"}>
-      <OctagonX size={12} aria-hidden="true" />
-    </Show>
-  </>
+  <Show when={props.state === "blocked"}>
+    <OctagonX size={12} aria-hidden="true" />
+  </Show>
 )
 
 /**
@@ -94,17 +88,13 @@ const BehindLine = (props: { task: Task; testid: string; class: string | undefin
 }
 
 /** The sources of a task whose place the button "Open source place" opens. */
-const OPENS_PLACE: readonly Task["source"][] = ["chat", "channel", "handover", "teams"]
+const OPENS_PLACE: readonly Task["source"][] = ["chat", "handover", "teams"]
 
-/** A request has parts that may still be open, so "End the request" is offered (spec 004, 005). */
-const OPEN_REQUEST = new Set<Task["state"]>([
-  "queued",
-  "running",
-  "waiting",
-  "review",
-  "failed",
-  "blocked",
-])
+/** The states and sources that the filters offer. Review and the channel sources are gone (005). */
+const SHOWN_STATES = TASK_STATES.filter((state) => state !== "review")
+const SHOWN_SOURCES = TASK_SOURCES.filter(
+  (source) => source !== "channel" && source !== "question" && source !== "mention",
+)
 
 const duration = (task: Task) => {
   const ms = taskDuration(task)
@@ -256,8 +246,6 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   const ui = useUi()
   const [error, setError] = createSignal<ErrorText>()
   const retry = useRetry()
-  const reviewing = useReview((e) => setError(e))
-  const ending = useEndRequest((e) => setError(e))
   const [detail, { refetch }] = createResource(() => call("tasks.get", { id: props.id }))
   onCleanup(window.robot.on("tasks.changed", () => void refetch()))
   const act = async (run: () => Promise<unknown>) => {
@@ -273,16 +261,13 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
     // A linked device has the main thread only (spec 003, 012): the button is off for a thread.
     if (ui.linked() && task.threadId) return
     // A handover is a message in a thread of the agent that runs it (spec 003, 005).
-    const inChat = task.source === "chat" || task.source === "handover" || task.source === "teams"
-    if (inChat) openThread(task.sourceId, task.threadId)
-    ui.selectPlace({ kind: inChat ? "agent" : "channel", id: task.sourceId })
+    openThread(task.sourceId, task.threadId)
+    ui.selectPlace({ kind: "agent", id: task.sourceId })
     props.onClose()
   }
   return (
     <Dialog label={t("tasks.detail.title")} onClose={props.onClose} testId="task-detail">
       {retry.dialog()}
-      {reviewing.dialog()}
-      {ending.dialog()}
       <Show when={detail()}>
         {(d) => (
           <div class={styles.detail}>
@@ -325,38 +310,6 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             <TaskUsageView usage={d().task.usage} tree={d().tree} />
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
-            {/* The done test and the verdict of the lead belong to a part of a channel (spec 004, 005). */}
-            <Show when={d().task.doneTest}>
-              {(doneTest) => (
-                <>
-                  <h3>{t("tasks.doneTest")}</h3>
-                  <p class={styles.text} data-testid="task-done-test">
-                    {doneTest()}
-                  </p>
-                </>
-              )}
-            </Show>
-            <Show when={d().task.verdict}>
-              {(verdict) => (
-                <>
-                  <h3>{t("tasks.verdict")}</h3>
-                  <p class={styles.verdict} data-testid="task-verdict" data-verdict={verdict()}>
-                    {t(`tasks.verdict.${verdict()}` as MessageKey)}
-                  </p>
-                  <Show when={verdict() === "not_met"}>
-                    <p class={styles.text} data-testid="task-verdict-reason">
-                      {d().task.verdictReason || t("tasks.verdict.noReason")}
-                    </p>
-                  </Show>
-                </>
-              )}
-            </Show>
-            {/* A finished order that the lead has not judged yet (spec 030). */}
-            <Show when={d().awaitsAcceptance}>
-              <p class={styles.meta} data-testid="task-awaits-acceptance">
-                {t("tasks.awaitsAcceptance")}
-              </p>
-            </Show>
             {/* The questions of a part, with who answered each one (spec 004, 005). */}
             <Show when={d().questions.length > 0}>
               <h3>{t("tasks.questions")}</h3>
@@ -459,34 +412,6 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("tasks.runNext")}
                 </Button>
               </Show>
-              <Show when={d().task.state === "review"}>
-                <Show
-                  when={!ui.linked() && d().task.originName === null}
-                  fallback={
-                    // The user decides on the computer that owns the task (spec 005, 012, 019).
-                    <span class={styles.muted} data-testid="task-decide-on">
-                      {t("review.decideOn", {
-                        name: ui.linked()
-                          ? (ui.server()?.name ?? "")
-                          : d().task.originName || t("sync.anotherComputer"),
-                      })}
-                    </span>
-                  }
-                >
-                  <Button
-                    onClick={() => void reviewing.accept(d().task.id)}
-                    data-testid="task-accept"
-                  >
-                    {t("tasks.accept")}
-                  </Button>
-                  <Button
-                    onClick={() => reviewing.requestChanges(d().task.id)}
-                    data-testid="task-request-changes"
-                  >
-                    {t("tasks.requestChanges")}
-                  </Button>
-                </Show>
-              </Show>
               <Show
                 when={
                   !ui.linked() &&
@@ -509,18 +434,6 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   data-testid="task-retry"
                 >
                   {t("tasks.retry")}
-                </Button>
-              </Show>
-              <Show
-                when={
-                  !ui.linked() &&
-                  d().task.source === "channel" &&
-                  d().task.originName === null &&
-                  OPEN_REQUEST.has(d().task.state)
-                }
-              >
-                <Button onClick={() => ending.start(d().task.id)} data-testid="task-end-request">
-                  {t("tasks.endRequest")}
                 </Button>
               </Show>
               {/* "Make a skill" needs the model account of this computer: a client has none (spec 017). */}
@@ -664,7 +577,7 @@ export const TasksPage = () => {
               data-testid="tasks-filter-state"
             >
               <option value="">{t("tasks.filter.all")}</option>
-              <For each={TASK_STATES}>
+              <For each={SHOWN_STATES}>
                 {(s) => <option value={s}>{t(`tasks.state.${s}` as MessageKey)}</option>}
               </For>
             </select>
@@ -696,7 +609,7 @@ export const TasksPage = () => {
               data-testid="tasks-filter-source"
             >
               <option value="">{t("tasks.filter.all")}</option>
-              <For each={TASK_SOURCES}>
+              <For each={SHOWN_SOURCES}>
                 {(s) => <option value={s}>{t(`tasks.source.${s}` as MessageKey)}</option>}
               </For>
             </select>
