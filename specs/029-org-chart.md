@@ -58,8 +58,9 @@ one, and change its members, its lead and its parent organization (see "Edit on 
   level lower. The agents of an organization node sit under the organization node. In an
   organization node with a lead, the lead sits first and the other members sit under the lead.
 - Controls at the bottom right: zoom in, zoom out, and "Fit to view". Dragging the empty canvas
-  moves the view. The wheel and a pinch on a trackpad zoom. "Fit to view" frames all nodes with room
-  around them, so that no node sits under the controls.
+  moves the view. A pinch on a trackpad zooms. Two fingers on a trackpad, and the wheel, move the
+  view. "Fit to view" frames all nodes with room around them, so that no node sits under the
+  controls.
 - When the page opens, it fits to the view.
 - Pointing at a node, or putting the focus on it, dims every node and line that is not linked to it.
   The linked ones are: its lines, the nodes at the other end of those lines, and its copies. Moving
