@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type { WireNotice } from "@robot/link"
 import { translate } from "./i18n/index.ts"
-import { noticeContent, readNoticeData, setShownPlace } from "./notices.ts"
+import { noticeContent, readNoticeData, setShownPlace, waitingCards } from "./notices.ts"
 import { defaultPrefs } from "./prefs.ts"
 
 const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) =>
@@ -52,6 +52,22 @@ describe("notifications of the phone", () => {
     ).toBeNull()
   })
 
+  test("a notice of a channel shows nothing (spec 011)", () => {
+    const channel: WireNotice = { ...approval, target: { kind: "channel", id: "ch1" } }
+    expect(noticeContent({ ...base, notice: channel })).toBeNull()
+  })
+
+  test("Needs you holds only the approvals and questions of agents", () => {
+    const question: WireNotice = { ...approval, kind: "question", callId: "c2" }
+    const channel: WireNotice = { ...approval, target: { kind: "channel", id: "ch1" } }
+    const reply: WireNotice = { ...approval, kind: "reply" }
+    const cards = waitingCards([approval, question, channel, reply])
+    expect(cards.map((n) => [n.kind, n.callId])).toEqual([
+      ["approval", "c1"],
+      ["question", "c2"],
+    ])
+  })
+
   test("nothing shows for the place on the screen while the app is open", () => {
     setShownPlace({ linkId: "L1", kind: "agent", id: "a1" })
     expect(noticeContent(base)).toBeNull()
@@ -62,11 +78,12 @@ describe("notifications of the phone", () => {
   })
 
   test("a tap reads only data of the right shape", () => {
-    expect(readNoticeData({ linkId: "L1", kind: "channel", id: "c", call: 3 })).toEqual({
+    expect(readNoticeData({ linkId: "L1", kind: "agent", id: "a", call: 3 })).toEqual({
       linkId: "L1",
-      kind: "channel",
-      id: "c",
+      kind: "agent",
+      id: "a",
     })
+    expect(readNoticeData({ linkId: "L1", kind: "channel", id: "c" })).toBeNull()
     expect(readNoticeData({ linkId: "L1", kind: "page", id: "x" })).toBeNull()
     expect(readNoticeData(null)).toBeNull()
   })

@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from "react-native"
 import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { Sheet } from "../ui/Sheet.tsx"
-import { passKey } from "./pass.ts"
 
 type Tool = Extract<MessagePart, { kind: "tool" }>
 
@@ -92,24 +91,6 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
       {tool.readOnlyTrusted ? (
         <Text style={[styles.decision, { color: palette.textMuted }]}>
           {t("tool.readOnlyTrusted")}
-        </Text>
-      ) : null}
-      {/* The passes before the answer of an agent on the line (spec 030), one line each. */}
-      {tool.answeredByLead?.passes?.map((pass, i) => (
-        <Text
-          // biome-ignore lint/suspicious/noArrayIndexKey: the passes are a fixed list in order
-          key={`${pass.agentId}-${i}`}
-          testID="tool.answeredPass"
-          style={[styles.decision, { color: palette.textMuted }]}
-        >
-          {t(passKey(pass.kind, pass.reason), { name: pass.name, reason: pass.reason })}
-        </Text>
-      ))}
-      {tool.answeredByLead ? (
-        <Text testID="tool.answeredByLead" style={[styles.decision, { color: palette.textMuted }]}>
-          {tool.answeredByLead.reason
-            ? `${t("tool.answeredByLead", { name: tool.answeredByLead.name })} · ${tool.answeredByLead.reason}`
-            : t("tool.answeredByLead", { name: tool.answeredByLead.name })}
         </Text>
       ) : null}
       {tool.answeredInChat ? (

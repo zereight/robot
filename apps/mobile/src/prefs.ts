@@ -5,7 +5,7 @@ import type { LanguageChoice } from "./i18n/index.ts"
 export type ThemeChoice = "system" | "dark" | "light"
 
 /** The kinds of notification of spec 011. "approval" covers approval and question cards. */
-export const NOTIFY_KINDS = ["reply", "mention", "approval", "task_failed"] as const
+export const NOTIFY_KINDS = ["reply", "approval", "task_failed"] as const
 export type NotifyKind = (typeof NOTIFY_KINDS)[number]
 
 /** The settings of this phone. They stay on the phone and never go to a computer. */
@@ -17,17 +17,14 @@ export interface Prefs {
   readonly closed: Readonly<Record<string, readonly string[]>>
   /** When false, finished plain tool steps fold into one line per run. */
   readonly showToolSteps: boolean
-  /** "Show the organization before an agent name" (spec 036): the switch of this phone. */
-  readonly showOrgPrefix: boolean
 }
 
 export const defaultPrefs: Prefs = {
   language: "system",
   theme: "system",
-  notify: { reply: true, mention: true, approval: true, task_failed: true },
+  notify: { reply: true, approval: true, task_failed: true },
   closed: {},
   showToolSteps: true,
-  showOrgPrefix: true,
 }
 
 const PREFS_FILE = "prefs.json"
@@ -44,7 +41,6 @@ export const readPrefs = async (storage: PhoneStorage): Promise<Prefs> => {
     language: oneOf(raw.language, ["system", "en", "ko"], "system"),
     theme: oneOf(raw.theme, ["system", "dark", "light"], "system"),
     showToolSteps: typeof raw.showToolSteps === "boolean" ? raw.showToolSteps : true,
-    showOrgPrefix: typeof raw.showOrgPrefix === "boolean" ? raw.showOrgPrefix : true,
     notify: Object.fromEntries(
       NOTIFY_KINDS.map((k) => [k, typeof notify[k] === "boolean" ? notify[k] : true]),
     ) as Record<NotifyKind, boolean>,
@@ -59,11 +55,13 @@ export const readPrefs = async (storage: PhoneStorage): Promise<Prefs> => {
 export const writePrefs = (storage: PhoneStorage, prefs: Prefs) =>
   storage.write(PREFS_FILE, JSON.stringify(prefs))
 
-/** The setting that turns a notice on or off. Kinds that Phone 1 does not show give null. */
+/**
+ * The setting that turns a notice on or off. Kinds that Phone 1 does not show give null. A mention
+ * comes from a channel, and channels are gone (spec 015), so it gives null too.
+ */
 export const notifyKindOf = (notice: Pick<WireNotice, "kind">): NotifyKind | null => {
   switch (notice.kind) {
     case "reply":
-    case "mention":
     case "task_failed":
       return notice.kind
     case "approval":

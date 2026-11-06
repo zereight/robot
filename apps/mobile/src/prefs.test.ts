@@ -37,27 +37,13 @@ describe("the settings of the phone", () => {
     expect((await readPrefs(storage)).showToolSteps).toBe(false)
   })
 
-  test("the organization prefix shows at first, and the choice is kept (spec 036, 011)", async () => {
-    expect(defaultPrefs.showOrgPrefix).toBe(true)
-    const storage = new MemoryStorage()
-    // An old file without the switch still reads, and the prefix shows.
-    await storage.write("prefs.json", JSON.stringify({ language: "ko" }))
-    expect((await readPrefs(storage)).showOrgPrefix).toBe(true)
-    await storage.write("prefs.json", JSON.stringify({ showOrgPrefix: false }))
-    expect((await readPrefs(storage)).showOrgPrefix).toBe(false)
-    await storage.write("prefs.json", JSON.stringify({ showOrgPrefix: "no" }))
-    expect((await readPrefs(storage)).showOrgPrefix).toBe(true)
-    await writePrefs(storage, { ...defaultPrefs, showOrgPrefix: false })
-    expect((await readPrefs(storage)).showOrgPrefix).toBe(false)
-  })
-
   test("settings are saved and read back", async () => {
     const storage = new MemoryStorage()
     const prefs = {
       ...defaultPrefs,
       language: "ko" as const,
       theme: "light" as const,
-      notify: { ...defaultPrefs.notify, mention: false },
+      notify: { ...defaultPrefs.notify, reply: false },
     }
     await writePrefs(storage, prefs)
     expect(await readPrefs(storage)).toEqual(prefs)
@@ -72,6 +58,8 @@ describe("the settings of the phone", () => {
     // Kinds of screens that Phone 1 does not have show no notification.
     expect(notifyKindOf({ kind: "workflow_notice" })).toBeNull()
     expect(shouldNotify(defaultPrefs, { kind: "part_review" })).toBe(false)
+    // A mention and a part review come from a channel. Channels are gone (spec 015).
+    expect(shouldNotify(defaultPrefs, { kind: "mention" })).toBe(false)
   })
 
   test("open and closed sections are kept per server, and forgotten on unpair", () => {

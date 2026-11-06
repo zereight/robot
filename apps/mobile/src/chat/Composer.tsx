@@ -1,5 +1,5 @@
 import { ATTACH_BYTES, ATTACH_MAX } from "@robot/phone"
-import { type Agent, insertMention, mentionEntries, openMention, shownName } from "@robot/shared"
+import { type Agent, insertMention, mentionEntries, openMention } from "@robot/shared"
 import { useEffect, useRef, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { fileSizeText } from "../i18n/index.ts"
@@ -8,7 +8,6 @@ import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { Face } from "../ui/Face.tsx"
 import { ErrorLine } from "../ui/kit.tsx"
-import { ShownText } from "../ui/names.tsx"
 import { Sheet } from "../ui/Sheet.tsx"
 import { createSendGate, filesAfterSend, textAfterSend } from "./sending.ts"
 
@@ -18,22 +17,16 @@ export interface Draft {
 }
 
 /**
- * The message box (spec 003, 011): text, attach (photos and files, direct chats only), send, and
- * stop while the agent works. A reply shows its quote line above the box.
+ * The message box (spec 003, 011): text, attach (photos and files), send, and stop while the agent
+ * works. A reply shows its quote line above the box.
  */
 export const Composer = (props: {
   readonly placeholder: string
-  readonly canAttach: boolean
   readonly working: boolean
   /** A line that says why the box cannot send now (offline, removed), or null. */
   readonly blocked: string | null
-  /**
-   * The agents an `@` can name (not archived). A channel passes its members. A direct chat
-   * passes the other agents (spec 003, 004).
-   */
-  readonly mentions?: readonly (Agent & { readonly organization?: string | null })[] | undefined
-  /** When false, the list has no `@all` (spec 003). A channel leaves this on. */
-  readonly everyone?: boolean
+  /** The other agents that an `@` can name (not archived, spec 003). The list has no `@all`. */
+  readonly mentions?: readonly Agent[] | undefined
   readonly reply: { readonly name: string; readonly text: string } | null
   readonly onCancelReply: () => void
   readonly onSend: (
@@ -63,7 +56,9 @@ export const Composer = (props: {
   const openAt = members ? openMention(value, caret) : null
   const entries =
     members && openAt && !props.blocked
-      ? mentionEntries(members, openAt.query, (props.everyone ?? true) && members.length >= 2)
+      ? mentionEntries(members, openAt.query, false).flatMap((e) =>
+          e.kind === "member" ? [e.member] : [],
+        )
       : []
   const pickMention = (name: string) => {
     if (!openAt) return
@@ -175,67 +170,47 @@ export const Composer = (props: {
             { borderColor: palette.border, backgroundColor: palette.surface },
           ]}
         >
-          {entries.map((entry) => {
-            const name = entry.kind === "all" ? "all" : entry.member.name
-            // With a prefix the line shows "[Docs] Ada"; the pick still puts "@Ada" in the box
-            // (spec 036, "Mention"). Without one it shows "@Ada" as before.
-            const shown =
-              entry.kind === "member" && entry.member.organization
-                ? shownName(entry.member.name, entry.member.organization, true)
-                : null
-            return (
-              <Pressable
-                key={entry.kind === "all" ? "@all" : entry.member.id}
-                testID={`composer.mention.${name}`}
-                accessibilityRole="button"
-                accessibilityLabel={shown ? shown.label : `@${name}`}
-                onPress={() => pickMention(name)}
-                style={({ pressed }) => [
-                  styles.mention,
-                  { backgroundColor: pressed ? palette.pressed : "transparent" },
-                ]}
+          {entries.map((member) => (
+            <Pressable
+              key={member.id}
+              testID={`composer.mention.${member.name}`}
+              accessibilityRole="button"
+              accessibilityLabel={`@${member.name}`}
+              onPress={() => pickMention(member.name)}
+              style={({ pressed }) => [
+                styles.mention,
+                { backgroundColor: pressed ? palette.pressed : "transparent" },
+              ]}
+            >
+              <Face face={member.face} image={member.faceImage} size={24} />
+              <Text style={[styles.mentionName, { color: palette.text }]}>@{member.name}</Text>
+              <Text
+                numberOfLines={1}
+                style={[styles.xs, styles.grow, { color: palette.textMuted }]}
               >
-                {entry.kind === "all" ? (
-                  // The place of a face, so that the names stand in one column.
-                  <View style={[styles.everyone, { backgroundColor: palette.pressed }]} />
-                ) : (
-                  <Face face={entry.member.face} image={entry.member.faceImage} size={24} />
-                )}
-                {shown ? (
-                  <ShownText shown={shown} style={[styles.mentionName, { color: palette.text }]} />
-                ) : (
-                  <Text style={[styles.mentionName, { color: palette.text }]}>@{name}</Text>
-                )}
-                <Text
-                  numberOfLines={1}
-                  style={[styles.xs, styles.grow, { color: palette.textMuted }]}
-                >
-                  {entry.kind === "all" ? t("chat.mentionAll") : entry.member.role}
-                </Text>
-              </Pressable>
-            )
-          })}
+                {member.role}
+              </Text>
+            </Pressable>
+          ))}
         </ScrollView>
       ) : null}
       <View style={styles.bar}>
-        {props.canAttach ? (
-          <Pressable
-            testID="composer.attach"
-            accessibilityRole="button"
-            accessibilityLabel={t("chat.attach")}
-            disabled={!!props.blocked}
-            onPress={() => setMenu(true)}
-            style={({ pressed }) => [
-              styles.round,
-              {
-                backgroundColor: pressed ? palette.pressed : palette.surface,
-                opacity: props.blocked ? 0.4 : 1,
-              },
-            ]}
-          >
-            <Text style={[styles.plus, { color: palette.text }]}>+</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          testID="composer.attach"
+          accessibilityRole="button"
+          accessibilityLabel={t("chat.attach")}
+          disabled={!!props.blocked}
+          onPress={() => setMenu(true)}
+          style={({ pressed }) => [
+            styles.round,
+            {
+              backgroundColor: pressed ? palette.pressed : palette.surface,
+              opacity: props.blocked ? 0.4 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.plus, { color: palette.text }]}>+</Text>
+        </Pressable>
         <TextInput
           testID="composer.input"
           accessibilityLabel={props.placeholder}
@@ -322,7 +297,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.m,
   },
   mentionName: { fontSize: text.m, fontWeight: "600" },
-  everyone: { width: 24, height: 24, borderRadius: 12 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
   chip: {
     flexDirection: "row",

@@ -16,8 +16,8 @@ export interface Palette {
   /** Text on top of an agent face. */
   readonly ink: string
   /**
-   * The mark of the user and the mark of a channel (spec 002). They follow the theme: a dark disc
-   * with a glyph of light in the dark theme, a light disc with a dark glyph in the light theme.
+   * The mark of the user (spec 002). It follows the theme: a dark disc with a glyph of light in the
+   * dark theme, a light disc with a dark glyph in the light theme.
    */
   readonly avatarTile: string
   readonly avatarGlyph: string
@@ -72,7 +72,7 @@ export const palettes: Record<"dark" | "light", Palette> = {
 
 /**
  * The colours of the app mark. They do not change with the theme: the app mark has its own dark
- * tile. The avatars (the face of an agent, the mark of the user, the mark of a channel) follow the
+ * tile. The avatars (the face of an agent, the mark of the user) follow the
  * theme, and their colours are in the palette. The same values as the desktop.
  */
 export const mark = { tile: "#0a0817", eyes: "#eafff8", glow: "#7affd4" } as const

@@ -34,9 +34,6 @@ import {
 } from "@robot/link"
 import type {
   Agent,
-  Channel,
-  ChannelMessage,
-  ChartModel,
   ChatHistory,
   ChatMessage,
   PlaceSection,
@@ -45,8 +42,6 @@ import type {
   QuietState,
   QuietTurn,
 } from "@robot/shared"
-import { type OrgChartPhase, OrgFeed } from "./orgChart.ts"
-import { type AgentOrgs, agentOrgNames } from "./orgPrefix.ts"
 import { newest, removeMessage, upsertMessage } from "./places.ts"
 import { type PhoneStorage, readJson } from "./storage.ts"
 
@@ -66,7 +61,8 @@ export interface PairedServer {
   readonly removed: boolean
 }
 
-export type PlaceKind = "agent" | "channel"
+/** A place on the phone is the direct chat of an agent (spec 011). */
+export type PlaceKind = "agent"
 export interface PlaceRef {
   readonly kind: PlaceKind
   readonly id: string
@@ -82,17 +78,8 @@ export interface ChatView {
 export interface ServerData {
   readonly places: readonly PlaceSection[] | null
   readonly agents: readonly Agent[] | null
-  readonly channels: readonly Channel[] | null
-  /**
-   * The whole name of the deepest organization of each agent (spec 036, 011): the data of the
-   * prefix "[Docs] Ada". It is held like the role line of a place, so it shows from the cache while
-   * the server is offline. Null until the phone has read it once; an older server gives none.
-   */
-  readonly agentOrgs: AgentOrgs | null
   /** The chats that were opened, by agent. */
   readonly chats: Readonly<Record<string, ChatView>>
-  /** The channels that were opened, by channel. */
-  readonly channelMessages: Readonly<Record<string, readonly ChannelMessage[]>>
   /** Approvals and questions that wait (the "Needs you" list of spec 011). Never from the cache. */
   readonly attention: readonly WireNotice[]
   /**
@@ -162,10 +149,7 @@ const SAVE_MS = 400
 const EMPTY: ServerData = {
   places: null,
   agents: null,
-  channels: null,
-  agentOrgs: null,
   chats: {},
-  channelMessages: {},
   attention: [],
   quiet: { turns: [], receivedAt: 0 },
 }
@@ -196,8 +180,6 @@ export class PhoneHub {
   readonly #saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
   readonly #pendingSaves = new Map<string, () => string>()
   readonly #refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  /** The screens that watch the org chart of a server, by server (spec 029). Memory only. */
-  readonly #orgWatches = new Map<string, Set<(model: ChartModel) => void>>()
   #state: HubState
   /** The place that shows on the screen now, per server, so new messages are read at once. */
   readonly #focus = new Map<string, PlaceRef>()
@@ -581,42 +563,35 @@ export class PhoneHub {
     return (await connection.request(method, input, ms)) as T
   }
 
-  /** Reads the places, the agents, the channels, what waits, and the open place again. */
+  /** Reads the places, the agents, what waits, and the open place again. */
   async refresh(linkId: string) {
     const view = this.#views.get(linkId)
     if (view?.state !== "online") return
     const serverId = view.link.serverId
     const read = <T>(method: string, input: unknown) =>
       this.request<T>(linkId, method, input).catch(() => undefined)
-    const [places, agents, channels, organizations, attention, quiet] = await Promise.all([
+    const [places, agents, attention, quiet] = await Promise.all([
       read<PlaceSection[]>("places.list", { serverId }),
       read<Agent[]>("agents.list", { serverId, archived: false }),
-      read<Channel[]>("channels.list", { serverId }),
-      read<unknown>("organizations.list", { serverId }),
       read<WireNotice[]>("attention.list", undefined),
       read<QuietState>("quiet.list", undefined),
     ])
     const at = this.#options.now?.() ?? Date.now()
-    const agentOrgs = agentOrgNames(organizations)
     this.#setData(linkId, (d) => ({
       ...d,
       places: places ?? d.places,
       agents: agents ?? d.agents,
-      channels: channels ?? d.channels,
-      agentOrgs: agentOrgs ?? d.agentOrgs,
       attention: attention ?? d.attention,
       quiet: quiet && Array.isArray(quiet.turns) ? { turns: quiet.turns, receivedAt: at } : d.quiet,
     }))
     if (places) this.#save(linkId, "places", () => JSON.stringify(places))
     if (agents) this.#save(linkId, "agents", () => JSON.stringify(agents))
-    if (channels) this.#save(linkId, "channels", () => JSON.stringify(channels))
-    if (agentOrgs) this.#save(linkId, "agent-orgs", () => JSON.stringify(agentOrgs))
     const focus = this.#focus.get(linkId)
     if (focus) await this.#loadPlace(linkId, focus)
   }
 
   /** Reads one list again, a moment later, so a burst of events makes one request. */
-  #refreshSoon(linkId: string, what: "places" | "agents" | "channels" | "orgs" | "attention") {
+  #refreshSoon(linkId: string, what: "places" | "agents" | "attention") {
     const key = `${linkId}\u0000${what}`
     if (this.#refreshTimers.has(key)) return
     this.#refreshTimers.set(
@@ -628,7 +603,7 @@ export class PhoneHub {
     )
   }
 
-  async #refreshOne(linkId: string, what: "places" | "agents" | "channels" | "orgs" | "attention") {
+  async #refreshOne(linkId: string, what: "places" | "agents" | "attention") {
     const view = this.#views.get(linkId)
     if (view?.state !== "online") return
     const serverId = view.link.serverId
@@ -644,17 +619,6 @@ export class PhoneHub {
         })
         this.#setData(linkId, (d) => ({ ...d, agents }))
         this.#save(linkId, "agents", () => JSON.stringify(agents))
-      } else if (what === "channels") {
-        const channels = await this.request<Channel[]>(linkId, "channels.list", { serverId })
-        this.#setData(linkId, (d) => ({ ...d, channels }))
-        this.#save(linkId, "channels", () => JSON.stringify(channels))
-      } else if (what === "orgs") {
-        const agentOrgs = agentOrgNames(
-          await this.request<unknown>(linkId, "organizations.list", { serverId }),
-        )
-        if (!agentOrgs) return
-        this.#setData(linkId, (d) => ({ ...d, agentOrgs }))
-        this.#save(linkId, "agent-orgs", () => JSON.stringify(agentOrgs))
       } else {
         const attention = await this.request<WireNotice[]>(linkId, "attention.list")
         this.#setData(linkId, (d) => ({ ...d, attention }))
@@ -701,31 +665,6 @@ export class PhoneHub {
         return { ...d, chats: { ...d.chats, [agentId]: { ...chat, queue, hold } } }
       })
       this.#saveChat(linkId, agentId)
-    } else if (event === "channel.message") {
-      const message = payload as ChannelMessage
-      this.#setData(linkId, (d) => {
-        const list = d.channelMessages[message.channelId]
-        if (!list) return d
-        return {
-          ...d,
-          channelMessages: {
-            ...d.channelMessages,
-            [message.channelId]: upsertMessage(list, message),
-          },
-        }
-      })
-      this.#saveChannel(linkId, message.channelId)
-      this.#readIfFocused(linkId, { kind: "channel", id: message.channelId })
-      if (message.parts.some((part) => part.kind === "tool")) this.#refreshSoon(linkId, "attention")
-    } else if (event === "channel.removed") {
-      const channelId = String(p.channelId)
-      this.#setData(linkId, (d) => {
-        const list = d.channelMessages[channelId]
-        if (!list) return d
-        const next = removeMessage(list, String(p.messageId))
-        return { ...d, channelMessages: { ...d.channelMessages, [channelId]: next } }
-      })
-      this.#saveChannel(linkId, channelId)
     } else if (event === "quiet.changed") {
       // The start and the end of a quiet turn, with the seconds at the push (spec 005, 012).
       const turns = (payload as QuietState | undefined)?.turns
@@ -734,19 +673,10 @@ export class PhoneHub {
         ...d,
         quiet: Array.isArray(turns) ? { turns, receivedAt: at } : d.quiet,
       }))
-    } else if (event === "orgChart.model") {
-      // The whole ready model (spec 029, 012). Only a screen that watches the chart gets it; the
-      // phone keeps it nowhere else and never writes it to disk.
-      for (const watch of this.#orgWatches.get(linkId) ?? []) watch(payload as ChartModel)
     } else if (event === "places.changed") {
       this.#refreshSoon(linkId, "places")
     } else if (event === "agents.changed") {
       this.#refreshSoon(linkId, "agents")
-    } else if (event === "channels.changed") {
-      this.#refreshSoon(linkId, "channels")
-    } else if (event === "organizations.changed") {
-      // A member or a name changed: the prefixes follow at the next read (spec 036, 011).
-      this.#refreshSoon(linkId, "orgs")
     } else if (event === "tasks.changed") {
       this.#refreshSoon(linkId, "attention")
     } else if (event === "notice") {
@@ -755,67 +685,6 @@ export class PhoneHub {
         this.#refreshSoon(linkId, "attention")
       }
       for (const listener of this.#noticeListeners) listener(linkId, notice)
-    }
-  }
-
-  // ------------------------------------------------------------------ the org chart
-
-  /**
-   * Watches the org chart of a server for the screen "Org chart" (spec 029, "Phone"; spec 011).
-   * While the server is online it asks for the ready model once and then follows the pushes of the
-   * server. The model lives in memory only: `listener` gets the phase, and the phase `off` (no
-   * model) whenever the server is not online. When the server comes back online it is asked
-   * again, because the pushes of the time away were not seen. `stop` ends the watch and drops the
-   * model. Nothing of the chart is written to the cache.
-   */
-  watchOrgChart(
-    linkId: string,
-    listener: (phase: OrgChartPhase) => void,
-  ): { readonly stop: () => void; readonly refresh: () => void } {
-    const feed = new OrgFeed(listener)
-    let live = true
-    let asking = false
-    const ask = (again = false) => {
-      const view = this.#views.get(linkId)
-      if (!live || view?.state !== "online") return
-      asking = true
-      const question = again ? feed.again() : feed.begin()
-      this.request<ChartModel>(linkId, "orgChart.model", { serverId: view.link.serverId }).then(
-        (model) => void feed.answered(question, model),
-        (error: unknown) => feed.failed(question, error),
-      )
-    }
-    const follow = () => {
-      if (!live) return
-      const online = this.#views.get(linkId)?.state === "online"
-      if (online && !asking) ask()
-      else if (!online && asking) {
-        asking = false
-        feed.stop()
-      }
-    }
-    const unfollow = this.subscribe(follow)
-    const watches = this.#orgWatches.get(linkId) ?? new Set()
-    const push = (model: ChartModel) => {
-      if (asking) feed.pushed(model)
-    }
-    watches.add(push)
-    this.#orgWatches.set(linkId, watches)
-    follow()
-    return {
-      stop: () => {
-        if (!live) return
-        live = false
-        asking = false
-        unfollow()
-        watches.delete(push)
-        if (watches.size === 0) this.#orgWatches.delete(linkId)
-        feed.discard()
-      },
-      // The user asked again (pull to refresh).
-      refresh: () => {
-        if (live && asking) ask(true)
-      },
     }
   }
 
@@ -843,54 +712,26 @@ export class PhoneHub {
   }
 
   async #loadCachedPlace(linkId: string, place: PlaceRef) {
-    const dir = cacheDir(linkId)
-    if (place.kind === "agent") {
-      if (this.#views.get(linkId)?.data.chats[place.id]) return
-      const chat = await readJson<ChatView | null>(
-        this.#options.storage,
-        `${dir}/chat-${safeName(place.id)}.json`,
-        null,
-      )
-      if (chat) this.#setData(linkId, (d) => ({ ...d, chats: { ...d.chats, [place.id]: chat } }))
-    } else {
-      if (this.#views.get(linkId)?.data.channelMessages[place.id]) return
-      const list = await readJson<ChannelMessage[] | null>(
-        this.#options.storage,
-        `${dir}/channel-${safeName(place.id)}.json`,
-        null,
-      )
-      if (list) {
-        this.#setData(linkId, (d) => ({
-          ...d,
-          channelMessages: { ...d.channelMessages, [place.id]: list },
-        }))
-      }
-    }
+    if (this.#views.get(linkId)?.data.chats[place.id]) return
+    const chat = await readJson<ChatView | null>(
+      this.#options.storage,
+      `${cacheDir(linkId)}/chat-${safeName(place.id)}.json`,
+      null,
+    )
+    if (chat) this.#setData(linkId, (d) => ({ ...d, chats: { ...d.chats, [place.id]: chat } }))
   }
-
   async #loadPlace(linkId: string, place: PlaceRef) {
     try {
-      if (place.kind === "agent") {
-        const history = await this.request<ChatHistory>(linkId, "chat.history", {
-          agentId: place.id,
-        })
-        const chat: ChatView = {
-          messages: history.messages,
-          queue: history.queue,
-          hold: history.hold,
-        }
-        this.#setData(linkId, (d) => ({ ...d, chats: { ...d.chats, [place.id]: chat } }))
-        this.#saveChat(linkId, place.id)
-      } else {
-        const list = await this.request<ChannelMessage[]>(linkId, "channels.history", {
-          channelId: place.id,
-        })
-        this.#setData(linkId, (d) => ({
-          ...d,
-          channelMessages: { ...d.channelMessages, [place.id]: list },
-        }))
-        this.#saveChannel(linkId, place.id)
+      const history = await this.request<ChatHistory>(linkId, "chat.history", {
+        agentId: place.id,
+      })
+      const chat: ChatView = {
+        messages: history.messages,
+        queue: history.queue,
+        hold: history.hold,
       }
+      this.#setData(linkId, (d) => ({ ...d, chats: { ...d.chats, [place.id]: chat } }))
+      this.#saveChat(linkId, place.id)
       await this.markRead(linkId, place)
     } catch {
       // The connection broke: what the cache holds still shows.
@@ -900,13 +741,7 @@ export class PhoneHub {
 
   /** Clears the unread count of a place on the server, and so on every device (spec 012). */
   async markRead(linkId: string, place: PlaceRef) {
-    if (place.kind === "agent") {
-      await this.request(linkId, "chat.markRead", { agentId: place.id }).catch(() => undefined)
-    } else {
-      await this.request(linkId, "channels.markRead", { channelId: place.id }).catch(
-        () => undefined,
-      )
-    }
+    await this.request(linkId, "chat.markRead", { agentId: place.id }).catch(() => undefined)
   }
 
   #readTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -980,19 +815,8 @@ export class PhoneHub {
     })
   }
 
-  sendToChannel(linkId: string, channelId: string, text: string) {
-    return this.request<{ awaiting: boolean }>(linkId, "channels.send", { channelId, text })
-  }
-
-  /** Names the member who takes a job that waits for a pick (spec 004). */
-  assign(linkId: string, channelId: string, messageId: string, agentId: string) {
-    return this.request(linkId, "channels.assign", { channelId, messageId, agentId })
-  }
-
   stop(linkId: string, place: PlaceRef) {
-    return place.kind === "agent"
-      ? this.request(linkId, "chat.stop", { agentId: place.id })
-      : this.request(linkId, "channels.stop", { channelId: place.id })
+    return this.request(linkId, "chat.stop", { agentId: place.id })
   }
 
   /** Tries a failed reply again. The answer can be the retry note of spec 005. */
@@ -1043,26 +867,17 @@ export class PhoneHub {
   async #readCache(linkId: string): Promise<ServerData> {
     const dir = cacheDir(linkId)
     const storage = this.#options.storage
-    const [places, agents, channels, agentOrgs] = await Promise.all([
+    const [places, agents] = await Promise.all([
       readJson<PlaceSection[] | null>(storage, `${dir}/places.json`, null),
       readJson<Agent[] | null>(storage, `${dir}/agents.json`, null),
-      readJson<Channel[] | null>(storage, `${dir}/channels.json`, null),
-      readJson<AgentOrgs | null>(storage, `${dir}/agent-orgs.json`, null),
     ])
-    return { ...EMPTY, places, agents, channels, agentOrgs }
+    return { ...EMPTY, places, agents }
   }
 
   #saveChat(linkId: string, agentId: string) {
     this.#save(linkId, `chat-${safeName(agentId)}`, () => {
       const chat = this.#views.get(linkId)?.data.chats[agentId]
       return JSON.stringify(chat ? { ...chat, messages: newest(chat.messages) } : null)
-    })
-  }
-
-  #saveChannel(linkId: string, channelId: string) {
-    this.#save(linkId, `channel-${safeName(channelId)}`, () => {
-      const list = this.#views.get(linkId)?.data.channelMessages[channelId]
-      return JSON.stringify(list ? newest(list) : null)
     })
   }
 

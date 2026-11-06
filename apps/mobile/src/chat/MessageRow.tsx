@@ -5,7 +5,6 @@ import {
   groupParts,
   type MessagePart,
   type PartSegment,
-  shownName,
   thoughtIsLive,
 } from "@robot/shared"
 import { memo, type ReactNode, useState } from "react"
@@ -16,7 +15,6 @@ import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Face } from "../ui/Face.tsx"
-import { ShownText } from "../ui/names.tsx"
 import type { RowMessage } from "./rows.ts"
 import { ToolCard } from "./ToolCard.tsx"
 
@@ -40,7 +38,7 @@ function setupFailedKey(
   }
 }
 
-/** A chat message or a channel message: what a row needs of both. */
+/** A chat message: what a row needs of it. */
 export interface ShownMessage extends RowMessage {
   readonly status: ChatMessage["status"]
   readonly error: ChatMessage["error"]
@@ -71,11 +69,6 @@ export const MessageRow = memo(
     readonly message: ShownMessage
     readonly head: boolean
     readonly agent: Agent | undefined
-    /**
-     * The whole name of the organization that the prefix of the agent shows (spec 036, 011), or
-     * null for no prefix (no organization, or the switch of this phone is off).
-     */
-    readonly organization: string | null
     readonly quoted: { readonly name: string; readonly text: string } | null
     readonly flash: boolean
     /** The name of this phone: its own messages have no "from" line (spec 012). */
@@ -87,7 +80,6 @@ export const MessageRow = memo(
     const segments = groupParts(message.parts, !prefs.showToolSteps)
     const isAgent = message.author === "agent"
     const name = isAgent ? (agent?.name ?? "?") : t("chat.you")
-    const shown = shownName(name, isAgent ? props.organization : null, true)
     const time = new Date(message.createdAt).toLocaleTimeString(locale, {
       hour: "numeric",
       minute: "2-digit",
@@ -116,11 +108,9 @@ export const MessageRow = memo(
         <View style={styles.main}>
           {props.head ? (
             <View style={styles.header}>
-              <ShownText
-                shown={shown}
-                numberOfLines={1}
-                style={[styles.name, { color: palette.text }]}
-              />
+              <Text numberOfLines={1} style={[styles.name, { color: palette.text }]}>
+                {name}
+              </Text>
               {isAgent ? (
                 <View style={[styles.bot, { borderColor: palette.border }]}>
                   <Text style={[styles.botText, { color: palette.textMuted }]}>
@@ -297,6 +287,8 @@ const Part = (props: {
         </View>
       )
     case "note":
+      // A repair of the channel tree. Channels are gone (spec 011), so the note shows no line.
+      if (part.note === "tree_repaired") return null
       return (
         <Text style={[styles.small, { color: palette.textMuted }]}>
           {part.note === "watch_unchanged"
@@ -314,27 +306,25 @@ const Part = (props: {
                       ? t("chat.note.kept_going", { n: part.n, of: part.of })
                       : part.note === "busy_retry"
                         ? t("chat.note.busy_retry", { n: part.n, of: part.of })
-                        : part.note === "tree_repaired"
-                          ? t(`chat.note.tree_repaired.${part.why}`)
-                          : part.note === "backup_goes_on"
-                            ? part.until === null
-                              ? t("chat.note.backup_goes_on", {
-                                  main: part.main,
-                                  backup: part.backup,
-                                })
-                              : t("chat.note.backup_goes_on_until", {
-                                  main: part.main,
-                                  backup: part.backup,
-                                  time: new Date(part.until).toLocaleTimeString(locale, {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  }),
-                                })
-                            : part.note === "setup_failed"
-                              ? t(setupFailedKey(part.code), { name: part.name })
-                              : t(`chat.note.starter.${part.what}.${part.why}`, {
-                                  name: part.name,
-                                })}
+                        : part.note === "backup_goes_on"
+                          ? part.until === null
+                            ? t("chat.note.backup_goes_on", {
+                                main: part.main,
+                                backup: part.backup,
+                              })
+                            : t("chat.note.backup_goes_on_until", {
+                                main: part.main,
+                                backup: part.backup,
+                                time: new Date(part.until).toLocaleTimeString(locale, {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                }),
+                              })
+                          : part.note === "setup_failed"
+                            ? t(setupFailedKey(part.code), { name: part.name })
+                            : t(`chat.note.starter.${part.what}.${part.why}`, {
+                                name: part.name,
+                              })}
         </Text>
       )
     case "tool":

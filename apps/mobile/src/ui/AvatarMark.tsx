@@ -4,8 +4,8 @@ import { useApp } from "../state/context.tsx"
 /**
  * A round mark in the family of the faces. In the dark theme it is a very dark disc with a thin
  * rim of light and a glyph of light, as the app mark is. In the light theme it is a light disc
- * with a dark glyph and no glow. The user has one, and a channel has one in place of a face. The
- * glow of the glyph is a text shadow, so it needs no filter.
+ * with a dark glyph and no glow. The user has one. The glow of the glyph is a text shadow, so it
+ * needs no filter.
  */
 export const AvatarMark = (props: { readonly glyph: string; readonly size: number }) => {
   const { palette, scheme } = useApp()

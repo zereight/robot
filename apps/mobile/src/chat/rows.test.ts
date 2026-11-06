@@ -33,7 +33,7 @@ describe("rows of a conversation", () => {
     ])
   })
 
-  test("in a channel another agent and a reply start a new header", () => {
+  test("another agent and a reply start a new header", () => {
     const rows = buildRows([
       msg("m1", day),
       msg("m2", day + 1000, { agentId: "a2" }),
