@@ -6,6 +6,7 @@ import {
   HAND_OFF_HINT,
   HAND_OFF_LIST_EMPTY,
   HAND_OFF_LIST_RULE,
+  LEAD_ORDER_WORDS,
   MAIN_AGENT_HAND_OFF_RULE,
   type MessagePart,
   newTurnMark,
@@ -88,6 +89,8 @@ const server = Bun.serve({
     // A turn that starts with "SLOW" stays open for a short time, so a test can change the rule
     // while it works.
     if (/SLOW/.test(String(last?.content ?? ""))) await Bun.sleep(600)
+    if (/^Message from[\s\S]*BLOCKME/.test(String(last?.content ?? "")))
+      return text("I tried.\nBlocked: no access to the repository")
     if (last?.role === "tool") return text("done")
     const many = /CALLS (\[.*\])/.exec(String(last?.content ?? ""))
     if (many) return toolCalls(JSON.parse(many[1] as string))
@@ -668,5 +671,49 @@ describe('the part "Hand-off rules"', () => {
     await s.rule("organizations")
     expect((await s.run(OrgChart.use((o) => o.snapshot()))).handOffRule).toBe("organizations")
     expect((await s.run(OrgChart.use((o) => o.model()))).handOffRule).toBe("organizations")
+  })
+})
+
+describe("an order of a lead (spec 007)", () => {
+  const textOf = (m: ChatMessage) => m.parts.map((p) => (p.kind === "text" ? p.text : "")).join("")
+  const lastFromAgent = async (s: Awaited<ReturnType<typeof setup>>, to: string) =>
+    (await s.run(Chat.use((c) => c.history(s.agent(to).id)))).messages
+      .filter((m) => m.author !== "agent" && textOf(m).includes("Message from"))
+      .map(textOf)
+      .at(-1) ?? ""
+
+  for (const value of ["any", "organizations"] as const) {
+    test(`the lead P gives D, a member of a lower organization, an order (rule "${value}")`, async () => {
+      const s = await setup()
+      await s.rule(value)
+      // P leads Product; D is a member of Docs, a lower organization of Product.
+      const step = await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+      expect(step.state).toBe("done")
+      const body = await lastFromAgent(s, "D")
+      expect(body).toContain(LEAD_ORDER_WORDS)
+      expect(body).toContain("Push the fix.")
+      expect(body).not.toContain("input from a colleague")
+    })
+  }
+
+  test("a member who sends to its lead gives input from a colleague, no order", async () => {
+    const s = await setup()
+    const step = await s.call("D", "send_message", { to: "P", text: "Please push." })
+    expect(step.state).toBe("done")
+    const body = await lastFromAgent(s, "P")
+    expect(body).toContain("input from a colleague")
+    expect(body).not.toContain(LEAD_ORDER_WORDS)
+  })
+
+  test("a receiver that is blocked tells the sender at once, with the reason (spec 007, chase)", async () => {
+    const s = await setup()
+    const step = await s.call("P", "send_message", { to: "D", text: "BLOCKME push the fix" })
+    expect(step.state).toBe("done")
+    await s.quiet()
+    const back = (await s.run(Chat.use((c) => c.history(s.agent("P").id)))).messages
+      .map(textOf)
+      .find((t) => t.startsWith("Reply from the agent D"))
+    expect(back).toContain("could not do this message")
+    expect(back).toContain("no access to the repository")
   })
 })

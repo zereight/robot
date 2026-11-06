@@ -4,6 +4,7 @@ import { Channels } from "./Channels.ts"
 import { asOldShape } from "./channelTurns.testing.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 
@@ -270,6 +271,8 @@ describe("the text of a check", () => {
       ["Bo", "Writes text"],
       ["Cy", "Checks facts"],
     ])
+    // The chase is off, so a blocked part waits for the other parts (spec 013).
+    await s.run(SettingsStore.use((x) => x.update({ chaseInterval: 0 })))
     await s.run(Channels.use((c) => c.send(s.channel.id, "split it")))
     await until(async () => seen.length >= 2)
     expect(seen[0]?.system).toBe(INSTRUCTION)

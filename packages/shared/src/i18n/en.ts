@@ -2295,6 +2295,11 @@ export const en = {
     "How long an agent may show no sign of life before the app stops its turn.",
   "settings.silentLimit.option": "{count} min",
   "settings.silentLimit.never": "Never",
+  "settings.chaseInterval": "Ask for the state of quiet work after",
+  "settings.chaseInterval.hint":
+    "How long work that an agent gave may stay quiet before the giver asks how it goes.",
+  "settings.chaseInterval.option": "{count} min",
+  "settings.chaseInterval.off": "Off",
   "error.blocked": "{detail}",
   "error.blocked_empty": "The agent did not say why it is blocked.",
   "error.task_not_in_review": "This task is not in review.",

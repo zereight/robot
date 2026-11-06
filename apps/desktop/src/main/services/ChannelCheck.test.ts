@@ -5,6 +5,7 @@ import { Channels } from "./Channels.ts"
 import { asOldShape } from "./channelTurns.testing.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 
@@ -480,8 +481,9 @@ describe("the verdict", () => {
     expect(parts.map((p) => p.state)).toEqual(["done", "blocked", "failed"])
     expect(parts.map((p) => p.verdict)).toEqual([null, null, null])
     expect(parts.map((p) => p.judgedAt)).toEqual([null, null, null])
-    // None of them is a part to judge. The lead still reads the failed and the blocked part.
-    const read = checkRequests[0]?.content ?? ""
+    // None of them is a part to judge. The lead still reads the failed and the blocked part. The
+    // blocked part is told at once (spec 004, chase), so the last look is the one that sees both.
+    const read = checkRequests.at(-1)?.content ?? ""
     expect(read).not.toContain("Parts to judge")
     expect(read).toContain("2. Cy: Blocked - blocked (reason: no access to the repository)")
     expect(read).toContain("3. Bo: Failed - failed")
@@ -749,5 +751,69 @@ describe("a channel with no done test", () => {
     expect((await s.parts()).map((p) => p.doneTest)).toEqual([null, null])
     expect(await s.summaries()).toHaveLength(1)
     expect(summaryRequests[0]?.content).not.toContain("verdict:")
+  })
+})
+
+describe("chase of a refused or dropped part (spec 004)", () => {
+  const SLOW_AND_BLOCKED: PlanPart[] = [
+    { member: "Bo", label: "Repo", prompt: "BLOCK the repo", doneTest: "Holds the repo" },
+    { member: "Cy", label: "Facts", prompt: "Check the facts SLOWPART", doneTest: "Lists facts" },
+  ]
+
+  test("the lead looks and nudges at once when a part is blocked while another part still runs", async () => {
+    const s = await setup({
+      parts: SLOW_AND_BLOCKED,
+      checks: [answer([], { action: "nudge", part: 1, instruction: "Try the repo again." })],
+    })
+    await s.send("split it")
+    // The check comes while the slow part runs: the work of the channel has not stopped.
+    await until(() => checkRequests.length >= 1)
+    const slow = await s.part("Facts")
+    expect(slow?.state).toBe("running")
+    await until(async () => (await s.parts()).some((p) => p.retryOf !== null))
+    const nudge = (await s.parts()).find((p) => p.retryOf !== null)
+    expect(nudge).toMatchObject({ label: "Repo", doneTest: "Holds the repo" })
+    await finished(s)
+  })
+
+  test("a part that a chase started and that is blocked again gets no second chase; the lead asks the user", async () => {
+    const s = await setup({
+      parts: SLOW_AND_BLOCKED,
+      checks: [answer([], { action: "nudge", part: 1, instruction: "BLOCK the repo again." })],
+    })
+    await s.send("split it")
+    await finished(s)
+    // One chase part, no more: two parts of "Repo" in all.
+    expect((await s.parts()).filter((p) => p.label === "Repo")).toHaveLength(2)
+    const asks = (await s.history()).filter(
+      (m) => m.author === "agent" && m.agentId === s.lead.id && m.kind === "text",
+    )
+    expect(asks.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test("with the chase interval Off, a blocked part waits for the end of the work", async () => {
+    const s = await setup({ parts: SLOW_AND_BLOCKED })
+    await s.run(SettingsStore.use((x) => x.update({ chaseInterval: 0 })))
+    await s.send("split it")
+    await finished(s)
+    expect(checkRequests).toHaveLength(1)
+  })
+
+  test("a part that ended well starts no early look", async () => {
+    const s = await setup({
+      parts: [
+        { member: "Bo", label: "Intro", prompt: "Write the intro", doneTest: "Holds a title" },
+        {
+          member: "Cy",
+          label: "Facts",
+          prompt: "Check the facts SLOWPART",
+          doneTest: "Lists facts",
+        },
+      ],
+    })
+    await s.send("split it")
+    await finished(s)
+    // Only the look at the end of the work: one check, no early one.
+    expect(checkRequests).toHaveLength(1)
   })
 })

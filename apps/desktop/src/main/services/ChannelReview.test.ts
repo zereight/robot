@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import type { ChannelMessage } from "@robot/shared"
+import { type ChannelMessage, LEAD_ORDER_WORDS } from "@robot/shared"
 import { Agents } from "./Agents.ts"
 import { Channels, SUMMARY_RULE } from "./Channels.ts"
 import { asOldShape } from "./channelTurns.testing.ts"
@@ -363,5 +363,20 @@ describe("a reply to a part (spec question of 004)", () => {
     await s.run(Channels.use((c) => c.send(s.channel.id, "thanks", summary?.id ?? null)))
     await until(() => requests.some((r) => r.last === "thanks"))
     expect(requests.find((r) => r.last === "thanks")?.system).toContain("You are Lia")
+  })
+})
+
+describe("orders of the lead (spec 004)", () => {
+  test("a member reads the order words in a part that the lead gave, and the lead does not", async () => {
+    const s = await setup()
+    await s.send("split two")
+    await s.settled()
+    const parts = await s.parts()
+    expect(parts.length).toBe(2)
+    const member = requests.filter((r) => r.last.includes("Write the intro"))
+    expect(member.length).toBeGreaterThan(0)
+    for (const r of member) expect(r.system).toContain(LEAD_ORDER_WORDS)
+    const lead = requests.filter((r) => r.last.includes("split two"))
+    for (const r of lead) expect(r.system).not.toContain(LEAD_ORDER_WORDS)
   })
 })

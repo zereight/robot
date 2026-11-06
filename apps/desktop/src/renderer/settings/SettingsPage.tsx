@@ -1,6 +1,8 @@
 import {
   AGENTS_AT_ONCE_MAX,
   AGENTS_AT_ONCE_MIN,
+  CHASE_INTERVALS,
+  type ChaseInterval,
   isAgentsAtOnce,
   isStepLimit,
   type KeepAwakeState,
@@ -292,6 +294,21 @@ const General = () => {
               minutes === 0
                 ? t("settings.silentLimit.never")
                 : t("settings.silentLimit.option", { count: minutes }),
+          }))}
+        />
+      </Row>
+      <Row label={t("settings.chaseInterval")} hint={t("settings.chaseInterval.hint")}>
+        <Segmented
+          label={t("settings.chaseInterval")}
+          testId="setting-chase-interval"
+          value={String(app.settings.chaseInterval)}
+          onChange={(value) => app.update({ chaseInterval: Number(value) as ChaseInterval })}
+          options={CHASE_INTERVALS.map((minutes) => ({
+            value: String(minutes),
+            label:
+              minutes === 0
+                ? t("settings.chaseInterval.off")
+                : t("settings.chaseInterval.option", { count: minutes }),
           }))}
         />
       </Row>

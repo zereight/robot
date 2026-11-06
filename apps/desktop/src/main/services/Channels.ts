@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import {
   type AgentModel,
+  ASK_AFTER_CHASE_RULE,
   ASKING_MAX,
   type AskingLine,
   askAllowsAlways,
@@ -30,6 +31,8 @@ import {
   changesLabel,
   channelInstructionsTooLong,
   charLength,
+  chaseAskText,
+  chaseOnEnd,
   checkChannelPicture,
   checkInstruction,
   checkStateText,
@@ -51,6 +54,7 @@ import {
   KEEP_GOING_MAX,
   keepGoingMessage,
   LEAD_LOOK_MS,
+  LEAD_ORDER_WORDS,
   LEAD_PROMPT,
   type LeadAnswer,
   type LeadLookAnswer,
@@ -127,7 +131,7 @@ import {
   type WindowLine,
   withAssignment,
 } from "@robot/shared"
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Semaphore, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import { BUSY_TRIES } from "../providers/busyRetry.ts"
 import type { Turn } from "../providers/chat.ts"
@@ -1591,7 +1595,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               system: channelSystem(
                 channel,
                 agent,
-                [toldAboutBlocked(task) ? BLOCKED_RULE : "", tasks.retryNoteForModel(task)]
+                // A part that the lead gave is an order of the lead (spec 004, "Orders of the lead").
+                [
+                  from ? LEAD_ORDER_WORDS : "",
+                  toldAboutBlocked(task) ? BLOCKED_RULE : "",
+                  tasks.retryNoteForModel(task),
+                ]
                   .filter(Boolean)
                   .join("\n\n"),
                 [{ role: "user", content: assignment }],
@@ -2313,6 +2322,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       })
 
       /**
+       * The lead asks the user what to do with a part that a member refused or dropped again after
+       * a chase (spec 004, "Chase by the lead"). The lead writes the question. A lead that cannot
+       * answer asks nothing.
+       */
+      const askAfterChase = (channel: ChannelRow, lead: AgentRow, jobId: string, part: Task) =>
+        Effect.gen(function* () {
+          const asked = yield* Effect.exit(askLead(lead, ASK_AFTER_CHASE_RULE, chaseAskText(part)))
+          if (asked._tag === "Success" && asked.value.trim() !== "")
+            leadSays(channel, lead, jobId, asked.value.trim())
+        })
+
+      /**
        * One look of the lead (spec 004). It reads the state, gives verdicts, and then nudges, asks
        * or does nothing. At the final look (the summary is the look) it gives verdicts only.
        * It never fails: a lead that cannot answer leaves the channel as it is.
@@ -2408,6 +2429,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               ),
             ),
           )
+          // The chase part ended badly too: no second chase, the lead asks the user.
+          const after = tasks.children(job.id).find((p) => p.id === part.id)
+          if (
+            after &&
+            chaseOnEnd({ state: after.state, error: after.error, nudged: true }) === "ask"
+          )
+            yield* askAfterChase(channel, lead, job.id, after)
           return "nudged" as const
         }).pipe(
           // A check never fails a job (spec 004): only a stop passes on.
@@ -2497,6 +2525,38 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             })
             // While the lead waits for its parts, it uses no slot (spec 005, "Queue").
             const waitForParts = tasks.withoutSlot(task.id, partsOpen)
+            const nudged = new Set<string>()
+            const seen = new Set<string>()
+            // A part that ended as failed or blocked is told to the lead at once, also while other
+            // parts run (spec 004, "Chase by the lead"). One look at a time.
+            const chaseGate = yield* Semaphore.make(1)
+            const chaseAtEnd = (partId: string) =>
+              chaseGate.withPermit(
+                Effect.gen(function* () {
+                  const ended = tasks.children(task.id).find((p) => p.id === partId)
+                  if (!ended) return
+                  const kind = chaseOnEnd({
+                    state: ended.state,
+                    error: ended.error,
+                    nudged: nudged.has(ended.id),
+                  })
+                  // With no other part open, the look at the end of the work handles this part.
+                  if (kind !== "chase" || !channelPartsOpen(channel.id)) return
+                  // The chase is off: a refused part waits for the check, as before (spec 013).
+                  if ((yield* settings.get).chaseInterval === 0) return
+                  const current = agentRow(lead.id)
+                  if (
+                    !current ||
+                    current.archived_at !== null ||
+                    blockedByUsageLimit(current) ||
+                    limitStop(lead.id)
+                  )
+                    return
+                  seen.add(ended.id)
+                  yield* look(channel, current, task, nudged, { final: false })
+                  emitMessage(reply.id)
+                }),
+              )
             yield* tasks.withoutSlot(
               task.id,
               Effect.gen(function* () {
@@ -2512,7 +2572,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                         "text",
                         lead,
                       ),
-                    ),
+                    ).pipe(Effect.andThen(chaseAtEnd(partTask.id))),
                   { concurrency: "unbounded", discard: true },
                 )
                 emitMessage(reply.id)
@@ -2523,8 +2583,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // The check (spec 004): when the work has stopped, the lead gives verdicts and then
             // nudges, asks or does nothing. A nudge starts a new part, and the lead waits for it.
             // The summary is the last look, so the lead looks LOOKS_MAX times at most.
-            const nudged = new Set<string>()
-            const seen = new Set<string>()
             let looks = 0
             for (;;) {
               const ended = tasks.children(task.id).filter((part) => isFinal(part.state))
