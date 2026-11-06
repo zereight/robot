@@ -4,30 +4,29 @@
 
 ROBot lets one person build and run workflows on their own computer. A workflow is a graph of
 nodes. A model runs the nodes in a fixed order. The user can read, edit and check every part of a
-workflow. The interface follows the layout of a chat server, with servers on the far left (see
-001).
+workflow. The interface follows a chat server: servers on the far left, the list of workflows
+beside them, the open workflow in the middle with its chat beside it, and an activity panel on the
+right.
 
 ## Concepts
 
 - **Server**: a computer that runs workflows. The user's own computer is the first server. The user
   can link other computers and phones (see 012). A linked computer shows as a server in the rail.
-  The phone connects to servers; it does not execute workflows. It can start and stop a run on a
-  server (see 010).
+  The phone connects to servers; it does not run workflows.
 - **Profile**: a separate space on one computer, with its own workflows, chats, accounts, settings
   and linked devices (see 022). A server is one profile on one computer. A computer with one
   profile works as this spec says everywhere.
 - **Workflow**: the main object of ROBot. A workflow has a name, a trigger, a graph of nodes, one
   responsible document, one chat and one memory. The user builds, runs and checks a workflow (see
   010).
-- **Node**: one step of a workflow. A text node has a prompt, a provider, a model and a reasoning
-  level (see 010), and it writes text. A decision node takes its model from 013, has no reasoning
-  level, and chooses one of its options.
+- **Node**: one step of a workflow. A node has a prompt, a provider, a model and a reasoning level
+  (see 010). A text node writes text. A decision node chooses one of its options.
 - **Responsible document**: a text, in the form of a skill (see 017). It says who answers for the
   workflow, its character and its limits. Each workflow has one. The user edits it.
 - **Chat**: the conversation of the user with a workflow. Each workflow has one chat. The
   responsible document answers in it (see 010).
-- **Task**: one execution of one node. A task has the states queued, running, waiting for the user,
-  done, failed, or cancelled (see 005).
+- **Task**: one run of one node. A task has the states queued, running, waiting for the user, done,
+  failed, or cancelled (see 005).
 - **Trigger**: what starts a run of a workflow. The user can start a run by hand. A schedule is a
   trigger too (see 010).
 - Each workflow has a "Check" (see 010). It verifies the form of the workflow before the change
@@ -81,12 +80,11 @@ workflow. The interface follows the layout of a chat server, with servers on the
 - Secrets never appear in logs, exports or diagnostics.
 - ROBot does not train or change a model. A workflow gets better at its work only through things
   that the user can see and edit: its responsible document, the prompts of its nodes, its graph,
-  its memory (008, changed in slice W2) and its skills (017, changed in slice W2). Self-improvement
-  (010) only proposes changes to these
+  its memory (008) and its skills (017). Self-improvement (010) only proposes changes to these
   things, and a change applies only when the user accepts it. Interface text and documents do not
   say that a model learns, trains or evolves. The rule covers text that the user reads. It does
   not cover the instructions that the app sends to a model. The memory page of a workflow shows one
-  muted line with this fact (see 008, changed in slice W2).
+  muted line with this fact (see 008).
 - The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
   settings. The look follows `DESIGN.md`: three lights carry meaning and nothing else does. The
@@ -109,7 +107,7 @@ workflow. The interface follows the layout of a chat server, with servers on the
   a device, and a source of knowledge. The question is one line that names what goes away. Its
   button is a danger button, and the other button keeps the data. Two cases do not ask. A delete
   that an Undo row follows at once (008, 016) shows in the colour of danger only. So does a node
-  that the user can simply make again, as a rule (007, changed in slice W2).
+  that the user can simply make again, as a rule (007).
 - Light is the one exception to the flat style. It shows who or what is here, and nothing else:
   the app mark glows, and a task that works shows the mint glow. Light is not used to decorate a
   surface, a button or a text. Light that does not belong to the app mark, to a working task or to

@@ -12,18 +12,18 @@ server, so a new user knows where to look. The app opens on the workflow list.
   the open profile on this computer (see 022). Tiles of linked computers (012) follow in the
   order of pairing. A linked tile shows the first letter of the computer's name and the
   connection state (012).
-- **Page buttons**: under the servers, icon buttons open the workflow list (010), tasks (005, 038),
-  test devices (032) and usage. Each button shows only its own content. The Tasks page holds the
-  tabs "Tasks" and "Events" (005, 038); the Tasks button opens the first tab. At the bottom: help
-  and settings, then the profile button when the computer has two or more profiles (see 022).
-- **Workflow list**: the list of workflows, with one card for each workflow. The workflows button
-  shows it. A card shows the name, the state of the last run and the state of the check (see 010).
-  With no workflow, the list shows one button, "New workflow", and one line that says what a
-  workflow is. Where the list shows is not decided (see the questions for 001).
-- **Workflow view**: the view of an open workflow. It shows the canvas of the workflow, and beside
-  it the chat of that workflow (see 010). A new workflow opens here at once (010, "New workflow").
+- **Page buttons**: under the servers, icon buttons open whole pages: workflows (010), tasks (005,
+  038), test devices (032), usage. The workflows button opens the workflow list. Each page shows
+  only its own list. The Tasks page holds the tabs "Tasks" and "Events" (005, 038). At the bottom:
+  help and settings, then the profile button when the computer has two or more profiles (see 022).
+- **Workflow list**: the page that the workflows button opens. It has one card for each workflow.
+  A card shows the name, the state of the last run and the state of the check (see 010). With no
+  workflow, the page shows one button, "New workflow", and one line that says what a workflow is.
+- **Workflow view**: the main area when a workflow is open. It shows the canvas of the workflow,
+  and beside it the chat of that workflow (see 010). A new workflow opens here at once (010, "New
+  workflow").
 - **Activity panel**: a panel that the user can open beside the workflow view. It uses the panel
-  column. Its content is not decided (see docs/spec-questions.md, rows for 001).
+  column. Its content is open (see docs/spec-questions.md, rows for 001).
 - **Panel column**: an optional column at the right of the window, used by one panel at a time: the
   activity panel, or the panel of the test devices connection (032). Each panel keeps its own width
   and its own open state. The user drags the left edge of the column to change its width, between 320
@@ -36,8 +36,8 @@ server, so a new user knows where to look. The app opens on the workflow list.
 
 1. The user clicks a server tile. The workflow list and the pages change to that server. On a
    linked computer, the pages work as 012 says.
-2. The user opens a card in the workflow list. The workflow view shows that workflow, with its
-   canvas and its chat.
+2. The user clicks a card in the workflow list. The workflow view opens that workflow, with its
+   canvas and its chat. The card shows as selected.
 3. The user clicks "New workflow" on the workflow list (010, "New workflow").
 4. The user hides or shows the panel column with a header button. The app remembers this, and which
    panel it holds.
@@ -53,8 +53,7 @@ server, so a new user knows where to look. The app opens on the workflow list.
 
 ## Rules
 
-- Window width under 800 px: the rail narrows to 56 px, and the panel column closes. The rail width
-  and the panel column at 800 px and wider are not decided (see the questions for 001).
+- Window width under 800 px: the rail narrows to 56 px, and the panel column closes.
 - The panel column shows one panel. A press on a header button of the other panel switches to it.
   The app remembers which one is open.
 - The rail leaves room for the window buttons at the top left.
@@ -62,8 +61,8 @@ server, so a new user knows where to look. The app opens on the workflow list.
   profile changes all of them, and each profile keeps its own selection (022).
 - Keyboard: Cmd+F finds in the open chat (003); on a page that is not a chat it does nothing.
   Cmd+Shift+D starts and stops dictation (027). The help button opens a page that lists these keys.
-  The keys for search and for moving through the list are not decided (see docs/spec-questions.md,
-  rows for 001).
+  The keys for search and for moving through the list are open (see docs/spec-questions.md, rows
+  for 001).
 - **Quit**: Cmd+Q, and "Quit" in the menu of the menu bar item (015), quit the app. When no run
   works and no task waits for the user, the app quits at once. When a run works or a task waits,
   the first press shows a short note over the window: "Press Cmd+Q again to quit. N tasks are
