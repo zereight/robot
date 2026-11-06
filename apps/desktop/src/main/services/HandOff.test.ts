@@ -702,6 +702,15 @@ describe("an order of a lead (spec 007)", () => {
     })
   }
 
+  test("the lead D of a lower organization gives its member A an order, after P gave one to D", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.call("D", "send_message", { to: "A", text: "Write the test." })
+    const body = await lastFromAgent(s, "A")
+    expect(body).toContain(LEAD_ORDER_WORDS)
+    expect(body).toContain("Write the test.")
+  })
+
   test("a member who sends to its lead gives input from a colleague, no order", async () => {
     const s = await setup()
     const step = await s.call("D", "send_message", { to: "P", text: "Please push." })

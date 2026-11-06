@@ -499,9 +499,9 @@ This holds only for an order of a lead (007), so a message between colleagues do
   order waits until the first task ends. Members with different workspaces run at the same time.
   A task that only reads does not wait.
 - **Lower leads**: the lead of a sub-organization is a member of the organization above it. It
-  takes an order as a member and gives orders as a lead. A task can be at most 3 levels deep in
-  this way, as the tree is (see "Organization tree"). An order that would go deeper is refused
-  with the reason.
+  takes an order as a member and gives orders as a lead. An order goes down the tree only, so a
+  chain of orders of leads is at most as long as the tree is (3 levels, see "Organization
+  tree"). The app has no other limit for it.
 - **What does not change**: who may send to whom, the permission level of each agent, the rules
   about secrets, and the access of an organization (see "Who can send to whom" and "Access"). A
   member does not get a right that its lead has.
@@ -627,7 +627,8 @@ The first start of this version changes the data of each profile once.
   sends a new order for the same task, and Jo goes on in that task.
 - Mia cancels a running task of Jo. Mia gets no reply from it.
 - A lead of a sub-organization takes an order as a member, and gives orders to its own members.
-  An order at a fourth level is refused with a reason.
+  The order of the lead of "Product" to "Docs" and the order of "Docs" to its member are both
+  orders of a lead.
 - Jo sends a message to Kai. Kai reads it as input from a colleague, and no task is made.
 - Mia asks Kai to check the result of Jo before she accepts it. The check is a task of Kai. Mia
   accepts after it. No check is made when Mia does not ask for one.
