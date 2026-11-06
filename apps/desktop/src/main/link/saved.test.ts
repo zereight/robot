@@ -17,7 +17,7 @@ afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true })
 })
 
-const place = (kind: "agent" | "channel", id: string, name: string): Place => ({
+const place = (kind: "agent", id: string, name: string): Place => ({
   kind,
   id,
   name,
@@ -46,7 +46,6 @@ const message = (
 const saved = () => {
   const cache = make()
   const sections: PlaceSection[] = [
-    { id: "channels", places: [place("channel", "c1", "launch")], sections: [] },
     {
       id: "agents",
       places: [place("agent", "a1", "Ada")],
@@ -64,18 +63,14 @@ describe("search in the saved messages of a linked server", () => {
     const cache = saved()
     history(cache, "a1", [message("m1", 10, "The budget is 4200 euros"), message("m2", 30, "no")])
     history(cache, "a2", [message("m3", 20, "Euros and BUDGET again", { author: "agent" })])
-    cache.set("link", cacheKey("channels.history", { channelId: "c1" }), [
-      message("m4", 40, "launch budget in euros"),
-    ])
     const page = searchSaved(cache, "link", "srv", "euros budget", 0)
     expect(page.cached).toBe(true)
-    expect(page.hits.map((h) => h.messageId)).toEqual(["m4", "m3", "m1"])
+    expect(page.hits.map((h) => h.messageId)).toEqual(["m3", "m1"])
     expect(page.hits.map((h) => [h.kind, h.placeName, h.author])).toEqual([
-      ["channel", "launch", "user"],
       ["agent", "Bo", "agent"],
       ["agent", "Ada", "user"],
     ])
-    expect(page.hits[2]?.marks.map(([a, b]) => page.hits[2]?.snippet.slice(a, b))).toEqual([
+    expect(page.hits[1]?.marks.map(([a, b]) => page.hits[1]?.snippet.slice(a, b))).toEqual([
       "budget",
       "euros",
     ])

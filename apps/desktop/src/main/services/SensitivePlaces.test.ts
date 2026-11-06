@@ -414,43 +414,6 @@ describe("what the mark changes", () => {
     expect((await s.part("call_1"))?.ask).toBeUndefined()
     expect((await s.part("call_1"))?.output).toContain("hello")
   })
-
-  test("a channel holds the mark for the turns of every member", async () => {
-    const s = await setup("full")
-    const channelId = "channel-test"
-    await s.run(
-      Database.use((db) =>
-        Effect.sync(() =>
-          db.run(
-            `INSERT INTO channel (id, server_id, name, name_key, topic, created_at, updated_at, last_read_at)
-             SELECT ?, server_id, 'Team', 'team', '', ?, ?, 0 FROM agent WHERE id = ?`,
-            channelId,
-            Date.now(),
-            Date.now(),
-            s.agent.id,
-          ),
-        ),
-      ),
-    )
-    const place = { kind: "channel", id: channelId } as const
-    await s.run(PlaceMarks.use((m) => Effect.sync(() => m.holdSensitive(place, "cloud"))))
-    expect(await s.run(PlaceMarks.use((m) => Effect.succeed(m.get(place))))).toEqual({
-      outside: null,
-      sensitive: "cloud",
-    })
-    // The first label stays, and the chat of the agent is another place with no mark.
-    await s.run(PlaceMarks.use((m) => Effect.sync(() => m.holdSensitive(place, "keys"))))
-    expect((await s.run(PlaceMarks.use((m) => Effect.succeed(m.get(place))))).sensitive).toBe(
-      "cloud",
-    )
-    expect((await s.current()).sensitive).toBeNull()
-    // A carry copies the marks to another place, and keeps a mark that the target holds.
-    await s.run(PlaceMarks.use((m) => Effect.sync(() => m.carry(place, s.place))))
-    expect((await s.current()).sensitive).toBe("cloud")
-    await s.run(PlaceMarks.use((m) => Effect.sync(() => m.clear(place))))
-    expect((await s.run(PlaceMarks.use((m) => Effect.succeed(m.get(place))))).sensitive).toBeNull()
-    expect((await s.current()).sensitive).toBe("cloud")
-  })
 })
 
 describe("a change to a control place", () => {

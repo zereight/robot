@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import {
-  channelsForFile,
   HANDBOOK_PREVIEW_CHARS,
   HANDBOOK_PREVIEW_LINES,
   handbookPreview,
@@ -12,25 +11,6 @@ import {
 } from "./teamFile.ts"
 
 const picked = (...ids: string[]) => new Set(ids)
-
-describe("channelsForFile", () => {
-  const all = [
-    { id: "c1", memberIds: ["a", "b"] },
-    { id: "c2", memberIds: ["a", "b", "c"] },
-    { id: "c3", memberIds: ["b"] },
-    { id: "c4", memberIds: [] },
-  ]
-
-  test("holds the channels whose members are all among the picked agents", () => {
-    expect(channelsForFile(all, picked("a", "b")).map((c) => c.id)).toEqual(["c1", "c3"])
-    expect(channelsForFile(all, picked("a", "b", "c")).map((c) => c.id)).toEqual(["c1", "c2", "c3"])
-  })
-
-  test("holds no channel for no picked agent, and none that has no member", () => {
-    expect(channelsForFile(all, picked())).toEqual([])
-    expect(channelsForFile(all, picked("a", "b", "c")).some((c) => c.id === "c4")).toBe(false)
-  })
-})
 
 describe("skillsForFile", () => {
   const all = [
@@ -51,18 +31,11 @@ describe("skillsForFile", () => {
 })
 
 describe("planTeam", () => {
-  const channels = [
-    { members: [0, 1], lead: 1 },
-    { members: [2], lead: 2 },
-    { members: [0, 2], lead: 2 },
-  ]
   const skills = [{ agents: [0, 1] }, { agents: [2] }, { agents: [1] }]
   const plan = (made: number[], over: Partial<Parameters<typeof planTeam>[0]> = {}) =>
     planTeam({
-      channels,
       skills,
       made: (i) => made.includes(i),
-      channelPicks: [0, 1, 2],
       skillPicks: [0, 1, 2],
       skillRoom: 100,
       ...over,
@@ -70,22 +43,8 @@ describe("planTeam", () => {
 
   test("makes every part when every agent is made", () => {
     const result = plan([0, 1, 2])
-    expect(result.channels.map((c) => c.index)).toEqual([0, 1, 2])
-    expect(result.channels[0]).toEqual({ index: 0, members: [0, 1], lead: 1 })
     expect(result.skills.map((s) => s.agents)).toEqual([[0, 1], [2], [1]])
     expect(result.skipped).toEqual([])
-  })
-
-  test("a channel is made without a member that is not made; a lead that is not made leaves none", () => {
-    const result = plan([0])
-    expect(result.channels).toEqual([
-      { index: 0, members: [0], lead: null },
-      { index: 2, members: [0], lead: null },
-    ])
-  })
-
-  test("a channel with no member left is not made", () => {
-    expect(plan([0]).skipped).toContainEqual({ kind: "channel", index: 1 })
   })
 
   test("a skill is made for the agents that are made; with none it is not made", () => {
@@ -98,8 +57,7 @@ describe("planTeam", () => {
   })
 
   test("a part that is not ticked is not looked at", () => {
-    const result = plan([0, 1, 2], { channelPicks: [1], skillPicks: [] })
-    expect(result.channels.map((c) => c.index)).toEqual([1])
+    const result = plan([0, 1, 2], { skillPicks: [] })
     expect(result.skills).toEqual([])
     expect(result.skipped).toEqual([])
   })
@@ -119,22 +77,19 @@ describe("planTeam", () => {
 
 describe("skippedNotImported", () => {
   const preview = {
-    channels: [{ name: "Launch" }],
     skills: [{ name: "Summarise" }, { name: "Review" }],
   } as unknown as Parameters<typeof skippedNotImported>[1]
 
-  test("names the channel or the skill and the reason", () => {
+  test("names the skill and the reason", () => {
     expect(
       skippedNotImported(
         [
-          { kind: "channel", index: 0 },
           { kind: "skill", index: 0, reason: "skill_no_agent" },
           { kind: "skill", index: 1, reason: "skills_full" },
         ],
         preview,
       ),
     ).toEqual([
-      { reason: "channel_no_member", owner: "Launch" },
       { reason: "skill_no_agent", owner: "Summarise" },
       { reason: "skills_full", owner: "Review" },
     ])
@@ -142,13 +97,12 @@ describe("skippedNotImported", () => {
 })
 
 describe("ticks", () => {
-  test("channels and skills start ticked, the handbook does not; a hidden secret is not ticked", () => {
+  test("skills start ticked, the handbook does not; a hidden secret is not ticked", () => {
     const ticks = startTeamTicks({
-      channels: [{ secretRemoved: false }, { secretRemoved: true }],
-      skills: [{ secretRemoved: false }],
+      skills: [{ secretRemoved: false }, { secretRemoved: true }],
     } as unknown as Parameters<typeof startTeamTicks>[0])
-    expect(ticks).toEqual({ channels: [true, false], skills: [true], handbook: false })
-    expect(tickedPlaces(ticks.channels)).toEqual([0])
+    expect(ticks).toEqual({ skills: [true, false], handbook: false })
+    expect(tickedPlaces(ticks.skills)).toEqual([0])
   })
 })
 

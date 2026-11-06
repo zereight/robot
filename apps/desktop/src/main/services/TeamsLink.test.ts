@@ -15,7 +15,6 @@ import { appLayer } from "../layers.ts"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
 import { Agents } from "./Agents.ts"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
-import { Channels } from "./Channels.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
 import { Secrets } from "./Secrets.ts"
@@ -209,12 +208,6 @@ describe("the switch and its checks", () => {
         await t.exit(TeamsLink.use((l) => l.update({ targetKind: "agent", targetId: "nope" }))),
       ),
     ).toBe("teams_target_not_found")
-    await dispose(t)
-  })
-
-  test("a new kind of target drops the old id", async () => {
-    const t = await ready()
-    expect((await t.update({ targetKind: "channel" })).fields.targetId).toBeNull()
     await dispose(t)
   })
 
@@ -556,31 +549,6 @@ describe("the states", () => {
     expect((await t.turnOn()).state).toBe("connecting")
     await t.pass(3000)
     expect((await t.view()).state).toBe("on")
-    await dispose(t)
-  })
-
-  test("Target missing: a deleted channel, and the switch refuses an archived target", async () => {
-    const t = await ready()
-    const channel = await t.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: t.server.id,
-          name: "launch",
-          topic: "",
-          memberIds: [],
-          leadId: null,
-        }),
-      ),
-    )
-    await t.update({ targetKind: "channel", targetId: channel.id })
-    await t.turnOn()
-    await t.pass(3000)
-    expect((await t.view()).state).toBe("on")
-    await t.run(Channels.use((c) => c.remove(channel.id)))
-    await settle()
-    expect((await t.view()).state).toBe("targetMissing")
-    await t.turnOff()
-    expect((await t.turnOn()).problems).toEqual(["targetMissing"])
     await dispose(t)
   })
 

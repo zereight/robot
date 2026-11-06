@@ -55,7 +55,6 @@ export type WorkflowFileStep =
       readonly text: string
     })
   | (FileStepBase & { readonly kind: "approval"; readonly message: string })
-  | (FileStepBase & { readonly kind: "post"; readonly text: string })
   | (FileStepBase & { readonly kind: "notify"; readonly title: string })
 
 export interface WorkflowFileConnection {
@@ -79,6 +78,11 @@ export interface WorkflowFileWorkflow {
   readonly steps: readonly WorkflowFileStep[]
   readonly connections: readonly WorkflowFileConnection[]
   readonly notes: readonly WorkflowFileNote[]
+  /**
+   * What the import does not make from an older file: a post step (it is a note now) and a trigger
+   * of a message in a channel (the trigger is manual now). Absent when there is nothing.
+   */
+  readonly notImported?: readonly NotImported[]
 }
 
 export interface WorkflowFile {
@@ -171,7 +175,11 @@ export const gridPlace = (index: number, firstRow = 0) => ({
   y: (Math.floor(index / 3) + firstRow) * GRID_Y,
 })
 
-const readStep = (value: unknown, path: string, index: number): Read<WorkflowFileStep> => {
+/** A post step of an older file (spec 010). ROBot has no such step now: the import makes a note. */
+type OldPostStep = FileStepBase & { readonly kind: "post"; readonly text: string }
+type ReadStep = WorkflowFileStep | OldPostStep
+
+const readStep = (value: unknown, path: string, index: number): Read<ReadStep> => {
   if (!isObject(value)) return fail("workflow_file_field", path)
   const name = readName(value, path, WORKFLOW_NAME_MAX)
   if (!name.ok) return name
@@ -231,7 +239,7 @@ const readStep = (value: unknown, path: string, index: number): Read<WorkflowFil
       return { ok: true, value: { ...base, kind: "approval", message: message.value } }
     }
     case "post": {
-      const text = readText(value, "text", path, STEP_TEXT_MAX, "{{input}}")
+      const text = readText(value, "text", path, STEP_TEXT_MAX, "")
       if (!text.ok) return text
       return { ok: true, value: { ...base, kind: "post", text: text.value } }
     }
@@ -251,7 +259,7 @@ const readConnection = (
   steps: number,
   name: string,
   index: number,
-  kinds: readonly WorkflowFileStep["kind"][],
+  kinds: readonly ReadStep["kind"][],
 ): Read<WorkflowFileConnection> => {
   const place = { kind: "connection" as const, n: index + 1 }
   if (!isObject(value)) return fail("workflow_file_field", path)
@@ -355,11 +363,15 @@ export const graphFault = (
   return loop === null ? null : found("cycle", "connection", loop)
 }
 
+/** The kinds of trigger of an older file that ROBot has no more: a message in a channel. */
+const OLD_TRIGGERS: readonly string[] = ["channel", "message"]
+
 const readWorkflow = (value: unknown, path: string): Read<WorkflowFileWorkflow> => {
   if (!isObject(value)) return fail("workflow_file_field", path)
   const name = readName(value, path, WORKFLOW_NAME_MAX)
   if (!name.ok) return name
 
+  const notImported: NotImported[] = []
   let trigger: WorkflowFileTrigger = { kind: "manual" }
   const rawTrigger = value.trigger
   if (rawTrigger !== undefined && rawTrigger !== null) {
@@ -368,7 +380,14 @@ const readWorkflow = (value: unknown, path: string): Read<WorkflowFileWorkflow> 
       const schedule = readSchedule(rawTrigger.schedule)
       if (!schedule) return fail("workflow_file_schedule", `${path}.trigger.schedule`)
       trigger = { kind: "schedule", schedule }
-    } else if (rawTrigger.kind !== "manual")
+    } else if (OLD_TRIGGERS.includes(rawTrigger.kind as string))
+      // A message in a channel (an older file): ROBot has no channels, so the trigger is manual.
+      notImported.push({
+        reason: "no_trigger",
+        owner: name.value,
+        trigger: rawTrigger.kind as string,
+      })
+    else if (rawTrigger.kind !== "manual")
       return fail("workflow_file_field", `${path}.trigger.kind`)
   }
 
@@ -383,22 +402,22 @@ const readWorkflow = (value: unknown, path: string): Read<WorkflowFileWorkflow> 
         place: { kind: "steps", n: rawSteps.length },
       } satisfies GraphFault),
     )
-  const steps: WorkflowFileStep[] = []
+  const read: ReadStep[] = []
   for (const [i, raw] of rawSteps.entries()) {
     const step = readStep(raw, `${path}.steps[${i}]`, i)
     if (!step.ok) return step
-    steps.push(step.value)
+    read.push(step.value)
   }
 
   const rawConnections = value.connections ?? []
   if (!Array.isArray(rawConnections)) return fail("workflow_file_field", `${path}.connections`)
-  const kinds = steps.map((s) => s.kind)
+  const kinds = read.map((s) => s.kind)
   const connections: WorkflowFileConnection[] = []
   for (const [i, raw] of rawConnections.entries()) {
     const connection = readConnection(
       raw,
       `${path}.connections[${i}]`,
-      steps.length,
+      read.length,
       name.value,
       i,
       kinds,
@@ -417,7 +436,7 @@ const readWorkflow = (value: unknown, path: string): Read<WorkflowFileWorkflow> 
   const rawNotes = value.notes ?? []
   if (!Array.isArray(rawNotes)) return fail("workflow_file_field", `${path}.notes`)
   if (rawNotes.length > WORKFLOW_NOTES_MAX) return fail("workflow_file_field", `${path}.notes`)
-  const firstRow = Math.ceil(steps.length / 3) + 1
+  const firstRow = Math.ceil(read.length / 3) + 1
   const notes: WorkflowFileNote[] = []
   for (const [i, raw] of rawNotes.entries()) {
     const note = readNote(raw, `${path}.notes[${i}]`, i, firstRow)
@@ -425,9 +444,46 @@ const readWorkflow = (value: unknown, path: string): Read<WorkflowFileWorkflow> 
     notes.push(note.value)
   }
 
-  const fault = graphFault(name.value, steps, connections)
+  // A post step of an older file becomes a pink note at its place, as a node of a CC Workflow
+  // Studio file that has no step (spec 010). Its connections are dropped, and the numbers of the
+  // steps after it go down.
+  const steps: WorkflowFileStep[] = []
+  const number = new Map<number, number>()
+  for (const [i, step] of read.entries()) {
+    if (step.kind !== "post") {
+      steps.push(step)
+      number.set(i + 1, steps.length)
+      continue
+    }
+    notImported.push({ reason: "no_step", owner: name.value, nodeType: "post", name: step.name })
+    if (notes.length >= WORKFLOW_NOTES_MAX) continue
+    const text = [`Not imported: post ${step.name}`, step.text].filter((t) => t !== "").join("\n")
+    notes.push({
+      text: [...text].slice(0, NOTE_TEXT_MAX).join(""),
+      tone: "pink",
+      x: step.x,
+      y: step.y,
+    })
+  }
+  const kept = connections.flatMap((c) => {
+    const from = number.get(c.from)
+    const to = number.get(c.to)
+    return from === undefined || to === undefined ? [] : [{ ...c, from, to }]
+  })
+
+  const fault = graphFault(name.value, steps, kept)
   if (fault) return fail("workflow_file_graph", JSON.stringify(fault))
-  return { ok: true, value: { name: name.value, trigger, steps, connections, notes } }
+  return {
+    ok: true,
+    value: {
+      name: name.value,
+      trigger,
+      steps,
+      connections: kept,
+      notes,
+      ...(notImported.length > 0 ? { notImported } : {}),
+    },
+  }
 }
 
 /**
@@ -479,8 +535,6 @@ const writeStep = (step: WorkflowFileStep) => {
       return { ...base, mode: step.mode, text: step.text }
     case "approval":
       return { ...base, message: step.message }
-    case "post":
-      return { ...base, text: step.text }
     case "notify":
       return { ...base, title: step.title }
   }
@@ -532,8 +586,6 @@ export const mapFileTexts = (
             return { ...s, name, text: change(s.text) }
           case "approval":
             return { ...s, name, message: change(s.message) }
-          case "post":
-            return { ...s, name, text: change(s.text) }
           default:
             return { ...s, name, title: clip(change(s.title), NOTIFY_TITLE_MAX) }
         }
@@ -609,8 +661,7 @@ export const missingAgentNames = (
  * The workflow that an import makes from the entry of a file. `agentId` gives the id of the agent
  * that has a name (see `nameKey`), or undefined when there is none: then the step has no agent
  * ("Pick an agent"). `defaultAgentId` is the agent that the user picked for the steps that name no
- * agent (a CC Workflow Studio file names none). A post step has no place ("Pick a place"),
- * because the file holds no channel.
+ * agent (a CC Workflow Studio file names none).
  * The ids of steps, connections and notes are numbers with a letter, only for this workflow.
  */
 export const toWorkflowInput = (
@@ -636,8 +687,6 @@ export const toWorkflowInput = (
         return { ...base, kind: "condition", contains: s.text, mode: s.mode }
       case "approval":
         return { ...base, kind: "approval", message: s.message }
-      case "post":
-        return { ...base, kind: "post", channelId: "", text: s.text }
       default:
         return { ...base, kind: "notify", title: s.title }
     }

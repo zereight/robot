@@ -4,38 +4,26 @@ import {
   AGENT_MESSAGE_KINDS,
   AGENT_NAME_MAX,
   AGENT_ROLE_MAX,
-  CHANNEL_INSTRUCTIONS_MAX,
-  CHANNEL_NAME_MAX,
-  CHANNEL_TOPIC_MAX,
   CONNECTION_NAME_MAX,
   charLength,
-  DECISIONS,
   EdgeSchema,
   ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
-  HAND_OFF_RANGES,
-  HAND_OFF_RULES,
   HANDBOOK_MAX,
   HANDBOOK_SOURCES,
   HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
-  isChannelPicture,
   isOutsideSource,
   isPlaceOutside,
   isSensitiveLabel,
   KNOWLEDGE_TITLE_MAX,
-  LEAD_REASON_MAX,
-  LINE_AGENTS_MAX,
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
-  ORG_GOAL_MAX,
-  ORG_NAME_MAX,
   parseOutsideSource,
   parsePlaceOutside,
   placeOutsideText,
-  REVIEW_CHANGES_MAX,
   ROUTINE_NAME_MAX,
   ROUTINE_PROMPT_MAX,
   RUN_STATES,
@@ -55,8 +43,6 @@ import {
   TEAMS_SENDER_MAX,
   THREAD_TITLE_MAX,
   TriggerSchema,
-  VERDICTS,
-  validDailyLimit,
   validSchedule,
   validTokenLimit,
   validWatch,
@@ -178,38 +164,6 @@ const ATTACHMENT_PATH = /^attachments\/[^/\\]{1,255}$/
 /** The text of an article in a card that asks: the body, with the lines of its header. */
 const ARTICLE_TEXT_MAX = 200_000
 
-/** The lead of a question card: its id and its name at that time (spec 004). */
-const leadRefCheck = (v: unknown): boolean =>
-  isObject(v) &&
-  shape(["agentId", "name"])(v) &&
-  str(100, 1)(v.agentId) &&
-  str(AGENT_NAME_MAX * 4)(v.name)
-
-/** A question that an agent passed: the kind of the pass is data (spec 030). */
-const passCheck = (v: unknown): boolean =>
-  isObject(v) &&
-  shape(["agentId", "name", "kind", "reason"])(v) &&
-  str(100, 1)(v.agentId) &&
-  str(AGENT_NAME_MAX * 4)(v.name) &&
-  oneOf(["user_choice", "not_sure", "late", "failure"])(v.kind) &&
-  str(LEAD_REASON_MAX * 4)(v.reason)
-
-/** The passes of a question, oldest first: the lead and then the agents of the line (spec 030). */
-const passesCheck = (v: unknown): boolean =>
-  Array.isArray(v) && v.length <= LINE_AGENTS_MAX + 1 && v.every(passCheck)
-
-/**
- * "Answered by <agent>" on a finished question card, with the reason (spec 004), and the passes
- * before the answer when an agent of the line answered (spec 030).
- */
-const leadAnswerCheck = (v: unknown): boolean =>
-  isObject(v) &&
-  shape(["agentId", "name", "reason"], ["passes"])(v) &&
-  str(100, 1)(v.agentId) &&
-  str(AGENT_NAME_MAX * 4)(v.name) &&
-  str(LEAD_REASON_MAX * 4)(v.reason) &&
-  (v.passes === undefined || passesCheck(v.passes))
-
 const askCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
   const timeOk = v.askedAt === undefined || int(v.askedAt)
@@ -230,20 +184,11 @@ const askCheck = (v: unknown): boolean => {
   if (v.kind === "question") {
     return (
       timeOk &&
-      shape(
-        ["kind", "question", "choices"],
-        ["askedAt", "lead", "passed", "passes", "lineLate"],
-      )(v) &&
+      shape(["kind", "question", "choices"], ["askedAt"])(v) &&
       str(5000)(v.question) &&
       Array.isArray(v.choices) &&
       v.choices.length <= 50 &&
-      v.choices.every(str(1000)) &&
-      // The lead that looks at the question, or that passed it (spec 004, "Questions of members").
-      (v.lead === undefined || leadRefCheck(v.lead)) &&
-      (v.passed === undefined || passCheck(v.passed)) &&
-      // Every pass of the question, and the line "No agent on the line answered in time."
-      (v.passes === undefined || passesCheck(v.passes)) &&
-      (v.lineLate === undefined || bool(v.lineLate))
+      v.choices.every(str(1000))
     )
   }
   // A protected card (spec 020). It holds no value: the other computer shows "Answer this on".
@@ -492,7 +437,6 @@ const partCheck = (v: unknown): boolean => {
             "secret",
             "settings",
             "connection",
-            "answeredByLead",
           ],
         )(v) &&
         str(200, 1)(v.id) &&
@@ -508,7 +452,6 @@ const partCheck = (v: unknown): boolean => {
         (v.secret === undefined || oneOf(["saved", "cancelled"])(v.secret)) &&
         (v.settings === undefined || settingsNoteCheck(v.settings)) &&
         (v.connection === undefined || connectionNoteCheck(v.connection)) &&
-        (v.answeredByLead === undefined || leadAnswerCheck(v.answeredByLead)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
             shape(["answer", "by"])(v.decision) &&
@@ -679,77 +622,6 @@ const account: KindDef = {
     ctx.db.run("DELETE FROM provider_account WHERE id = ?", id)
   },
   label: (f) => String(f.name ?? ""),
-}
-
-// ------------------------------------------------------------------------------ organization
-
-interface OrganizationRow {
-  hand_off: string
-  ask_up_the_line: number
-  changed_at: number
-}
-
-/**
- * The value "Along the channels" moved to "Along the organizations" (spec 030, "Migration"). A
- * computer of an older version still sends the old value. It counts as the new one, so its change
- * of the rule still arrives. This computer never sends the old value.
- */
-const LEGACY_HAND_OFF = "channels"
-const handOffOf = (value: unknown): string =>
-  value === LEGACY_HAND_OFF ? "organizations" : String(value)
-
-/**
- * The part "Organization" of the settings (spec 013, 030, 019): the hand-off rule and the switch
- * "Ask up the line". It is data of the agents, like the handbook: a change on one computer counts
- * on the other after it syncs, and the later change wins. The profile has one row, always with the
- * same id, so both computers name the same item. A profile with no row has the default rule, "Any
- * agent", and the switch off, so a deletion from the other computer sets the defaults. A computer
- * of an older step has no such item, and an older one of this item has no switch (it counts as
- * off).
- */
-const org: KindDef = {
-  kind: "org",
-  rank: 0,
-  fields: {
-    handOff: { check: oneOf([...HAND_OFF_RULES, LEGACY_HAND_OFF]) },
-    askUpTheLine: { check: bool },
-  },
-  required: ["handOff"],
-  fixed: [],
-  count: (db) => q.count(db, "organization"),
-  ids: (db, after, limit) => q.ids(db, "organization", after, limit),
-  read: (ctx, id) => {
-    const r = ctx.db.get<OrganizationRow>("SELECT * FROM organization WHERE id = ?", id)
-    if (!r) return undefined
-    return {
-      fields: { handOff: r.hand_off, askUpTheLine: r.ask_up_the_line === 1 },
-      parent: null,
-      wall: r.changed_at,
-    }
-  },
-  create: (ctx, id, f) => {
-    if (id !== "organization") return false
-    ctx.db.run(
-      "INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at) VALUES (?, ?, ?, ?)",
-      id,
-      handOffOf(f.handOff),
-      f.askUpTheLine === true ? 1 : 0,
-      ctx.now(),
-    )
-    return true
-  },
-  write: (ctx, id, f) => {
-    if (f.handOff !== undefined)
-      ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", handOffOf(f.handOff), id)
-    if (typeof f.askUpTheLine === "boolean")
-      ctx.db.run(
-        "UPDATE organization SET ask_up_the_line = ? WHERE id = ?",
-        f.askUpTheLine ? 1 : 0,
-        id,
-      )
-  },
-  remove: (ctx, id) => ctx.db.run("DELETE FROM organization WHERE id = ?", id),
-  label: (f) => String(f.handOff ?? ""),
 }
 
 // ------------------------------------------------------------------------------ agent
@@ -1016,297 +888,6 @@ const agent: KindDef = {
     "",
 }
 
-// ------------------------------------------------------------------------------ channel
-
-interface ChannelRow {
-  id: string
-  name: string
-  topic: string
-  instructions: string
-  lead_agent_id: string | null
-  review_parts: number
-  lead_answers: number
-  picture: string | null
-  sensitive_mark: string | null
-  outside_mark: string | null
-  created_at: number
-  updated_at: number
-  last_read_at: number
-}
-
-const setMembers = (ctx: Ctx, channelId: string, members: readonly string[]) => {
-  ctx.db.run("DELETE FROM channel_member WHERE channel_id = ?", channelId)
-  let position = 0
-  for (const agentId of members) {
-    if (!has(ctx.db, "agent", agentId)) continue
-    ctx.db.run(
-      "INSERT OR IGNORE INTO channel_member (channel_id, agent_id, position) VALUES (?, ?, ?)",
-      channelId,
-      agentId,
-      position++,
-    )
-  }
-}
-
-/**
- * The fields that a channel had before the organizations (spec 030, "Migration", "What the channel
- * loses"): the parent channel and the daily token limit. They moved to the organizations. A
- * computer of an older version still sends them with a channel. They are checked and then ignored,
- * so its other changes of the channel still arrive. This computer never sends them. This is the
- * one place for both.
- */
-const LEGACY_CHANNEL_FIELDS: Readonly<Record<string, FieldDef>> = {
-  parentChannel: { check: nullable(str(100, 1)) },
-  dailyTokenLimit: { check: nullable(validDailyLimit) },
-}
-
-const channel: KindDef = {
-  kind: "channel",
-  rank: 2,
-  fields: {
-    name: {
-      check: (v) => {
-        if (typeof v !== "string") return false
-        const n = charLength(v.trim())
-        return n >= 1 && n <= CHANNEL_NAME_MAX
-      },
-    },
-    topic: { check: (v) => typeof v === "string" && charLength(v) <= CHANNEL_TOPIC_MAX },
-    // The instructions of the channel (spec 004, 019). A computer of an older step has none, and
-    // they count as empty.
-    instructions: {
-      check: (v) => typeof v === "string" && charLength(v) <= CHANNEL_INSTRUCTIONS_MAX,
-    },
-    lead: { check: nullable(str(100, 1)) },
-    // "Review parts" (spec 004). A computer of an older step has none, and it counts as off.
-    reviewParts: { check: (v) => typeof v === "boolean" },
-    // "The lead answers questions" (spec 004, 019). A computer of an older step has none, and it
-    // counts as on, the default.
-    leadAnswers: { check: (v) => typeof v === "boolean" },
-    // The picture of the channel (spec 004, 019): a square PNG of at most 256 px and 1 MB as a data
-    // address, or none. A computer of an older step has none.
-    picture: { check: nullable(isChannelPicture) },
-    // The mark of a sensitive read of the channel (spec 007). A computer of an older step has none.
-    sensitive: { check: nullable(isSensitiveLabel) },
-    // The outside content that the next turns of the channel hold, with the program mark (spec 007).
-    // A computer of an older step has none.
-    outside: { check: nullable(isPlaceOutside) },
-    ...LEGACY_CHANNEL_FIELDS,
-    members: {
-      check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
-    },
-    readAt: { check: int, merge: "max" },
-    createdAt: { check: int },
-  },
-  required: ["name", "topic", "lead", "members", "createdAt"],
-  fixed: ["createdAt"],
-  count: (db) => q.count(db, "channel"),
-  ids: (db, after, limit) => q.ids(db, "channel", after, limit),
-  read: (ctx, id) => {
-    const r = ctx.db.get<ChannelRow>("SELECT * FROM channel WHERE id = ?", id)
-    if (!r) return undefined
-    return {
-      fields: {
-        name: r.name,
-        topic: r.topic,
-        instructions: r.instructions,
-        lead: r.lead_agent_id,
-        reviewParts: r.review_parts === 1,
-        leadAnswers: r.lead_answers === 1,
-        picture: isChannelPicture(r.picture) ? r.picture : null,
-        sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
-        outside: parsePlaceOutside(r.outside_mark),
-        members: ctx.db
-          .all<{ agent_id: string }>(
-            "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
-            id,
-          )
-          .map((m) => m.agent_id),
-        readAt: r.last_read_at,
-        createdAt: r.created_at,
-      },
-      parent: null,
-      wall: r.updated_at,
-    }
-  },
-  create: (ctx, id, f) => {
-    const now = ctx.now()
-    insert(ctx.db, "channel", {
-      id,
-      server_id: ctx.localServerId(),
-      name: (f.name as string).trim(),
-      name_key: nameKey(f.name as string),
-      topic: f.topic,
-      instructions: typeof f.instructions === "string" ? f.instructions : "",
-      lead_agent_id: f.lead,
-      review_parts: f.reviewParts === true ? 1 : 0,
-      lead_answers: f.leadAnswers === false ? 0 : 1,
-      picture: isChannelPicture(f.picture) ? f.picture : null,
-      sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
-      outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
-      created_at: f.createdAt,
-      updated_at: now,
-      last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
-    })
-    setMembers(ctx, id, f.members as string[])
-    return true
-  },
-  write: (ctx, id, f) => {
-    const row = ctx.db.get<ChannelRow>("SELECT * FROM channel WHERE id = ?", id)
-    if (!row) return
-    const columns: Record<string, unknown> = {}
-    if (f.name !== undefined) {
-      columns.name = (f.name as string).trim()
-      columns.name_key = nameKey(f.name as string)
-    }
-    if (f.topic !== undefined) columns.topic = f.topic
-    if (typeof f.instructions === "string") columns.instructions = f.instructions
-    if (f.lead !== undefined) columns.lead_agent_id = f.lead
-    if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
-    if (typeof f.leadAnswers === "boolean") columns.lead_answers = f.leadAnswers ? 1 : 0
-    if (f.picture !== undefined) columns.picture = isChannelPicture(f.picture) ? f.picture : null
-    if (f.sensitive !== undefined)
-      columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
-    if (f.outside !== undefined)
-      columns.outside_mark = placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null)
-    if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
-    columns.updated_at = ctx.now()
-    update(ctx.db, "channel", "id = ?", [id], columns)
-    if (f.members !== undefined) setMembers(ctx, id, f.members as string[])
-  },
-  remove: (ctx, id) => {
-    // The notes for the channel go with it (spec 008, "Channel notes"). The other computer sends
-    // the removal of each note too, and makes no history row here (spec 019).
-    ctx.db.run("DELETE FROM memory WHERE channel_id = ?", id)
-    ctx.db.run("DELETE FROM channel WHERE id = ?", id)
-  },
-  label: (f) => String(f.name ?? ""),
-}
-
-// ------------------------------------------------------------------------------ organization
-
-interface OrgUnitRow {
-  id: string
-  name: string
-  lead_agent_id: string | null
-  parent_id: string | null
-  hand_off_range: string
-  daily_token_limit: number | null
-  goal: string | null
-  created_at: number
-  updated_at: number
-}
-
-const setOrgMembers = (ctx: Ctx, orgId: string, members: readonly string[]) => {
-  ctx.db.run("DELETE FROM org_member WHERE org_id = ?", orgId)
-  let position = 0
-  for (const agentId of members) {
-    if (!has(ctx.db, "agent", agentId)) continue
-    ctx.db.run(
-      "INSERT OR IGNORE INTO org_member (org_id, agent_id, position) VALUES (?, ?, ?)",
-      orgId,
-      agentId,
-      position++,
-    )
-  }
-}
-
-/**
- * An organization (spec 030, 019): its name, members, lead, parent organization, hand-off range and
- * daily token limit. The tools of an organization do not sync, because skills and connections do
- * not. A parent that has not come yet, or is gone, counts as no parent, so the row needs no order of
- * its own. After a sync the tree is checked (`repairOrgs` of the engine).
- */
-const orgunit: KindDef = {
-  kind: "orgunit",
-  rank: 2,
-  fields: {
-    name: {
-      check: (v) => {
-        if (typeof v !== "string") return false
-        const n = charLength(v.trim())
-        return n >= 1 && n <= ORG_NAME_MAX
-      },
-    },
-    lead: { check: nullable(str(100, 1)) },
-    parent: { check: nullable(str(100, 1)) },
-    members: {
-      check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
-    },
-    handOffRange: { check: oneOf(HAND_OFF_RANGES) },
-    dailyTokenLimit: { check: nullable(validDailyLimit) },
-    // The goal of an organization (spec 030, "Goal"). A computer of an older step has none, and the
-    // field stays absent there.
-    goal: { check: (v) => typeof v === "string" && charLength(v) <= ORG_GOAL_MAX },
-    createdAt: { check: int },
-  },
-  required: ["name", "lead", "parent", "members", "handOffRange", "dailyTokenLimit", "createdAt"],
-  fixed: ["createdAt"],
-  count: (db) => q.count(db, "org_unit"),
-  ids: (db, after, limit) => q.ids(db, "org_unit", after, limit),
-  read: (ctx, id) => {
-    const r = ctx.db.get<OrgUnitRow>("SELECT * FROM org_unit WHERE id = ?", id)
-    if (!r) return undefined
-    return {
-      fields: {
-        name: r.name,
-        lead: r.lead_agent_id,
-        parent: r.parent_id,
-        members: ctx.db
-          .all<{ agent_id: string }>(
-            "SELECT agent_id FROM org_member WHERE org_id = ? ORDER BY position",
-            id,
-          )
-          .map((m) => m.agent_id),
-        handOffRange: r.hand_off_range,
-        dailyTokenLimit: r.daily_token_limit,
-        goal: r.goal ?? "",
-        createdAt: r.created_at,
-      },
-      parent: null,
-      wall: r.updated_at,
-    }
-  },
-  create: (ctx, id, f) => {
-    insert(ctx.db, "org_unit", {
-      id,
-      server_id: ctx.localServerId(),
-      name: (f.name as string).trim(),
-      name_key: nameKey(f.name as string),
-      lead_agent_id: f.lead,
-      parent_id: typeof f.parent === "string" ? f.parent : null,
-      hand_off_range: f.handOffRange,
-      daily_token_limit: validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null,
-      goal: typeof f.goal === "string" ? f.goal : "",
-      created_at: f.createdAt,
-      updated_at: ctx.now(),
-    })
-    setOrgMembers(ctx, id, f.members as string[])
-    return true
-  },
-  write: (ctx, id, f) => {
-    if (!has(ctx.db, "org_unit", id)) return
-    const columns: Record<string, unknown> = {}
-    if (f.name !== undefined) {
-      columns.name = (f.name as string).trim()
-      columns.name_key = nameKey(f.name as string)
-    }
-    if (f.lead !== undefined) columns.lead_agent_id = f.lead
-    if (f.parent !== undefined) columns.parent_id = typeof f.parent === "string" ? f.parent : null
-    if (typeof f.handOffRange === "string") columns.hand_off_range = f.handOffRange
-    if (f.dailyTokenLimit !== undefined)
-      columns.daily_token_limit = validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null
-    if (f.goal !== undefined) columns.goal = typeof f.goal === "string" ? f.goal : ""
-    columns.updated_at = ctx.now()
-    update(ctx.db, "org_unit", "id = ?", [id], columns)
-    if (f.members !== undefined) setOrgMembers(ctx, id, f.members as string[])
-  },
-  remove: (ctx, id) => {
-    ctx.db.run("DELETE FROM org_unit WHERE id = ?", id)
-  },
-  label: (f) => String(f.name ?? ""),
-}
-
 // ------------------------------------------------------------------------------ memory
 
 interface MemoryRow {
@@ -1316,7 +897,6 @@ interface MemoryRow {
   source: string
   created_at: number
   updated_at: number
-  channel_id: string | null
 }
 
 const memory: KindDef = {
@@ -1331,8 +911,6 @@ const memory: KindDef = {
     source: { check: oneOf(["user", "agent", "proposal"]) },
     createdAt: { check: int },
     updatedAt: { check: int },
-    // The channel of a channel note, or null for a general item. A move changes it (spec 008, 019).
-    channelId: { check: nullable(str(100, 1)) },
   },
   required: ["agentId", "text", "source", "createdAt", "updatedAt"],
   fixed: ["agentId", "source", "createdAt"],
@@ -1348,7 +926,6 @@ const memory: KindDef = {
         source: r.source,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
-        channelId: r.channel_id,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.updated_at,
@@ -1356,10 +933,6 @@ const memory: KindDef = {
   },
   create: (ctx, id, f) => {
     if (!has(ctx.db, "agent", f.agentId as string)) return false
-    // A note for a channel that this computer does not hold (yet, or any more) waits: the channel
-    // comes first in the order of kinds, so a missing one is a channel that was deleted here.
-    const channelId = typeof f.channelId === "string" ? f.channelId : null
-    if (channelId !== null && !has(ctx.db, "channel", channelId)) return false
     insert(ctx.db, "memory", {
       id,
       agent_id: f.agentId,
@@ -1367,7 +940,6 @@ const memory: KindDef = {
       source: f.source,
       created_at: f.createdAt,
       updated_at: f.updatedAt,
-      channel_id: channelId,
     })
     return true
   },
@@ -1375,11 +947,6 @@ const memory: KindDef = {
     update(ctx.db, "memory", "id = ?", [id], {
       ...(f.text !== undefined ? { text: (f.text as string).trim() } : {}),
       ...(f.updatedAt !== undefined ? { updated_at: f.updatedAt } : {}),
-      // A move: a channel that this computer does not hold leaves the item where it is.
-      ...(f.channelId === null ||
-      (typeof f.channelId === "string" && has(ctx.db, "channel", f.channelId))
-        ? { channel_id: f.channelId }
-        : {}),
     }),
   remove: (ctx, id) => ctx.db.run("DELETE FROM memory WHERE id = ?", id),
   label: (f) => [...String(f.text ?? "")].slice(0, 60).join(""),
@@ -1772,145 +1339,6 @@ const thread: KindDef = {
   label: (f) => (typeof f.title === "string" ? f.title : ""),
 }
 
-interface ChannelMessageRow {
-  id: string
-  channel_id: string
-  author: string
-  agent_id: string | null
-  kind: string
-  parts: string
-  status: string
-  error_code: string | null
-  error_detail: string | null
-  error_resets_at: number | null
-  task_id: string | null
-  awaiting: number
-  model: string | null
-  created_at: number
-  finished_at: number | null
-  from_name: string | null
-  origin: string | null
-  program_mark: string | null
-  outside_mark: string | null
-  teams_sender: string | null
-}
-
-const cmessage: KindDef = {
-  kind: "cmessage",
-  rank: 3,
-  fields: {
-    channelId: { check: str(100, 1) },
-    author: { check: oneOf(["user", "agent"]) },
-    agentId: { check: nullable(str(100, 1)) },
-    kind: { check: oneOf(["text", "plan", "summary"]) },
-    parts: { check: partsCheck },
-    status: { check: oneOf(MESSAGE_STATUS) },
-    error: { check: errorCheck },
-    taskId: { check: nullable(str(100, 1)) },
-    awaiting: { check: bool },
-    model: { check: nullable(str(300)) },
-    createdAt: { check: int },
-    finishedAt: { check: nullable(int) },
-    sender: { check: nullable(str(100)) },
-    origin: { check: str(64, 1) },
-    // As for a message of a chat: the first source of a turn that holds the program mark.
-    programMark: { check: nullable(isOutsideSource) },
-    // As for a message of a chat: the first source of a turn that held outside content.
-    outsideMark: { check: nullable(isOutsideSource) },
-    // As for a message of a chat: the name of the sender of a message from Teams (spec 028).
-    teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
-  },
-  required: [
-    "channelId",
-    "author",
-    "agentId",
-    "kind",
-    "parts",
-    "status",
-    "error",
-    "taskId",
-    "awaiting",
-    "model",
-    "createdAt",
-    "finishedAt",
-    "sender",
-    "origin",
-  ],
-  fixed: ["channelId", "author", "agentId", "createdAt", "sender", "origin", "teamsSender"],
-  count: (db) => q.count(db, "channel_message"),
-  ids: (db, after, limit) => q.ids(db, "channel_message", after, limit),
-  read: (ctx, id) => {
-    const r = ctx.db.get<ChannelMessageRow>("SELECT * FROM channel_message WHERE id = ?", id)
-    if (!r) return undefined
-    return {
-      fields: {
-        channelId: r.channel_id,
-        author: r.author,
-        agentId: r.agent_id,
-        kind: r.kind,
-        parts: JSON.parse(r.parts),
-        status: r.status,
-        error: errorOf(r),
-        taskId: r.task_id,
-        awaiting: r.awaiting === 1,
-        model: r.model,
-        createdAt: r.created_at,
-        finishedAt: r.finished_at,
-        sender: r.from_name,
-        origin: r.origin ?? ctx.self,
-        programMark: parseOutsideSource(r.program_mark),
-        outsideMark: parseOutsideSource(r.outside_mark),
-        teamsSender: r.teams_sender,
-      },
-      parent: { kind: "channel", id: r.channel_id },
-      wall: Math.max(r.created_at, r.finished_at ?? 0),
-    }
-  },
-  create: (ctx, id, f) => {
-    if (!has(ctx.db, "channel", f.channelId as string)) return false
-    const peer = ctx.peer()
-    insert(ctx.db, "channel_message", {
-      id,
-      channel_id: f.channelId,
-      author: f.author,
-      agent_id: f.agentId,
-      kind: f.kind,
-      parts: JSON.stringify(f.parts),
-      status: f.status,
-      ...errorColumns(f.error),
-      task_id: f.taskId,
-      awaiting: f.awaiting ? 1 : 0,
-      model: f.model,
-      input_tokens: 0,
-      output_tokens: 0,
-      created_at: f.createdAt,
-      finished_at: f.finishedAt,
-      from_device: peer?.id ?? null,
-      from_name: (f.sender as string | null) ?? peer?.name ?? null,
-      origin: originColumn(ctx, f.origin),
-      program_mark: markColumn(f.programMark),
-      outside_mark: markColumn(f.outsideMark),
-      teams_sender: (f.teamsSender as string | null | undefined) ?? null,
-    })
-    return true
-  },
-  write: (ctx, id, f) =>
-    update(ctx.db, "channel_message", "id = ?", [id], {
-      ...(f.programMark !== undefined ? { program_mark: markColumn(f.programMark) } : {}),
-      ...(f.outsideMark !== undefined ? { outside_mark: markColumn(f.outsideMark) } : {}),
-      ...(f.kind !== undefined ? { kind: f.kind } : {}),
-      ...(f.parts !== undefined ? { parts: JSON.stringify(f.parts) } : {}),
-      ...(f.status !== undefined ? { status: f.status } : {}),
-      ...(f.error !== undefined ? errorColumns(f.error) : {}),
-      ...(f.taskId !== undefined ? { task_id: f.taskId } : {}),
-      ...(f.awaiting !== undefined ? { awaiting: f.awaiting ? 1 : 0 } : {}),
-      ...(f.model !== undefined ? { model: f.model } : {}),
-      ...(f.finishedAt !== undefined ? { finished_at: f.finishedAt } : {}),
-    }),
-  remove: (ctx, id) => ctx.db.run("DELETE FROM channel_message WHERE id = ?", id),
-  label: (f) => firstText(f.parts),
-}
-
 // ------------------------------------------------------------------------------ task
 
 interface TaskRow {
@@ -1933,15 +1361,8 @@ interface TaskRow {
   first_reply_at: number | null
   origin: string | null
   progress: string | null
-  done_test: string | null
-  verdict: string | null
-  verdict_reason: string | null
-  judged_at: number | null
-  decided_at: number | null
   ended_at: number | null
   ended_as: string | null
-  decision: string | null
-  decision_text: string | null
   agent_message: string | null
   input_tokens: number | null
   output_tokens: number | null
@@ -1977,18 +1398,9 @@ const task: KindDef = {
     origin: { check: str(64, 1) },
     // How far the turn went (spec 005). It syncs with the task; null for a task from before.
     progress: { check: nullable(oneOf(TASK_PROGRESS)) },
-    // The done test, the verdict of the lead and the decision of the user (spec 004, 005, 019).
-    // The done test is set when the part is made. The verdict and the decision come later.
-    doneTest: { check: nullable(str(1000, 1)) },
-    verdict: { check: nullable(oneOf(VERDICTS)) },
-    verdictReason: { check: nullable(str(1000, 1)) },
-    judgedAt: { check: nullable(int) },
-    decidedAt: { check: nullable(int) },
-    // The moments of a task (spec 005, 019): when the turn ended and how, and what the user decided.
+    // The moments of a task (spec 005, 019): when the turn ended and how.
     endedAt: { check: nullable(int) },
     endedAs: { check: nullable(oneOf(ENDED_AS)) },
-    decision: { check: nullable(oneOf(DECISIONS)) },
-    decisionText: { check: nullable(str(REVIEW_CHANGES_MAX * 2)) },
     // A send or a reply of a message from another agent (spec 029, 019). It is set when the task
     // is made. A computer of an older step has none: the task is then not counted as a hand-off.
     agentMessage: { check: nullable(oneOf(AGENT_MESSAGE_KINDS)) },
@@ -2016,15 +1428,8 @@ const task: KindDef = {
     "finishedAt",
     "origin",
     "progress",
-    "doneTest",
-    "verdict",
-    "verdictReason",
-    "judgedAt",
-    "decidedAt",
     "endedAt",
     "endedAs",
-    "decision",
-    "decisionText",
   ],
   fixed: [
     "agentId",
@@ -2037,7 +1442,6 @@ const task: KindDef = {
     "createdAt",
     "askedAt",
     "origin",
-    "doneTest",
     "agentMessage",
   ],
   count: (db) => q.count(db, "task"),
@@ -2064,15 +1468,8 @@ const task: KindDef = {
         firstReplyAt: r.first_reply_at,
         origin: r.origin ?? ctx.self,
         progress: r.progress,
-        doneTest: r.done_test,
-        verdict: r.verdict,
-        verdictReason: r.verdict_reason,
-        judgedAt: r.judged_at,
-        decidedAt: r.decided_at,
         endedAt: r.ended_at,
         endedAs: r.ended_as,
-        decision: r.decision,
-        decisionText: r.decision_text,
         agentMessage: r.agent_message,
         inputTokens: r.input_tokens,
         outputTokens: r.output_tokens,
@@ -2107,15 +1504,8 @@ const task: KindDef = {
       first_reply_at: f.firstReplyAt ?? null,
       origin: originColumn(ctx, f.origin),
       progress: f.progress,
-      done_test: f.doneTest ?? null,
-      verdict: f.verdict ?? null,
-      verdict_reason: f.verdictReason ?? null,
-      judged_at: f.judgedAt ?? null,
-      decided_at: f.decidedAt ?? null,
       ended_at: f.endedAt ?? null,
       ended_as: f.endedAs ?? null,
-      decision: f.decision ?? null,
-      decision_text: f.decisionText ?? null,
       agent_message: f.agentMessage ?? null,
       input_tokens: f.inputTokens ?? null,
       output_tokens: f.outputTokens ?? null,
@@ -2129,14 +1519,8 @@ const task: KindDef = {
     const e = f.error as { code: string; detail: string } | null | undefined
     update(ctx.db, "task", "id = ?", [id], {
       ...(f.progress !== undefined ? { progress: f.progress } : {}),
-      ...(f.verdict !== undefined ? { verdict: f.verdict } : {}),
-      ...(f.verdictReason !== undefined ? { verdict_reason: f.verdictReason } : {}),
-      ...(f.judgedAt !== undefined ? { judged_at: f.judgedAt } : {}),
-      ...(f.decidedAt !== undefined ? { decided_at: f.decidedAt } : {}),
       ...(f.endedAt !== undefined ? { ended_at: f.endedAt } : {}),
       ...(f.endedAs !== undefined ? { ended_as: f.endedAs } : {}),
-      ...(f.decision !== undefined ? { decision: f.decision } : {}),
-      ...(f.decisionText !== undefined ? { decision_text: f.decisionText } : {}),
       ...(f.messageId !== undefined ? { message_id: f.messageId } : {}),
       ...(f.state !== undefined ? { state: f.state } : {}),
       ...(f.error !== undefined
@@ -2163,7 +1547,6 @@ interface RoutineRow {
   name: string
   prompt: string
   schedule: string
-  channel_id: string | null
   enabled: number
   created_at: number
   updated_at: number
@@ -2173,7 +1556,6 @@ interface RoutineRow {
   model_name: string | null
   model_effort: string | null
   token_limit: number | null
-  org_id: string | null
   unsaved_import: number
 }
 
@@ -2211,9 +1593,6 @@ const routine: KindDef = {
     model: { check: nullable(modelCheck) },
     // The most tokens that one run may use (spec 009). A computer of an older step has none.
     tokenLimit: { check: nullable(validTokenLimit) },
-    // The organization of a routine (spec 030). A computer of an older step has none.
-    orgId: { check: nullable(str(100, 1)) },
-    channelId: { check: nullable(str(100, 1)) },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
     // 1 until the user saved a routine that an agent file made (spec 007, 009). A computer of an
@@ -2228,7 +1607,6 @@ const routine: KindDef = {
     "schedule",
     "watch",
     "model",
-    "channelId",
     "enabled",
     "runsOn",
     "createdAt",
@@ -2251,8 +1629,6 @@ const routine: KindDef = {
             ? { accountId: r.model_account_id, model: r.model_name, effort: r.model_effort }
             : null,
         tokenLimit: r.token_limit,
-        orgId: r.org_id,
-        channelId: r.channel_id,
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
         unsavedImport: r.unsaved_import === 1,
@@ -2277,8 +1653,6 @@ const routine: KindDef = {
       watch: f.watch === null ? null : JSON.stringify(f.watch),
       ...routineModelOf(ctx, f.model),
       token_limit: f.tokenLimit ?? null,
-      org_id: f.orgId ?? null,
-      channel_id: f.channelId,
       enabled: f.enabled ? 1 : 0,
       // The missed-run rule counts from the time the routine came to this computer.
       last_checked_at: now,
@@ -2298,8 +1672,6 @@ const routine: KindDef = {
     if (f.watch !== undefined) columns.watch = f.watch === null ? null : JSON.stringify(f.watch)
     if (f.model !== undefined) Object.assign(columns, routineModelOf(ctx, f.model))
     if (f.tokenLimit !== undefined) columns.token_limit = f.tokenLimit
-    if (f.orgId !== undefined) columns.org_id = f.orgId
-    if (f.channelId !== undefined) columns.channel_id = f.channelId
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
     // A change that makes it run on this computer is ignored: the user here decides that.
     if (f.runsOn !== undefined && f.runsOn !== ctx.self) {
@@ -2688,14 +2060,10 @@ const wstep: KindDef = {
 /** Every kind, by name. */
 export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   account,
-  org,
   agent,
-  channel,
-  orgunit,
   memory,
   message,
   thread,
-  cmessage,
   routine,
   workflow,
   task,

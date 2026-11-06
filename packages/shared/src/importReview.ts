@@ -14,21 +14,19 @@ export interface IgnoredField {
 /** Something that the file holds and ROBot does not make, with the reason. */
 export type NotImported =
   | { readonly reason: "unknown_field"; readonly owner: string | null; readonly field: string }
-  /** The channel of a post step: the file holds none, so the step has no place. */
-  | {
-      readonly reason: "no_place"
-      readonly owner: string
-      /** The node number of the step, from 1. */
-      readonly step: number
-      readonly name: string
-    }
-  /** A ticked channel of a team file whose members the user did not tick (spec 002). */
-  | { readonly reason: "channel_no_member"; readonly owner: string }
+  /**
+   * The trigger of a workflow file of an older version that ROBot has no more (a message in a
+   * channel, spec 010). The workflow is made with the trigger "manual".
+   */
+  | { readonly reason: "no_trigger"; readonly owner: string; readonly trigger: string }
   /** A ticked skill of a team file whose agents the user did not tick (spec 002). */
   | { readonly reason: "skill_no_agent"; readonly owner: string }
   /** A skill over the limit of 100 skills of the server (spec 017). */
   | { readonly reason: "skills_full"; readonly owner: string }
-  /** A node of a CC Workflow Studio file that has no step in ROBot: it became a note (spec 010). */
+  /**
+   * A node of a CC Workflow Studio file, or a step of an older workflow file (a post step), that has
+   * no step in ROBot: it became a note (spec 010).
+   */
   | {
       readonly reason: "no_step"
       readonly owner: string
@@ -74,8 +72,9 @@ const parseRoot = (text: string): unknown => {
 
 /**
  * The fields of an agent file that the format does not define. Call it only for a file that
- * `parseAgentFile` read without a fault. The fields `channels`, `skills` and `handbook` are
- * defined from version 2: in a file of version 1 they are unknown fields.
+ * `parseAgentFile` read without a fault. The fields `skills` and `handbook` are defined from
+ * version 2: in a file of version 1 they are unknown fields. The `channels` of a file of an older
+ * version are an unknown field too: ROBot has no channels.
  */
 export const ignoredAgentFields = (text: string): IgnoredField[] => {
   const root = parseRoot(text)
@@ -84,23 +83,12 @@ export const ignoredAgentFields = (text: string): IgnoredField[] => {
   const out: IgnoredField[] = extra(
     root,
     second
-      ? ["format", "version", "agents", "channels", "skills", "handbook"]
+      ? ["format", "version", "agents", "skills", "handbook"]
       : ["format", "version", "agents"],
     "",
   ).map((field) => ({ owner: null, field }))
   if (second) {
-    const list = (key: "channels" | "skills") => (Array.isArray(root[key]) ? root[key] : [])
-    for (const channel of list("channels")) {
-      if (!isObject(channel)) continue
-      const owner = nameOf(channel)
-      for (const field of extra(
-        channel,
-        ["name", "topic", "instructions", "reviewParts", "members", "lead"],
-        "",
-      ))
-        out.push({ owner, field })
-    }
-    for (const skill of list("skills")) {
+    for (const skill of Array.isArray(root.skills) ? root.skills : []) {
       if (!isObject(skill)) continue
       const owner = nameOf(skill)
       for (const field of extra(skill, ["name", "description", "instructions", "agents"], ""))
@@ -187,8 +175,6 @@ export type ChecklistItem =
   | { readonly kind: "routine"; readonly routineId: string; readonly name: string }
   /** An agent step with no agent: "Pick". */
   | { readonly kind: "stepAgent"; readonly stepId: string; readonly name: string }
-  /** A post step with no place: "Pick". */
-  | { readonly kind: "stepPlace"; readonly stepId: string; readonly name: string }
   /** A step that lost an input at a node of a CC Workflow Studio file that became a note: "Connect". */
   | { readonly kind: "stepConnect"; readonly stepId: string; readonly name: string }
   /** A workflow with a schedule that is off: "Turn on". */
@@ -209,7 +195,6 @@ export interface ChecklistWorld {
     readonly enabled: boolean
     readonly steps: readonly (
       | { readonly id: string; readonly kind: "agent"; readonly agentId: string }
-      | { readonly id: string; readonly kind: "post"; readonly channelId: string }
       | { readonly id: string; readonly kind: "condition" | "approval" | "notify" }
     )[]
     /** The connections of the workflow. An item "Connect" needs them. */
@@ -230,10 +215,6 @@ export const checklistItemDone = (item: ChecklistItem, world: ChecklistWorld): b
     case "stepAgent": {
       const step = world.workflow?.steps.find((s) => s.id === item.stepId)
       return !step || (step.kind === "agent" && step.agentId !== "")
-    }
-    case "stepPlace": {
-      const step = world.workflow?.steps.find((s) => s.id === item.stepId)
-      return !step || (step.kind === "post" && step.channelId !== "")
     }
     case "stepConnect": {
       const workflow = world.workflow

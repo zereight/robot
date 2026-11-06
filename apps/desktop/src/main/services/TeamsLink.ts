@@ -13,26 +13,18 @@ import {
   emptyTeamsView,
   failureReason,
   holdsChatTitle,
-  isFailure,
-  isTeamsJobKind,
   isTeamsPauseReason,
   isTeamsRecordReason,
-  type JobMessage,
-  jobName,
   type Locale,
-  leadReply,
   lineText,
   lineWord,
   type MessagePart,
   markAllRead,
-  memberAnswer,
-  memberReply,
   messageFiles,
   messageText,
   newReadSet,
   noFailures,
   type OutboxTiming,
-  partHoldsJobBack,
   patchTouchesLocked,
   pickNext,
   readGap,
@@ -61,7 +53,6 @@ import {
   type TeamsChatOpened,
   type TeamsFailCounts,
   type TeamsFields,
-  type TeamsJobKind,
   type TeamsLine,
   type TeamsLinkView,
   type TeamsLogEvent,
@@ -83,11 +74,9 @@ import {
   tidyTeamsFields,
   tooManyLineMayGo,
   translate,
-  waitingKey,
 } from "@robot/shared"
 import { Cause, Context, Effect, Layer } from "effect"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { DECISION_KEY } from "./Decision.ts"
@@ -199,7 +188,7 @@ const LOG_PRUNE_EVERY_MS = 24 * 3_600_000
  * The Teams link (spec 028): the form, the sign-in, the switch and the states (S101), the calls
  * (S102), the answers and the outbox (S103), and the pause and the notices (S105). While the switch is on, the loop reads the new
  * messages of the chat every 3 seconds, applies "Who may call" to each one, and gives a call to the
- * agent or the channel of the link as work. When work that a message started ends or waits for the
+ * agent of the link as work. When work that a message started ends or waits for the
  * user, the link makes an answer, and the outbox sends it in order to the linked chat.
  *
  * The link belongs to this computer and this profile. Sync does not carry it, an export does not
@@ -217,7 +206,6 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         const platform = yield* Platform
         const profiles = yield* BrowserProfiles
         const chat = yield* Chat
-        const channels = yield* Channels
         const tasks = yield* Tasks
         const notifier = yield* Notifier
         const settings = yield* SettingsStore
@@ -307,8 +295,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           }
         }
         const fieldsOf = (r: Row): TeamsFields => ({
-          targetKind:
-            r.target_kind === "agent" || r.target_kind === "channel" ? r.target_kind : null,
+          targetKind: r.target_kind === "agent" ? r.target_kind : null,
           targetId: r.target_id,
           chatTitle: r.chat_title,
           chatKind: r.chat_kind === "group" ? "group" : "person",
@@ -317,15 +304,15 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           callText: r.call_text,
           marker: r.marker,
         })
-        /** The agent or channel of the link exists, and an agent is not archived. */
+        /** The agent of the link exists and is not archived. */
         const targetFound = (fields: TeamsFields) => {
           if (fields.targetKind === null || fields.targetId === null) return false
-          return fields.targetKind === "agent"
-            ? db.get(
-                "SELECT 1 AS x FROM agent WHERE id = ? AND archived_at IS NULL",
-                fields.targetId,
-              ) !== undefined
-            : db.get("SELECT 1 AS x FROM channel WHERE id = ?", fields.targetId) !== undefined
+          return (
+            db.get(
+              "SELECT 1 AS x FROM agent WHERE id = ? AND archived_at IS NULL",
+              fields.targetId,
+            ) !== undefined
+          )
         }
         const save = (patch: Record<string, string | number | null>) => {
           const keys = Object.keys(patch)
@@ -611,14 +598,10 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         }
 
         // ----------------------------------------------------------------- Answers (S103)
-        /** The name of an agent or a channel, or null when it is gone. */
+        /** The name of an agent, or null when it is gone. */
         const placeNameOf = (kind: string | null, id: string | null): string | null => {
-          if (kind === null || id === null) return null
-          const found =
-            kind === "agent"
-              ? db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", id)
-              : db.get<{ name: string }>("SELECT name FROM channel WHERE id = ?", id)
-          return found?.name ?? null
+          if (kind !== "agent" || id === null) return null
+          return db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", id)?.name ?? null
         }
         /** The records of Settings, Teams: the newest 50. They hold no text of a message. */
         const recordsOf = (): TeamsRecord[] =>
@@ -629,8 +612,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             )
             .flatMap((r) => {
               if (!isTeamsRecordReason(r.reason)) return []
-              const placeKind =
-                r.place_kind === "agent" || r.place_kind === "channel" ? r.place_kind : null
+              const placeKind = r.place_kind === "agent" ? r.place_kind : null
               return [
                 {
                   id: r.id,
@@ -788,123 +770,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
               return
           }
         }
-        // ----------------------------------------------------------------- Answers for a channel (S104)
-        /** How a channel job began, when a message from Teams began it (spec 028), or null. */
-        const jobKindOf = (taskId: string | null | undefined): TeamsJobKind | null => {
-          if (!taskId) return null
-          const kind = db.get<{ teams_job: string | null }>(
-            "SELECT teams_job FROM task WHERE id = ?",
-            taskId,
-          )?.teams_job
-          return isTeamsJobKind(kind) ? kind : null
-        }
-        /** The messages that a task wrote in a channel, oldest first. */
-        const jobMessages = (taskId: string): JobMessage[] =>
-          db
-            .all<{ kind: string; parts: string }>(
-              "SELECT kind, parts FROM channel_message WHERE task_id = ? AND author = 'agent' ORDER BY created_at, rowid",
-              taskId,
-            )
-            .flatMap((m) => {
-              try {
-                const kind = m.kind === "plan" || m.kind === "summary" ? m.kind : "text"
-                return [{ kind, parts: JSON.parse(m.parts) as MessagePart[] }]
-              } catch {
-                return []
-              }
-            })
-
-        /**
-         * True for a part that the user tried again after its request had ended (spec 028, "A retry
-         * of the task keeps the source"). The lead gives no second summary, so this part answers
-         * for itself. A part that ends while its request is open never does: the lead sums it up.
-         */
-        const lateRetry = (task: Task): boolean => {
-          if (task.parentId === null || task.retryOf === null) return false
-          const old = db.get<{ state: string }>("SELECT state FROM task WHERE id = ?", task.retryOf)
-          const root = db.get<{ finished_at: number | null }>(
-            "SELECT finished_at FROM task WHERE id = ?",
-            task.parentId,
-          )
-          // A part that "Request changes" made follows a part that is done: that is no retry.
-          return (
-            old !== undefined &&
-            old.state !== "done" &&
-            old.state !== "review" &&
-            root?.finished_at != null &&
-            task.createdAt >= root.finished_at
-          )
-        }
-
-        /**
-         * A task of a channel job that a message from Teams began has ended (spec 028, "Answers and
-         * the outbox"). Only the task of the job itself answers: the lead task, or the task of a
-         * member that a mention chose. A part never answers while its request is open; the lead
-         * sums the parts up.
-         * - The lead made parts: the summary. The plan message never goes. No parts: the reply text
-         *   of the lead.
-         * - A member that was chosen: its reply text, with its name and a colon. So does a part that
-         *   the user tried again after the request had ended.
-         * A failed, blocked or stopped job gets the line of the channel, or of the member.
-         */
-        const answerJob = (task: Task) => {
-          const own = jobKindOf(task.id)
-          if (own === null) return
-          const kind: TeamsJobKind | null =
-            task.parentId === null ? own : lateRetry(task) ? "mention" : null
-          if (kind === null) return
-          const r = row()
-          if (!r) return
-          const fields = fieldsOf(r)
-          if (fields.targetKind !== "channel" || fields.targetId !== task.sourceId) return
-          // A task that a restart stopped shows "The app stopped" in the app. Teams gets nothing.
-          if (task.error?.code === "app_stopped") return
-          const why = unavailable(r)
-          if (why)
-            return addRecord(why, {
-              taskId: task.id,
-              placeKind: "channel",
-              placeId: fields.targetId,
-            })
-          const name = jobName(kind, placeNameOf("channel", fields.targetId) ?? "", task.agentName)
-          switch (task.state) {
-            case "done": {
-              const messages = jobMessages(task.id)
-              const reply = kind === "lead" ? leadReply(messages) : memberReply(messages)
-              if (reply.text.trim() !== "") {
-                if (kind === "lead")
-                  makeAnswer(
-                    reply.text,
-                    task.id,
-                    messages.some((m) => m.kind === "plan") ? "summary" : "reply",
-                  )
-                else makeAnswer(memberAnswer(task.agentName, reply.text), task.id, "member_reply")
-              } else makeLine({ kind: "noReply" }, task.id)
-              if (reply.files > 0) makeLine({ kind: "files", count: reply.files }, task.id)
-              return
-            }
-            case "failed":
-            case "blocked":
-              return makeLine(
-                { kind: "failed", name, reason: failureReason(localeNow(), task.error) },
-                task.id,
-              )
-            case "cancelled":
-              return makeLine({ kind: "stopped", name }, task.id)
-            default:
-              return
-          }
-        }
         tasks.onEnd((task) => {
           if (task.source === "teams") answerTask(task)
-          else if (task.source === "channel") {
-            answerJob(task)
-            // A part that fails holds its request back only until the lead sums up. The lead can do
-            // that in less than a second, so the card is not left to the next look of the loop.
-            const r = row()
-            if (r && r.enabled === 1 && task.parentId !== null && isFailure(task.state))
-              scanWaiting(r)
-          }
         })
 
         /**
@@ -924,7 +791,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             .waitingRequests()
             .filter((w) => w.agentId === agentId && w.from === null)
             .map((w) => ({
-              key: waitingKey.card(w.agentId, w.callId),
+              key: `${w.agentId}:${w.callId}`,
               name: () => placeNameOf("agent", w.agentId),
               due: () => {
                 const messageId = w.target.messageId
@@ -938,82 +805,15 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
               },
             }))
 
-        interface PartRow {
-          id: string
-          state: string
-          replaced: number
-          open: number
-        }
         /**
-         * The cards of the channel that is the target: an approval or a question of a member in a
-         * job that a message from Teams began, a part in review, a failed or blocked part, and the
-         * request to pick a member (spec 004, 028).
-         */
-        const channelCards = (channelId: string): WaitingCard[] => {
-          const name = () => placeNameOf("channel", channelId)
-          const cards: WaitingCard[] = notifier
-            .waitingRequests()
-            .filter(
-              (w) => w.from === null && w.target.kind === "channel" && w.target.id === channelId,
-            )
-            .map((w) => ({
-              key: waitingKey.card(w.agentId, w.callId),
-              name,
-              due: () => {
-                const task = w.target.messageId
-                  ? db.get<{ task_id: string | null }>(
-                      "SELECT task_id FROM channel_message WHERE id = ?",
-                      w.target.messageId,
-                    )?.task_id
-                  : null
-                return jobKindOf(task) !== null
-              },
-            }))
-          // A part belongs to the job (its parent task). The job must still be open.
-          const parts = db.all<PartRow>(
-            `SELECT p.id AS id, p.state AS state,
-               EXISTS (SELECT 1 FROM task n WHERE n.retry_of = p.id) AS replaced,
-               (r.state IN ('queued', 'running', 'waiting')) AS open
-             FROM task p JOIN task r ON r.id = p.parent_id
-             WHERE p.source = 'channel' AND p.source_id = ? AND p.teams_job IS NOT NULL
-               AND p.state IN ('review', 'failed', 'blocked')`,
-            channelId,
-          )
-          for (const part of parts)
-            cards.push({
-              key: waitingKey.part(part.id),
-              name,
-              due: () =>
-                partHoldsJobBack({
-                  state: part.state as Task["state"],
-                  replaced: part.replaced === 1,
-                  jobOpen: part.open === 1,
-                }),
-            })
-          // The job waits for the user to pick a member, when the channel has no lead.
-          for (const job of db.all<{ id: string }>(
-            "SELECT id FROM channel_message WHERE channel_id = ? AND author = 'user' AND awaiting = 1 AND teams_sender IS NOT NULL",
-            channelId,
-          ))
-            cards.push({ key: waitingKey.pick(job.id), name, due: () => true })
-          return cards
-        }
-
-        /**
-         * An approval, a question, a failed part, a part in review or the request to pick a member
-         * waits (spec 028, "Answers and the outbox"). When it holds back work that a message from
+         * An approval or a question waits (spec 028, "Answers and the outbox"). When it holds back work that a message from
          * Teams started, or holds back a new message from Teams, Teams gets one line for the card.
-         * The line holds no text of the step, of the question or of the part.
+         * The line holds no text of the step or of the question.
          */
         const scanWaiting = (r: Row) => {
           const fields = fieldsOf(r)
           if (fields.targetId === null) return
-          const cards =
-            fields.targetKind === "agent"
-              ? agentCards(fields.targetId)
-              : fields.targetKind === "channel"
-                ? channelCards(fields.targetId)
-                : []
+          const cards = fields.targetKind === "agent" ? agentCards(fields.targetId) : []
           const live = new Set(cards.map((c) => c.key))
           for (const key of run.announced) if (!live.has(key)) run.announced.delete(key)
           if (cards.length === 0 || unavailable(r) || !targetFound(fields)) return
@@ -1088,7 +888,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
 
         // ----------------------------------------------------------------- The calls (S102)
         /**
-         * Gives a call to the agent or the channel of the link. Gives the failure (its code and its
+         * Gives a call to the agent of the link. Gives the failure (its code and its
          * detail), or null.
          */
         const dispatch = async (
@@ -1098,26 +898,18 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         ): Promise<{ code: string; detail: string } | null> => {
           if (fields.targetId === null) return { code: "target_missing", detail: "" }
           const teams = { kind: "teams" } as const
-          const work: Effect.Effect<void, AppError> =
-            fields.targetKind === "channel"
-              ? Effect.asVoid(
-                  channels.send(fields.targetId, text, null, {
-                    outside: teams,
-                    teamsSender: sender,
-                  }),
-                )
-              : Effect.asVoid(
-                  chat.send(
-                    { agentId: fields.targetId, text, replyTo: null },
-                    {
-                      source: "teams",
-                      sourceId: fields.targetId,
-                      starter: "program",
-                      outside: teams,
-                      teamsSender: sender,
-                    },
-                  ),
-                )
+          const work: Effect.Effect<void, AppError> = Effect.asVoid(
+            chat.send(
+              { agentId: fields.targetId, text, replyTo: null },
+              {
+                source: "teams",
+                sourceId: fields.targetId,
+                starter: "program",
+                outside: teams,
+                teamsSender: sender,
+              },
+            ),
+          )
           const exit = await Effect.runPromiseExit(work)
           if (exit._tag === "Success") return null
           const failure = Cause.squash(exit.cause)
@@ -1286,15 +1078,9 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         yield* Effect.addFinalizer(() => Effect.sync(stopClock))
         if (first?.enabled === 1) void tick()
 
-        // An agent or a channel that goes, or comes back, changes the state at once. A deleted
-        // channel only says that the list of places changed.
+        // An agent that goes, or comes back, changes the state at once.
         bus.tap((event) => {
-          if (
-            event === "agents.changed" ||
-            event === "channels.changed" ||
-            event === "places.changed"
-          )
-            void tick()
+          if (event === "agents.changed" || event === "places.changed") void tick()
         })
 
         // ----------------------------------------------------------------- The service
@@ -1369,7 +1155,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
               ...(patch.callText !== undefined ? { callText: patch.callText } : {}),
               ...(patch.marker !== undefined ? { marker: patch.marker } : {}),
             })
-            // A new kind of target drops the old id: an agent id is not a channel id.
+            // A new kind of target drops the old id: a new kind needs a new id.
             const kindChanged =
               patch.targetKind !== undefined && patch.targetKind !== now.targetKind
             const targetId = kindChanged && patch.targetId === undefined ? null : next.targetId

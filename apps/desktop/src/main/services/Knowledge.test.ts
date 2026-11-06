@@ -18,16 +18,13 @@ import type { ChatMessage, MessagePart } from "@robot/shared"
 import { KNOWLEDGE_CHARS_MAX, KNOWLEDGE_LINES_MAX } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Notifier } from "./Notifier.ts"
-import { Providers, secretKey } from "./Providers.ts"
-import { Secrets } from "./Secrets.ts"
+import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
-import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { allowLocalHost, testRuntime } from "./testing.ts"
 
@@ -1466,38 +1463,5 @@ describe("duplicate", () => {
     await s.run(Agents.use((a) => a.remove(copy.id)))
     expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta"])
     expect(existsSync(join(s.folder, "Alpha.md"))).toBe(true)
-  })
-})
-
-describe("channels", () => {
-  test("a member in a channel uses its own knowledge only", async () => {
-    const s = await setup()
-    const bo = await s.make("Bo")
-    await s.save("Ada only", "x", "mine")
-    await s.save("Bo only", "x", "his", null, bo.id)
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Room",
-          topic: "",
-          memberIds: [s.agent.id, bo.id],
-          leadId: null,
-        }),
-      ),
-    )
-    await s.run(Channels.use((c) => c.send(channel.id, "@Bo hello there")))
-    await until(async () => {
-      const tasks = await s.run(Tasks.use((x) => x.list(s.local.id)))
-      return tasks.length > 0 && tasks.every((x) => !["queued", "running"].includes(x.state))
-    })
-    const request = seen.at(-1)
-    expect(request?.system).toContain("Bo only")
-    expect(request?.system).not.toContain("Ada only")
-    expect(request?.tools).toContain("write_article")
-    // A secret never reaches a stored key check by accident.
-    expect(await s.run(Secrets.use((x) => Effect.succeed(x.get(secretKey(s.account.id)))))).toBe(
-      KEY,
-    )
   })
 })

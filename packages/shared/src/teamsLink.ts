@@ -7,8 +7,8 @@ import type { TeamsPauseReason } from "./teamsPause.ts"
 // The Teams link (spec 028): the pure rules of the form, the names and the states. Nothing here
 // touches a page, a clock or a database.
 
-/** The target of the link: the direct chat of one agent, or one channel. */
-export const TEAMS_TARGET_KINDS = ["agent", "channel"] as const
+/** The target of the link: the direct chat of one agent. */
+export const TEAMS_TARGET_KINDS = ["agent"] as const
 export type TeamsTargetKind = (typeof TEAMS_TARGET_KINDS)[number]
 
 /** "A chat with one person" (also the chat with oneself), or "A group chat". */
@@ -309,7 +309,7 @@ export const emptyTeamsView: TeamsLinkView = {
 /** The state that the header mark names. Only a link that is on has a mark (spec 028). */
 export const teamsMarkShows = (view: TeamsLinkView): boolean => view.exists && view.enabled
 
-/** True when the link is for this agent or this channel. */
+/** True when the link is for this agent. */
 export const teamsLinksTo = (view: TeamsLinkView, kind: TeamsTargetKind, id: string): boolean =>
   view.exists && view.fields.targetKind === kind && view.fields.targetId === id
 

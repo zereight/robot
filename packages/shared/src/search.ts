@@ -222,7 +222,7 @@ export const toolSearchOutput = (hits: readonly ToolHit[]): string => {
   for (const hit of hits.slice(0, TOOL_SEARCH_HITS)) {
     if (total + charLength(hit.text) > TOOL_SEARCH_TOTAL) break
     total += charLength(hit.text)
-    const where = hit.kind === "channel" ? `channel #${hit.place}` : `chat with ${hit.place}`
+    const where = `chat with ${hit.place}`
     const time = new Date(hit.createdAt).toISOString().slice(0, 16).replace("T", " ")
     const who = hit.isUser ? "the user" : hit.who
     lines.push(`${lines.length + 1}. ${where}, ${time} UTC, written by ${who}: "${hit.text}"`)

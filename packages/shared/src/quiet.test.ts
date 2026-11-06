@@ -66,9 +66,8 @@ describe("the time of the quiet line", () => {
 })
 
 describe("which turn a place shows", () => {
-  test("the working line of a chat: the turn of that agent in that thread, never a channel part", () => {
+  test("the working line of a chat: the turn of that agent in that thread", () => {
     const turns = [
-      turn({ taskId: "c", source: "channel", sourceId: "ch1" }),
       turn({ taskId: "x", agentId: "a2" }),
       turn({ taskId: "th", threadId: "th1" }),
       turn({ taskId: "main" }),
@@ -77,7 +76,6 @@ describe("which turn a place shows", () => {
     expect(quietOfChat(turns, "a1", "th1")?.taskId).toBe("th")
     expect(quietOfChat(turns, "a2", null)?.taskId).toBe("x")
     expect(quietOfChat(turns, "a3", null)).toBeUndefined()
-    expect(quietOfChat([turn({ source: "channel" })], "a1", null)).toBeUndefined()
   })
 
   test("a routine turn and a workflow turn show in the chat of the agent", () => {
@@ -86,8 +84,8 @@ describe("which turn a place shows", () => {
   })
 
   test("a plan step, a task row and a workflow step find their turn by the task", () => {
-    const turns = [turn({ taskId: "a" }), turn({ taskId: "b", source: "channel" })]
-    expect(quietOfTask(turns, "b")?.source).toBe("channel")
+    const turns = [turn({ taskId: "a" }), turn({ taskId: "b", source: "routine" })]
+    expect(quietOfTask(turns, "b")?.source).toBe("routine")
     expect(quietOfTask(turns, "zzz")).toBeUndefined()
   })
 })

@@ -50,7 +50,6 @@ export interface PlaceMarksService {
 
 const TABLE: Readonly<Record<MarkPlace["kind"], string>> = {
   agent: "agent",
-  channel: "channel",
   thread: "thread",
 }
 
@@ -102,8 +101,7 @@ export class PlaceMarks extends Context.Service<PlaceMarks, PlaceMarksService>()
           place.id,
         )
         // The header line of the place and the lists of the window read the marks again.
-        if (place.kind === "channel") bus.emit("channels.changed", { channelId: place.id })
-        else if (place.kind === "thread") {
+        if (place.kind === "thread") {
           const row = db.get<{ agent_id: string }>(
             "SELECT agent_id FROM thread WHERE id = ?",
             place.id,

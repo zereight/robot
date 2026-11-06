@@ -1,12 +1,7 @@
 import {
   type Agent,
-  CHANNEL_PICTURE_BYTES,
   ClientAgentCreate,
   ClientAgentPatch,
-  ClientChannelCreate,
-  ClientChannelPatch,
-  ClientOrgCreate,
-  ClientOrgPatch,
   isLooser,
   MEMORY_TEXT_MAX,
   type ModelChoice,
@@ -17,18 +12,16 @@ import type { AppServices } from "../layers.ts"
 import { Activity } from "../services/Activity.ts"
 import { Agents } from "../services/Agents.ts"
 import { CurrentActor } from "../services/actor.ts"
-import { Channels } from "../services/Channels.ts"
 import { Devices } from "../services/Devices.ts"
 import { AppError } from "../services/errors.ts"
 import { Handbook } from "../services/Handbook.ts"
 import { Memory, MemoryFilterSchema } from "../services/Memory.ts"
 import { MemoryCheck } from "../services/MemoryCheck.ts"
-import { Organizations } from "../services/Organizations.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 
 /**
- * What a linked device may do to agents, channels and memory (spec 012, "Create and change
+ * What a linked device may do to agents and memory (spec 012, "Create and change
  * agents"). Every request here is untrusted: it passes the switch of the device, then a schema
  * that refuses fields it does not know, then the checks of the server. The window of this
  * computer does not use these handlers.
@@ -223,62 +216,6 @@ export const changeHandlers: Record<string, ChangeHandler> = {
       yield* allowed
       const { id } = yield* strict(ById)(input)
       return forClient(yield* Agents.use((a) => a.useMain(id)))
-    }),
-
-  "channels.create": (input) =>
-    E.gen(function* () {
-      yield* allowed
-      const data = yield* strict(ClientChannelCreate)(input)
-      yield* ownServer(data.serverId)
-      return yield* Channels.use((c) => c.create(data))
-    }),
-
-  "channels.update": (input) =>
-    E.gen(function* () {
-      yield* allowed
-      const { id, patch } = yield* strict(Schema.Struct({ id: Id, patch: ClientChannelPatch }))(
-        input,
-      )
-      return yield* Channels.use((c) => c.update(id, patch))
-    }),
-
-  // Make, edit and delete an organization (spec 012, 030). The service checks the rules of the tree.
-  "organizations.create": (input) =>
-    E.gen(function* () {
-      yield* allowed
-      const data = yield* strict(ClientOrgCreate)(input)
-      yield* ownServer(data.serverId)
-      return yield* Organizations.use((o) => o.create(data))
-    }),
-
-  "organizations.update": (input) =>
-    E.gen(function* () {
-      yield* allowed
-      const { id, patch } = yield* strict(Schema.Struct({ id: Id, patch: ClientOrgPatch }))(input)
-      return yield* Organizations.use((o) => o.update(id, patch))
-    }),
-
-  "organizations.delete": (input) =>
-    E.gen(function* () {
-      yield* allowed
-      const { id } = yield* strict(ById)(input)
-      yield* Organizations.use((o) => o.remove(id))
-      return undefined
-    }),
-
-  "channels.setPicture": (input) =>
-    E.gen(function* () {
-      yield* allowed
-      // The address is long, and the service checks the image. Here only its size is held.
-      const { id, dataUrl } = yield* strict(
-        Schema.Struct({
-          id: Id,
-          dataUrl: Schema.NullOr(
-            Schema.String.check(Schema.isMaxLength(CHANNEL_PICTURE_BYTES * 2)),
-          ),
-        }),
-      )(input)
-      return yield* Channels.use((c) => c.setPicture(id, dataUrl))
     }),
 
   "memory.list": (input) =>

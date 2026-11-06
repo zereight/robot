@@ -31,14 +31,6 @@ import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
-import {
-  type LineRepaired,
-  logLineRepairs,
-  logOrgRepairs,
-  type OrgRepaired,
-  repairOrgLines,
-  repairOrgTree,
-} from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { SavedSecrets } from "./SavedSecrets.ts"
@@ -168,6 +160,11 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               for (const op of ["insert", "update", "delete"])
                 out.exec(`DROP TRIGGER IF EXISTS ${table}_text_${op}`)
             out.exec("DROP TABLE IF EXISTS message_fts; DROP TABLE IF EXISTS message_text")
+            // ROBot has no channels and no organizations. Their tables stay in the database with
+            // no use, and an export holds none of their rows.
+            out.exec(
+              "DELETE FROM channel; DELETE FROM channel_member; DELETE FROM channel_message; DELETE FROM org_unit; DELETE FROM org_member",
+            )
             // The links of this computer stay on it: an export holds no device keys or addresses.
             out.exec("DELETE FROM device_link")
             // Browser profiles and the choice of an agent stay too, as the browser data does.
@@ -209,7 +206,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               out.exec(`DELETE FROM ${table}`)
             }
             out.exec(
-              "UPDATE message SET origin = NULL; UPDATE channel_message SET origin = NULL; UPDATE task SET origin = NULL; UPDATE workflow_run SET origin = NULL; UPDATE routine SET runs_on = NULL; UPDATE workflow SET runs_on = NULL",
+              "UPDATE message SET origin = NULL; UPDATE task SET origin = NULL; UPDATE workflow_run SET origin = NULL; UPDATE routine SET runs_on = NULL; UPDATE workflow SET runs_on = NULL",
             )
             const rows = out.prepare("SELECT id, parts, error_detail FROM message").all() as {
               id: string
@@ -225,17 +222,6 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   .prepare("UPDATE task SET prompt = ?, label = ? WHERE id = ?")
                   .run(redactSecrets(task.prompt, known), redactSecrets(task.label, known), task.id)
               })
-            for (const row of out
-              .prepare("SELECT id, parts, error_detail FROM channel_message")
-              .all() as { id: string; parts: string; error_detail: string | null }[]) {
-              out
-                .prepare("UPDATE channel_message SET parts = ?, error_detail = ? WHERE id = ?")
-                .run(
-                  redactSecrets(row.parts, known),
-                  row.error_detail === null ? null : redactSecrets(row.error_detail, known),
-                  row.id,
-                )
-            }
             // The articles are text, so a key in them is hidden like a key in a chat. The hash
             // follows the hidden text, so that the restored files match their records.
             for (const row of out
@@ -276,8 +262,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               out
                 .prepare("UPDATE instruction_version SET text = ? WHERE id = ?")
                 .run(redactSecrets(row.text, known), row.id)
-            // The handbook and its history are text of the user (spec 002, 014), and so are the
-            // instructions of a channel (spec 004): a key in them is hidden like a key in a chat.
+            // The handbook and its history are text of the user (spec 002, 014): a key in them is
+            // hidden like a key in a chat.
             for (const row of out.prepare("SELECT id, text FROM handbook_version").all() as {
               id: string
               text: string
@@ -285,13 +271,6 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               const text = redactSecrets(row.text, known)
               if (text !== row.text)
                 out.prepare("UPDATE handbook_version SET text = ? WHERE id = ?").run(text, row.id)
-            }
-            for (const row of out
-              .prepare("SELECT id, instructions FROM channel WHERE instructions <> ''")
-              .all() as { id: string; instructions: string }[]) {
-              const text = redactSecrets(row.instructions, known)
-              if (text !== row.instructions)
-                out.prepare("UPDATE channel SET instructions = ? WHERE id = ?").run(text, row.id)
             }
             // A rule keeps the text of a step, which can hold a key. The key is hidden like a key
             // in a chat; the restored rule then matches no step (spec 014).
@@ -491,8 +470,6 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
         const copy = join(work, "robot.db")
         writeFileSync(copy, dbFile)
         let counts = { agents: 0, messages: 0 }
-        let orgRepairs: OrgRepaired[] = []
-        let lineRepairs: LineRepaired[] = []
         try {
           // The archive is untrusted: it is read through SQL only, and only known tables are used.
           db.run("ATTACH DATABASE ? AS imp", copy)
@@ -509,19 +486,13 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   local.id,
                 )
               }
-              // The sections come first: agents and channels point to them.
+              // The sections come first: agents point to them.
               copyToServer("place_section")
               copyToServer("agent")
               // The history of the instructions goes with its agent, and the handbook with its
               // history goes to this computer's server (spec 002, 014).
               db.run("INSERT INTO instruction_version SELECT * FROM imp.instruction_version")
               copyToServer("handbook_version")
-              copyToServer("channel")
-              // A channel has no parent channel (spec 030, "Migration"). The archive is untrusted,
-              // so the old column is cleared here, whatever the file holds.
-              db.run(
-                "UPDATE channel SET parent_channel_id = NULL WHERE parent_channel_id IS NOT NULL",
-              )
               copyToServer("routine")
               copyToServer("workflow")
               // Skills (spec 017) move to this computer's server too.
@@ -529,18 +500,6 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO workflow_run SELECT * FROM imp.workflow_run")
               db.run("INSERT INTO workflow_run_step SELECT * FROM imp.workflow_run_step")
               db.run("INSERT INTO routine_skip SELECT * FROM imp.routine_skip")
-              db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
-              // The organizations come back with their members, lead, parent, range and limit
-              // (spec 030, 014). The archive is untrusted: a tree that breaks the rules (a loop, a
-              // fourth level) comes back repaired, and each repair has a line in the organization
-              // log. An import carries no time of change, so the tie order decides.
-              copyToServer("org_unit")
-              db.run("INSERT INTO org_member SELECT * FROM imp.org_member")
-              orgRepairs = repairOrgTree(db, { mode: "import" })
-              // Then the lines (spec 030, "One line", "Repair"). An import carries no time of
-              // change, so the tie order decides: the organization that was made later loses.
-              lineRepairs = repairOrgLines(db, { changed: new Map() })
-              db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               // The models that the user turned off, and the fields of the custom models, come back
               // with their accounts (spec 006, 014).
@@ -575,10 +534,10 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
-                    agents, organizations, enabled, state, failure, tools, tools_more,
+                    agents, enabled, state, failure, tools, tools_more,
                     tools_off, created_at)
                  SELECT id, ?, name, name_key, kind, command, args, folder, env, address, headers,
-                        agents, organizations, 0, 'untested', NULL, '[]', 0, tools_off, created_at
+                        agents, 0, 'untested', NULL, '[]', 0, tools_off, created_at
                  FROM imp.tool_connection`,
                 local.id,
               )
@@ -604,13 +563,6 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO import_checklist SELECT * FROM imp.import_checklist")
               db.run(
                 "INSERT OR REPLACE INTO setting (key, value) SELECT key, value FROM imp.setting",
-              )
-              // The hand-off rule and the switch "Ask up the line" come back (spec 030, 014). The
-              // archive is untrusted: only a value that this build knows is taken.
-              db.run(
-                `INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at)
-                 SELECT 'organization', hand_off, ask_up_the_line, changed_at FROM imp.organization
-                 WHERE hand_off IN ('any', 'organizations') AND ask_up_the_line IN (0, 1) LIMIT 1`,
               )
               // A workspace path from another computer may not work here.
               for (const a of db.all<{ id: string; workspace: string }>(
@@ -683,12 +635,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           rmSync(work, { recursive: true, force: true })
         }
 
-        logOrgRepairs(platform.dataDir, orgRepairs)
-        logLineRepairs(platform.dataDir, lineRepairs)
         const next = yield* settings.get
         platform.setThemeSource(next.theme)
         bus.emit("settings.changed", next)
-        bus.emit("organizations.changed", { serverId: local.id })
         bus.emit("agents.changed", { serverId: "*" })
         bus.emit("providers.changed", {})
         bus.emit("places.changed", { serverId: local.id })

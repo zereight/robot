@@ -84,7 +84,6 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
       const result = await call("agentFile.export", {
         serverId,
         agentIds: [...picked()],
-        channels: false,
         skills: withSkills(),
         handbook: withHandbook(),
       })
@@ -255,23 +254,12 @@ const readFailure = (error: unknown): AgentFileFailure | undefined => {
 }
 
 /** One line of the part "Not imported": where it is in the file, and why it is not made. */
-export const NotImportedList = (props: {
-  items: readonly NotImported[]
-  /** The channels of a file of an older version. ROBot has no channels now (spec 002). */
-  channels?: readonly string[]
-  testId: string
-}) => {
+export const NotImportedList = (props: { items: readonly NotImported[]; testId: string }) => {
   const { t } = useApp()
   const where = (item: NotImported): string => {
     switch (item.reason) {
-      case "no_place":
-        return t("importReview.notImported.step", {
-          owner: item.owner,
-          step: item.step,
-          name: item.name,
-        })
-      case "channel_no_member":
-        return t("importReview.notImported.channel", { owner: item.owner })
+      case "no_trigger":
+        return t("importReview.notImported.trigger", { owner: item.owner, trigger: item.trigger })
       case "skill_no_agent":
       case "skills_full":
         return t("importReview.notImported.skill", { owner: item.owner })
@@ -293,18 +281,10 @@ export const NotImportedList = (props: {
     <div data-testid={props.testId}>
       <h3 class={review.sectionTitle}>{t("importReview.notImported.title")}</h3>
       <Show
-        when={props.items.length > 0 || (props.channels?.length ?? 0) > 0}
+        when={props.items.length > 0}
         fallback={<p class={review.hint}>{t("importReview.notImported.empty")}</p>}
       >
         <ul class={review.notImported}>
-          <For each={props.channels ?? []}>
-            {(name) => (
-              <li data-testid="not-imported-item">
-                <span>{t("importReview.notImported.channel", { owner: name })}</span>{" "}
-                <span class={review.hint}>{t("importReview.reason.channel_gone")}</span>
-              </li>
-            )}
-          </For>
           <For each={props.items}>
             {(item) => (
               <li data-testid="not-imported-item">
@@ -357,10 +337,8 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
   /** What the ticks make of the skills: a skill may lose its agents (spec 002). */
   const plan = createMemo(() =>
     planTeam({
-      channels: [],
       skills: props.preview.skills,
       made: (agent) => ticks[agent]?.agent === true,
-      channelPicks: [],
       skillPicks: tickedPlaces(team.skills),
       skillRoom: props.preview.skillRoom,
     }),
@@ -398,7 +376,6 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
         serverId,
         model: model(),
         pick: agentPicks(ticks),
-        channels: [],
         skills: tickedPlaces(team.skills),
         handbook: counts().handbook,
       })
@@ -616,11 +593,7 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
             </div>
           )}
         </Show>
-        <NotImportedList
-          items={notImported()}
-          channels={props.preview.channels.map((c) => c.name)}
-          testId="agent-import-not-imported"
-        />
+        <NotImportedList items={notImported()} testId="agent-import-not-imported" />
         <div class={styles.field}>
           <span class={styles.label}>{t("agentFile.import.model")}</span>
           <ModelPicker value={model()} onChange={setModel} />

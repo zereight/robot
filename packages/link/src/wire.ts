@@ -379,14 +379,12 @@ export interface WireNotice {
     | "question"
     | "task_failed"
     | "routine_failed"
-    | "part_review"
     | "workflow_notice"
-  readonly channelId: string | null
   readonly title: string
   readonly body: string
   /** The place to open on a click. A notice of a workflow has a page instead (spec 010, 015). */
   readonly target?: {
-    readonly kind: "agent" | "channel"
+    readonly kind: "agent"
     readonly id: string
     readonly messageId?: string
   }

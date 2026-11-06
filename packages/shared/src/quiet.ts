@@ -57,14 +57,13 @@ export const quietShown = (
 
 /**
  * The quiet turn that the working line of a chat shows: the turn of this agent in this thread
- * (null is the main thread). A part of a channel shows in the plan of the channel, not here.
+ * (null is the main thread).
  */
 export const quietOfChat = (
   turns: readonly QuietTurn[],
   agentId: string,
   threadId: string | null,
-): QuietTurn | undefined =>
-  turns.find((t) => t.agentId === agentId && t.source !== "channel" && t.threadId === threadId)
+): QuietTurn | undefined => turns.find((t) => t.agentId === agentId && t.threadId === threadId)
 
 export const quietOfTask = (turns: readonly QuietTurn[], taskId: string): QuietTurn | undefined =>
   turns.find((t) => t.taskId === taskId)

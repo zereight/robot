@@ -5,7 +5,6 @@ import { join } from "node:path"
 import { cachedShare, hasUsage, tokensOf } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
@@ -337,71 +336,5 @@ describe("token limit of a routine (spec 009)", () => {
     await s.run(Routines.use((r) => r.update(made.id, { tokenLimit: 100_000 })))
     const entry = (await calendar(s)).find((e) => e.taskId !== null)
     expect(entry?.limit).toEqual({ tokens: 5000, near: true })
-  })
-})
-
-describe("the card of the lead (spec 004, 005)", () => {
-  test("the activity of a channel holds the tokens of the job that runs", async () => {
-    const s = await setup()
-    const lead = await s.agent("Lia")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Ops",
-          topic: "",
-          memberIds: [lead.id],
-          leadId: lead.id,
-        }),
-      ),
-    )
-    const job = await s.run(
-      Tasks.use((x) =>
-        x.create({
-          agentId: lead.id,
-          prompt: "job",
-          source: "channel",
-          sourceId: channel.id,
-          parentId: null,
-        }),
-      ),
-    )
-    await spend(s, job.id, { input: 1000, output: 200 })
-    const activity = await s.run(Channels.use((c) => c.activity(channel.id)))
-    expect(activity.members.find((m) => m.agentId === lead.id)?.usage).toEqual({
-      input: 1000,
-      output: 200,
-      cached: null,
-      costMicros: null,
-    })
-  })
-
-  test("a lead with no number reported has no usage on its card", async () => {
-    const s = await setup()
-    const lead = await s.agent("Lia")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Ops",
-          topic: "",
-          memberIds: [lead.id],
-          leadId: lead.id,
-        }),
-      ),
-    )
-    await s.run(
-      Tasks.use((x) =>
-        x.create({
-          agentId: lead.id,
-          prompt: "job",
-          source: "channel",
-          sourceId: channel.id,
-          parentId: null,
-        }),
-      ),
-    )
-    const activity = await s.run(Channels.use((c) => c.activity(channel.id)))
-    expect(activity.members.find((m) => m.agentId === lead.id)?.usage).toBeUndefined()
   })
 })

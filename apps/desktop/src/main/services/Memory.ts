@@ -3,7 +3,6 @@ import {
   charLength,
   DAY_MS,
   isMemoryMode,
-  LEAD_ENDED_NOTE,
   looksLikeSecret,
   MEMORY_HISTORY_DAYS,
   MEMORY_HISTORY_MAX,
@@ -75,18 +74,6 @@ export interface MemoryService {
    * a change with a history row. The same place is no change.
    */
   move(id: string, channelId: string | null): Effect.Effect<MemoryItem, AppError>
-  /**
-   * Removes the notes for a channel that is deleted (spec 008, "Channel notes"). Each note gets
-   * a history row by "the delete of a channel". Call it before the channel row goes, so that the
-   * rows still hold its name.
-   */
-  deleteChannel(channelId: string): Effect.Effect<void>
-  /**
-   * The note "not the lead" for one channel (spec 004, "Lead prompt"). `ended` true saves it, once,
-   * when the agent still is a member; `ended` false takes it away. It is a normal note with a
-   * history row.
-   */
-  leadEnded(agentId: string, channelId: string, ended: boolean): Effect.Effect<void>
   /**
    * Adds an item as the user, or for an accepted proposal. A text typed by hand may be longer than
    * the tool takes and may look like a secret. Every item makes a history row.
@@ -582,49 +569,6 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
             })
             changed(row.agent_id)
             return toItem(itemRow(id) as Row)
-          }),
-        deleteChannel: (channelId) =>
-          Effect.sync(() => {
-            const notes = db.all<Row>("SELECT * FROM memory WHERE channel_id = ?", channelId)
-            for (const note of notes) {
-              db.run("DELETE FROM memory WHERE id = ?", note.id)
-              record(
-                note.agent_id,
-                note.id,
-                "channel_deleted",
-                "deleted",
-                note.source,
-                note.text,
-                null,
-                null,
-                { before: channelId, after: null },
-              )
-            }
-            // A proposal for the channel stays: it is not memory, and the user decides. Save
-            // makes a general item of it, because the channel is gone.
-            for (const agentId of new Set(notes.map((n) => n.agent_id))) changed(agentId)
-          }),
-        leadEnded: (agentId, channelId, ended) =>
-          Effect.sync(() => {
-            const mine = db.all<Row>(
-              "SELECT * FROM memory WHERE agent_id = ? AND channel_id = ? AND text = ?",
-              agentId,
-              channelId,
-              LEAD_ENDED_NOTE,
-            )
-            if (ended) {
-              if (mine.length > 0 || !needAgent(agentId) || !isMember(agentId, channelId)) return
-              addItem(agentId, LEAD_ENDED_NOTE, "agent", "agent", null, channelId)
-              return
-            }
-            for (const row of mine) {
-              db.run("DELETE FROM memory WHERE id = ?", row.id)
-              record(agentId, row.id, "agent", "deleted", row.source, row.text, null, null, {
-                before: channelId,
-                after: null,
-              })
-            }
-            if (mine.length > 0) changed(agentId)
           }),
         add: (agentId, text, source, messageId = null) =>
           Effect.gen(function* () {

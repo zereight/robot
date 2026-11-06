@@ -8,7 +8,6 @@ export const NOTIFY_KINDS = [
   "question",
   "task_failed",
   "routine_failed",
-  "part_review",
   "workflow_notice",
   // The Teams link is signed out or paused (spec 028, 015). It never goes to a linked device.
   "teams_link",
@@ -25,9 +24,9 @@ export type IslandWidth = (typeof ISLAND_WIDTHS)[number]
 export const MUTE_CHOICES = ["off", "1h", "8h", "1d", "forever"] as const
 export type MuteChoice = (typeof MUTE_CHOICES)[number]
 
-/** A server or a channel that does not notify. `until` is null for "until turned back on". */
+/** A server that does not notify. `until` is null for "until turned back on". */
 export interface Mute {
-  readonly kind: "server" | "channel"
+  readonly kind: "server"
   readonly id: string
   readonly until: number | null
 }
@@ -39,23 +38,13 @@ const MUTE_MS: Record<"1h" | "8h" | "1d", number> = { "1h": HOUR, "8h": 8 * HOUR
 export const muteUntil = (choice: MuteChoice, now: number): number | null | undefined =>
   choice === "off" ? undefined : choice === "forever" ? null : now + MUTE_MS[choice]
 
-/** Whether a place is muted at `now`, by its channel or by its server. */
-export const isMuted = (
-  mutes: readonly Mute[],
-  serverId: string,
-  channelId: string | null,
-  now: number,
-) =>
-  mutes.some(
-    (m) =>
-      ((m.kind === "server" && m.id === serverId) ||
-        (m.kind === "channel" && channelId !== null && m.id === channelId)) &&
-      (m.until === null || m.until > now),
-  )
+/** Whether a server is muted at `now`. */
+export const isMuted = (mutes: readonly Mute[], serverId: string, now: number) =>
+  mutes.some((m) => m.kind === "server" && m.id === serverId && (m.until === null || m.until > now))
 
 /** Where a notification leads: a place, and a message in it. */
 export interface PlaceTarget {
-  readonly kind: "agent" | "channel"
+  readonly kind: "agent"
   readonly id: string
   readonly messageId?: string
   /**
@@ -163,7 +152,7 @@ export interface IslandAttention {
   readonly kind: "approval" | "question"
   /** The step to approve, or the question. Cut by `attentionText`. */
   readonly summary: string
-  /** The channel name, or null for a direct chat. */
+  /** The place name. Null for a direct chat. */
   readonly place: string | null
   /** For an approval, the kind of step. Null when the app does not know it. */
   readonly step: ToolStepKind | null
@@ -194,7 +183,7 @@ export type IslandDoing =
 /** One row of the detail card. */
 export interface IslandRow {
   readonly agent: IslandAgent
-  /** The channel name, or null for a direct chat. */
+  /** The place name. Null for a direct chat. */
   readonly place: string | null
   readonly target: PlaceTarget
   readonly doing: IslandDoing

@@ -1,8 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import type { Edge, Step, Trigger } from "@robot/shared"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
-import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
@@ -69,11 +67,6 @@ const setup = async () => {
       ),
     )
   const [ada, bo] = await Promise.all([agent("Ada"), agent("Bo")])
-  const channel = await run(
-    Channels.use((c) =>
-      c.create({ serverId: local.id, name: "Out", topic: "", memberIds: [ada.id], leadId: null }),
-    ),
-  )
   const agentStep = (
     id: string,
     agentId: string,
@@ -89,14 +82,14 @@ const setup = async () => {
     prompt,
     continueOnFailure,
   })
+  /** A step that ends the flow with a notice; the title is the text. */
   const post = (id: string, text: string): Step => ({
     id,
-    kind: "post",
+    kind: "notify",
     name: id,
     x: 0,
     y: 0,
-    channelId: channel.id,
-    text,
+    title: text,
   })
   const edge = (from: string, to: string, branch?: "yes" | "no"): Edge => ({
     id: `${from}-${to}`,
@@ -113,16 +106,14 @@ const setup = async () => {
     )
     return run(Workflows.use((w) => w.runDetail(runId)))
   }
-  const posted = async () =>
-    (await run(Channels.use((c) => c.history(channel.id)))).filter((m) => m.author === "user")
-  return { run, local, ada, bo, channel, agentStep, post, edge, create, start, finished, posted }
+  return { run, local, ada, bo, agentStep, post, edge, create, start, finished }
 }
 
 const states = (d: { steps: readonly { stepId: string; state: string }[] }) =>
   Object.fromEntries(d.steps.map((s) => [s.stepId, s.state]))
 
 describe("workflows", () => {
-  test("a two-step flow passes the first result to the second and posts the final message", async () => {
+  test("a two-step flow passes the first result to the second and ends with a notice", async () => {
     const s = await setup()
     const wf = await s.create(
       [
@@ -139,8 +130,7 @@ describe("workflows", () => {
     const b = detail.steps.find((x) => x.stepId === "b")
     expect(a?.result).toContain("Write a haiku")
     expect(b?.input).toBe(a?.result ?? "?")
-    const messages = await s.posted()
-    expect(JSON.stringify(messages.at(-1)?.parts)).toContain(`Final: ${b?.result}`)
+    expect(detail.steps.find((x) => x.stepId === "p")?.result).toBe(b?.result ?? "?")
     expect(a?.taskId).toBeTruthy()
   })
 
@@ -230,49 +220,6 @@ describe("workflows", () => {
     expect(states(detail)).toEqual({ g: "failed", p: "skipped" })
   })
 
-  test("a message in the trigger channel starts the flow, and the text reaches the prompt", async () => {
-    const s = await setup()
-    const wf = await s.create([s.agentStep("a", s.ada.id, "Handle: {{trigger}}")], [], {
-      kind: "channel",
-      channelId: s.channel.id,
-      contains: "deploy",
-    })
-    await s.run(Channels.use((c) => c.send(s.channel.id, "@Ada please deploy now")))
-    await until(async () => (await s.run(Workflows.use((w) => w.runs(wf.id)))).length === 1)
-    const [run] = await s.run(Workflows.use((w) => w.runs(wf.id)))
-    const detail = await s.finished(run?.id ?? "")
-    expect(detail.run.trigger).toBe("channel")
-    expect(detail.steps[0]?.result).toContain("Handle: @Ada please deploy now")
-    // A message without the text starts nothing.
-    await s.run(Channels.use((c) => c.send(s.channel.id, "@Ada hello")))
-    await Bun.sleep(100)
-    expect(await s.run(Workflows.use((w) => w.runs(wf.id)))).toHaveLength(1)
-  })
-
-  test('"Record only": a message trigger records the run, runs no step and asks no model; Run now still runs', async () => {
-    const s = await setup()
-    asked.length = 0
-    const wf = await s.create([s.agentStep("a", s.ada.id, "Handle: {{trigger}}")], [], {
-      kind: "channel",
-      channelId: s.channel.id,
-      contains: "deploy",
-      recordOnly: true,
-    })
-    await s.run(Channels.use((c) => c.send(s.channel.id, "@Ada please deploy now")))
-    await until(async () => (await s.run(Workflows.use((w) => w.runs(wf.id)))).length === 1)
-    const [recorded] = await s.run(Workflows.use((w) => w.runs(wf.id)))
-    expect(recorded?.state).toBe("recorded")
-    expect(recorded?.triggerText).toBe("@Ada please deploy now")
-    expect(recorded?.finishedAt).not.toBeNull()
-    const detail = await s.run(Workflows.use((w) => w.runDetail(recorded?.id ?? "")))
-    expect(detail.steps).toEqual([])
-    expect(asked.some((m) => m.includes("Handle:"))).toBe(false)
-    // A recorded run is not a running one: Run now works and runs the steps.
-    const now = await s.finished((await s.start(wf.id, "by hand")).id)
-    expect(now.run.state).toBe("done")
-    expect(now.steps[0]?.result).toContain("Handle: by hand")
-  })
-
   test("a schedule trigger fires on the tick", async () => {
     const s = await setup()
     const wf = await s.create([s.agentStep("a", s.ada.id, "Tick")], [], {
@@ -337,7 +284,6 @@ describe("workflows", () => {
 
 // The owner of a workflow and the agents that may work in it (spec 010, "Owner and participants").
 describe("the owner of a workflow", () => {
-  /** "Docs" has the lead Ada and the member Cy. "Ops" has the lead Bo. */
   const owned = async () => {
     const s = await setup()
     const cy = await s.run(
@@ -351,13 +297,9 @@ describe("the owner of a workflow", () => {
         }),
       ),
     )
-    const org = (name: string, memberIds: string[], leadId: string) =>
-      s.run(Organizations.use((o) => o.create({ serverId: s.local.id, name, memberIds, leadId })))
-    const docs = await org("Docs", [s.ada.id, cy.id], s.ada.id)
-    const ops = await org("Ops", [s.bo.id], s.bo.id)
     const makeOwned = (
       steps: Step[],
-      owner: { kind: "organization" | "agent"; id: string } | null,
+      owner: { kind: "agent"; id: string } | null,
       edges: Edge[] = [],
     ) =>
       s.run(
@@ -372,20 +314,17 @@ describe("the owner of a workflow", () => {
           }),
         ),
       )
-    return { ...s, cy, docs, ops, makeOwned }
+    return { ...s, cy, makeOwned }
   }
 
   test("a workflow keeps its owner, and no owner is the default", async () => {
     const s = await owned()
     const shared = await s.create([s.post("a", "x")], [])
     expect(shared.owner).toBeNull()
-    const wf = await s.makeOwned([s.post("a", "x")], { kind: "organization", id: s.docs.id })
-    expect(wf.owner).toEqual({ kind: "organization", id: s.docs.id })
+    const wf = await s.makeOwned([s.post("a", "x")], { kind: "agent", id: s.cy.id })
+    expect(wf.owner).toEqual({ kind: "agent", id: s.cy.id })
     const listed = await s.run(Workflows.use((w) => w.list(s.local.id)))
-    expect(listed.find((x) => x.id === wf.id)?.owner).toEqual({
-      kind: "organization",
-      id: s.docs.id,
-    })
+    expect(listed.find((x) => x.id === wf.id)?.owner).toEqual({ kind: "agent", id: s.cy.id })
     const moved = await s.run(
       Workflows.use((w) => w.update(wf.id, { owner: { kind: "agent", id: s.ada.id } })),
     )
@@ -396,44 +335,11 @@ describe("the owner of a workflow", () => {
 
   test("an owner that does not exist is refused", async () => {
     const s = await owned()
-    const refused = await s
-      .makeOwned([s.post("a", "x")], { kind: "organization", id: "nope" })
-      .then(
-        () => "ok",
-        (e) => e,
-      )
+    const refused = await s.makeOwned([s.post("a", "x")], { kind: "agent", id: "nope" }).then(
+      () => "ok",
+      (e) => e,
+    )
     expect(refused).toMatchObject({ code: "owner_not_found" })
-  })
-
-  test("a member, and the lead of another organization, work; an outsider fails with no task", async () => {
-    const s = await owned()
-    const wf = await s.makeOwned(
-      [s.agentStep("member", s.cy.id, "Member"), s.agentStep("lead", s.bo.id, "Lead of Ops")],
-      { kind: "organization", id: s.docs.id },
-    )
-    const ok = await s.finished((await s.start(wf.id)).id)
-    expect(states(ok)).toEqual({ member: "done", lead: "done" })
-
-    const strange = await s.run(
-      Agents.use((a) =>
-        a.create({
-          serverId: s.local.id,
-          name: "Eve",
-          role: "",
-          instructions: "Work.",
-          model: s.ada.model,
-        }),
-      ),
-    )
-    const out = await s.makeOwned([s.agentStep("outsider", strange.id, "Outsider")], {
-      kind: "organization",
-      id: s.docs.id,
-    })
-    const failed = await s.finished((await s.start(out.id)).id)
-    expect(failed.run.state).toBe("failed")
-    const step = failed.steps.find((x) => x.stepId === "outsider")
-    expect(step).toMatchObject({ state: "failed", error: "not_participant", taskId: null })
-    expect(asked.some((q) => q.includes("Outsider"))).toBe(false)
   })
 
   test("a step with Continue on failure goes on after a step that is not a participant", async () => {
@@ -458,38 +364,6 @@ describe("the owner of a workflow", () => {
     expect(detail.steps.find((x) => x.stepId === "other")?.error).toBe("not_participant")
   })
 
-  test("a change of the group counts at the next run with no edit of a step", async () => {
-    const s = await owned()
-    const wf = await s.makeOwned([s.agentStep("a", s.cy.id, "Cy")], {
-      kind: "organization",
-      id: s.docs.id,
-    })
-    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "done" })
-    await s.run(
-      Organizations.use((o) => o.update(s.docs.id, { memberIds: [s.ada.id], leadId: s.ada.id })),
-    )
-    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "failed" })
-    await s.run(Organizations.use((o) => o.update(s.docs.id, { memberIds: [s.ada.id, s.cy.id] })))
-    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "done" })
-  })
-
-  test("a deleted owner leaves the workflow shared, with its runs", async () => {
-    const s = await owned()
-    const wf = await s.makeOwned([s.agentStep("a", s.bo.id, "Bo")], {
-      kind: "organization",
-      id: s.docs.id,
-    })
-    // Bo is the lead of "Ops", so Bo works in a workflow of "Docs". Make Bo no lead first.
-    await s.run(Organizations.use((o) => o.update(s.ops.id, { leadId: null })))
-    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "failed" })
-    await s.run(Organizations.use((o) => o.remove(s.docs.id)))
-    const listed = await s.run(Workflows.use((w) => w.list(s.local.id)))
-    expect(listed.find((x) => x.id === wf.id)?.owner).toBeNull()
-    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "done" })
-    const runs = await s.run(Workflows.use((w) => w.runs(wf.id)))
-    expect(runs).toHaveLength(2)
-  })
-
   test("the owner cannot change while the workflow runs", async () => {
     const s = await owned()
     const wf = await s.create(
@@ -498,9 +372,7 @@ describe("the owner of a workflow", () => {
     )
     const run = await s.start(wf.id)
     const refused = await s
-      .run(
-        Workflows.use((w) => w.update(wf.id, { owner: { kind: "organization", id: s.docs.id } })),
-      )
+      .run(Workflows.use((w) => w.update(wf.id, { owner: { kind: "agent", id: s.ada.id } })))
       .then(
         () => "ok",
         (e) => e,

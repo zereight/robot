@@ -5,26 +5,20 @@ import {
   AgentPatch,
   AgentStarterCreate,
   BrowserProfileCreate,
-  ChannelCreate,
-  ChannelPatch,
   ChatSend,
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
   EVENT_RESULTS,
-  HAND_OFF_RULES,
   isClientMethod,
   MEMORY_MODES,
   MESSAGE_MAX,
   MOVE_DIRECTIONS,
   MUTE_CHOICES,
-  OrgCreate,
-  OrgPatch,
   PlaceKind,
   PlaceRef,
   ProviderConnect,
   parseAddress,
-  REVIEW_CHANGES_MAX,
   RoutineInput,
   RoutinePatch,
   type RpcInput,
@@ -57,7 +51,7 @@ const EventTextSchema = Schema.Union([
   Schema.Struct({ text: Schema.String }),
 ])
 
-import { Id, modelChoices, ownServer, strict } from "./link/changes.ts"
+import { modelChoices } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { Activity } from "./services/Activity.ts"
@@ -67,7 +61,6 @@ import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
-import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Connections } from "./services/Connections.ts"
@@ -86,15 +79,11 @@ import { Knowledge } from "./services/Knowledge.ts"
 import { Memory, MemoryFilterSchema } from "./services/Memory.ts"
 import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { Notifier } from "./services/Notifier.ts"
-import { Organization } from "./services/Organization.ts"
-import { Organizations } from "./services/Organizations.ts"
-import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
-import { Retro } from "./services/Retro.ts"
 import { Routines } from "./services/Routines.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
@@ -117,7 +106,6 @@ import {
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
 import { TeamsLink } from "./services/TeamsLink.ts"
-import { Today } from "./services/Today.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
@@ -151,10 +139,6 @@ const RuleInputSchema = Schema.Struct({
   detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
   decision: Schema.Literals(["allow", "deny"]),
 })
-/** The organizations in the list of a skill or a connection, with "On" or "Off" (spec 030). */
-const OrgEntriesSchema = Schema.Array(
-  Schema.Struct({ id: Schema.String, value: Schema.Literals(["on", "off"]) }),
-).check(Schema.isMaxLength(1000))
 /** A line of the connection form: an environment value or a header (spec 018). */
 const ConnectionEntrySchema = Schema.Struct({
   name: Schema.String.check(Schema.isMaxLength(1000)),
@@ -177,8 +161,6 @@ const ConnectionInputSchema = Schema.Struct({
     Schema.Literal("all"),
     Schema.Array(Schema.String).check(Schema.isMaxLength(1000)),
   ]),
-  /** The organizations in the list of the connection (spec 018, 030). */
-  organizations: Schema.optionalKey(OrgEntriesSchema),
 })
 const SettingsLine = Schema.Struct({
   agentId: Schema.String,
@@ -648,9 +630,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ agentId, messageId, callId }) =>
         Effect.gen(function* () {
           yield* AgentSettings.use((s) => s.undo(agentId, messageId, callId))
-          // The line of the message shows that it was undone, in a chat or a channel.
+          // The line of the message in the chat shows that it was undone.
           yield* Chat.use((c) => Effect.sync(() => c.announce(messageId)))
-          yield* Channels.use((c) => Effect.sync(() => c.announce(messageId)))
         }),
       ),
       Effect.as(undefined),
@@ -824,27 +805,6 @@ export const handlers: Handlers = {
         retryOptions(confirmed).pipe(Effect.flatMap((o) => Tasks.use((t) => t.retry(id, o)))),
       ),
     ),
-  "tasks.accept": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.accept(id))),
-      done,
-    ),
-  "tasks.requestChanges": (input) =>
-    decode(
-      Schema.Struct({
-        id: Schema.String,
-        // The text is checked for its length after it is trimmed (spec 005).
-        text: Schema.String.check(Schema.isMaxLength(REVIEW_CHANGES_MAX * 2)),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ id, text }) => Tasks.use((t) => t.requestChanges(id, text))),
-      done,
-    ),
-  "tasks.endRequest": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.endRequest(id))),
-      done,
-    ),
   "followups.list": (input) =>
     decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
       Effect.flatMap(({ taskId }) => FollowUps.use((f) => f.ofTask(taskId))),
@@ -902,129 +862,6 @@ export const handlers: Handlers = {
         ),
       ),
     ),
-  "channels.list": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Channels.use((c) => c.list(serverId))),
-    ),
-  "channels.create": (input) =>
-    decode(ChannelCreate)(input).pipe(
-      Effect.flatMap((data) => Channels.use((c) => c.create(data))),
-    ),
-  "channels.update": (input) =>
-    decode(Schema.Struct({ id: Schema.String, patch: ChannelPatch }))(input).pipe(
-      Effect.flatMap(({ id, patch }) => Channels.use((c) => c.update(id, patch))),
-    ),
-  "channels.setPicture": (input) =>
-    decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
-      Effect.flatMap(({ id, dataUrl }) => Channels.use((c) => c.setPicture(id, dataUrl))),
-    ),
-  "channels.delete": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Channels.use((c) => c.remove(id))),
-      done,
-    ),
-  "organizations.list": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Organizations.use((o) => o.list(serverId))),
-    ),
-  // The daily token limit of an organization (spec 030). A linked device reads it with the link only;
-  // its input is checked as strictly as any request of a client.
-  "organizations.limit": (input) =>
-    strict(Schema.Struct({ id: Id }))(input).pipe(
-      Effect.flatMap(({ id }) => Organizations.use((o) => o.limit(id))),
-    ),
-  "usage.organizations": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Organizations.use((o) => o.usage(serverId))),
-    ),
-  "organizations.create": (input) =>
-    decode(OrgCreate)(input).pipe(
-      Effect.flatMap((data) => Organizations.use((o) => o.create(data))),
-    ),
-  "organizations.update": (input) =>
-    decode(Schema.Struct({ id: Schema.String, patch: OrgPatch }))(input).pipe(
-      Effect.flatMap(({ id, patch }) => Organizations.use((o) => o.update(id, patch))),
-    ),
-  "organizations.delete": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Organizations.use((o) => o.remove(id))),
-      done,
-    ),
-  // The retrospective of an organization (spec 030, "Retrospective"): one request, and nothing
-  // saved. The user saves a proposal in the form of its kind.
-  "retro.look": (input) =>
-    decode(Schema.Struct({ orgId: Schema.String, requestId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ orgId, requestId }) => Retro.use((r) => r.look({ orgId, requestId }))),
-    ),
-  "retro.cancel": (input) =>
-    decode(Schema.Struct({ requestId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ requestId }) => Retro.use((r) => r.cancel(requestId))),
-      done,
-    ),
-  "organizations.lastRepair": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Organizations.use((o) => o.lastRepair(id))),
-    ),
-  "orgTools.list": (input) =>
-    decode(Schema.Struct({ orgId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ orgId }) => Organizations.use((o) => o.tools(orgId))),
-    ),
-  "orgTools.set": (input) =>
-    decode(
-      Schema.Struct({
-        orgId: Schema.String,
-        kind: Schema.Literals(["skill", "connection"]),
-        id: Schema.String,
-        choice: Schema.Literals(["inherit", "on", "off"]),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ orgId, kind, id, choice }) =>
-        Organizations.use((o) => o.setTool(orgId, kind, id, choice)),
-      ),
-    ),
-  "orgTools.forAgent": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Organizations.use((o) => o.toolsOfAgent(agentId))),
-    ),
-  "channels.history": (input) =>
-    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ channelId }) => Channels.use((c) => c.history(channelId))),
-    ),
-  "channels.send": (input) =>
-    decode(
-      Schema.Struct({
-        channelId: Schema.String,
-        text: Schema.String,
-        replyTo: Schema.optionalKey(Schema.NullOr(Schema.String)),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ channelId, text, replyTo }) =>
-        Channels.use((c) => c.send(channelId, text, replyTo)),
-      ),
-    ),
-  "channels.assign": (input) =>
-    decode(
-      Schema.Struct({ channelId: Schema.String, messageId: Schema.String, agentId: Schema.String }),
-    )(input).pipe(
-      Effect.flatMap(({ channelId, messageId, agentId }) =>
-        Channels.use((c) => c.assign(channelId, messageId, agentId)),
-      ),
-      done,
-    ),
-  "channels.stop": (input) =>
-    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ channelId }) => Channels.use((c) => c.stopAll(channelId))),
-      done,
-    ),
-  "channels.activity": (input) =>
-    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ channelId }) => Channels.use((c) => c.activity(channelId))),
-    ),
-  "channels.markRead": (input) =>
-    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ channelId }) => Channels.use((c) => c.markRead(channelId))),
-      done,
-    ),
   // The handbook of a server (spec 002). The window of this computer saves with the source "page".
   "handbook.get": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
@@ -1075,7 +912,7 @@ export const handlers: Handlers = {
     decode(
       Schema.Struct({
         place: Schema.Struct({
-          kind: Schema.Literals(["agent", "channel", "thread"]),
+          kind: Schema.Literals(["agent", "thread"]),
           id: Schema.String,
         }),
       }),
@@ -1437,11 +1274,10 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
-        organizations: Schema.optionalKey(OrgEntriesSchema),
       }),
     )(input).pipe(
-      Effect.flatMap(({ serverId, agentIds, organizations, ...skill }) =>
-        Skills.use((s) => s.create(serverId, skill, agentIds, organizations)),
+      Effect.flatMap(({ serverId, agentIds, ...skill }) =>
+        Skills.use((s) => s.create(serverId, skill, agentIds)),
       ),
     ),
   "skills.update": (input) =>
@@ -1452,11 +1288,10 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
-        organizations: Schema.optionalKey(OrgEntriesSchema),
       }),
     )(input).pipe(
-      Effect.flatMap(({ id, agentIds, organizations, ...skill }) =>
-        Skills.use((s) => s.update(id, skill, agentIds, organizations)),
+      Effect.flatMap(({ id, agentIds, ...skill }) =>
+        Skills.use((s) => s.update(id, skill, agentIds)),
       ),
     ),
   "skills.duplicate": (input) =>
@@ -1591,7 +1426,7 @@ export const handlers: Handlers = {
   "notifications.setMute": (input) =>
     decode(
       Schema.Struct({
-        kind: Schema.Literals(["server", "channel"]),
+        kind: Schema.Literals(["server"]),
         id: Schema.String,
         choice: Schema.Literals(MUTE_CHOICES),
       }),
@@ -1617,7 +1452,7 @@ export const handlers: Handlers = {
     decode(
       Schema.Struct({
         target: Schema.Struct({
-          kind: Schema.Literals(["agent", "channel"]),
+          kind: Schema.Literals(["agent"]),
           id: Schema.String,
           messageId: Schema.optionalKey(Schema.String),
         }),
@@ -1649,31 +1484,6 @@ export const handlers: Handlers = {
     )(input).pipe(
       Effect.flatMap((size) => Platform.use((p) => Effect.sync(() => p.fitIsland(size)))),
       done,
-    ),
-  "today.get": () => Today.use((t) => t.snapshot()),
-  "orgChart.get": () => OrgChart.use((o) => o.snapshot()),
-  // The ready model for a linked computer and the phone (spec 029, 012). A device with only the
-  // link may ask. It names this server; any other id, or any other field, is refused.
-  "orgChart.model": (input) =>
-    strict(Schema.Struct({ serverId: Id }))(input).pipe(
-      Effect.flatMap(({ serverId }) => ownServer(serverId)),
-      Effect.flatMap(() => OrgChart.use((o) => o.model())),
-    ),
-  // The part "Organization" (spec 013, 030). A linked computer reads it with only the link, and no
-  // request of a client changes it (spec 012): "organization.setHandOff" and
-  // "organization.setAskUpTheLine" are not client methods.
-  "organization.get": (input) =>
-    strict(Schema.Struct({ serverId: Id }))(input).pipe(
-      Effect.flatMap(({ serverId }) => ownServer(serverId)),
-      Effect.flatMap(() => Organization.use((o) => o.get)),
-    ),
-  "organization.setHandOff": (input) =>
-    decode(Schema.Struct({ rule: Schema.Literals(HAND_OFF_RULES) }))(input).pipe(
-      Effect.flatMap(({ rule }) => Organization.use((o) => o.setHandOff(rule))),
-    ),
-  "organization.setAskUpTheLine": (input) =>
-    decode(Schema.Struct({ on: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ on }) => Organization.use((o) => o.setAskUpTheLine(on))),
     ),
   "usage.summary": (input) =>
     decode(

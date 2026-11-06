@@ -16,7 +16,6 @@ import {
 import { Effect, Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Checklists } from "./Checklists.ts"
 import { Database } from "./Database.ts"
 import { secretKey } from "./Providers.ts"
@@ -58,12 +57,6 @@ const setup = async () => {
 
   const agent = (name: string) =>
     run(Agents.use((a) => a.create({ serverId: server.id, name, role: "", instructions: "" })))
-  const channel = async (name: string) =>
-    run(
-      Channels.use((c) =>
-        c.create({ serverId: server.id, name, topic: "", memberIds: [], leadId: null }),
-      ),
-    )
   const edge = (from: string, to: string, branch?: "yes" | "no"): Edge => ({
     id: `${from}-${to}${branch ?? ""}`,
     from,
@@ -125,7 +118,6 @@ const setup = async () => {
     db,
     dataDir,
     agent,
-    channel,
     edge,
     create,
     list,
@@ -149,10 +141,9 @@ const failure = (result: Exit.Exit<unknown, { code: string; detail?: string }>) 
 
 const file = (workflows: unknown) => ({ format: "robot-workflows", version: 1, workflows })
 
-/** A workflow with one step of every kind and a note, for an app that has the agent and a channel. */
+/** A workflow with one step of every kind and a note, for an app that has the agent. */
 const full = async (app: App, name = "Digest") => {
   const ada = await app.agent("Ada")
-  const out = await app.channel("Out")
   const steps: Step[] = [
     {
       id: "a",
@@ -175,15 +166,7 @@ const full = async (app: App, name = "Digest") => {
       mode: "ask",
     },
     { id: "g", kind: "approval", name: "Gate", x: 600, y: 0, message: "Go on?" },
-    {
-      id: "p",
-      kind: "post",
-      name: "Post",
-      x: 600,
-      y: 120,
-      channelId: out.id,
-      text: "Out: {{input}}",
-    },
+    { id: "p", kind: "notify", name: "Post", x: 600, y: 120, title: "Out" },
     { id: "n", kind: "notify", name: "Tell", x: 900, y: 0, title: "Finished" },
   ]
   const workflow = await app.create(name, {
@@ -197,7 +180,7 @@ const full = async (app: App, name = "Digest") => {
     ],
     notes: [{ id: "x", text: "Check the tone", tone: "pink", x: 5, y: 400 }],
   })
-  return { ada, out, workflow }
+  return { ada, workflow }
 }
 
 /** The file as JSON, with loose types: a test reads what is written, not what the types promise. */
@@ -248,7 +231,7 @@ describe("export", () => {
           text: "Is it a haiku?",
         },
         { kind: "approval", name: "Gate", x: 600, y: 0, message: "Go on?" },
-        { kind: "post", name: "Post", x: 600, y: 120, text: "Out: {{input}}" },
+        { kind: "notify", name: "Post", x: 600, y: 120, title: "Out" },
         { kind: "notify", name: "Tell", x: 900, y: 0, title: "Finished" },
       ],
       connections: [
@@ -261,23 +244,14 @@ describe("export", () => {
     })
   })
 
-  test("the file holds no run, no version, no id, no channel and no key", async () => {
+  test("the file holds no run, no version, no id and no key", async () => {
     const app = await setup()
-    const { workflow, out, ada } = await full(app)
+    const { workflow, ada } = await full(app)
     await app.run(Workflows.use((w) => w.update(workflow.id, { name: "Digest", enabled: true })))
     const path = join(app.dataDir, "workflows.json")
     await app.exportTo(path, [workflow.id])
     const text = readFileSync(path, "utf8")
-    for (const absent of [
-      out.id,
-      ada.id,
-      workflow.id,
-      "channelId",
-      "agentId",
-      KEY,
-      "enabled",
-      "runs",
-    ])
+    for (const absent of [ada.id, workflow.id, "agentId", KEY, "enabled", "runs"])
       expect(text).not.toContain(absent)
     expect(Object.keys(readFile(path).workflows[0] ?? {}).sort()).toEqual([
       "connections",
@@ -286,21 +260,6 @@ describe("export", () => {
       "steps",
       "trigger",
     ])
-  })
-
-  test("a message trigger is written as the manual trigger; a post step has no place", async () => {
-    const app = await setup()
-    const out = await app.channel("Out")
-    const workflow = await app.create("Reacts", {
-      trigger: { kind: "channel", channelId: out.id, contains: "deploy" },
-      steps: [{ id: "p", kind: "post", name: "Post", x: 0, y: 0, channelId: out.id, text: "x" }],
-    })
-    const path = join(app.dataDir, "workflows.json")
-    await app.exportTo(path, [workflow.id])
-    const written = readFile(path).workflows[0]
-    expect(written?.trigger).toEqual({ kind: "manual" })
-    expect(written?.steps[0]).toEqual({ kind: "post", name: "Post", x: 0, y: 0, text: "x" })
-    expect(readFileSync(path, "utf8")).not.toContain("deploy")
   })
 
   test("a step whose agent is gone is written with no agent", async () => {
@@ -468,7 +427,7 @@ describe("import", () => {
           needAgent: 0,
         },
       ],
-      notImported: [{ reason: "no_place", owner: "Digest", step: 4, name: "Post" }],
+      notImported: [],
     })
     expect(await app.importFile(path)).toEqual({ workflows: 1 })
 
@@ -482,7 +441,7 @@ describe("import", () => {
       ["agent", "Draft", 10, 20],
       ["condition", "Greeting?", 300, 20],
       ["approval", "Gate", 600, 0],
-      ["post", "Post", 600, 120],
+      ["notify", "Post", 600, 120],
       ["notify", "Tell", 900, 0],
     ])
     expect(made?.steps[0]).toMatchObject({
@@ -492,7 +451,7 @@ describe("import", () => {
       continueOnFailure: true,
     })
     expect(made?.steps[1]).toMatchObject({ mode: "ask", contains: "Is it a haiku?" })
-    expect(made?.steps[3]).toMatchObject({ channelId: "" })
+    expect(made?.steps[3]).toMatchObject({ title: "Out" })
     expect(made?.steps[4]).toMatchObject({ title: "Finished" })
     expect(made?.edges.map((e) => [e.from, e.to, e.branch])).toEqual([
       ["s1", "s2", undefined],
@@ -503,13 +462,12 @@ describe("import", () => {
     expect(made?.notes).toEqual([{ id: "n1", text: "Check the tone", tone: "pink", x: 5, y: 400 }])
   })
 
-  test("it makes no agent, no channel and no routine", async () => {
+  test("it makes no agent and no routine", async () => {
     const path = await exported()
     const app = await setup()
     await app.agent("Ada")
     await app.importFile(path)
     expect(await app.run(Agents.use((a) => a.list(app.server.id, false)))).toHaveLength(1)
-    expect(await app.run(Channels.use((c) => c.list(app.server.id)))).toHaveLength(0)
     expect(await app.run(Routines.use((r) => r.list(app.server.id)))).toHaveLength(0)
   })
 
@@ -521,7 +479,7 @@ describe("import", () => {
     await app.importFile(path)
     const [made] = await app.list()
     expect(made?.steps[0]).toMatchObject({ kind: "agent", agentId: "" })
-    // A run fails at that step with the reason "No agent"; the post step fails with "No place".
+    // A run fails at that step with the reason "No agent";
     const started = await app.run(Workflows.use((w) => w.run(made?.id ?? "")))
     await untilEnded(app, started.id)
     const detail = await app.run(Workflows.use((w) => w.runDetail(started.id)))
@@ -532,18 +490,28 @@ describe("import", () => {
     })
   })
 
-  test("a post step fails at its step with No place", async () => {
+  test("a post step of an older file becomes a note and is listed as not imported", async () => {
     const app = await setup()
     const path = app.write(
       "post.json",
-      file([{ name: "P", steps: [{ kind: "post", name: "Post", text: "hi" }] }]),
+      file([
+        {
+          name: "P",
+          steps: [
+            { kind: "notify", name: "Tell", title: "Done" },
+            { kind: "post", name: "Post", text: "hi" },
+          ],
+        },
+      ]),
     )
+    const preview = await app.openFile(path)
+    expect(preview?.notImported).toEqual([
+      { reason: "no_step", owner: "P", nodeType: "post", name: "Post" },
+    ])
     await app.importFile(path)
     const [made] = await app.list()
-    const started = await app.run(Workflows.use((w) => w.run(made?.id ?? "")))
-    await untilEnded(app, started.id)
-    const detail = await app.run(Workflows.use((w) => w.runDetail(started.id)))
-    expect(detail.steps[0]).toMatchObject({ state: "failed", error: "no_place" })
+    expect(made?.steps.map((x) => x.kind)).toEqual(["notify"])
+    expect(made?.notes.map((n) => n.text)).toEqual(["Not imported: post Post\nhi"])
   })
 
   test("the agent is found by name ignoring case, and an archived agent is not linked", async () => {
@@ -814,7 +782,7 @@ describe("review before an import (spec 014)", () => {
     color: "red",
   }
 
-  test("the preview names the missing agents of each workflow, the place of a post step and unknown fields", async () => {
+  test("the preview names the missing agents of each workflow, a post step of an older file and unknown fields", async () => {
     const app = await setup()
     await app.agent("Ada")
     const path = app.write(
@@ -830,7 +798,7 @@ describe("review before an import (spec 014)", () => {
       { reason: "unknown_field", owner: "Ask Zed", field: "color" },
       { reason: "unknown_field", owner: "Ask Zed", field: "steps[0].model" },
       { reason: "unknown_field", owner: "Ask Zed", field: "steps[1].channel" },
-      { reason: "no_place", owner: "Ask Zed", step: 2, name: "Share" },
+      { reason: "no_step", owner: "Ask Zed", nodeType: "post", name: "Share" },
     ])
   })
 
@@ -852,7 +820,7 @@ describe("review before an import (spec 014)", () => {
     expect(await checklistOf(app, made[0]?.id ?? "")).toBeNull()
   })
 
-  test("the new workflow has a checklist: pick an agent, pick a place, turn it on", async () => {
+  test("the new workflow has a checklist: pick an agent, turn it on", async () => {
     const app = await setup()
     await app.agent("Ada")
     const path = app.write("hand.json", file([hand]))
@@ -863,7 +831,6 @@ describe("review before an import (spec 014)", () => {
     const checklist = await checklistOf(app, made?.id ?? "")
     expect(checklist?.items).toEqual([
       { kind: "stepAgent", stepId: "s1", name: "Zed works" },
-      { kind: "stepPlace", stepId: "s2", name: "Share" },
       { kind: "workflowOn" },
     ])
   })
@@ -915,7 +882,7 @@ describe("export for CC Workflow Studio (spec 010)", () => {
       "step-3:branch-0>end",
     ])
     expect(result.notExported).toEqual([
-      { kind: "step", step: 4, stepKind: "post", name: "Post" },
+      { kind: "step", step: 4, stepKind: "notify", name: "Post" },
       { kind: "step", step: 5, stepKind: "notify", name: "Tell" },
       { kind: "trigger", trigger: "schedule" },
       { kind: "notes", count: 1 },
@@ -923,14 +890,13 @@ describe("export for CC Workflow Studio (spec 010)", () => {
     ])
   })
 
-  test("the file holds no id, no agent, no channel and no key of this app", async () => {
+  test("the file holds no id, no agent and no key of this app", async () => {
     const app = await setup()
-    const { workflow, ada, out } = await full(app)
+    const { workflow, ada } = await full(app)
     const path = join(app.dataDir, "digest.json")
     await exportCc(app, path, workflow.id)
     const text = readFileSync(path, "utf8")
-    for (const needle of [ada.id, out.id, workflow.id, "Ada", KEY])
-      expect(text).not.toContain(needle)
+    for (const needle of [ada.id, workflow.id, "Ada", KEY]) expect(text).not.toContain(needle)
   })
 
   test("text that looks like a secret, and a stored key, are hidden", async () => {

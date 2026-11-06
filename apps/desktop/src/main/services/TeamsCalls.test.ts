@@ -4,7 +4,6 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import {
-  type ChannelMessage,
   type ChatMessage,
   type MessagePart,
   type PermissionLevel,
@@ -16,7 +15,6 @@ import { Effect } from "effect"
 import { unzipSync } from "fflate"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
@@ -132,7 +130,7 @@ const calls = (...list: { name: string; args: unknown }[]) => `CALLS ${JSON.stri
 const change = (instructions: string) => ({ name: "settings", args: { instructions } })
 
 type ToolPart = Extract<MessagePart, { kind: "tool" }>
-const toolOf = (message: ChatMessage | ChannelMessage | undefined, callId: string) =>
+const toolOf = (message: ChatMessage | undefined, callId: string) =>
   message?.parts.find((p): p is ToolPart => p.kind === "tool" && p.id === callId)
 
 // --- The set-up -----------------------------------------------------------------------------------
@@ -817,77 +815,6 @@ describe("a message from Teams in the chat", () => {
     await until(async () => (await list()).length === 2)
     expect((await list())[0]).toMatchObject({ source: "teams", retryOf: failed?.id })
     await second.runtime.dispose()
-  })
-})
-
-// --- Channels -------------------------------------------------------------------------------------
-
-describe("work from a message: channel", () => {
-  const channelOf = (s: S, leadId: string | null, name = "Launch") =>
-    s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name,
-          topic: "Ship it",
-          memberIds: [s.lia.id, s.cy.id],
-          leadId,
-        }),
-      ),
-    )
-  const history = (s: S, id: string) => s.run(Channels.use((c) => c.history(id)))
-
-  test("a call with no mention goes to the lead; the job shows the mark and the name", async () => {
-    const s = await setup()
-    const channel = await channelOf(s, s.lia.id)
-    await s.prepare({ targetKind: "channel", targetId: channel.id })
-    await s.turnOn()
-    s.chat.say(ROOM, MARTA, "@ROBot plan the launch")
-    await s.pass(3000)
-    await until(async () => (await history(s, channel.id)).some((m) => m.agentId === s.lia.id))
-    await s.quiet(1)
-    const messages = await history(s, channel.id)
-    const job = messages.find((m) => m.author === "user")
-    expect(job).toMatchObject({ fromTeams: MARTA })
-    expect(job?.parts).toEqual([{ kind: "text", text: "plan the launch" }])
-    expect(messages.some((m) => m.agentId === s.lia.id)).toBe(true)
-    expect(messages.some((m) => m.agentId === s.cy.id)).toBe(false)
-    // Since S104 the reply text of a lead that made no parts goes to Teams.
-    await s.pass(2000)
-    expect(s.chat.typed.map((x) => x.text)).toEqual(["[ROBot] ok"])
-    await dispose(s)
-  })
-
-  test("a mention of one member works as in the channel", async () => {
-    const s = await setup()
-    const channel = await channelOf(s, s.lia.id)
-    await s.prepare({ targetKind: "channel", targetId: channel.id })
-    await s.turnOn()
-    s.chat.say(ROOM, MARTA, "@ROBot @Cy say hello")
-    await s.pass(3000)
-    await until(async () => (await history(s, channel.id)).some((m) => m.agentId === s.cy.id))
-    await s.quiet(1)
-    const messages = await history(s, channel.id)
-    expect(messages.some((m) => m.agentId === s.lia.id)).toBe(false)
-    expect(messages.find((m) => m.author === "user")).toMatchObject({ fromTeams: MARTA })
-    await dispose(s)
-  })
-
-  test("with no lead and no member named, the job waits for the user to pick a member", async () => {
-    const s = await setup()
-    const channel = await channelOf(s, null, "No lead")
-    await s.prepare({ targetKind: "channel", targetId: channel.id })
-    await s.turnOn()
-    s.chat.say(ROOM, MARTA, "@ROBot who takes this")
-    await s.pass(6000)
-    const messages = await history(s, channel.id)
-    expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatchObject({ awaiting: true, fromTeams: MARTA })
-    expect(await s.tasks()).toHaveLength(0)
-    await s.run(Channels.use((c) => c.assign(channel.id, messages[0]?.id as string, s.cy.id)))
-    await s.quiet(1)
-    expect((await history(s, channel.id)).some((m) => m.agentId === s.cy.id)).toBe(true)
-    await dispose(s)
   })
 })
 

@@ -54,12 +54,7 @@ export const Composer = (props: {
   }, [forced])
   const members = props.mentions
   const openAt = members ? openMention(value, caret) : null
-  const entries =
-    members && openAt && !props.blocked
-      ? mentionEntries(members, openAt.query, false).flatMap((e) =>
-          e.kind === "member" ? [e.member] : [],
-        )
-      : []
+  const entries = members && openAt && !props.blocked ? mentionEntries(members, openAt.query) : []
   const pickMention = (name: string) => {
     if (!openAt) return
     const next = insertMention(value, openAt, caret, name)

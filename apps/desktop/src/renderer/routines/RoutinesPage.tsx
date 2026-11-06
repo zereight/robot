@@ -217,7 +217,6 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
       // The results go to the chat of the agent (spec 009).
       place: { kind: "agent" },
       model: ownModel() ? model() : null,
-      orgId: null,
       // A program that reports no tokens cannot use the limit: the field is off and sends none.
       tokenLimit: limitOff()
         ? null

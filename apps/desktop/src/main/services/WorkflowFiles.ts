@@ -85,6 +85,7 @@ const hideNotImported = (
       return { ...item, owner, name: hide(item.name), nodeType: hide(item.nodeType) }
     case "text_cut":
       return { ...item, owner, name: hide(item.name) }
+    case "no_trigger":
     case "unknown_field":
       return { ...item, owner }
     default:
@@ -207,9 +208,6 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
               }
             case "approval":
               return { ...base, kind: "approval", message: hide(s.message) }
-            case "post":
-              // The file holds no channel: the step is written with no place.
-              return { ...base, kind: "post", text: hide(s.text) }
             default:
               return { ...base, kind: "notify", title: hide(s.title) }
           }
@@ -333,16 +331,10 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         // The file holds one workflow. Its rows name it as the new workflow will be named.
         for (const item of loaded.cc?.notImported ?? [])
           notImported.push(hideNotImported(item, loaded.names[0] ?? item.owner ?? "", loaded.hide))
-        // The file holds no channel: the place of each post step is not made.
+        // An older file: its post steps became notes, and its channel trigger became manual.
         for (const [i, w] of loaded.file.workflows.entries())
-          for (const [j, step] of w.steps.entries())
-            if (step.kind === "post")
-              notImported.push({
-                reason: "no_place",
-                owner: loaded.names[i] ?? w.name,
-                step: j + 1,
-                name: step.name,
-              })
+          for (const item of w.notImported ?? [])
+            notImported.push(hideNotImported(item, loaded.names[i] ?? w.name, loaded.hide))
         return {
           form: loaded.cc ? "cc" : "robot",
           workflows: loaded.file.workflows.map((w, i) => {
@@ -411,8 +403,6 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
           for (const [i, step] of created.steps.entries()) {
             if (step.kind === "agent" && step.agentId === "")
               todo.push({ kind: "stepAgent", stepId: step.id, name: step.name })
-            if (step.kind === "post" && step.channelId === "")
-              todo.push({ kind: "stepPlace", stepId: step.id, name: step.name })
             if (needConnect.has(i + 1))
               todo.push({ kind: "stepConnect", stepId: step.id, name: step.name })
           }

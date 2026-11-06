@@ -1,8 +1,8 @@
 /**
  * Writes a workflow as a file of CC Workflow Studio (spec 010, "CC Workflow Studio files"). The
  * table of steps and nodes is in `docs/cc-wf-studio-format.md`. The input is the entry of a ROBot
- * workflow file, so its texts are already free of secrets. That tool has no node for a post step,
- * a notify step, a note, a trigger, or the settings of a step, so those are left out and named in
+ * workflow file, so its texts are already free of secrets. That tool has no node for a notify step,
+ * a note, a trigger, or the settings of a step, so those are left out and named in
  * the list `notExported`.
  */
 import type { WorkflowFileStep, WorkflowFileWorkflow } from "./workflowFile.ts"
@@ -10,11 +10,11 @@ import type { Trigger } from "./workflows.ts"
 
 /** Something that the file does not hold. The window shows it under "Not exported". */
 export type CcNotExported =
-  /** A post step or a notify step: the tool has no node for it. `step` counts from 1. */
+  /** A notify step: the tool has no node for it. `step` counts from 1. */
   | {
       readonly kind: "step"
       readonly step: number
-      readonly stepKind: "post" | "notify"
+      readonly stepKind: "notify"
       readonly name: string
     }
   /** A trigger that is not "manual". `trigger` is the kind of the trigger in the app. */
@@ -64,7 +64,7 @@ export const writeCcWorkflowFile = (input: {
   const { workflow } = input
   const steps = workflow.steps
   const isWritten = (step: WorkflowFileStep | undefined) =>
-    step !== undefined && step.kind !== "post" && step.kind !== "notify"
+    step !== undefined && step.kind !== "notify"
   const writtenNumbers = steps.flatMap((step, i) => (isWritten(step) ? [i + 1] : []))
   const stepAt = (n: number) => steps[n - 1]
 
@@ -236,9 +236,7 @@ export const writeCcWorkflowFile = (input: {
   ).length
   const notExported: CcNotExported[] = [
     ...steps.flatMap((s, i): CcNotExported[] =>
-      s.kind === "post" || s.kind === "notify"
-        ? [{ kind: "step", step: i + 1, stepKind: s.kind, name: s.name }]
-        : [],
+      s.kind === "notify" ? [{ kind: "step", step: i + 1, stepKind: s.kind, name: s.name }] : [],
     ),
     ...(input.trigger === "manual" ? [] : [{ kind: "trigger", trigger: input.trigger } as const]),
     ...(workflow.notes.length > 0

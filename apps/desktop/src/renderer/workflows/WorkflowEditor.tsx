@@ -58,9 +58,6 @@ const ZOOM_MAX = 2
 /** A plain copy of store data: a store proxy cannot cross the IPC boundary. */
 const plain = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
 
-/** The steps that the editor adds (spec 010). The step "post message" is gone. */
-const ADDABLE_STEPS = STEP_KINDS.filter((kind) => kind !== "post")
-
 const newId = () => crypto.randomUUID().slice(0, 8)
 
 const blank = (kind: StepKind, x: number, y: number, name: string, agentId: string): Step => {
@@ -72,9 +69,6 @@ const blank = (kind: StepKind, x: number, y: number, name: string, agentId: stri
       return { ...base, kind, contains: "" }
     case "approval":
       return { ...base, kind, message: "" }
-    // The step "post message" is gone (spec 010). The editor never adds one.
-    case "post":
-      return { ...base, kind, channelId: "", text: "{{input}}" }
     case "notify":
       return { ...base, kind, title: "" }
   }
@@ -556,7 +550,7 @@ export const WorkflowEditor = (props: {
           data-testid="wf-name"
         />
         <Show when={canEdit()}>
-          <For each={ADDABLE_STEPS}>
+          <For each={STEP_KINDS}>
             {(k) => (
               <Button disabled={readOnly()} onClick={() => addStep(k)} data-testid={`wf-add-${k}`}>
                 + {t(`workflows.step.${k}` as MessageKey)}
@@ -743,8 +737,6 @@ export const WorkflowEditor = (props: {
               },
               (item) => {
                 if (item.kind === "stepConnect") {
-                  setSelected({ kind: "step", id: item.stepId })
-                } else if (item.kind === "stepPlace") {
                   setSelected({ kind: "step", id: item.stepId })
                 } else if (item.kind === "stepAgent") {
                   setSelected({ kind: "step", id: item.stepId })

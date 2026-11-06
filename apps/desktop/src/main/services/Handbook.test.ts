@@ -2,12 +2,11 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import { CHANNEL_INSTRUCTIONS_MAX, HANDBOOK_HISTORY_MAX, HANDBOOK_MAX } from "@robot/shared"
+import { HANDBOOK_HISTORY_MAX, HANDBOOK_MAX } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
@@ -18,7 +17,7 @@ import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { testPlatform, testRuntime } from "./testing.ts"
 
-// The handbook and the instructions of a channel (spec 002, "Handbook"; spec 004, "Rules").
+// The handbook (spec 002, "Handbook").
 
 /** The system text of every request that reached the stand-in model, newest last. */
 const systems: string[] = []
@@ -79,7 +78,7 @@ const setup = async () => {
   const get = () => run(Handbook.use((h) => h.get(local.id)))
   const history = () => run(Handbook.use((h) => h.history(local.id)))
   /** The code of the error that an effect fails with. */
-  const codeOf = async (effect: Effect.Effect<unknown, AppError, Handbook | Channels | Agents>) =>
+  const codeOf = async (effect: Effect.Effect<unknown, AppError, Handbook | Agents>) =>
     (await run(Effect.flip(effect))).code
   /** Sends a text to an agent and gives the system text of the request that it made. */
   const ask = async (agentId: string, text: string) => {
@@ -247,169 +246,6 @@ describe("the order of the texts that an agent reads (spec 002, 004)", () => {
     expect(next).toContain("Second text.")
     expect(next).not.toContain("First text.")
   })
-
-  test("in a channel: the handbook, the own instructions, then the instructions of the channel, for a member and for the lead", async () => {
-    const s = await setup()
-    const lia = await s.agent("Lia", "You lead.")
-    const bo = await s.agent("Bo", "You write.")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Launch",
-          topic: "Ship it",
-          instructions: "Write the answer as a list.",
-          memberIds: [lia.id, bo.id],
-          leadId: lia.id,
-        }),
-      ),
-    )
-    expect(channel.instructions).toBe("Write the answer as a list.")
-    await s.save("Answer in Korean.")
-    const markers = [
-      "Handbook:",
-      "Answer in Korean.",
-      "Your own instructions:",
-      'Instructions of the channel "Launch":',
-      "Write the answer as a list.",
-    ]
-
-    // A member that a mention picks.
-    let before = systems.length
-    await s.run(Channels.use((c) => c.send(channel.id, "@Bo write it")))
-    await until(() => systems.length > before)
-    const member = systems.at(before) ?? ""
-    expect(
-      ascending(
-        order(member, ...markers.slice(0, 3), "You write.", markers[3] ?? "", markers[4] ?? ""),
-      ),
-    ).toBe(true)
-    expect(member.indexOf("You write.")).toBeGreaterThan(member.indexOf("Your own instructions:"))
-    expect(member).toContain(
-      'in this order: the handbook, your own instructions and the instructions of the channel "Launch"',
-    )
-
-    // The lead reads a job first. It gets the same three texts.
-    await until(async () =>
-      (await s.run(Channels.use((c) => c.history(channel.id)))).some(
-        (m) => m.agentId === bo.id && m.parts.length > 0,
-      ),
-    )
-    before = systems.length
-    await s.run(Channels.use((c) => c.send(channel.id, "Plan the launch")))
-    await until(() => systems.length > before)
-    const lead = systems.at(before) ?? ""
-    expect(lead).toContain("You lead.")
-    expect(lead).toContain("Write the answer as a list.")
-    expect(lead).toContain("Answer in Korean.")
-    expect(lead.indexOf("Answer in Korean.")).toBeLessThan(lead.indexOf("You lead."))
-    expect(lead.indexOf("You lead.")).toBeLessThan(lead.indexOf("Write the answer as a list."))
-
-    // The same agent in its direct chat does not get the instructions of the channel.
-    const direct = await s.ask(bo.id, "hello")
-    expect(direct).toContain("Answer in Korean.")
-    expect(direct).not.toContain("Write the answer as a list.")
-  })
-
-  test("a member whose switch is off gets the channel instructions but no handbook", async () => {
-    const s = await setup()
-    const lia = await s.agent("Lia", "You lead.", false)
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Solo",
-          topic: "",
-          instructions: "Use short lines.",
-          memberIds: [lia.id],
-          leadId: lia.id,
-        }),
-      ),
-    )
-    await s.save("Answer in Korean.")
-    const before = systems.length
-    await s.run(Channels.use((c) => c.send(channel.id, "@Lia go")))
-    await until(() => systems.length > before)
-    const system = systems.at(before) ?? ""
-    expect(system).toContain("Use short lines.")
-    expect(system).not.toContain("Answer in Korean.")
-    expect(system).toContain(
-      'in this order: your own instructions and the instructions of the channel "Solo"',
-    )
-  })
-})
-
-describe("the instructions of a channel (spec 004)", () => {
-  test("empty at the start; saved, trimmed of nothing, and changed with the channel", async () => {
-    const s = await setup()
-    const ada = await s.agent("Ada", "")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Room",
-          topic: "",
-          memberIds: [ada.id],
-          leadId: null,
-        }),
-      ),
-    )
-    expect(channel.instructions).toBe("")
-    const changed = await s.run(
-      Channels.use((c) => c.update(channel.id, { instructions: "Be kind.\nBe brief." })),
-    )
-    expect(changed.instructions).toBe("Be kind.\nBe brief.")
-    const list = await s.run(Channels.use((c) => c.list(s.local.id)))
-    expect(list[0]?.instructions).toBe("Be kind.\nBe brief.")
-    // A change of another field keeps the text.
-    const renamed = await s.run(Channels.use((c) => c.update(channel.id, { topic: "New" })))
-    expect(renamed.instructions).toBe("Be kind.\nBe brief.")
-  })
-
-  test("a text over 4000 characters, and a text that looks like a secret, are refused on save", async () => {
-    const s = await setup()
-    const ada = await s.agent("Ada", "")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Room",
-          topic: "",
-          instructions: "Fine.",
-          memberIds: [ada.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const update = (instructions: string) =>
-      Channels.use((c) => c.update(channel.id, { instructions }))
-    expect(await s.codeOf(update("x".repeat(CHANNEL_INSTRUCTIONS_MAX + 1)))).toBe(
-      "channel_instructions_too_long",
-    )
-    expect(await s.codeOf(update("Use sk-abcdefghijklmnopqrstuvwxyz0123"))).toBe(
-      "channel_instructions_secret",
-    )
-    expect(await s.codeOf(update(`Use ${KEY}`))).toBe("channel_instructions_secret")
-    expect((await s.run(Channels.use((c) => c.get(channel.id)))).instructions).toBe("Fine.")
-    // The same rules hold when a channel is made.
-    expect(
-      await s.codeOf(
-        Channels.use((c) =>
-          c.create({
-            serverId: s.local.id,
-            name: "Other",
-            topic: "",
-            instructions: "Use sk-abcdefghijklmnopqrstuvwxyz0123",
-            memberIds: [ada.id],
-            leadId: null,
-          }),
-        ),
-      ),
-    ).toBe("channel_instructions_secret")
-    // 4000 Korean characters are allowed.
-    const full = "가".repeat(CHANNEL_INSTRUCTIONS_MAX)
-    expect((await s.run(update(full))).instructions).toBe(full)
-  })
 })
 
 describe("export and import (spec 014)", () => {
@@ -431,7 +267,7 @@ describe("export and import (spec 014)", () => {
     return { run: runtime.runPromise, dataDir }
   }
 
-  test("the archive holds the handbook, its history and the channel instructions with keys hidden; an import restores them", async () => {
+  test("the archive holds the handbook, and its history with keys hidden; an import restores them", async () => {
     const out = join(testPlatform().dataDir, "handbook-export.zip")
     const a = app({ save: out })
     const local = await a.run(Servers.use((s) => s.local))
@@ -448,18 +284,6 @@ describe("export and import (spec 014)", () => {
       ),
     )
     await a.run(Agents.use((x) => x.update(ada.id, { instructions: "Two" })))
-    await a.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: local.id,
-          name: "Room",
-          topic: "",
-          instructions: "Use lists.",
-          memberIds: [ada.id],
-          leadId: null,
-        }),
-      ),
-    )
     await a.run(Handbook.use((h) => h.save(local.id, "First text.", "page")))
     await a.run(Handbook.use((h) => h.save(local.id, "Second text.", "device")))
     // A key that was typed before it was stored: it is in the text when the export runs.
@@ -469,7 +293,6 @@ describe("export and import (spec 014)", () => {
       local.id,
       "Old: sk-abcdefghijklmnopqrstuvwxyz0123",
     )
-    db.run("UPDATE channel SET instructions = 'Key sk-abcdefghijklmnopqrstuvwxyz0123'")
     await a.run(Data.use((d) => d.export()))
     const entries = unzipSync(readFileSync(out))
     for (const data of Object.values(entries))
@@ -486,7 +309,7 @@ describe("export and import (spec 014)", () => {
     ).toEqual(["Old: [redacted]", "First text.", "Second text."])
     inArchive.close()
 
-    // A fresh app restores the handbook with its history, the switch and the channel text.
+    // A fresh app restores the handbook with its history and the switch.
     const b = app({ open: out })
     await b.run(Data.use((d) => d.import()))
     const bLocal = await b.run(Servers.use((s) => s.local))
@@ -503,8 +326,6 @@ describe("export and import (spec 014)", () => {
     ])
     const agents = await b.run(Agents.use((x) => x.list(bLocal.id, false)))
     expect(agents.map((x) => [x.name, x.readHandbook])).toEqual([["Ada", false]])
-    const channels = await b.run(Channels.use((c) => c.list(bLocal.id)))
-    expect(channels.map((c) => c.instructions)).toEqual(["Key [redacted]"])
     // The history of the instructions of an agent comes back too (spec 002, 014).
     const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
     expect(

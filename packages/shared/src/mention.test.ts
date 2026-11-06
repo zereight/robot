@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test"
-import { EVERYONE_MENTION, mentionsEveryone, parseMentions } from "./channels.ts"
 import {
   directMentions,
   insertMention,
   MENTION_LIST_MAX,
-  type MentionEntry,
   mentionEntries,
   openMention,
+  parseMentions,
 } from "./mention.ts"
 
 test("a mention opens at an @ that starts the text or follows a space", () => {
@@ -38,63 +37,30 @@ test("the last @ before the caret counts", () => {
   expect(openMention("@Ada @C", 7)).toEqual({ start: 5, query: "C" })
 })
 
-/** The lines of the list as short words: a name, or "@all". */
-const shown = (lines: readonly MentionEntry<{ name: string }>[]) =>
-  lines.map((x) => (x.kind === "all" ? "@all" : x.member.name))
+/** The names of the list. */
+const shown = (lines: readonly { name: string }[]) => lines.map((x) => x.name)
 
 test("entries: names that start with the query first, then names that hold it", () => {
   const members = [{ name: "Cy" }, { name: "Lia" }, { name: "Alia" }, { name: "Bo" }]
-  expect(shown(mentionEntries(members, "", false))).toEqual(["Cy", "Lia", "Alia", "Bo"])
-  expect(shown(mentionEntries(members, "li", false))).toEqual(["Lia", "Alia"])
-  expect(shown(mentionEntries(members, "LI", false))).toEqual(["Lia", "Alia"])
-  expect(mentionEntries(members, "zz", false)).toEqual([])
-})
-
-test("entries: the members marked first come before the others, each group in its order", () => {
-  const members = [{ name: "Cy" }, { name: "Lia" }, { name: "Alia" }, { name: "Bo" }]
-  const first = (m: { name: string }) => m.name === "Alia" || m.name === "Bo"
-  expect(shown(mentionEntries(members, "", false, first))).toEqual(["Alia", "Bo", "Cy", "Lia"])
-  // A marked name that only holds the query still comes before an unmarked name that starts with it.
-  expect(shown(mentionEntries(members, "li", false, first))).toEqual(["Alia", "Lia"])
-  expect(shown(mentionEntries(members, "", true, () => false))).toEqual([
-    "Cy",
-    "Lia",
-    "Alia",
-    "Bo",
-    "@all",
-  ])
+  expect(shown(mentionEntries(members, ""))).toEqual(["Cy", "Lia", "Alia", "Bo"])
+  expect(shown(mentionEntries(members, "li"))).toEqual(["Lia", "Alia"])
+  expect(shown(mentionEntries(members, "LI"))).toEqual(["Lia", "Alia"])
+  expect(mentionEntries(members, "zz")).toEqual([])
 })
 
 test("entries: a Korean name matches", () => {
   const members = [{ name: "하나" }, { name: "두리" }]
-  expect(shown(mentionEntries(members, "두", false))).toEqual(["두리"])
+  expect(shown(mentionEntries(members, "두"))).toEqual(["두리"])
 })
 
-test("entries: the list has a limit for members", () => {
+test("entries: the list has a limit", () => {
   const many = Array.from({ length: MENTION_LIST_MAX + 5 }, (_, i) => ({ name: `Agent ${i}` }))
-  expect(mentionEntries(many, "", false)).toHaveLength(MENTION_LIST_MAX)
-  expect(mentionEntries(many, "", true)).toHaveLength(MENTION_LIST_MAX + 1)
+  expect(mentionEntries(many, "")).toHaveLength(MENTION_LIST_MAX)
 })
 
-test("entries: @all is the last line, so a bare @ and Enter pick a member", () => {
+test("entries: @all is not a line of the list", () => {
   const members = [{ name: "Cy" }, { name: "Bo" }]
-  expect(shown(mentionEntries(members, "", true))).toEqual(["Cy", "Bo", "@all"])
-  expect(shown(mentionEntries(members, "a", true))).toEqual(["@all"])
-  expect(shown(mentionEntries(members, "al", true))).toEqual(["@all"])
-})
-
-test("entries: the whole word @all is the first line", () => {
-  const members = [{ name: "Allan" }, { name: "Bo" }]
-  expect(shown(mentionEntries(members, "al", true))).toEqual(["Allan", "@all"])
-  expect(shown(mentionEntries(members, "all", true))).toEqual(["@all", "Allan"])
-  expect(shown(mentionEntries(members, "ALL", true))).toEqual(["@all", "Allan"])
-})
-
-test("entries: no @all when the channel does not offer it, or when the query is another word", () => {
-  const members = [{ name: "Cy" }, { name: "Bo" }]
-  expect(shown(mentionEntries(members, "", false))).toEqual(["Cy", "Bo"])
-  expect(shown(mentionEntries(members, "b", true))).toEqual(["Bo"])
-  expect(shown(mentionEntries(members, "alls", true))).toEqual([])
+  expect(shown(mentionEntries(members, "all"))).toEqual([])
 })
 
 test("insert: @Name and one space take the place of the query", () => {
@@ -116,14 +82,6 @@ test("insert: the text after the caret stays, and a space is not doubled", () =>
   const inside = openMention(split, 2)
   if (!inside) throw new Error("no mention")
   expect(insertMention(split, inside, 2, "Bob")).toEqual({ text: "@Bob one", caret: 5 })
-})
-
-test("insert: @all is read as the everyone mention", () => {
-  const open = openMention("@", 1)
-  if (!open) throw new Error("no mention")
-  const { text } = insertMention("@", open, 1, EVERYONE_MENTION)
-  expect(text).toBe("@all ")
-  expect(mentionsEveryone(text)).toBe(true)
 })
 
 const roster = [
@@ -149,48 +107,11 @@ test("a direct chat keeps the order of the agents when the message names two", (
   expect(directMentions(open, "ada", "@Bo and @Cy").map((agent) => agent.id)).toEqual(["cy", "bo"])
 })
 
-test("insert: the result is a mention that the channel reads, also with a space in the name", () => {
+test("insert: the result is a mention that the parser reads, also with a space in the name", () => {
   for (const name of ["Bo", "Ada Lovelace", "두리"]) {
     const open = openMention("@", 1)
     if (!open) throw new Error("no mention")
     const { text } = insertMention("@", open, 1, name)
     expect(parseMentions(text, [name, "Other"])).toEqual([name])
   }
-})
-
-test("entries: an agent matches on the whole name of its organization (spec 036)", () => {
-  const members = [
-    { name: "Ada", organization: "Docs" },
-    { name: "Bo", organization: "Research and Development Group" },
-    { name: "Cy" },
-  ]
-  expect(shown(mentionEntries(members, "doc", false))).toEqual(["Ada"])
-  expect(shown(mentionEntries(members, "GROUP", false))).toEqual(["Bo"])
-  expect(shown(mentionEntries(members, "zz", false))).toEqual([])
-})
-
-test("entries: a name that starts with the query comes before an organization match, in the order of the channel", () => {
-  const members = [
-    { name: "Ops lead", organization: "Docs" },
-    { name: "Dora", organization: "Ops" },
-    { name: "Ada", organization: "Docs" },
-    { name: "Bo", organization: null },
-    { name: "Eli", organization: "Ops" },
-  ]
-  expect(shown(mentionEntries(members, "do", false))).toEqual(["Dora", "Ops lead", "Ada"])
-  expect(shown(mentionEntries(members, "op", false))).toEqual(["Ops lead", "Dora", "Eli"])
-})
-
-test("entries: with no organization in the data (the switch is off) the organization never matches", () => {
-  const members = [{ name: "Ada" }, { name: "Bo" }]
-  expect(shown(mentionEntries(members, "docs", false))).toEqual([])
-})
-
-test("entries: the organization does not change the text of a pick", () => {
-  const members = [{ name: "Ada", organization: "Docs" }]
-  const [line] = mentionEntries(members, "doc", false)
-  if (line?.kind !== "member") throw new Error("no member")
-  const open = openMention("@doc", 4)
-  if (!open) throw new Error("no mention")
-  expect(insertMention("@doc", open, 4, line.member.name).text).toBe("@Ada ")
 })

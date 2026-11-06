@@ -4,24 +4,17 @@ import {
   type ActionDecider,
   type AgentMessageKind,
   addSpent as addToUsage,
-  blockedErrorOf,
+  blockedError,
   isActive,
-  isDecision,
   isEndedAs,
   isFinal,
-  isLeadOrder,
   isRuntimeKind,
   isTaskProgress,
-  isTeamsJobKind,
-  isVerdict,
-  joinWords,
   type LoggedStep,
   lastChange,
   limitState,
-  type MessagePart,
   messageText,
   type OutsideSource,
-  questionsOf,
   queueRank,
   RECENT_WORK_MAX,
   type RecentPlace,
@@ -39,18 +32,14 @@ import {
   type Task,
   type TaskDetail,
   type TaskProgress,
-  type TaskQuestion,
   type TaskSource,
   type TaskState,
   type TaskUsage,
-  type TeamsJobKind,
   type TreeUsage,
   type TurnEnd,
   taskLabel,
   tokensOf,
   treeUsage,
-  type Verdict,
-  validChanges,
   withDescendantsOf,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Layer } from "effect"
@@ -60,9 +49,7 @@ import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
-import { loadHandOffModel } from "./handOff.ts"
 import { Notifier } from "./Notifier.ts"
-import { orgLimitStop } from "./orgLimitData.ts"
 import { SettingsStore } from "./Settings.ts"
 
 interface TaskRow {
@@ -88,15 +75,8 @@ interface TaskRow {
   origin: string | null
   progress: string | null
   depth: number
-  done_test: string | null
-  verdict: string | null
-  verdict_reason: string | null
-  judged_at: number | null
-  decided_at: number | null
   ended_at: number | null
   ended_as: string | null
-  decision: string | null
-  decision_text: string | null
   input_tokens: number | null
   output_tokens: number | null
   cached_tokens: number | null
@@ -124,13 +104,6 @@ export interface TaskInput {
    * and a retry keep the depth of the task that made them, and any other task has depth 0.
    */
   readonly depth?: number
-  /** What a finished part must hold: one line, up to 200 characters (spec 004). */
-  readonly doneTest?: string | null
-  /**
-   * How a channel job began, when a message from Teams began it (spec 028). Without it, a part and
-   * a retry keep the kind of the task that made them, and any other task has none.
-   */
-  readonly teamsJob?: TeamsJobKind | null
   /**
    * Whether a task of the source "agent" is a send (the tool "send message") or the reply that
    * comes back to the sender (spec 029). Without it the task has no mark: a retry of a task is no
@@ -138,16 +111,10 @@ export interface TaskInput {
    */
   readonly agentMessage?: AgentMessageKind
   /**
-   * The task is made as Failed with this error and never runs: a part of a channel job over the
-   * limit of queued tasks (spec 005, "Queue").
+   * The task is made as Failed with this error and never runs: a mention over the limit of queued
+   * tasks (spec 005, "Queue").
    */
   readonly failed?: { readonly code: string; readonly detail: string }
-  /**
-   * The task is made, and then ends at once as Blocked with this reason and never runs: the daily
-   * token limit of an organization of its agent is used (spec 005, "Blocked"; spec 030).
-   * The end makes the same notice and the same record as any other blocked task.
-   */
-  readonly blocked?: { readonly code: string; readonly detail: string }
 }
 
 /** One step of a task for the action log (spec 007). */
@@ -180,12 +147,6 @@ export interface RetryOptions {
 export type RetryHandler = (task: Task) => Effect.Effect<void, AppError>
 
 /**
- * Starts the new part that "Request changes" asks for (spec 005): the same member, `text` as the
- * prompt, linked to `old` and in the same request.
- */
-export type ChangesHandler = (old: Task, text: string) => Effect.Effect<void, AppError>
-
-/**
  * What the sync service tells the tasks about the other computer (spec 019). The tasks cannot
  * ask the sync service themselves, because it is built after them.
  */
@@ -204,10 +165,7 @@ export interface TasksService {
   /**
    * Runs `work` for a task. An agent runs one task at a time, and at most "Agents working at once"
    * tasks run (spec 005, "Queue"). Others wait, in the order of the queue. The task is running
-   * while `work` runs, then done, failed or cancelled by how `work` ends. When the task has its
-   * place and the daily token limit of an organization of its agent is used, it ends at once as
-   * Blocked and `work` never runs (spec 005, "Blocked"; spec 030). A task of a direct chat is not
-   * stopped, and neither is one that goes on after a restart.
+   * while `work` runs, then done, failed or cancelled by how `work` ends.
    */
   run<A, E, R>(
     taskId: string,
@@ -216,8 +174,7 @@ export interface TasksService {
     options?: {
       readonly resumed?: boolean
       /**
-       * Says how a turn that ended with no error ends the task: done, blocked, or in review
-       * (spec 005). Without it the task is done. A turn with an error is failed and a stopped
+       * Says how a turn that ended with no error ends the task: done or blocked (spec 005). Without it the task is done. A turn with an error is failed and a stopped
        * turn is cancelled, whatever this says.
        */
       readonly finish?: (value: A) => TurnEnd
@@ -234,27 +191,6 @@ export interface TasksService {
    * has one, or at once when the task ends.
    */
   setWaiting(taskId: string, waiting: boolean): Promise<void>
-  /**
-   * Says that the question that a waiting task asked is with the lead of the channel (spec 004,
-   * "Questions of members"), or no longer. In that time the task shows "Running", and shows
-   * "Waiting for you" only when the question passes to the user (spec 024). Going on (a task that
-   * is not waiting any more) clears it too.
-   */
-  setWithLead(taskId: string, on: boolean): void
-  /**
-   * Runs `work` while a task waits for the tasks that it gave out (spec 005, "Queue"). The task
-   * uses no slot, and its agent stays held. After `work`, the task takes a slot again, at the
-   * front of the order.
-   */
-  withoutSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
-  /**
-   * Runs `work` as a turn of a task that holds its agent and no slot (a lead that waits for its
-   * parts): the turn waits for a free slot, at the front of the order, uses that one slot while it
-   * runs, and frees it after (spec 005, "Queue"; spec 004, "Questions of members"). A task that
-   * has a slot already, or that does not run now, runs `work` at once. An interrupt while the turn
-   * waits leaves the queue and takes no slot.
-   */
-  withSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
   /**
    * "Run next" (spec 005): the queued task goes to the front of the order, before the tasks of
    * earlier picks. Only for a queued task of this computer.
@@ -285,12 +221,6 @@ export interface TasksService {
   /** The usage of a task and every task below it, with one line for each agent. */
   treeUsage(taskId: string): TreeUsage
   /**
-   * Saves the verdict of the lead for a part (spec 004, 005). A verdict is a field: the state of
-   * the part does not change. It is saved only for a part that is done, has a done test, has no
-   * verdict, and has no decision of the user. Gives true when it was saved.
-   */
-  judge(taskId: string, verdict: Verdict, reason: string | null): boolean
-  /**
    * Records that the first part of the reply that the user sees is stored now (spec 005). Only the
    * first call counts.
    */
@@ -301,21 +231,6 @@ export interface TasksService {
   stopAny(taskId: string): Effect.Effect<void, AppError>
   /** Stops the tasks of this agent that run on the other computer (spec 019). Local ones stay. */
   stopRemoteFor(agentId: string): Effect.Effect<void, AppError>
-  /**
-   * Ends the review of a part: the task is done (spec 005). Only on the computer that owns the
-   * task, and only for a task in review.
-   */
-  accept(taskId: string): Effect.Effect<void, AppError>
-  /**
-   * Ends the review as done and starts a new part for the same member with `text` (1 to 2000
-   * characters) as its prompt (spec 005).
-   */
-  requestChanges(taskId: string, text: string): Effect.Effect<void, AppError>
-  /**
-   * Cancels every task of the request of this task that is not final, also a task in review, and
-   * stops the turns that still run. A task that is done keeps its result (spec 004, 005).
-   */
-  endRequest(taskId: string): Effect.Effect<void, AppError>
   /** The sync service gives its view of the other computer. */
   setRemote(remote: RemoteTasks): void
   /** The name of the other computer with this id, for "Runs on <name>" (spec 019). */
@@ -337,18 +252,11 @@ export interface TasksService {
   depthOf(taskId: string): number
   /**
    * The words of the user for the turn of a task (spec 007, "Ask when unsure"), or null when the
-   * task has none. A chat message of the user, the text typed in the dialog of a handover, the
-   * prompt of a routine that the user saved, and the job message of a part of a channel job count.
-   * A message of another agent, of an outside program, of Teams, a step of a workflow and the
-   * handover card do not. The text of a request for changes counts for the new part (`noteRequest`).
+   * task has none. A chat message of the user, the text typed in the dialog of a handover and the
+   * prompt of a routine that the user saved count. A message of another agent, of an outside
+   * program, of Teams, a step of a workflow and the handover card do not.
    */
   userWords(taskId: string): string | null
-  /**
-   * Records the text that the user typed to ask a member for changes (or to reply to a part): it
-   * counts as words of the user for the new part and for a retry of it (spec 007). It stays in
-   * memory: after a restart the part has no such words, and a checked step asks.
-   */
-  noteRequest(taskId: string, text: string): void
   /**
    * Runs work that holds the agent as a task does, with no task: a manual compact (spec 003). No
    * task of the agent starts until it ends.
@@ -359,8 +267,6 @@ export interface TasksService {
   /** The logged steps of a task, oldest first. */
   steps(taskId: string): readonly LoggedStep[]
   onRetry(source: TaskSource, handler: RetryHandler): void
-  /** Sets how a source starts the new part of "Request changes". */
-  onChanges(source: TaskSource, handler: ChangesHandler): void
   /** Calls `listener` when a task ends as done, failed, blocked or cancelled. */
   onEnd(listener: (task: Task) => void): void
   /**
@@ -395,7 +301,7 @@ const usageOf = (row: TaskRow): TaskUsage => ({
   costMicros: row.cost_micros,
 })
 
-const toTask = (row: TaskRow, remote?: RemoteTasks, withLead = false): Task => ({
+const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   id: row.id,
   agentId: row.agent_id,
   agentName: row.agent_name,
@@ -407,9 +313,7 @@ const toTask = (row: TaskRow, remote?: RemoteTasks, withLead = false): Task => (
   retryOf: row.retry_of,
   messageId: row.message_id,
   ...(row.thread_id ? { threadId: row.thread_id } : {}),
-  // A part whose question is with the lead shows "Running", not "Waiting for you" (spec 024). The
-  // task keeps its agent and uses no slot in that time; only the state that people see is this.
-  state: withLead && row.state === "waiting" ? "running" : row.state,
+  state: row.state,
   error: row.error_code ? { code: row.error_code, detail: row.error_detail ?? "" } : null,
   createdAt: row.created_at,
   startedAt: row.started_at,
@@ -420,15 +324,8 @@ const toTask = (row: TaskRow, remote?: RemoteTasks, withLead = false): Task => (
   waitsFor:
     row.state === "queued" && row.origin === null ? (remote?.busyOn(row.agent_id) ?? null) : null,
   progress: isTaskProgress(row.progress) ? row.progress : null,
-  doneTest: row.done_test,
-  verdict: isVerdict(row.verdict) ? row.verdict : null,
-  verdictReason: row.verdict_reason,
-  judgedAt: row.judged_at,
-  decidedAt: row.decided_at,
   endedAt: row.ended_at,
   endedAs: isEndedAs(row.ended_as) ? row.ended_as : null,
-  decision: isDecision(row.decision) ? row.decision : null,
-  decisionText: row.decision_text,
   usage: usageOf(row),
   tokenLimit: row.token_limit,
 })
@@ -467,17 +364,10 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const stops = new Map<string, Deferred.Deferred<void>>()
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
-      const changesHandlers = new Map<TaskSource, ChangesHandler>()
       const endListeners: ((task: Task) => unknown)[] = []
       const spaceListeners: ((agentId: string) => void)[] = []
       let remote: RemoteTasks | undefined
-      /**
-       * The tasks whose question card is with the lead now (spec 004, "Questions of members"). Such
-       * a task waits, but not for the user, so it shows as running. It is in memory only: a look
-       * never outlives the turn.
-       */
-      const withLead = new Set<string>()
-      const asTask = (r: TaskRow): Task => toTask(r, remote, withLead.has(r.id))
+      const asTask = (r: TaskRow): Task => toTask(r, remote)
 
       // --- The queue (spec 005, "Queue") ---------------------------------------------------------
       // Each agent runs one task at a time, and at most `limit` tasks run at the same time. A task
@@ -673,34 +563,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         )
         if (server) bus.emit("tasks.changed", { serverId: server.server_id })
       }
-      /** A part waits for the review of the user: one notification of the kind "part in review". */
-      const reviewNotice = (id: string, agentId: string) => {
-        const task = row(id)
-        const agent = db.get<{ server_id: string; name: string }>(
-          "SELECT server_id, name FROM agent WHERE id = ?",
-          agentId,
-        )
-        const channel =
-          task?.source === "channel" && task.source_id
-            ? db.get<{ name: string }>("SELECT name FROM channel WHERE id = ?", task.source_id)
-            : undefined
-        // The main process holds no interface text, so the title and the body are names and the label.
-        if (task && agent && channel && task.source_id && task.origin === null)
-          notifier.notify({
-            kind: "part_review",
-            agentId,
-            serverId: agent.server_id,
-            channelId: task.source_id,
-            title: `${agent.name} · ${channel.name}`,
-            body: task.label || task.prompt,
-            target: {
-              kind: "channel",
-              id: task.source_id,
-              ...(task.message_id ? { messageId: task.message_id } : {}),
-            },
-          })
-      }
-
       const setState = (
         id: string,
         agentId: string,
@@ -723,9 +585,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           id,
         )
         // The turn ended: the moment and how it ended are kept once (spec 005, "Moments"). A task
-        // that never started has no turn, so it has no such moment. A later change of the state
-        // (the user accepts a part in review) leaves it as it is.
-        if (isFinal(state) || state === "review")
+        // that never started has no turn, so it has no such moment.
+        if (isFinal(state))
           db.run(
             `UPDATE task SET ended_at = ?, ended_as = ?
              WHERE id = ? AND ended_at IS NULL AND started_at IS NOT NULL`,
@@ -757,7 +618,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               }
             }
         }
-        if (state === "review") reviewNotice(id, agentId)
         // A blocked task is a failed one for the notice (spec 005, 015).
         if (
           !told &&
@@ -770,50 +630,23 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           )
           // A memory check makes no notification, also when it fails (spec 008).
           if (task && agent && task.source !== "memory_check") {
-            // A routine that posts in a channel fails in that channel.
-            const channelId =
-              task.source === "channel"
-                ? task.source_id
-                : task.source === "routine" && task.source_id
-                  ? (db.get<{ channel_id: string | null }>(
-                      "SELECT channel_id FROM routine WHERE id = ?",
-                      task.source_id,
-                    )?.channel_id ?? null)
-                  : null
             notifier.notify({
               kind: task.source === "routine" ? "routine_failed" : "task_failed",
               agentId,
               serverId: agent.server_id,
-              channelId,
               title: agent.name,
               body: task.label || task.prompt,
               reason: { code: error?.code ?? "unknown", detail: error?.detail ?? "" },
-              target: channelId
-                ? { kind: "channel", id: channelId }
-                : { kind: "agent", id: agentId },
+              target: { kind: "agent", id: agentId },
             })
           }
         }
-        // The place list shows a working dot on a channel, and a channel shows its plan steps.
-        const source = db.get<{ source: string; source_id: string | null }>(
-          "SELECT source, source_id FROM task WHERE id = ?",
-          id,
-        )
-        if (source?.source === "channel" && source.source_id)
-          bus.emit("channels.changed", { channelId: source.source_id })
       }
 
       const depthOf = (taskId: string | null | undefined) =>
         taskId
           ? (db.get<{ depth: number }>("SELECT depth FROM task WHERE id = ?", taskId)?.depth ?? 0)
           : 0
-
-      /** The text of a request for changes, by the part that it made (spec 007, "Ask when unsure"). */
-      const requests = new Map<string, string>()
-      const noteRequest = (taskId: string, text: string) => {
-        if (requests.size >= 1000) requests.clear()
-        requests.set(taskId, text)
-      }
 
       /** The prompt of a routine, when it counts as words of the user. */
       const routineWords = (routineId: string | null, prompt: string) => {
@@ -827,13 +660,10 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       }
 
       const userWords = (taskId: string): string | null => {
-        const row = db.get<{
-          source: string
-          source_id: string | null
-          prompt: string
-          parent_id: string | null
-          retry_of: string | null
-        }>("SELECT source, source_id, prompt, parent_id, retry_of FROM task WHERE id = ?", taskId)
+        const row = db.get<{ source: string; source_id: string | null; prompt: string }>(
+          "SELECT source, source_id, prompt FROM task WHERE id = ?",
+          taskId,
+        )
         if (!row) return null
         switch (row.source) {
           case "chat":
@@ -842,34 +672,9 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             return row.prompt === "(no text)" ? null : row.prompt
           case "routine":
             return routineWords(row.source_id, row.prompt)
-          case "channel": {
-            // A job message, or a message that a member answers: the text of the task is what the
-            // user wrote. A part has the job message (the task above it) and the text of a request
-            // for changes. The text of a part is what the lead wrote: it is not words of the user.
-            if (!row.parent_id) return joinWords([row.prompt])
-            const job = db.get<{ prompt: string; parent_id: string | null }>(
-              "SELECT prompt, parent_id FROM task WHERE id = ?",
-              row.parent_id,
-            )
-            if (!job || job.parent_id) return null
-            // A retry of a part that "Request changes" made has the same request.
-            const asked =
-              requests.get(taskId) ?? (row.retry_of ? requests.get(row.retry_of) : undefined)
-            return joinWords([job.prompt, asked])
-          }
           default:
             return null
         }
-      }
-
-      /** How the job of a task began, when a message from Teams began it (spec 028). */
-      const teamsJobOf = (taskId: string | null | undefined): TeamsJobKind | null => {
-        if (!taskId) return null
-        const kind = db.get<{ teams_job: string | null }>(
-          "SELECT teams_job FROM task WHERE id = ?",
-          taskId,
-        )?.teams_job
-        return isTeamsJobKind(kind) ? kind : null
       }
 
       const create = (input: TaskInput) =>
@@ -878,11 +683,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const now = Date.now()
           const depth = input.depth ?? depthOf(input.parentId ?? input.retryOf)
           const failed = input.failed
-          // A job from Teams stays a job from Teams in its parts, retries and nudges (spec 028).
-          const teamsJob =
-            input.teamsJob === undefined
-              ? teamsJobOf(input.parentId ?? input.retryOf)
-              : input.teamsJob
           // The first task of a run of a routine keeps the token limit that the run starts with
           // (spec 009). A later edit of the routine does not change a run that went.
           const tokenLimit =
@@ -894,9 +694,9 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               : null
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
-               message_id, state, created_at, asked_at, depth, progress, done_test, error_code,
-               error_detail, finished_at, teams_job, agent_message, token_limit)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?, ?, ?)`,
+               message_id, state, created_at, asked_at, depth, progress, error_code, error_detail,
+               finished_at, agent_message, token_limit)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -910,24 +710,17 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             now,
             input.askedAt == null ? null : Math.min(input.askedAt, now),
             depth,
-            input.doneTest ?? null,
             failed?.code ?? null,
             failed?.detail ?? null,
             failed ? now : null,
-            teamsJob,
             input.source === "agent" ? (input.agentMessage ?? null) : null,
             tokenLimit,
           )
-          if (!failed && !input.blocked) {
+          if (!failed) {
             stops.set(id, Deferred.makeUnsafe<void>())
             made.set(id, ++counter)
           }
           changed(input.agentId)
-          if (input.source === "channel" && input.sourceId)
-            bus.emit("channels.changed", { channelId: input.sourceId })
-          // A task that the daily limit of its channel stops ends here, with no turn. Its end
-          // goes through the same code as any end, so the notice and the listeners run.
-          if (input.blocked) setState(id, input.agentId, "blocked", input.blocked)
           return asTask(row(id) as TaskRow)
         })
 
@@ -960,7 +753,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           agentId,
         )?.server_id
         const source = row(taskId)?.source ?? "chat"
-        let gated: { readonly code: string; readonly detail: string } | null = null
         const guarded = Effect.gen(function* () {
           // A task that waited through a restart goes on waiting until its card is answered. It
           // holds its agent and uses no slot until then (spec 005).
@@ -971,17 +763,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             back: false,
             slot: !options?.resumed,
           })
-          // The daily token limit of the organizations of the agent (spec 030): a task that would
-          // start now ends as Blocked, with no turn. The state never goes to running. This is the one
-          // place where a task starts, so every source passes here. A task of a direct chat is never
-          // stopped, and a task that goes on after a restart is not asked.
-          if (!options?.resumed) {
-            const stop = orgLimitStop(db, agentId, source)
-            if (stop) {
-              gated = stop
-              return yield* Effect.interrupt
-            }
-          }
           if (!options?.resumed) setState(taskId, agentId, "running")
           if (serverId) activity.setWorking(agentId, serverId, true)
           return yield* work.pipe(
@@ -999,7 +780,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               live.delete(taskId)
               stops.delete(taskId)
               leave(taskId, agentId)
-              if (gated) return setState(taskId, agentId, "blocked", gated)
               if (Exit.isSuccess(exit)) {
                 let end: TurnEnd = { state: "done" }
                 // A reading that fails never stops the end of a task.
@@ -1009,7 +789,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                   console.error("task finish failed", e)
                 }
                 if (end.state === "blocked")
-                  return setState(taskId, agentId, "blocked", blockedErrorOf(end))
+                  return setState(taskId, agentId, "blocked", blockedError(end.reason))
                 return setState(taskId, agentId, end.state)
               }
               if (Cause.hasInterruptsOnly(exit.cause)) return endStopped(taskId, agentId)
@@ -1051,7 +831,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           return remote.stop(taskId, current.origin)
         })
 
-      /** The task and every task below it: the parts of a plan count for the retry of the lead. */
+      /** The task and every task below it: the tasks below count for the retry. */
       const withDescendants = (taskId: string): string[] => [
         taskId,
         ...childRows(taskId).flatMap((child) => withDescendants(child.id)),
@@ -1099,87 +879,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             if (note) return Effect.succeed({ started: false, note })
           }
           return handler(asTask(current)).pipe(Effect.as<RetryResult>({ started: true }))
-        })
-
-      /** The task in review that the user decides on, or the reason why the user cannot. */
-      const inReview = (taskId: string): Effect.Effect<TaskRow, AppError> =>
-        Effect.suspend(() => {
-          const current = row(taskId)
-          if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
-          // The user decides on the computer that owns the task (spec 005, 019).
-          if (current.origin !== null)
-            return Effect.fail(
-              new AppError({
-                code: "task_elsewhere",
-                detail: remote?.nameOf(current.origin) ?? "",
-              }),
-            )
-          if (current.state !== "review")
-            return Effect.fail(new AppError({ code: "task_not_in_review" }))
-          return Effect.succeed(current)
-        })
-
-      /**
-       * The user decided on a part: the check gives it no verdict (spec 004). The decision and the
-       * text of a request for changes are kept for the moments of the task (spec 005).
-       */
-      const decided = (id: string, decision: "accepted" | "changes", text: string | null) =>
-        db.run(
-          "UPDATE task SET decided_at = ?, decision = ?, decision_text = ? WHERE id = ? AND decided_at IS NULL",
-          Date.now(),
-          decision,
-          text,
-          id,
-        )
-
-      const accept = (taskId: string) =>
-        inReview(taskId).pipe(
-          Effect.map((current) => {
-            // The mark comes first, so the part is never done without it.
-            decided(current.id, "accepted", null)
-            return setState(current.id, current.agent_id, "done")
-          }),
-        )
-
-      const requestChanges = (taskId: string, text: string) =>
-        Effect.gen(function* () {
-          const current = yield* inReview(taskId)
-          const value = text.trim()
-          if (!validChanges(value)) return yield* new AppError({ code: "invalid_input" })
-          const handler = changesHandlers.get(current.source)
-          if (!handler) return yield* new AppError({ code: "cannot_request_changes" })
-          // The new part exists before the old one is done, so the request is never without an open part.
-          yield* handler(asTask(current), value)
-          decided(current.id, "changes", value)
-          setState(current.id, current.agent_id, "done")
-        })
-
-      const endRequest = (taskId: string): Effect.Effect<void, AppError> =>
-        Effect.gen(function* () {
-          const current = row(taskId)
-          if (!current) return yield* new AppError({ code: "task_not_found" })
-          if (current.origin !== null)
-            return yield* new AppError({
-              code: "task_elsewhere",
-              detail: remote?.nameOf(current.origin) ?? "",
-            })
-          // The request starts at the first task: the parent of a part, up to the top.
-          let top = current
-          for (let up = top.parent_id ? row(top.parent_id) : undefined; up; ) {
-            top = up
-            up = top.parent_id ? row(top.parent_id) : undefined
-          }
-          // The parent goes first, so a parent that waits ends before it can start anything.
-          for (const id of withDescendants(top.id)) {
-            const found = row(id)
-            if (!found || found.origin !== null || isFinal(found.state)) continue
-            const signal = stops.get(id)
-            if (live.has(id) && signal) {
-              stopping.add(id)
-              freeSlot(id)
-              yield* Deferred.succeed(signal, undefined)
-            } else setState(id, found.agent_id, "cancelled")
-          }
         })
 
       const recordStep = (step: StepRecord) => {
@@ -1243,8 +942,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           taskId,
         )
         changed(current.agent_id)
-        if (current.source === "channel" && current.source_id)
-          bus.emit("channels.changed", { channelId: current.source_id })
         // The token limit of a run (spec 009): cached input counts as input, so the tokens of a
         // tree are input plus output. A run that reaches the limit is stopped as a Stop of the
         // user stops it. It stops once.
@@ -1259,51 +956,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
 
       const resultOf = (task: Task) => {
         if (!task.messageId) return ""
-        const found =
-          db.get<{ parts: string }>("SELECT parts FROM message WHERE id = ?", task.messageId) ??
-          db.get<{ parts: string }>(
-            "SELECT parts FROM channel_message WHERE id = ?",
-            task.messageId,
-          )
+        const found = db.get<{ parts: string }>(
+          "SELECT parts FROM message WHERE id = ?",
+          task.messageId,
+        )
         return found ? messageText({ parts: JSON.parse(found.parts) }).slice(0, RESULT_MAX) : ""
       }
-
-      /** A finished order of a lead that the lead has not judged yet (spec 030). */
-      const awaitsAcceptance = (task: Task) => {
-        if (task.source !== "agent" || !task.sourceId || task.state !== "done" || task.verdict)
-          return false
-        const server = db.get<{ server_id: string }>(
-          "SELECT server_id FROM agent WHERE id = ?",
-          task.agentId,
-        )
-        return (
-          server !== undefined &&
-          isLeadOrder(loadHandOffModel(db, server.server_id, null), task.sourceId, task.agentId)
-        )
-      }
-
-      /** The agent that gave the task as a part of its plan: the agent of the parent task. */
-      const leadNameOf = (task: Task) =>
-        task.parentId && task.source === "channel"
-          ? (db.get<{ name: string }>(
-              "SELECT a.name AS name FROM task p JOIN agent a ON a.id = p.agent_id WHERE p.id = ?",
-              task.parentId,
-            )?.name ?? null)
-          : null
-
-      /**
-       * The questions that a part asked, with who answered each one (spec 005, "Tasks page"; spec
-       * 004). Only a part of a channel job has them.
-       */
-      const questionsOfTask = (task: Task): readonly TaskQuestion[] =>
-        task.source === "channel" && task.parentId
-          ? db
-              .all<{ parts: string }>(
-                "SELECT parts FROM channel_message WHERE task_id = ? AND author = 'agent' ORDER BY created_at, rowid",
-                task.id,
-              )
-              .flatMap((r) => questionsOf(JSON.parse(r.parts) as MessagePart[]))
-          : []
 
       /** The messages that the user sent into the turn of the task (spec 003). */
       const joinedOf = (task: Task) =>
@@ -1362,12 +1020,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         const name = (sql: string) =>
           running.source_id ? db.get<{ name: string }>(sql, running.source_id)?.name : undefined
         switch (running.source) {
-          // The look of an agent on the line works for a channel too (spec 030, "Ask up the line").
-          case "channel":
-          case "question": {
-            const found = name("SELECT name FROM channel WHERE id = ?")
-            return found ? { kind: "channel", name: found } : null
-          }
           case "routine": {
             const found = name("SELECT name FROM routine WHERE id = ?")
             return found ? { kind: "routine", name: found } : null
@@ -1428,17 +1080,9 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             const r = row(id)
             return r ? [asTask(r)] : []
           }),
-        setWithLead: (taskId, on) => {
-          const current = row(taskId)
-          if (on ? current?.state !== "waiting" : !withLead.has(taskId)) return
-          if (on) withLead.add(taskId)
-          else withLead.delete(taskId)
-          if (current) changed(current.agent_id)
-        },
         setWaiting: (taskId, waiting) => {
           const current = row(taskId)
           if (!current) return Promise.resolve()
-          if (!waiting) withLead.delete(taskId)
           if (waiting) {
             // A task that waits for the user uses no slot (spec 005). Its agent stays held.
             if (current.state === "running" || current.state === "waiting")
@@ -1451,38 +1095,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           if (current.state === "waiting") setState(taskId, current.agent_id, "running")
           return Promise.resolve()
         },
-        withoutSlot: (taskId, work) =>
-          Effect.suspend(() => {
-            const agentId = row(taskId)?.agent_id
-            if (!agentId || !slotted.has(taskId)) return work
-            freeSlot(taskId)
-            // A stop ends the wait: the task never takes a slot again.
-            return work.pipe(
-              Effect.onExit((exit) =>
-                Exit.isSuccess(exit)
-                  ? Effect.promise(() => backToSlot(taskId, agentId))
-                  : Effect.void,
-              ),
-            )
-          }),
-        withSlot: (taskId, work) =>
-          Effect.suspend(() => {
-            const agentId = row(taskId)?.agent_id
-            if (
-              !agentId ||
-              !live.has(taskId) ||
-              slotted.has(taskId) ||
-              holders.get(agentId) !== taskId ||
-              stopping.has(taskId)
-            )
-              return work
-            // `enter` leaves the queue when the turn is interrupted; `freeSlot` frees a slot that
-            // was granted before the interrupt came.
-            return enter({ id: taskId, agentId, source: null, back: true, slot: true }).pipe(
-              Effect.flatMap(() => work),
-              Effect.ensuring(Effect.sync(() => freeSlot(taskId))),
-            )
-          }),
         runNext: (taskId) =>
           Effect.suspend(() => {
             const current = row(taskId)
@@ -1537,30 +1149,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),
         addSpent,
         treeUsage: treeOf,
-        judge: (taskId, verdict, reason) => {
-          const current = row(taskId)
-          // Only the computer that owns a task judges it (spec 019).
-          if (
-            !current ||
-            current.origin !== null ||
-            current.state !== "done" ||
-            current.done_test === null ||
-            current.verdict !== null ||
-            current.decided_at !== null
-          )
-            return false
-          db.run(
-            "UPDATE task SET verdict = ?, verdict_reason = ?, judged_at = ? WHERE id = ?",
-            verdict,
-            verdict === "not_met" ? reason : null,
-            Date.now(),
-            taskId,
-          )
-          changed(current.agent_id)
-          if (current.source === "channel" && current.source_id)
-            bus.emit("channels.changed", { channelId: current.source_id })
-          return true
-        },
         replied: (taskId) => {
           const current = row(taskId)
           if (!current || current.first_reply_at !== null || current.origin !== null) return
@@ -1593,13 +1181,9 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const note = noteFor(task.retryOf)
           return note ? retryNoteForModel(note) : ""
         },
-        accept,
-        requestChanges,
-        endRequest,
         noteFor,
         depthOf,
         userWords,
-        noteRequest,
         holdAgent: (agentId, work) =>
           Effect.suspend(() => {
             const id = `hold:${randomUUID()}`
@@ -1611,7 +1195,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         recordStep,
         steps,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
-        onChanges: (source, handler) => void changesHandlers.set(source, handler),
         onEnd: (listener) => void endListeners.push(listener),
         onEndTold: (listener) => void endListeners.push(listener),
         list: (serverId) =>
@@ -1652,10 +1235,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               children,
               result: resultOf(task),
               joined: joinedOf(task),
-              leadName: leadNameOf(task),
-              awaitsAcceptance: awaitsAcceptance(task),
               tree,
-              questions: questionsOfTask(task),
             })
           }),
         children: (parentId) => childRows(parentId).map((r) => asTask(r)),

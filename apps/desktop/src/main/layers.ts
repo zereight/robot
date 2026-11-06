@@ -7,7 +7,6 @@ import { AgentFiles } from "./services/AgentFiles.ts"
 import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
-import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Connections, type ConnectionsOptions } from "./services/Connections.ts"
@@ -27,15 +26,11 @@ import { Memory } from "./services/Memory.ts"
 import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { ModelHolds } from "./services/ModelHolds.ts"
 import { Notifier } from "./services/Notifier.ts"
-import { Organization } from "./services/Organization.ts"
-import { Organizations } from "./services/Organizations.ts"
-import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
-import { Retro } from "./services/Retro.ts"
 import { Routines } from "./services/Routines.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
@@ -53,7 +48,6 @@ import type { Clock } from "./services/silence.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
 import { TeamsLink } from "./services/TeamsLink.ts"
-import { Today } from "./services/Today.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
@@ -103,10 +97,8 @@ export const appLayer = (options: AppLayerOptions) => {
     PlaceMarks.layer,
     ModelHolds.layer,
   ).pipe(Layer.provideMerge(base))
-  // The part "Organization" reads the server, so it comes after the stores (spec 030).
-  const organization = Organization.layer().pipe(Layer.provideMerge(stores))
   // After the stores: it reads the setting, the agents that work and the routines.
-  const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(organization))
+  const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(stores))
   const devices = Devices.layer({
     computerName: options.localServerName,
     ...(options.linkPort !== undefined ? { port: options.linkPort } : {}),
@@ -141,29 +133,21 @@ export const appLayer = (options: AppLayerOptions) => {
   const events = Events.layer.pipe(Layer.provideMerge(tasks))
   // The follow-up starts a turn through the chat service, which is built after it (spec 005).
   const followUps = FollowUps.layer.pipe(Layer.provideMerge(events))
-  const agents = Layer.mergeAll(Chat.layer, Usage.layer, Organizations.layer).pipe(
-    Layer.provideMerge(followUps),
-  )
+  const agents = Layer.mergeAll(Chat.layer, Usage.layer).pipe(Layer.provideMerge(followUps))
   // The memory check counts the turns that end as done, and runs its own short turn (spec 008).
   const memoryCheck = MemoryCheck.layer.pipe(Layer.provideMerge(agents))
   // The handover of a chat needs the chat service (spec 003, "Hand over").
   const handover = Handover.layer.pipe(Layer.provideMerge(memoryCheck))
-  const channels = Channels.layer.pipe(Layer.provideMerge(handover))
-  const routines = Routines.layer.pipe(Layer.provideMerge(channels))
+  const routines = Routines.layer.pipe(Layer.provideMerge(handover))
   const starters = Starters.layer.pipe(Layer.provideMerge(routines))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(starters))
-  // The retrospective of an organization asks the same way as a draft skill (spec 030, "Retrospective").
-  const teach = Layer.mergeAll(Teach.layer, SkillDrafts.layer, Retro.layer).pipe(
-    Layer.provideMerge(workflows),
-  )
+  const teach = Layer.mergeAll(Teach.layer, SkillDrafts.layer).pipe(Layer.provideMerge(workflows))
   const browserProfiles = BrowserProfiles.layer.pipe(Layer.provideMerge(teach))
   const teamsLink = TeamsLink.layer(options.clock ? { clock: options.clock } : {}).pipe(
     Layer.provideMerge(browserProfiles),
   )
   const places = Places.layer.pipe(Layer.provideMerge(teamsLink))
-  const today = Today.layer.pipe(Layer.provideMerge(places))
-  const orgChart = OrgChart.layer.pipe(Layer.provideMerge(today))
-  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(orgChart))
+  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(places))
   const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))
   const remote = Remote.layer.pipe(Layer.provideMerge(workflowFiles))
   const data = Data.layer.pipe(Layer.provideMerge(remote))

@@ -5,19 +5,15 @@ import {
   type ActionCheck,
   type ActionDecider,
   type ApprovalAnswer,
-  allowedSends,
   CHAIN_LIMIT,
   CHAIN_LIMIT_TEXT,
   type CheckTarget,
-  CLIENT_CHANNEL_MEMBERS_MAX,
   type ConnectionNote,
   chainAtLimit,
   changeSummary,
-  checkHandOff,
   checkRequestAddress,
   classifyHostWriting,
   cleanFollowUpReason,
-  cleanReason,
   commandChangesControl,
   commandReads,
   commandTarget,
@@ -28,17 +24,11 @@ import {
   followUpAction,
   type GuardedStep,
   guardDecision,
-  HAND_OFF_LIST_EMPTY,
-  HAND_OFF_LIST_RULE,
-  handOffLink,
-  handOffRefusalOutput,
   holdOutside,
   holdProgram,
   holdSensitive,
   hostOf,
   insideWorkspace,
-  isLeadOrder,
-  isLooser,
   isPlainField,
   isSecretName,
   isSecretValue,
@@ -48,15 +38,12 @@ import {
   KNOWLEDGE_SOURCES,
   KNOWLEDGE_TURN_CHANGES_MAX,
   type KnowledgeNote,
-  MAKE_AGENT_ARGS,
   MANAGE_STEP,
   type ManageStep,
   MEMORY_TEXT_MAX,
   type MemoryNote,
   makePlaces,
-  nameKey,
   noCheckReason,
-  PERMISSION_LEVELS,
   type PermissionLevel,
   type PlaceEnv,
   parseOrigin,
@@ -86,7 +73,6 @@ import {
   type SecretAsk,
   type SecretMethod,
   type SensitiveLabel,
-  type SettingChange,
   type SettingsNote,
   sendDecision,
   sendsData,
@@ -94,7 +80,6 @@ import {
   skillPickSource,
   starterWorkflowName,
   type TaskSource,
-  TEAM_STEP,
   type TeamStep,
   type ToolAsk,
   type TurnMark,
@@ -123,9 +108,8 @@ import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
-import { appendLog } from "./logs.ts"
 import { Memory, type MemoryOrigin } from "./Memory.ts"
-import { Organization } from "./Organization.ts"
+import { readMainAgent } from "./mainAgent.ts"
 import { type PageBounds, Platform } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { realOf } from "./realPath.ts"
@@ -313,14 +297,8 @@ export interface ToolsService {
     knowledge: boolean
     settings?: boolean
     manage?: boolean
-    /** The team tools of the lead of a channel or of an organization (spec 037). */
-    team?: boolean
-    /** Only the team tools: the plan turn of a lead has no other tool. */
-    teamOnly?: boolean
     skills?: boolean
   }): readonly ToolDef[]
-  /** Whether the agent leads a team: a channel or an organization (spec 037, "Team tools"). */
-  leadsTeam(agentId: string): boolean
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
   /**
    * Asks about a step that a vendor program wants to take, by the permission level and the risk.
@@ -573,42 +551,11 @@ const DEFS: Record<string, ToolDef> = {
   send_message: {
     name: "send_message",
     description:
-      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send. When you are the lead of the receiver, write the text as a brief: the aim, the limit of the work, what a done result is, and when to stop and ask.",
+      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send.",
     schema: object(
       { to: str("The name of the agent."), text: str("The message, with all that it needs.") },
       ["to", "text"],
     ),
-  },
-  review_result: {
-    name: "review_result",
-    description:
-      "Judge the result of an order that you gave to a member of your organization. Give the name of the member. Set accepted to true when the result is what you asked for. Set accepted to false and give a reason when it is not; then send a new order for what to change. You can judge the latest result of that member once.",
-    schema: object(
-      {
-        from: str("The name of the member that did the work."),
-        accepted: { type: "boolean", description: "True when you accept the result." },
-        reason: str("Why you do not accept it, in one line. Leave it out when you accept."),
-      },
-      ["from", "accepted"],
-    ),
-  },
-  steer_order: {
-    name: "steer_order",
-    description:
-      "Send a new instruction to the work that a member of your organization does now for an order of yours. The member reads it at its next step. Use it to change the course of the work. It fails when the work does not run.",
-    schema: object(
-      {
-        to: str("The name of the member."),
-        text: str("The new instruction, with all that it needs."),
-      },
-      ["to", "text"],
-    ),
-  },
-  cancel_order: {
-    name: "cancel_order",
-    description:
-      "Cancel the work that a member of your organization does now, or has queued, for an order of yours. You get no reply from it.",
-    schema: object({ to: str("The name of the member.") }, ["to"]),
   },
   save_memory: {
     name: "save_memory",
@@ -830,110 +777,6 @@ const MANAGE_DEFS: readonly ToolDef[] = [
   },
 ]
 
-/** The team tools of a lead of a channel or of an organization (spec 037, "Team tools"). */
-const TEAM_ARG = str(
-  'The name of the team: a channel or an organization that you lead. Only needed when you lead more than one. When two teams have the same name, add " (channel)" or " (organization)".',
-)
-const MEMBER_ARG = str("The name of the member.")
-const PERMISSION_ARG = {
-  type: "string",
-  enum: [...PERMISSION_LEVELS],
-  description:
-    "The permission level. It cannot be higher than your own level. Default for a new member: ask_risky.",
-}
-const TEAM_DEFS: readonly ToolDef[] = [
-  {
-    name: "make_team_member",
-    description:
-      "Make a new agent and add it to your team as a member. It works at once, and the user sees a line in your chat. Make a member only when the job needs one. You cannot set its workspace.",
-    schema: object(
-      {
-        team: TEAM_ARG,
-        name: str("The name, 1 to 40 characters. No other agent may have it."),
-        role: str("The role line, up to 120 characters: what this member is for."),
-        instructions: str("The whole instructions of the new member."),
-        face_shape: { type: "integer", description: "The shape of the face, 1 to 6." },
-        face_hue: { type: "integer", description: "The colour of the face, 1 to 10." },
-        account: str("The name of a connected model account."),
-        model: str('The model, in loose words if needed, for example "Sonnet".'),
-        effort: str("An effort level that the model takes. Default: the middle level."),
-        permission: PERMISSION_ARG,
-      },
-      ["name", "model"],
-    ),
-  },
-  {
-    name: "change_team_member",
-    description:
-      "Change one member of your team that is not archived. It works at once, and the user can undo it from the line in your chat. Give only the fields that change. You cannot change yourself or the main agent.",
-    schema: object(
-      {
-        team: TEAM_ARG,
-        member: MEMBER_ARG,
-        name: str("The new name, 1 to 40 characters."),
-        role: str("The new role line, up to 120 characters."),
-        instructions: str("The whole new instructions."),
-        face_shape: { type: "integer", description: "The shape of the face, 1 to 6." },
-        face_hue: { type: "integer", description: "The colour of the face, 1 to 10." },
-        account: str("The name of a connected model account."),
-        model: str('The model, in loose words if needed, for example "Sonnet".'),
-        effort: str("An effort level that the model takes."),
-        permission: PERMISSION_ARG,
-      },
-      ["member"],
-    ),
-  },
-  {
-    name: "remove_team_member",
-    description:
-      "Take a member out of your team. The agent stays, with its history and workspace. You cannot remove yourself or the main agent.",
-    schema: object({ team: TEAM_ARG, member: MEMBER_ARG }, ["member"]),
-  },
-  {
-    name: "archive_team_member",
-    description:
-      "Archive a member of your team, as the user does. It works at once, and the user can undo it from the line in your chat. Archive is the end of a member for you: you cannot delete an agent. Archived members do not count in your limit of 20 members.",
-    schema: object({ team: TEAM_ARG, member: MEMBER_ARG }, ["member"]),
-  },
-  {
-    name: "restore_team_member",
-    description:
-      "Restore an archived member of your team, with its history, workspace and section.",
-    schema: object({ team: TEAM_ARG, member: MEMBER_ARG }, ["member"]),
-  },
-]
-
-/** The fields of "Change a team member": the fields of "Change an agent", and the level. */
-const TEAM_CHANGE_ARGS: readonly string[] = [...MAKE_AGENT_ARGS, "permission"]
-
-/** A team holds at most this many active members that its lead made (spec 037, "Team tools"). */
-const TEAM_MADE_MAX = 20
-
-/** A team of a lead (spec 037, "Team tools"): a channel or an organization that it leads. */
-interface Team {
-  readonly kind: "channel" | "organization"
-  readonly id: string
-  readonly name: string
-}
-
-/** The lead of a team call. */
-interface TeamLead {
-  readonly id: string
-  readonly server_id: string
-  readonly name: string
-  readonly permission: PermissionLevel
-}
-
-/** A member that a team call names. */
-interface TeamMember {
-  readonly id: string
-  readonly name: string
-  readonly archived_at: number | null
-}
-
-const isPermission = (value: string): value is PermissionLevel =>
-  (PERMISSION_LEVELS as readonly string[]).includes(value)
-
 const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
 
 /** What the model reads when a knowledge call fails. The card shows its own translated text. */
@@ -1057,7 +900,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const rules = yield* Rules
       const decisionModel = yield* Decision
       const settingsStore = yield* SettingsStore
-      const organization = yield* Organization
       const platform = yield* Platform
       const bus = yield* EventBus
       const control = new Set<string>()
@@ -2315,7 +2157,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           "SELECT server_id FROM agent WHERE id = ?",
           agentId,
         )
-        return row !== undefined && organization.mainAgent(row.server_id) === agentId
+        return row !== undefined && readMainAgent(db, row.server_id) === agentId
       }
 
       /**
@@ -2370,334 +2212,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         })
         return {
           output: `Made the agent "${made.name}". The user can set its permission level and workspace in its profile. Send it a message with send_message.`,
-          failed: false,
-        }
-      }
-
-      /**
-       * The teams that this agent leads (spec 037, "Team tools"): each channel and each
-       * organization that has it as its lead and as a member, by name.
-       */
-      const ledTeams = (agentId: string): readonly Team[] => [
-        ...db
-          .all<{ id: string; name: string }>(
-            `SELECT c.id, c.name FROM channel c
-             JOIN channel_member m ON m.channel_id = c.id AND m.agent_id = c.lead_agent_id
-             WHERE c.lead_agent_id = ? ORDER BY c.name_key`,
-            agentId,
-          )
-          .map((c) => ({ kind: "channel" as const, ...c })),
-        ...db
-          .all<{ id: string; name: string }>(
-            `SELECT o.id, o.name FROM org_unit o
-             JOIN org_member m ON m.org_id = o.id AND m.agent_id = o.lead_agent_id
-             WHERE o.lead_agent_id = ? ORDER BY o.name_key`,
-            agentId,
-          )
-          .map((o) => ({ kind: "organization" as const, ...o })),
-      ]
-
-      const teamLabel = (team: Team) => `${team.name} (${team.kind})`
-
-      /** The members of a team, with the table that holds them. */
-      const memberTable = (team: Team) =>
-        team.kind === "channel"
-          ? { table: "channel_member", key: "channel_id" }
-          : { table: "org_member", key: "org_id" }
-
-      const teamChanged = (team: Team, serverId: string) =>
-        team.kind === "channel"
-          ? bus.emit("channels.changed", { channelId: team.id })
-          : bus.emit("organizations.changed", { serverId })
-
-      /**
-       * The lead and the team of a team call, or what the model reads when there is none. An agent
-       * that leads no team does not know the tools.
-       */
-      const teamCall = (
-        ctx: ToolContext,
-        call: ToolCall,
-        args: Record<string, unknown>,
-      ): { lead: TeamLead; team: Team } | ToolOutcome => {
-        const led = ledTeams(ctx.agentId)
-        const lead = db.get<TeamLead>(
-          "SELECT id, server_id, name, permission FROM agent WHERE id = ?",
-          ctx.agentId,
-        )
-        if (led.length === 0 || !lead) return { output: `Unknown tool: ${call.name}`, failed: true }
-        const list = `You lead: ${led.map(teamLabel).join(", ")}.`
-        const wanted = text(args, "team").trim().toLowerCase()
-        if (!wanted) {
-          const only = led[0]
-          return led.length === 1 && only
-            ? { lead, team: only }
-            : { output: `Name the team. ${list}`, failed: true }
-        }
-        const found = led.filter(
-          (t) => t.name.toLowerCase() === wanted || teamLabel(t).toLowerCase() === wanted,
-        )
-        const [team] = found
-        if (found.length === 1 && team) return { lead, team }
-        return {
-          output:
-            found.length === 0
-              ? `You do not lead a team named "${text(args, "team")}". ${list}`
-              : `More than one team has this name. Add " (channel)" or " (organization)". ${list}`,
-          failed: true,
-        }
-      }
-
-      /**
-       * The member that a call names: an agent of the team that is not the lead and not the main
-       * agent, or the reason that nothing changed.
-       */
-      const teamMember = (
-        lead: TeamLead,
-        team: Team,
-        args: Record<string, unknown>,
-      ): TeamMember | string => {
-        const name = text(args, "member").trim()
-        const { table, key } = memberTable(team)
-        const member = db.get<TeamMember>(
-          `SELECT a.id, a.name, a.archived_at FROM ${table} m JOIN agent a ON a.id = m.agent_id
-           WHERE m.${key} = ? AND a.name_key = ?`,
-          team.id,
-          nameKey(name),
-        )
-        if (!member) return `Nothing changed. "${name}" is not a member of ${teamLabel(team)}.`
-        if (member.id === lead.id || organization.mainAgent(lead.server_id) === member.id)
-          return "Nothing changed. You cannot change yourself or the main agent."
-        return member
-      }
-
-      /** A permission level of a call, or the reason that it cannot be set (spec 037). */
-      const teamLevel = (lead: TeamLead, value: unknown): PermissionLevel | string => {
-        const level = PERMISSION_LEVELS.find((l) => l === value)
-        if (!level) return `The permission level must be one of: ${PERMISSION_LEVELS.join(", ")}.`
-        if (isLooser(level, lead.permission))
-          return `The permission level cannot be higher than your own level, ${lead.permission}.`
-        return level
-      }
-
-      /** The action log text of a change: it names no instruction text (spec 014). */
-      const teamSummary = (changes: readonly SettingChange[]) =>
-        changeSummary(
-          changes.map((c) => (c.field === "instructions" ? { ...c, after: "(new text)" } : c)),
-        )
-
-      /**
-       * A team step (spec 037, "Team tools"): it makes no request and runs at once, at every level
-       * except "Read only". It has an entry in the action log.
-       */
-      const teamStep = <A>(
-        ctx: ToolContext,
-        call: ToolCall,
-        target: string,
-        work: () => Promise<A>,
-      ) => guarded(ctx, call.id, { step: TEAM_STEP, target, work })
-
-      /** The line in the chat or the channel of the lead: the change, with Undo (spec 037, flow 4). */
-      const teamLine = (
-        ctx: ToolContext,
-        call: ToolCall,
-        member: { id: string; name: string },
-        note: SettingsNote,
-      ) => ctx.onTeamLine?.(call.id, { ...note, member: { id: member.id, name: member.name } })
-
-      /** "Make a team member" (spec 037, "Team tools"): a made agent that joins the team. */
-      const makeTeamMemberTool = async (
-        ctx: ToolContext,
-        call: ToolCall,
-        args: Record<string, unknown>,
-      ): Promise<ToolOutcome> => {
-        const found = teamCall(ctx, call, args)
-        if ("output" in found) return found
-        const { lead, team } = found
-        const { team: _team, permission, ...fields } = args
-        const { table, key } = memberTable(team)
-        const made =
-          db.get<{ n: number }>(
-            `SELECT COUNT(*) AS n FROM ${table} m JOIN agent a ON a.id = m.agent_id
-             WHERE m.${key} = ? AND a.made_by = ? AND a.archived_at IS NULL`,
-            team.id,
-            lead.name,
-          )?.n ?? 0
-        if (made >= TEAM_MADE_MAX)
-          return { output: "Too many team members. Ask the user.", failed: true }
-        if (team.kind === "channel") {
-          const members =
-            db.get<{ n: number }>(
-              "SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = ?",
-              team.id,
-            )?.n ?? 0
-          if (members >= CLIENT_CHANNEL_MEMBERS_MAX)
-            return {
-              output: "Nothing made. The channel has the most members it can hold.",
-              failed: true,
-            }
-        }
-        const level = permission === undefined ? undefined : teamLevel(lead, permission)
-        if (level !== undefined && !isPermission(level))
-          return { output: `Nothing made. ${level}`, failed: true }
-        const plan = await settle(agentSettings.planNew(ctx.agentId, fields))
-        if (plan.kind === "refused") return { output: plan.reason, failed: true }
-        const agent = await teamStep(
-          ctx,
-          call,
-          `${teamLabel(team)}: made "${plan.create.name}"; role: ${plan.create.role || "none"}; model: ${plan.create.model.model}; permission: ${level ?? "default"}`,
-          async () => {
-            const agent = await settle(
-              agents.create(
-                {
-                  serverId: lead.server_id,
-                  ...plan.create,
-                  ...(level !== undefined ? { permission: level } : {}),
-                },
-                { madeBy: lead.name },
-              ),
-            ).catch((error) => {
-              if (error instanceof AppError && error.code === "agent_name_taken")
-                throw new Error("Nothing made. Another agent on this server has this name.")
-              throw error
-            })
-            const position =
-              db.get<{ n: number }>(
-                `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM ${table} WHERE ${key} = ?`,
-                team.id,
-              )?.n ?? 0
-            db.run(
-              `INSERT INTO ${table} (${key}, agent_id, position) VALUES (?, ?, ?)`,
-              team.id,
-              agent.id,
-              position,
-            )
-            teamChanged(team, lead.server_id)
-            return agent
-          },
-        )
-        return {
-          output: `Made the agent "${agent.name}" and added it to ${teamLabel(team)}. Give it work.`,
-          failed: false,
-        }
-      }
-
-      /** "Change a team member" (spec 037, "Team tools"): the fields of "Change an agent" and the level. */
-      const changeTeamMemberTool = async (
-        ctx: ToolContext,
-        call: ToolCall,
-        args: Record<string, unknown>,
-      ): Promise<ToolOutcome> => {
-        const found = teamCall(ctx, call, args)
-        if ("output" in found) return found
-        const { lead, team } = found
-        const { team: _team, member: _member, permission, ...fields } = args
-        const extra = Object.keys(fields).filter((k) => !TEAM_CHANGE_ARGS.includes(k))
-        if (extra.length > 0)
-          return {
-            output: `Nothing changed. A team member has no field ${extra.join(", ")}. It takes: ${TEAM_CHANGE_ARGS.join(", ")}.`,
-            failed: true,
-          }
-        const member = teamMember(lead, team, args)
-        if (typeof member === "string") return { output: member, failed: true }
-        if (member.archived_at !== null)
-          return {
-            output: `Nothing changed. "${member.name}" is archived. Restore it first.`,
-            failed: true,
-          }
-        const level = permission === undefined ? undefined : teamLevel(lead, permission)
-        if (level !== undefined && !isPermission(level))
-          return { output: `Nothing changed. ${level}`, failed: true }
-        const { plan } = await settle(agentSettings.plan(member.id, fields))
-        if (plan.kind === "refused") return { output: plan.reason, failed: true }
-        const before = (await settle(agents.get(member.id))).permission
-        const changes: SettingChange[] = [
-          ...(plan.kind === "changes" ? plan.changes : []),
-          ...(level !== undefined && level !== before
-            ? [{ field: "permission" as const, before, after: level }]
-            : []),
-        ]
-        if (changes.length === 0)
-          return plan.kind === "read" && level === undefined
-            ? { output: "Nothing changed. Give a field to change.", failed: true }
-            : { output: "Nothing changed: these values are set already.", failed: false }
-        const note = await teamStep(
-          ctx,
-          call,
-          `${teamLabel(team)}: changed "${member.name}": ${teamSummary(changes)}`,
-          () => settle(agentSettings.apply(member.id, changes, "chat")),
-        )
-        teamLine(ctx, call, member, note)
-        return {
-          output: `Changed "${member.name}": ${teamSummary(changes)}. It counts from its next turn.`,
-          failed: false,
-        }
-      }
-
-      /** "Remove a team member" (spec 037, "Team tools"): the agent stays. */
-      const removeTeamMemberTool = async (
-        ctx: ToolContext,
-        call: ToolCall,
-        args: Record<string, unknown>,
-      ): Promise<ToolOutcome> => {
-        const found = teamCall(ctx, call, args)
-        if ("output" in found) return found
-        const { lead, team } = found
-        const member = teamMember(lead, team, args)
-        if (typeof member === "string") return { output: member, failed: true }
-        // A member that works in the channel stays until its part ends (spec 004).
-        if (
-          team.kind === "channel" &&
-          db.get(
-            `SELECT 1 AS x FROM task WHERE source = 'channel' AND source_id = ? AND agent_id = ?
-             AND state IN ('queued', 'running', 'waiting')`,
-            team.id,
-            member.id,
-          )
-        )
-          return {
-            output: `Nothing changed. "${member.name}" works in this channel now. Remove it when its part ends.`,
-            failed: true,
-          }
-        const { table, key } = memberTable(team)
-        await teamStep(ctx, call, `${teamLabel(team)}: removed "${member.name}"`, async () => {
-          db.run(`DELETE FROM ${table} WHERE ${key} = ? AND agent_id = ?`, team.id, member.id)
-          teamChanged(team, lead.server_id)
-        })
-        return {
-          output: `Removed "${member.name}" from ${teamLabel(team)}. The agent stays.`,
-          failed: false,
-        }
-      }
-
-      /** "Archive a team member" and "Restore a team member" (spec 037, "Team tools"). */
-      const archiveTeamMemberTool = async (
-        ctx: ToolContext,
-        call: ToolCall,
-        args: Record<string, unknown>,
-        archive: boolean,
-      ): Promise<ToolOutcome> => {
-        const found = teamCall(ctx, call, args)
-        if ("output" in found) return found
-        const { lead, team } = found
-        const member = teamMember(lead, team, args)
-        if (typeof member === "string") return { output: member, failed: true }
-        if ((member.archived_at !== null) === archive)
-          return {
-            output: `Nothing changed: "${member.name}" is ${archive ? "archived" : "not archived"} already.`,
-            failed: false,
-          }
-        const changes: SettingChange[] = [{ field: "archived", before: !archive, after: archive }]
-        const note = await teamStep(
-          ctx,
-          call,
-          `${teamLabel(team)}: ${archive ? "archived" : "restored"} "${member.name}"`,
-          () => settle(agentSettings.apply(member.id, changes, "chat")),
-        )
-        teamLine(ctx, call, member, note)
-        return {
-          output: archive
-            ? `Archived "${member.name}". It does not count in your limit now. You can restore it at any time.`
-            : `Restored "${member.name}" with its history and workspace.`,
           failed: false,
         }
       }
@@ -2771,7 +2285,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       /** The name of an agent, as stored. */
-      const names = (agentId: string) =>
+      const _names = (agentId: string) =>
         db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", agentId)?.name
 
       const listAgents = (ctx: ToolContext): ToolOutcome => {
@@ -2795,125 +2309,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         )
         const line = (r: { id: string; name: string; role: string }, link?: string) =>
           `- ${r.name}: ${r.role || "(no role line)"} [${busy.has(r.id) ? "working" : "idle"}]${link ? ` (${link})` : ""}`
-        // With the hand-off rule "Along the organizations" the list holds only the agents that the
-        // agent may send to, each with the organization that gives the right or "main agent"
-        // (spec 030).
-        if (organization.rule() === "organizations") {
-          const targets = allowedSends(organization.model(serverId), ctx.agentId)
-          const byId = new Map(rows.map((r) => [r.id, r]))
-          const lines = targets.flatMap((t) => {
-            const row = byId.get(t.agentId)
-            return row ? [line(row, handOffLink(t))] : []
-          })
-          return {
-            output:
-              lines.length > 0 ? `${HAND_OFF_LIST_RULE}\n${lines.join("\n")}` : HAND_OFF_LIST_EMPTY,
-            failed: false,
-          }
-        }
         const lines = rows.map((r) => line(r))
         return { output: lines.join("\n") || "There are no other agents.", failed: false }
-      }
-
-      /**
-       * The lead judges the latest finished result of an order that it gave (spec 030, "Lead and
-       * members as agent and sub-agents"). The verdict is the field of the task (spec 005). Only
-       * the sender of the order can judge it, and only once.
-       */
-      const reviewResult = (ctx: ToolContext, args: Record<string, unknown>): ToolOutcome => {
-        const name = text(args, "from").trim()
-        const server = db.get<{ server_id: string }>(
-          "SELECT server_id FROM agent WHERE id = ?",
-          ctx.agentId,
-        )
-        const member = db.get<{ id: string }>(
-          "SELECT id FROM agent WHERE server_id = ? AND name_key = ?",
-          server?.server_id ?? "",
-          name.toLocaleLowerCase(),
-        )
-        if (!member) return { output: "No agent has this name. Use list_agents.", failed: true }
-        const model = organization.model(server?.server_id ?? "")
-        const task = db.get<{ id: string }>(
-          `SELECT id FROM task
-           WHERE agent_id = ? AND source = 'agent' AND source_id = ? AND state = 'done'
-             AND verdict IS NULL AND origin IS NULL
-           ORDER BY created_at DESC LIMIT 1`,
-          member.id,
-          ctx.agentId,
-        )
-        if (!task || !isLeadOrder(model, ctx.agentId, member.id))
-          return { output: `${name} has no finished result of yours to judge.`, failed: true }
-        const accepted = args.accepted === true
-        const reason = accepted ? null : cleanReason(args.reason)
-        db.run(
-          "UPDATE task SET verdict = ?, verdict_reason = ?, judged_at = ? WHERE id = ?",
-          accepted ? "met" : "not_met",
-          reason,
-          Date.now(),
-          task.id,
-        )
-        bus.emit("tasks.changed", { serverId: server?.server_id ?? "" })
-        return {
-          output: accepted
-            ? `You accepted the result of ${name}.`
-            : `You did not accept the result of ${name}. Send a new order for what to change.`,
-          failed: false,
-        }
-      }
-
-      /**
-       * The lead changes the work of an order that it gave: a new instruction for the running
-       * turn, or a cancel (spec 030). Only the lead who gave the order can do it.
-       */
-      const changeOrder = async (
-        ctx: ToolContext,
-        args: Record<string, unknown>,
-        change: "steer" | "cancel",
-      ): Promise<ToolOutcome> => {
-        const name = text(args, "to").trim()
-        const server = db.get<{ server_id: string }>(
-          "SELECT server_id FROM agent WHERE id = ?",
-          ctx.agentId,
-        )
-        const member = db.get<{ id: string }>(
-          "SELECT id FROM agent WHERE server_id = ? AND name_key = ?",
-          server?.server_id ?? "",
-          name.toLocaleLowerCase(),
-        )
-        const task = member
-          ? db.get<{ id: string; state: string }>(
-              `SELECT id, state FROM task
-               WHERE agent_id = ? AND source = 'agent' AND source_id = ?
-                 AND state IN ('queued', 'running', 'waiting') AND origin IS NULL
-               ORDER BY created_at DESC LIMIT 1`,
-              member.id,
-              ctx.agentId,
-            )
-          : undefined
-        if (
-          !member ||
-          !task ||
-          !isLeadOrder(organization.model(server?.server_id ?? ""), ctx.agentId, member.id)
-        )
-          return { output: `${name} has no work of yours that runs now.`, failed: true }
-        if (!messenger)
-          return { output: "Messages to other agents are not available.", failed: true }
-        if (change === "cancel") {
-          await messenger.cancel(task.id)
-          return {
-            output: `You cancelled the work of ${name}. You get no reply from it.`,
-            failed: false,
-          }
-        }
-        const instruction = text(args, "text").trim()
-        if (!instruction) return { output: "Give the new instruction.", failed: true }
-        const steered = await messenger.steer(task.id, instruction)
-        return steered
-          ? { output: `${name} reads your instruction at its next step.`, failed: false }
-          : {
-              output: `The work of ${name} does not run now. Cancel it and send a new order.`,
-              failed: true,
-            }
       }
 
       const sendMessage = async (
@@ -2945,33 +2342,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return { output: "An agent cannot send a message to itself.", failed: true }
         if (target.archived_at !== null)
           return { output: "This agent is archived. Choose another agent.", failed: true }
-        // With the hand-off rule "Along the organizations" the app checks each send now (spec 030).
-        // A refused send makes no task and counts for no limit; the step fails and the turn goes on.
-        if (organization.rule() === "organizations") {
-          const refusal = checkHandOff(
-            organization.model(server?.server_id ?? ""),
-            ctx.agentId,
-            target.id,
-          )
-          if (refusal) {
-            const receiver = names(target.id) ?? name
-            ctx.onReason?.(call.id, {
-              code: refusal.next ? "hand_off_path" : "hand_off_none",
-              detail: receiver,
-              ...(refusal.next ? { next: refusal.next.name } : {}),
-            })
-            // One line for the organization log: the sender, the receiver and the time (spec 014).
-            appendLog(platform.dataDir, "organizations", {
-              event: "hand_off_refused",
-              from: names(ctx.agentId) ?? "",
-              to: receiver,
-            })
-            return {
-              output: handOffRefusalOutput(receiver, refusal.next?.name ?? null),
-              failed: true,
-            }
-          }
-        }
         if (!messenger)
           return { output: "Messages to other agents are not available.", failed: true }
         // A message from a turn that holds the program mark starts a turn that holds it too.
@@ -3186,12 +2556,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return listAgents(ctx)
           case "send_message":
             return await sendMessage(ctx, call, args)
-          case "review_result":
-            return reviewResult(ctx, args)
-          case "steer_order":
-            return await changeOrder(ctx, args, "steer")
-          case "cancel_order":
-            return await changeOrder(ctx, args, "cancel")
           case "ask_user": {
             const question = text(args, "question")
             const choices = Array.isArray(args.choices)
@@ -3268,16 +2632,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await readAgentTool(ctx, call, args)
           case "make_agent":
             return await makeAgentTool(ctx, call, args)
-          case "make_team_member":
-            return await makeTeamMemberTool(ctx, call, args)
-          case "change_team_member":
-            return await changeTeamMemberTool(ctx, call, args)
-          case "remove_team_member":
-            return await removeTeamMemberTool(ctx, call, args)
-          case "archive_team_member":
-            return await archiveTeamMemberTool(ctx, call, args, true)
-          case "restore_team_member":
-            return await archiveTeamMemberTool(ctx, call, args, false)
           case "make_workflow":
             return await makeWorkflowTool(ctx, call, args)
           case "read_article":
@@ -3351,21 +2705,16 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         setMessenger: (m) => {
           messenger = m
         },
-        defs: (options) =>
-          options.teamOnly
-            ? [...TEAM_DEFS]
-            : [
-                ...Object.values(DEFS).filter(
-                  (d) =>
-                    (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
-                    (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)) &&
-                    (options.skills || d.name !== READ_SKILL_TOOL_NAME),
-                ),
-                ...(options.settings ? [SETTINGS_DEF] : []),
-                ...(options.manage ? MANAGE_DEFS : []),
-                ...(options.team ? TEAM_DEFS : []),
-              ],
-        leadsTeam: (agentId) => ledTeams(agentId).length > 0,
+        defs: (options) => [
+          ...Object.values(DEFS).filter(
+            (d) =>
+              (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
+              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)) &&
+              (options.skills || d.name !== READ_SKILL_TOOL_NAME),
+          ),
+          ...(options.settings ? [SETTINGS_DEF] : []),
+          ...(options.manage ? MANAGE_DEFS : []),
+        ],
         execute,
         guarded,
         bridge: (ctx, show) => {
@@ -3379,8 +2728,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               ),
               // The main agent gets the manage tools on every runtime (spec 037).
               ...(isMainAgent(ctx.agentId) ? MANAGE_DEFS : []),
-              // The lead of a channel or of an organization gets the team tools (spec 037).
-              ...(ledTeams(ctx.agentId).length > 0 ? TEAM_DEFS : []),
             ],
             call: async (name, args) => {
               const call: ToolCall = { id: `app-${++count}`, name, input: JSON.stringify(args) }

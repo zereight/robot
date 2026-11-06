@@ -176,7 +176,7 @@ describe("Threads", () => {
     expect((await t.history()).messages).toHaveLength(2)
     expect((await t.history(thread.id)).messages.every((m) => m.threadId === thread.id)).toBe(true)
     // The place counts the replies of all threads. Each thread is read on its own.
-    const unread = async () => (await t.run(Places.use((p) => p.list(t.local.id))))[1]?.places[0]
+    const unread = async () => (await t.run(Places.use((p) => p.list(t.local.id))))[0]?.places[0]
     expect((await unread())?.unread).toBe(2)
     await t.run(Chat.use((c) => c.markRead(t.agent.id, thread.id)))
     expect((await t.run(Chat.use((c) => c.threads(t.agent.id)))).threads[0]?.unread).toBe(0)

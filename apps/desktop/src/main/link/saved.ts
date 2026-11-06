@@ -72,9 +72,6 @@ export const searchSaved = (
     const id = field(entry.input, "agentId")
     take(places.get(`agent:${id}`), (entry.value as { messages?: unknown } | undefined)?.messages)
   }
-  for (const entry of cache.entriesOf(link, "channels.history")) {
-    take(places.get(`channel:${field(entry.input, "channelId")}`), entry.value)
-  }
 
   matches.sort(
     (a, b) => b.message.createdAt - a.message.createdAt || (a.message.id < b.message.id ? 1 : -1),

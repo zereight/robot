@@ -34,16 +34,15 @@ describe("mutes", () => {
     expect(muteUntil("forever", now)).toBeNull()
     expect(muteUntil("off", now)).toBeUndefined()
   })
-  test("a server or a channel mute applies until it ends", () => {
+  test("a server mute applies until it ends", () => {
     const mutes = [
-      { kind: "channel", id: "c1", until: now + 10 },
+      { kind: "server", id: "s1", until: now + 10 },
       { kind: "server", id: "s2", until: null },
     ] as const
-    expect(isMuted(mutes, "s1", "c1", now)).toBe(true)
-    expect(isMuted(mutes, "s1", "c1", now + 11)).toBe(false)
-    expect(isMuted(mutes, "s1", "c2", now)).toBe(false)
-    expect(isMuted(mutes, "s1", null, now)).toBe(false)
-    expect(isMuted(mutes, "s2", "c9", now + 1e9)).toBe(true)
+    expect(isMuted(mutes, "s1", now)).toBe(true)
+    expect(isMuted(mutes, "s1", now + 11)).toBe(false)
+    expect(isMuted(mutes, "s3", now)).toBe(false)
+    expect(isMuted(mutes, "s2", now + 1e9)).toBe(true)
   })
 })
 

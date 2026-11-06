@@ -1,24 +1,13 @@
 import { Schema, Struct } from "effect"
-import { SAVED_STARTER_MAX, SavedStarter } from "./goalStarters.ts"
 import type { LinkState } from "./link.ts"
-import { orgNameMatches } from "./orgPrefix.ts"
 
-export const PlaceKind = Schema.Literals(["agent", "channel"])
+export const PlaceKind = Schema.Literals(["agent"])
 export type PlaceKind = typeof PlaceKind.Type
 
 export const PlaceRef = Schema.Struct({ kind: PlaceKind, id: Schema.String })
 export type PlaceRef = typeof PlaceRef.Type
 
-export const Page = Schema.Literals([
-  "chats",
-  "today",
-  "workflows",
-  "routines",
-  "tasks",
-  "orgchart",
-  "usage",
-  "help",
-])
+export const Page = Schema.Literals(["chats", "workflows", "routines", "tasks", "usage", "help"])
 export type Page = typeof Page.Type
 
 /** The page that shows this list. Routines and workflows are separate pages (spec 001). */
@@ -39,37 +28,14 @@ export const WORKFLOW_CANVAS_MIN = 240
 /** The width of the drag handle between the canvas and the side column. */
 export const WORKFLOW_HANDLE_WIDTH = 6
 
-/**
- * The view of Agents in the place list (spec 001, "Agents by organization"): the user sections, or
- * one read-only section for each deepest organization.
- */
-export const AgentView = Schema.Literals(["sections", "organization"])
-export type AgentView = typeof AgentView.Type
-
-/**
- * The view of the org chart (spec 029, "Search and the list"): the canvas, or the list of the
- * phone. It belongs to this device, as the view of Agents does.
- */
-export const OrgView = Schema.Literals(["chart", "list"])
-export type OrgView = typeof OrgView.Type
-
 /** Window layout state that the app keeps between runs. */
 export const UiState = Schema.Struct({
   serverId: Schema.NullOr(Schema.String),
   page: Page,
   /** The open place of each server, by server id. */
   places: Schema.Record(Schema.String, PlaceRef),
-  /** Ids of collapsed place list sections, also the sections of the view "By organization". */
+  /** Ids of collapsed place list sections. */
   collapsed: Schema.Array(Schema.String),
-  /** The view of Agents in the place list. */
-  agentView: AgentView,
-  /** The view of the org chart: the canvas, or the list. */
-  orgView: OrgView,
-  /**
-   * The organization whose rows the Today page shows (spec 021, "Filter by organization"), or null
-   * for "All". It belongs to this device.
-   */
-  todayOrg: Schema.NullOr(Schema.String),
   activityPanel: Schema.Boolean,
   placeListWidth: Schema.Number.check(
     Schema.isBetween({ minimum: PLACE_LIST_MIN, maximum: PLACE_LIST_MAX }),
@@ -80,8 +46,6 @@ export const UiState = Schema.Struct({
   ),
   /** The open tab of the Tasks page: the tasks, or the events (spec 038). */
   tasksTab: Schema.Literals(["tasks", "events"]),
-  /** The starters that the user made (spec 031). They stay on this computer and are not synced. */
-  savedStarters: Schema.Array(SavedStarter).check(Schema.isMaxLength(SAVED_STARTER_MAX)),
 })
 export type UiState = typeof UiState.Type
 
@@ -93,14 +57,10 @@ export const defaultUiState: UiState = {
   page: "chats",
   places: {},
   collapsed: [],
-  agentView: "sections",
-  orgView: "chart",
-  todayOrg: null,
   activityPanel: true,
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
   tasksTab: "tasks",
-  savedStarters: [],
 }
 
 export const clampPlaceListWidth = (width: number) =>
@@ -133,7 +93,7 @@ export interface Server {
   readonly updateSide?: "this" | "server" | null
   /**
    * True when the server is online and lets this device create and change agents (spec 012). The
-   * plus buttons and the fields of agents and channels show only then. Absent for this computer.
+   * plus buttons and the fields of agents show only then. Absent for this computer.
    */
   readonly canChange?: boolean
 }
@@ -149,7 +109,7 @@ export interface Place {
   /** The user section that holds the place, or null for "No section". */
   readonly sectionId: string | null
   /**
-   * The role line of an agent (spec 001, "Place rows"). A channel has none. It is absent for an
+   * The role line of an agent (spec 001, "Place rows"). It is absent for an
    * agent with no role line, and from a computer that does not send it yet, so a reader treats
    * absent as empty (spec 012). It is text of the user and is not translated.
    */
@@ -163,14 +123,13 @@ export interface Place {
 }
 
 /** A built-in place list section. */
-export type SectionId = "channels" | "agents"
+export type SectionId = "agents"
 
 /** The built-in section that holds places of a kind. */
-export const builtInSection = (kind: PlaceKind): SectionId =>
-  kind === "agent" ? "agents" : "channels"
+export const builtInSection = (_kind: PlaceKind): SectionId => "agents"
 
 /** The kind of place that a built-in section holds. */
-export const sectionKind = (id: SectionId): PlaceKind => (id === "agents" ? "agent" : "channel")
+export const sectionKind = (_id: SectionId): PlaceKind => "agent"
 
 /** A section that the user made, with the places in it. */
 export interface UserSectionView {
@@ -182,10 +141,7 @@ export interface UserSectionView {
 
 export interface PlaceSection {
   readonly id: SectionId
-  /**
-   * The places that are in no user section. In Channels they show first. In Agents they show
-   * last, in the section "Unassigned".
-   */
+  /** The places that are in no user section. They show last, in the section "Unassigned". */
   readonly places: readonly Place[]
   /** The user sections, in the order the user set. */
   readonly sections: readonly UserSectionView[]
@@ -195,7 +151,7 @@ export interface PlaceSection {
 export const UNASSIGNED_SECTION_ID = "unassigned:agents"
 
 /** True when places with no section show before the user sections. Agents show them last. */
-export const loosePlacesFirst = (id: SectionId) => id !== "agents"
+export const loosePlacesFirst = (_id: SectionId) => false
 
 /** Every place of a built-in section, in the order the list shows. */
 export const allPlaces = (section: PlaceSection): readonly Place[] => {
@@ -217,34 +173,23 @@ export const summarize = (places: readonly Place[]): SectionSummary => ({
 })
 
 /**
- * True when the typed text is a part of the name of the place, or, for an agent, a part of its
- * role line or of the whole name of its deepest organization (spec 036), ignoring case. A channel
- * has no role line and no organization, so only its name counts. `organization` is absent when the
- * switch "Show the organization before an agent name" is off.
+ * True when the typed text is a part of the name of the place, or a part of the role line of the
+ * agent, ignoring case.
  */
-export const placeMatches = (place: Place, query: string, organization?: string | null) => {
+export const placeMatches = (place: Place, query: string) => {
   const q = query.trim().toLocaleLowerCase()
   if (!q) return true
   if (place.name.toLocaleLowerCase().includes(q)) return true
-  if (place.kind !== "agent") return false
-  if (place.role?.toLocaleLowerCase().includes(q)) return true
-  return orgNameMatches(organization, q)
+  return place.role?.toLocaleLowerCase().includes(q) ?? false
 }
 
 /**
- * Keeps places whose name contains the query, or, for an agent, whose role line or organization
- * name contains it, ignoring case. `organizationOf` gives the whole name of the deepest
- * organization of an agent place; leave it out when no prefix shows. A user section with no match
- * leaves the list. The order of sections and places does not change.
+ * Keeps places whose name or role line contains the query, ignoring case. A user section with no
+ * match leaves the list. The order of sections and places does not change.
  */
-export const filterPlaces = (
-  sections: readonly PlaceSection[],
-  query: string,
-  organizationOf?: (place: Place) => string | null | undefined,
-) => {
+export const filterPlaces = (sections: readonly PlaceSection[], query: string) => {
   if (!query.trim()) return sections
-  const keep = (places: readonly Place[]) =>
-    places.filter((p) => placeMatches(p, query, organizationOf?.(p)))
+  const keep = (places: readonly Place[]) => places.filter((p) => placeMatches(p, query))
   return sections.map(
     (s): PlaceSection => ({
       ...s,

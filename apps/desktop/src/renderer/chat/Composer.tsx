@@ -4,7 +4,6 @@ import {
   ATTACH_MAX,
   type ChatMessage,
   insertMention,
-  type MentionEntry,
   type MessageKey,
   mentionEntries,
   messageText,
@@ -254,7 +253,7 @@ export const Composer = (props: ComposerProps) => {
     const open = mention()
     if (!open) return []
     const others = agents.agents().filter((agent) => agent.id !== props.agent.id)
-    return mentionEntries(others, open.query, false)
+    return mentionEntries(others, open.query)
   })
   const mentionOpen = () => mentionable().length > 0 && !mentionDismissed()
   createEffect(
@@ -270,10 +269,10 @@ export const Composer = (props: ComposerProps) => {
       { defer: true },
     ),
   )
-  const pickMention = (entry: MentionEntry<Agent>) => {
+  const pickMention = (agent: Agent) => {
     const open = mention()
-    if (!open || entry.kind !== "member") return
-    const next = insertMention(text(), open, caret(), entry.member.name)
+    if (!open) return
+    const next = insertMention(text(), open, caret(), agent.name)
     setText(next.text)
     setCaret(next.caret)
     queueMicrotask(() => {

@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { ORG_LIMIT_CODE } from "./orgLimit.ts"
 import {
   BLOCKED_EMPTY_CODE,
   BLOCKED_REASON_MAX,
   BLOCKED_RULE,
   blockedError,
   blockedReason,
-  blockedReasonForAgent,
-  changesLabel,
   endOfTurn,
   filterTasks,
   hasVisibleReply,
@@ -18,19 +15,15 @@ import {
   isTaskProgress,
   median,
   queueRank,
-  REVIEW_CHANGES_MAX,
   raiseProgress,
-  requestOpen,
   silentFailure,
   TASK_SOURCES,
-  TASK_STATES,
   type Task,
   taskDuration,
   taskLabel,
   taskTimes,
   taskTree,
   toldAboutBlocked,
-  validChanges,
 } from "./task.ts"
 
 const task = (id: string, extra: Partial<Task> = {}): Task => ({
@@ -54,15 +47,8 @@ const task = (id: string, extra: Partial<Task> = {}): Task => ({
   originName: null,
   waitsFor: null,
   progress: "not_sent",
-  doneTest: null,
-  verdict: null,
-  verdictReason: null,
-  judgedAt: null,
-  decidedAt: null,
   endedAt: null,
   endedAs: null,
-  decision: null,
-  decisionText: null,
   usage: { input: null, output: null, cached: null, costMicros: null },
   tokenLimit: null,
   ...extra,
@@ -78,12 +64,12 @@ describe("tasks", () => {
   test("filters by state, agent, source and label", () => {
     const list = [
       task("1"),
-      task("2", { state: "failed", agentId: "b", source: "channel" }),
+      task("2", { state: "failed", agentId: "b", source: "routine" }),
       task("3", { label: "Write report" }),
     ]
     expect(filterTasks(list, {}).length).toBe(3)
     expect(filterTasks(list, { state: "failed" }).map((t) => t.id)).toEqual(["2"])
-    expect(filterTasks(list, { agentId: "b", source: "channel" }).map((t) => t.id)).toEqual(["2"])
+    expect(filterTasks(list, { agentId: "b", source: "routine" }).map((t) => t.id)).toEqual(["2"])
     expect(filterTasks(list, { query: " REPORT " }).map((t) => t.id)).toEqual(["3"])
   })
 
@@ -240,33 +226,22 @@ describe("Blocked (spec 005)", () => {
     expect([...(blockedReason(`Blocked: ${"🙂".repeat(201)}`) ?? "")]).toHaveLength(200)
   })
 
-  test("a turn with no error ends as blocked, in review or done", () => {
-    expect(endOfTurn("All done.", { review: false })).toEqual({ state: "done" })
-    expect(endOfTurn("All done.", { review: true })).toEqual({ state: "review" })
-    expect(endOfTurn("x\nBlocked: no key", { review: false })).toEqual({
+  test("a turn with no error ends as blocked or done", () => {
+    expect(endOfTurn("All done.")).toEqual({ state: "done" })
+    expect(endOfTurn("x\nBlocked: no key")).toEqual({
       state: "blocked",
       reason: "no key",
     })
   })
 
-  test("a blocked line beats review: a part that could not work is not offered for review", () => {
-    expect(endOfTurn("Blocked: no key", { review: true })).toEqual({
-      state: "blocked",
-      reason: "no key",
-    })
-  })
-
-  test("only a part of a plan, a message of another agent, a routine or a workflow is told", () => {
-    const told = (source: Task["source"], parentId: string | null = null) =>
-      toldAboutBlocked({ source, parentId })
-    expect(told("channel", "lead")).toBe(true)
+  test("only a message of another agent, a routine or a workflow is told", () => {
+    const told = (source: Task["source"]) => toldAboutBlocked({ source })
     expect(told("agent")).toBe(true)
     expect(told("routine")).toBe(true)
     expect(told("workflow")).toBe(true)
-    // A direct chat reads the reply itself. A reply to a mention in a channel is no part.
+    // A direct chat reads the reply itself.
     expect(told("chat")).toBe(false)
     expect(told("mention")).toBe(false)
-    expect(told("channel")).toBe(false)
     expect(BLOCKED_RULE).toContain('"Blocked:"')
   })
 
@@ -280,51 +255,17 @@ describe("Blocked (spec 005)", () => {
   })
 })
 
-describe("Review (spec 004, 005)", () => {
-  test("in review is not final and not active", () => {
-    expect(TASK_STATES).toContain("review")
-    expect(isFinal("review")).toBe(false)
-    // Stop does not change it: only a task that is active can be stopped.
-    expect(isActive("review")).toBe(false)
-  })
-
-  test("the work of a request is open while a part is in review", () => {
-    expect(requestOpen(["done", "review"])).toBe(true)
-    expect(requestOpen(["done", "running"])).toBe(true)
-    expect(requestOpen(["queued"])).toBe(true)
-    expect(requestOpen(["waiting"])).toBe(true)
-    expect(requestOpen(["done", "failed", "blocked", "cancelled"])).toBe(false)
-    expect(requestOpen([])).toBe(false)
-  })
-
-  test("the text of a change request has 1 to 2000 characters", () => {
-    expect(validChanges("Add a title")).toBe(true)
-    expect(validChanges("")).toBe(false)
-    expect(validChanges("   ")).toBe(false)
-    expect(validChanges("x".repeat(REVIEW_CHANGES_MAX))).toBe(true)
-    expect(validChanges("x".repeat(REVIEW_CHANGES_MAX + 1))).toBe(false)
-  })
-
-  test("the label of a change request has a prefix and is cut at 48 characters in all", () => {
-    expect(changesLabel("Write the intro")).toBe("Changes: Write the intro")
-    const long = changesLabel("x".repeat(100))
-    expect([...long]).toHaveLength(48)
-    expect(long.startsWith("Changes: x")).toBe(true)
-    expect(long.endsWith("…")).toBe(true)
-    // A label that fits exactly stays as it is.
-    expect(changesLabel("y".repeat(39))).toBe(`Changes: ${"y".repeat(39)}`)
-  })
-
-  test("the total time of a task in review is not known yet", () => {
-    const inReview = task("r", {
-      state: "review",
+describe("the time of a task (spec 005)", () => {
+  test("the total time of a task that has not ended is not known yet", () => {
+    const running = task("r", {
+      state: "running",
       finishedAt: null,
       startedAt: 100,
       firstReplyAt: 150,
     })
-    expect(taskTimes(inReview).total).toBeNull()
-    expect(taskTimes({ ...inReview, state: "done", finishedAt: 900 }).total).toBe(900)
-    expect(taskTimes({ ...inReview, state: "blocked", finishedAt: 500 }).total).toBe(500)
+    expect(taskTimes(running).total).toBeNull()
+    expect(taskTimes({ ...running, state: "done", finishedAt: 900 }).total).toBe(900)
+    expect(taskTimes({ ...running, state: "blocked", finishedAt: 500 }).total).toBe(500)
   })
 })
 
@@ -332,19 +273,9 @@ describe("queue order (spec 005)", () => {
   test("a pick of Run next first, then normal sources, then background sources", () => {
     expect(queueRank("routine", true)).toBe(1)
     // Teams is a normal source (spec 005).
-    for (const source of ["chat", "channel", "agent", "teams"] as const)
+    for (const source of ["chat", "agent", "teams"] as const)
       expect(queueRank(source, false)).toBe(2)
     expect(queueRank("routine", false)).toBe(3)
     expect(queueRank("workflow", false)).toBe(3)
-  })
-})
-
-describe("the reason of a task that the daily token limit blocked (spec 005 'Blocked', 030)", () => {
-  test("an agent that reads it gets the plain English sentence with the organization", () => {
-    expect(blockedReasonForAgent({ code: ORG_LIMIT_CODE, detail: "Docs" })).toBe(
-      "The daily token limit of Docs is used.",
-    )
-    expect(blockedReasonForAgent({ code: "blocked", detail: "no access" })).toBe("no access")
-    expect(blockedReasonForAgent(null)).toBe("")
   })
 })

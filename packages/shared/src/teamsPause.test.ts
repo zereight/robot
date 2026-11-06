@@ -17,9 +17,8 @@ import {
   teamsNoticeTitleKey,
   teamsPauseReasonKey,
 } from "./teamsPause.ts"
-import { dayBounds, teamsProblem, wrongRows } from "./today.ts"
 
-// The pure rules of the pause, of the notification and of the row in Today (spec 028, 015, 021).
+// The pure rules of the pause, of the notification (spec 028, 015).
 
 /** Feeds a list of results to a counter and gives the counts and the first pause. */
 const feed = (
@@ -212,47 +211,5 @@ describe("the notification", () => {
       expect(catalogues.ko[key]).not.toBe(catalogues.en[key])
       expect(catalogues.ko[key]).toBeTruthy()
     }
-  })
-})
-
-describe("the row in Today", () => {
-  const day = dayBounds(Date.UTC(2036, 5, 15, 12, 0, 0))
-
-  test("no row when the link is fine or off", () => {
-    expect(teamsProblem(null)).toBeNull()
-  })
-
-  test("a signed-out link has one row that opens Settings, Teams, and holds no text", () => {
-    const row = teamsProblem({ state: "signedOut", reason: null, since: 1000 })
-    expect(row).toMatchObject({
-      kind: "teams_signed_out",
-      text: "",
-      agentId: null,
-      computer: null,
-      reason: null,
-      at: 1000,
-      open: { kind: "teams" },
-    })
-  })
-
-  test("a paused link has one row with the reason", () => {
-    const row = teamsProblem({ state: "paused", reason: "send", since: 2000 })
-    expect(row).toMatchObject({
-      kind: "teams_paused",
-      reason: { code: "send", detail: "" },
-      at: 2000,
-      open: { kind: "teams" },
-    })
-  })
-
-  test("the row is in 'Went wrong', and it stays from an earlier day", () => {
-    const earlier = day.start - 3 * 24 * 3_600_000
-    const rows = wrongRows([], [], [], day, day.start + 1000, {
-      state: "paused",
-      reason: "read",
-      since: earlier,
-    })
-    expect(rows.map((r) => r.id)).toEqual(["teams:link"])
-    expect(wrongRows([], [], [], day, day.start + 1000, null)).toEqual([])
   })
 })

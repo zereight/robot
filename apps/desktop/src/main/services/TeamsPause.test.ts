@@ -2,14 +2,12 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { TodayRow } from "@robot/shared"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
 import { Agents } from "./Agents.ts"
 import { Notifier } from "./Notifier.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { TeamsLink } from "./TeamsLink.ts"
-import { Today } from "./Today.ts"
 import {
   dispose,
   MARTA,
@@ -19,12 +17,11 @@ import {
   settle,
   setup,
   startModel,
-  until,
 } from "./teamsHarness.testing.ts"
 import { testRuntime } from "./testing.ts"
 
 // The repeated failure, the state Paused, "Resume", the notification "Teams link needs you" and
-// the row in Today (spec 028, 015, 021; slice S105), with the stand-in Teams and a stand-in model.
+// the notification (spec 028, 015), with the stand-in Teams and a stand-in model.
 // Nothing here calls the real Teams.
 
 const model = startModel()
@@ -37,18 +34,11 @@ const ALL_ON = {
   question: true,
   task_failed: true,
   routine_failed: true,
-  part_review: true,
   workflow_notice: true,
   teams_link: true,
 }
 
 const resume = (s: S) => s.run(TeamsLink.use((l) => l.resume))
-
-/** The Today row of the Teams link, or undefined. */
-const todayRow = async (s: S): Promise<TodayRow | undefined> => {
-  const snapshot = await s.run(Today.use((t) => t.snapshot()))
-  return snapshot.groups.flatMap((g) => g.rows).find((r) => r.id === "teams:link")
-}
 
 /** The notices of the system that carry the title of the Teams link. */
 const teamsNotices = (s: S) => s.shell.notices.filter((n) => /Teams/.test(n.title))
@@ -403,7 +393,7 @@ describe("after a restart", () => {
     expect(view.state).toBe("paused")
     expect(view.pauseReason).toBe("read")
     expect(view.enabled).toBe(true)
-    // The Today row shows again after the restart.
+    // The state of the link shows again after the restart.
     const attention = await run2(TeamsLink.use((l) => l.attention))
     expect(attention).toMatchObject({ state: "paused", reason: "read" })
     for (let i = 0; i < 60; i++) {
@@ -540,8 +530,8 @@ describe("the notification 'Teams link needs you'", () => {
     )
     await pauseByReads(off)
     expect(teamsNotices(off)).toHaveLength(0)
-    // The Today row shows anyway.
-    expect(await todayRow(off)).toBeDefined()
+    // The state of the link shows anyway.
+    expect((await off.view()).state).toBe("paused")
     await dispose(off)
 
     const muted = await running(model)
@@ -580,77 +570,10 @@ describe("the notification 'Teams link needs you'", () => {
   })
 })
 
-// --- The row in Today -------------------------------------------------------------------------------
-
-describe("the row in Today", () => {
-  test("a pause shows one row in 'Went wrong' that opens Settings, Teams; Resume removes it", async () => {
-    const s = await running(model)
-    expect(await todayRow(s)).toBeUndefined()
-    await pauseByReads(s)
-    const row = await todayRow(s)
-    expect(row).toMatchObject({
-      kind: "teams_paused",
-      text: "",
-      reason: { code: "read", detail: "" },
-      open: { kind: "teams" },
-    })
-    const snapshot = await s.run(Today.use((t) => t.snapshot()))
-    const group = snapshot.groups.find((g) => g.rows.some((r) => r.id === "teams:link"))
-    expect(group?.id).toBe("wrong")
-    // The badge counts "Needs you" only: the row of the Teams link is not in it.
-    expect(snapshot.badge).toBe(0)
-    // The row stays while the state is the same, also much later.
-    await s.pass(30 * 60_000)
-    expect(await todayRow(s)).toBeDefined()
-    await resume(s)
-    await s.pass(3000)
-    expect(await todayRow(s)).toBeUndefined()
-    await dispose(s)
-  }, 120_000)
-
-  test("Signed out shows a row until the user signs in", async () => {
-    const s = await running(model)
-    s.chat.endSession()
-    await s.pass(6000)
-    expect(await todayRow(s)).toMatchObject({ kind: "teams_signed_out", open: { kind: "teams" } })
-    await s.showPage()
-    s.chat.signInByHand("a password")
-    await s.pass(9000)
-    await s.hidePage()
-    await s.pass(9000)
-    expect((await s.view()).state).toBe("on")
-    expect(await todayRow(s)).toBeUndefined()
-    await dispose(s)
-  })
-
-  test("a link that is off shows no row, also when it was paused", async () => {
-    const s = await running(model)
-    await pauseByReads(s)
-    await s.turnOff()
-    expect(await todayRow(s)).toBeUndefined()
-    await dispose(s)
-  })
-
-  test("the page gets the change within a second, by its own event", async () => {
-    const s = await running(model)
-    const before = s.events.filter((e) => e.event === "today.changed").length
-    await pauseByReads(s)
-    await until(
-      () =>
-        s.events
-          .filter((e) => e.event === "today.changed")
-          .slice(before)
-          .some((e) => JSON.stringify(e.payload).includes("teams_paused")),
-      3000,
-    )
-    await dispose(s)
-  })
-})
-
 // --- No text, no name -------------------------------------------------------------------------------
 
 describe("no message text and no sender name", () => {
-  test("the notification, the row, the records and the link log hold neither", async () => {
+  test("the notification, the records and the link log hold neither", async () => {
     const s = await setup(model)
     await s.prepare({ allow: [MARTA, "Zed Quill"] })
     await s.turnOn()
@@ -662,10 +585,8 @@ describe("no message text and no sender name", () => {
     expect(s.typedTexts()).toEqual(["[ROBot] the plan-in-secret-4471"])
     await s.endTask({ text: "a reply of plan-in-secret-4471" })
     await pauseBySends(s)
-    const row = await todayRow(s)
     const seen = JSON.stringify([
       teamsNotices(s).map((n) => [n.title, n.body]),
-      row,
       await s.records(),
       s.logText(),
     ])

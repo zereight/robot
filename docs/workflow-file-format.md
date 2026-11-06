@@ -75,7 +75,7 @@ Every step has these fields. The field `kind` selects the other fields.
 
 | Field | Type | Required | Default | Rule |
 | --- | --- | --- | --- | --- |
-| `kind` | string | yes | | One of `"agent"`, `"condition"`, `"approval"`, `"post"`, `"notify"`. |
+| `kind` | string | yes | | One of `"agent"`, `"condition"`, `"approval"`, `"notify"`. See "Older files" for `"post"`. |
 | `name` | string | yes | | 1 to 60 characters after ROBot removes spaces. It does not need to be unique. |
 | `x` | number | no | on a grid | The place on the canvas, to the right. ROBot rounds it to an integer. Its size is at most 1 000 000. |
 | `y` | number | no | on a grid | The place on the canvas, down. Same rule as `x`. |
@@ -116,15 +116,6 @@ The run waits at this step until the user approves or rejects. It passes its inp
 | Field | Type | Required | Default | Rule |
 | --- | --- | --- | --- | --- |
 | `message` | string | no | `""` | The text that the approver sees. At most 20 000 characters. |
-
-#### Kind `"post"`: post a message
-
-The step posts a message in a channel. The file holds no channel, so the step has no place after
-an import.
-
-| Field | Type | Required | Default | Rule |
-| --- | --- | --- | --- | --- |
-| `text` | string | no | `"{{input}}"` | A template. At most 20 000 characters. |
 
 #### Kind `"notify"`: show a system notification
 
@@ -184,7 +175,6 @@ The file has no field for these. If a tool writes one, ROBot ignores it.
 
 - **Runs, versions and chats.** A workflow comes without its history.
 - **Ids.** ROBot gives new ids when it imports.
-- **Channels.** A post step has no place until the user picks one.
 - **Agents.** The file holds the name of an agent, not the agent.
 - **A model for a condition.** ROBot chooses it.
 - **On or off.** Every imported workflow is off.
@@ -196,7 +186,7 @@ The file has no field for these. If a tool writes one, ROBot ignores it.
 
 ROBot replaces text that looks like a secret with `[redacted]`. It does this when it writes a file,
 and again when it reads one. This applies to every text of the file: the names, the prompts, the
-texts of conditions, posts and approvals, the titles, the agent names and the notes. It applies
+texts of conditions and approvals, the titles, the agent names and the notes. It applies
 to:
 
 - keys that start with `sk-`
@@ -236,8 +226,18 @@ count.
 If there is no such agent, the step has no agent. It shows "Pick an agent", and a run fails at that
 step with the reason "No agent". `agent` that is empty or missing has the same result.
 
-A post step always shows "Pick a place", and a run fails at that step with the reason "No place",
-until the user picks a channel.
+## Older files
+
+Older versions of ROBot had a step of kind `"post"` and a trigger of kind `"channel"`. ROBot has
+no channels now. It still reads such a file and does not refuse it:
+
+- A step of kind `"post"` becomes a pink note at its place. The note starts with
+  `Not imported: post <name>` and then holds the text of the step. The connections of the step are
+  dropped, and the numbers of the steps after it go down.
+- A trigger of kind `"channel"` becomes the trigger `"manual"`.
+- The review screen lists each such step and trigger under "Not imported".
+
+ROBot never writes a step of kind `"post"` or a trigger of kind `"channel"`.
 
 ## When ROBot refuses a file
 
@@ -257,7 +257,7 @@ until the user picks a channel.
 ## Example
 
 This file holds one workflow. It asks the agent `Ada` for a draft, asks a model if the draft is
-polite, posts the draft if it is, and shows a notification if it is not.
+polite, shows a notification with the result if it is, and shows another notification if it is not.
 
 ```json
 {
@@ -288,7 +288,7 @@ polite, posts the draft if it is, and shows a notification if it is not.
           "mode": "ask",
           "text": "Is this text polite?"
         },
-        { "kind": "post", "name": "Post it", "x": 520, "y": -50, "text": "{{input}}" },
+        { "kind": "notify", "name": "Good news", "x": 520, "y": -50, "title": "The draft is polite" },
         { "kind": "notify", "name": "Warn me", "x": 520, "y": 60, "title": "The draft is not polite" }
       ],
       "connections": [
@@ -296,7 +296,7 @@ polite, posts the draft if it is, and shows a notification if it is not.
         { "from": 2, "to": 3, "branch": "yes" },
         { "from": 2, "to": 4, "branch": "no" }
       ],
-      "notes": [{ "text": "Pick a channel for step 3 after the import.", "tone": "blue", "x": 520, "y": 160 }]
+      "notes": [{ "text": "Turn the workflow on after the import.", "tone": "blue", "x": 520, "y": 160 }]
     }
   ]
 }

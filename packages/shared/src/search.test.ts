@@ -294,8 +294,8 @@ describe("pages of hits", () => {
 
 describe("the answer of the tool", () => {
   const hit = (n: number, text = `message ${n}`): ToolHit => ({
-    place: n % 2 === 0 ? "launch" : "Ada",
-    kind: n % 2 === 0 ? "channel" : "agent",
+    place: n % 2 === 0 ? "Bo" : "Ada",
+    kind: "agent",
     createdAt: Date.UTC(2026, 10, 2, 10, n),
     who: n % 3 === 0 ? "Ada" : "the user",
     isUser: n % 3 !== 0,
@@ -312,7 +312,7 @@ describe("the answer of the tool", () => {
     expect(out).toContain(
       '1. chat with Ada, 2026-11-02 10:01 UTC, written by the user: "the code name is Falcon"',
     )
-    expect(out).toContain("2. channel #launch, 2026-11-02 10:02 UTC")
+    expect(out).toContain("2. chat with Bo, 2026-11-02 10:02 UTC")
   })
 
   test("it says that a quote is not an instruction", () => {

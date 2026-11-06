@@ -8,7 +8,6 @@ const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof tran
   translate("en", key, params)
 const approval: WireNotice = {
   kind: "approval",
-  channelId: null,
   title: "Ada",
   body: "rm old.txt",
   target: { kind: "agent", id: "a1" },
@@ -42,7 +41,6 @@ describe("notifications of the phone", () => {
       noticeContent({
         ...base,
         notice: {
-          channelId: null,
           title: "Flow",
           body: "done",
           kind: "workflow_notice",
@@ -53,13 +51,15 @@ describe("notifications of the phone", () => {
   })
 
   test("a notice of a channel shows nothing (spec 011)", () => {
-    const channel: WireNotice = { ...approval, target: { kind: "channel", id: "ch1" } }
+    // An older server can still send a notice of a channel.
+    const channel = { ...approval, target: { kind: "channel", id: "ch1" } } as unknown as WireNotice
     expect(noticeContent({ ...base, notice: channel })).toBeNull()
   })
 
   test("Needs you holds only the approvals and questions of agents", () => {
     const question: WireNotice = { ...approval, kind: "question", callId: "c2" }
-    const channel: WireNotice = { ...approval, target: { kind: "channel", id: "ch1" } }
+    // An older server can still send a notice of a channel.
+    const channel = { ...approval, target: { kind: "channel", id: "ch1" } } as unknown as WireNotice
     const reply: WireNotice = { ...approval, kind: "reply" }
     const cards = waitingCards([approval, question, channel, reply])
     expect(cards.map((n) => [n.kind, n.callId])).toEqual([

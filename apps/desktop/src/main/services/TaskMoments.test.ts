@@ -2,9 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { RECENT_WORK_MAX, taskMoments } from "@robot/shared"
 import { Deferred, Effect } from "effect"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
 import { AppError } from "./errors.ts"
-import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
@@ -79,12 +77,7 @@ const setup = async () => {
         }),
       ),
     )
-  const make = (
-    agentId: string,
-    prompt: string,
-    source: "chat" | "channel" = "chat",
-    id?: string,
-  ) =>
+  const make = (agentId: string, prompt: string, source: "chat" = "chat", id?: string) =>
     run(
       Tasks.use((x) =>
         x.create({ agentId, prompt, source, sourceId: id ?? agentId, parentId: null }),
@@ -108,12 +101,7 @@ describe("the end of the turn of a task", () => {
     expect(done.endedAt).not.toBeNull()
     expect(done.startedAt ?? 0).toBeLessThanOrEqual(done.endedAt ?? 0)
     expect(done.endedAt ?? 0).toBeLessThanOrEqual(done.finishedAt ?? 0)
-    expect(taskMoments(done, null).map((m) => m.id)).toEqual([
-      "given",
-      "started",
-      "ended",
-      "closed",
-    ])
+    expect(taskMoments(done).map((m) => m.id)).toEqual(["given", "started", "ended", "closed"])
   })
 
   test("a failed task and a cancelled task say how they ended; a queued task that is stopped never ended", async () => {
@@ -145,110 +133,7 @@ describe("the end of the turn of a task", () => {
     expect(stoppedQueued.state).toBe("cancelled")
     // It never started, so it has no turn and no such moment; it was given and closed.
     expect(stoppedQueued.endedAt).toBeNull()
-    expect(taskMoments(stoppedQueued, null).map((m) => m.id)).toEqual(["given", "closed"])
-  })
-
-  test("the first end of the turn is kept: a later change of the state does not move it", async () => {
-    const s = await setup()
-    const ada = await s.agent("Ada")
-    const task = await s.make(ada.id, "p")
-    await s.run(
-      Tasks.use((x) =>
-        x.run(task.id, ada.id, Effect.sleep(5), { finish: () => ({ state: "review" }) }),
-      ),
-    )
-    const review = await s.get(task.id)
-    expect(review.state).toBe("review")
-    expect(review.endedAs).toBe("review")
-    expect(review.finishedAt).toBeNull()
-    expect(taskMoments(review, null).map((m) => m.id)).toEqual(["given", "started", "ended"])
-  })
-})
-
-describe("the parts of a request and the decisions of the user", () => {
-  const withChannel = async () => {
-    const s = await setup()
-    const account = await s.run(
-      Providers.use((p) =>
-        p.connect({
-          kind: "custom",
-          name: "M",
-          baseUrl: `http://127.0.0.1:${server.port}/v1`,
-          apiKey: "sk-moments-test-key",
-        }),
-      ),
-    )
-    const [lead, bo, cy] = await Promise.all([
-      s.agent("Lia", { accountId: account.id }),
-      s.agent("Bo", { accountId: account.id }),
-      s.agent("Cy", { accountId: account.id }),
-    ])
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Launch",
-          topic: "Ship it",
-          memberIds: [lead.id, bo.id, cy.id],
-          leadId: lead.id,
-        }),
-      ),
-    )
-    await s.run(Channels.use((c) => c.update(channel.id, { reviewParts: true })))
-    const parts = async () =>
-      (await s.run(Tasks.use((x) => x.list(s.local.id)))).filter((t) => t.parentId !== null)
-    return { ...s, lead, bo, cy, channel, parts }
-  }
-
-  test("a part names the lead that gave it; accepting and asking for changes are kept with their text", async () => {
-    const s = await withChannel()
-    await s.run(Channels.use((c) => c.send(s.channel.id, "split two things")))
-    await until(async () => (await s.parts()).filter((t) => t.state === "review").length === 2)
-    const parts = await s.parts()
-    const first = parts.find((t) => t.label === "Intro")
-    const second = parts.find((t) => t.label === "Facts")
-    const detail = await s.run(Tasks.use((x) => x.get(first?.id ?? "")))
-    expect(detail.leadName).toBe("Lia")
-    // A task that is not a part has no lead.
-    const plain = await s.make(s.bo.id, "p")
-    expect((await s.run(Tasks.use((x) => x.get(plain.id)))).leadName).toBeNull()
-
-    const waiting = await s.get(first?.id ?? "")
-    expect(waiting.endedAs).toBe("review")
-    expect(waiting.decision).toBeNull()
-    expect(taskMoments(waiting, "Lia").map((m) => m.id)).toEqual(["given", "started", "ended"])
-
-    await s.run(Tasks.use((x) => x.accept(first?.id ?? "")))
-    const accepted = await s.get(first?.id ?? "")
-    expect(accepted.state).toBe("done")
-    expect(accepted.decision).toBe("accepted")
-    expect(accepted.decisionText).toBeNull()
-    expect(accepted.decidedAt).not.toBeNull()
-    // The turn ended in review: that moment stays.
-    expect(accepted.endedAs).toBe("review")
-    expect(taskMoments(accepted, "Lia").map((m) => m.id)).toEqual([
-      "given",
-      "started",
-      "ended",
-      "decided",
-      "closed",
-    ])
-
-    await s.run(Tasks.use((x) => x.requestChanges(second?.id ?? "", "Add a title")))
-    const changed = await s.get(second?.id ?? "")
-    expect(changed.decision).toBe("changes")
-    expect(changed.decisionText).toBe("Add a title")
-    const decided = taskMoments(changed, "Lia").find((m) => m.id === "decided")
-    expect(decided).toMatchObject({ decision: "changes", text: "Add a title" })
-    // The new part is a new task with its own moments.
-    await until(async () => (await s.parts()).some((t) => t.label === "Changes: Facts"))
-    const next = (await s.parts()).find((t) => t.label === "Changes: Facts")
-    expect(next?.decision).toBeNull()
-    // Finish: accept the new part so the request ends.
-    await until(async () =>
-      (await s.parts()).some((t) => t.label === "Changes: Facts" && t.state === "review"),
-    )
-    await s.run(Tasks.use((x) => x.accept(next?.id ?? "")))
+    expect(taskMoments(stoppedQueued).map((m) => m.id)).toEqual(["given", "closed"])
   })
 })
 
@@ -280,41 +165,6 @@ describe("recent work of an agent", () => {
     expect(row?.changedAt).toBe(done.finishedAt ?? 0)
     expect(row?.wait).toBeNull()
     expect(row?.behind).toBeNull()
-  })
-
-  test("a queued task names the channel that its agent works for", async () => {
-    const s = await setup()
-    const ada = await s.agent("Ada")
-    const bo = await s.agent("Bo")
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Launch",
-          topic: "",
-          memberIds: [ada.id, bo.id],
-          leadId: ada.id,
-        }),
-      ),
-    )
-    const gate = Deferred.makeUnsafe<void>()
-    const busy = await s.make(ada.id, "busy", "channel", channel.id)
-    const first = s.run(Tasks.use((x) => x.run(busy.id, ada.id, Deferred.await(gate))))
-    await until(async () => (await s.get(busy.id)).state === "running")
-    const waiting = await s.make(ada.id, "next")
-    const second = s.run(Tasks.use((x) => x.run(waiting.id, ada.id, Effect.void)))
-    await until(async () => (await s.get(waiting.id)).state === "queued")
-    let rows = await s.recent(ada.id)
-    expect(rows.find((r) => r.task.id === waiting.id)?.behind).toEqual({
-      kind: "channel",
-      name: "Launch",
-    })
-    // The running task itself waits behind nothing.
-    expect(rows.find((r) => r.task.id === busy.id)?.behind).toBeNull()
-    await s.run(Deferred.succeed(gate, undefined))
-    await Promise.all([first, second])
-    rows = await s.recent(ada.id)
-    expect(rows.every((r) => r.behind === null)).toBe(true)
   })
 
   test("a task of a chat that runs makes the next one wait behind its own chat", async () => {
