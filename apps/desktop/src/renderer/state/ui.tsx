@@ -25,6 +25,7 @@ import {
   useContext,
 } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
+import { createHistory } from "../lib/history.ts"
 import { call, setActiveServer } from "../lib/rpc.ts"
 import { linkEpoch } from "./link.ts"
 
@@ -99,6 +100,35 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     return id ? ui.places[id] : undefined
   })
   const narrow = () => width() < NARROW_WIDTH
+
+  // Back and forward (spec 001): each move to another server, page or place is one step.
+  interface Step {
+    readonly serverId: string
+    readonly page: Page
+    readonly place: PlaceRef | undefined
+  }
+  const history = createHistory<Step>(
+    50,
+    (a, b) =>
+      a.serverId === b.serverId &&
+      a.page === b.page &&
+      a.place?.kind === b.place?.kind &&
+      a.place?.id === b.place?.id,
+  )
+  const [historyTick, setHistoryTick] = createSignal(0)
+  history.onChange(() => setHistoryTick((n) => n + 1))
+  createEffect(() => {
+    const serverId = server()?.id
+    if (serverId) history.visit({ serverId, page: ui.page, place: place() })
+  })
+  const goTo = (step: Step | undefined) => {
+    if (!step) return
+    update({
+      serverId: step.serverId,
+      page: step.page,
+      places: step.place ? { ...ui.places, [step.serverId]: step.place } : ui.places,
+    })
+  }
   /** The kind whose list shows the box for the name of a new section, or undefined. */
   const [newSectionKind, setNewSectionKind] = createSignal<PlaceKind>()
   /** A call to the server for the sections. A failure only reloads the list: it was stale. */
@@ -141,6 +171,10 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     closeSettings: () => setSettingsSection(undefined),
     /** The panel shows when the user wants it and the window is wide enough. */
     activityPanelVisible: () => ui.activityPanel && !narrow(),
+    canGoBack: () => historyTick() >= 0 && history.canBack(),
+    canGoForward: () => historyTick() >= 0 && history.canForward(),
+    goBack: () => goTo(history.back()),
+    goForward: () => goTo(history.forward()),
     selectServer: (serverId: string) => update({ serverId }),
     /** Opens a place. A notification names its server; without one, the server on screen. */
     selectPlace: (ref: PlaceRef, serverId?: string) => {

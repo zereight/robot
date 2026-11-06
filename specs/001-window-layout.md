@@ -289,6 +289,20 @@ is on at first.
   unread (see 003). The same menu has "Pin" or "Unpin" (see "Pinned places") and "Move to
   section" (see "User sections").
 
+## Back and forward
+
+- Two buttons, "Back" and "Forward", sit at the top of the place list, left of the search field.
+- Each move to another server, page or place adds one step to the history of the window. A
+  move to the same server, page and place adds nothing.
+- "Back" opens the step before the open one. "Forward" opens the step after it. A button is
+  disabled when it has no step to open.
+- A new move after "Back" removes the steps that "Forward" would open.
+- The history keeps the last 50 steps. It belongs to the open profile, is not saved, and starts
+  empty when the app starts.
+- Cmd+[ is "Back" and Cmd+] is "Forward". The back and forward buttons of a mouse do the same. The help page lists these keys.
+- The "Back" of a message search hit (see "Message search") stays as it is.
+- A thread change inside a chat is not a step.
+
 ## Header
 
 - Direct chat: the agent's face, name, model, the context meter (see 003), the list of threads, and
@@ -312,7 +326,7 @@ is on at first.
 - The rail, the place list, the pages and the selection belong to the open profile. A switch of
   profile changes all of them, and each profile keeps its own selection (022).
 - Keyboard: Cmd+K focuses search. Cmd+F finds in the open chat (003); on a page that is not a
-  chat it does nothing. Cmd+Shift+D starts and stops dictation (027). Up and down move through
+  chat it does nothing. Cmd+Shift+D starts and stops dictation (027). Cmd+[ and Cmd+] go back and forward (see "Back and forward"). Up and down move through
   places. Enter opens one. The help button opens a page that lists these keys.
 - **Quit**: Cmd+Q, and "Quit" in the menu of the menu bar item (015), quit the app. When no agent
   works and no task waits for the user, the app quits at once. When an agent works or a task
@@ -396,3 +410,5 @@ is on at first.
 - Press Cmd+F on the Today page: nothing happens. Hold Cmd+Q for 1 second while an agent works: the
   app quits. Close the window while an agent works: the agent goes on, and the Dock icon opens the
   window again.
+- "Back" and "Forward" move through the servers, pages and places that the user opened, and a
+  button with no step is disabled.

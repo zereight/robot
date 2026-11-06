@@ -32,7 +32,7 @@ import {
   type UserSectionView,
   withoutPinned,
 } from "@robot/shared"
-import { ChevronDown, Ellipsis, Hash } from "lucide-solid"
+import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, Hash } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -353,13 +353,26 @@ export const PlaceList = (props: PlaceListProps) => {
         event.preventDefault()
         search?.focus()
         search?.select()
+      } else if ((event.metaKey || event.ctrlKey) && (event.key === "[" || event.key === "]")) {
+        event.preventDefault()
+        if (event.key === "[") ui.goBack()
+        else ui.goForward()
       }
     }
     window.addEventListener("keydown", onKey)
+    // The back and forward buttons of a mouse (buttons 3 and 4) do the same.
+    const onMouse = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return
+      event.preventDefault()
+      if (event.button === 3) ui.goBack()
+      else ui.goForward()
+    }
+    window.addEventListener("mouseup", onMouse)
     // Arrow keys move between rows, the way a list box works.
     list?.addEventListener("keydown", onListKey)
     onCleanup(() => {
       window.removeEventListener("keydown", onKey)
+      window.removeEventListener("mouseup", onMouse)
       list?.removeEventListener("keydown", onListKey)
     })
   })
@@ -1135,6 +1148,22 @@ export const PlaceList = (props: PlaceListProps) => {
       data-testid="place-list"
     >
       <div class={styles.placesTop}>
+        <IconButton
+          label={t("nav.back")}
+          disabled={!ui.canGoBack()}
+          onClick={() => ui.goBack()}
+          data-testid="nav-back"
+        >
+          <ChevronLeft size={18} />
+        </IconButton>
+        <IconButton
+          label={t("nav.forward")}
+          disabled={!ui.canGoForward()}
+          onClick={() => ui.goForward()}
+          data-testid="nav-forward"
+        >
+          <ChevronRight size={18} />
+        </IconButton>
         <input
           ref={search}
           class={styles.search}

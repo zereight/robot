@@ -96,6 +96,8 @@ export const ko: Record<MessageKey, string> = {
 
   "places.label": "장소",
   "places.search": "검색",
+  "nav.back": "이전",
+  "nav.forward": "다음",
   "places.search.clear": "검색 지우기",
   "places.section.channels": "채널",
   "places.section.agents": "에이전트",

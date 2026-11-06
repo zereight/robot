@@ -159,8 +159,16 @@
 }
 
 .placesTop {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
   padding: var(--spacing-md);
   -webkit-app-region: drag;
+}
+
+.placesTop > button {
+  flex: none;
+  -webkit-app-region: no-drag;
 }
 
 :root[data-platform="darwin"] .placesTop {
@@ -169,7 +177,8 @@
 
 .search {
   -webkit-app-region: no-drag;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--c-border);
   background: var(--c-main);
   border-radius: var(--radius-m);
