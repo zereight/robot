@@ -15,7 +15,7 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
 ## Flows
 
 1. Dictate: the message box has a microphone button, on the computer and on the phone (and in the
-   box of a thread and of a channel). The user holds the button, or presses it once to start and
+   box of a thread). The user holds the button, or presses it once to start and
    once to stop.
    - The text shows in the box at the place of the cursor while the user speaks. The part that is
      not final shows muted and can change.
@@ -45,7 +45,7 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
    - The screen stays awake while voice chat runs. When the app leaves the screen, voice chat ends.
    - "Mute" turns the microphone off. The state reads "Muted", the agent goes on, and its reply
      is still read. A second press turns listening on again.
-   - Voice chat is for a direct chat. It is not in a channel in this version.
+   - Voice chat is for a direct chat.
 4. Settings: Settings → General (013) has "Dictation language" (the language of the interface by
    default, or a language that the recogniser of the device offers) and "Reading speed" (slow,
    normal, fast). The phone has the same two settings in its Settings.
@@ -101,7 +101,7 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
 ## Out of scope
 
 - A wake word, and voice that runs while the app is closed.
-- Voice chat on the computer, and voice chat in a channel.
+- Voice chat on the computer.
 - Choice of a synthetic voice, and a voice that the app brings itself.
 - Sound files as attachments. They follow the attach rules of 003.
 

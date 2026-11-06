@@ -2,10 +2,10 @@
 
 ## Purpose
 
-The user talks to one agent, or to one channel, from a Microsoft Teams chat. This helps when the
-user is away from the Mac and has Teams on a phone. The app reads the chat in a Teams page where
-the user signed in by hand. It gives each message of an allowed sender to the agent, and it writes
-the answer in the same chat. It needs no app registration with a company.
+The user talks to one agent from a Microsoft Teams chat. This helps when the user is away from
+the Mac and has Teams on a phone. The app reads the chat in a Teams page where the user signed in
+by hand. It gives each message of an allowed sender to the agent, and it writes the answer in the
+same chat. It needs no app registration with a company.
 
 The link is off until the user turns it on. A Teams message is outside content (007). It gives no
 permission, it changes no rule, and it answers no approval or question.
@@ -14,8 +14,7 @@ permission, it changes no rule, and it answers no approval or question.
 
 - **Teams link**: the one link between a Teams chat and a target. A profile (022) has at most one.
   Its fields:
-  - **Target**: the direct chat of one agent (its main thread, 003), or one channel (004). It is
-    not archived.
+  - **Target**: the direct chat of one agent (its main thread, 003). The agent is not archived.
   - **Chat title**: 1 to 100 characters. The title of the Teams chat must hold this text.
   - **Kind of chat**: "A chat with one person" (this includes the chat with oneself) or "A group
     chat".
@@ -43,9 +42,8 @@ permission, it changes no rule, and it answers no approval or question.
    does these steps in any order.
    1. Sign in: "Sign in to Teams" shows the Teams page. The user signs in by hand. The app does not
       read or store the password. It only sees if the page shows Teams or a sign-in form.
-   2. Target: the user picks "An agent" or "A channel", and then which one. For an agent at "Full
-      access", a muted line says that a message from Teams can make it run commands with no
-      question.
+   2. Target: the user picks the agent. For an agent at "Full access", a muted line says that a
+      message from Teams can make it run commands with no question.
    3. Chat: the user opens the chat in the Teams page and presses "Use this chat". The app reads
       the title of the open chat and fills the field "Chat title". The user may shorten it. The
       user picks the kind of chat.
@@ -137,30 +135,23 @@ The app answers a message only when all of these are true, in this order:
   (005). It is not in the message queue of the user (003), has no "Send now" and no edit, and
   never merges with messages of the user. When the queue of the agent is full (005), no task is
   made, and Teams gets the line "<name> has 20 tasks that wait. Try again later."
-- Channel: the message is a job with its mark. The order of 004 holds, and a mention works as in
-  004. With no lead and no member named, the job waits for the user to pick a member in the app.
 - Only work that a Teams message started sends text to Teams. Other work stays in the app.
 - No tool of an agent reads or changes the link. The agent cannot change it from the chat (002).
 
 ### Answers and the outbox
 
 Every answer starts with the marker and one space. It is plain text: the app does not turn
-Markdown into Teams formatting. In a line below, <name> is the name of the agent or of the
-channel. The lines are in the language of the app.
+Markdown into Teams formatting. In a line below, <name> is the name of the agent. The lines are
+in the language of the app.
 
-- **Direct chat, done**: the reply text of the task (005): the words of the agent, with no tool card
-  and no thinking. When the reply has files or pictures, one more line says "The reply has N files
+- **Done**: the reply text of the task (005): the words of the agent, with no tool card and no
+  thinking. When the reply has files or pictures, one more line says "The reply has N files
   or pictures. Open them in ROBot." A done task with no words sends "Done. There is no reply text."
-- **Channel, request ended** (004): the summary of the lead. When the lead made no parts, it is the
-  reply text of the lead. When a mention chose the members, it is the reply text of each member
-  that answered, one answer each, in the order in which the tasks ended, each with the name of the
-  member and a colon. The plan message of the lead does not go.
 - **Failed or blocked**: "<name> could not finish: <reason>". The reason is cut at 300 characters.
-- **Stopped**, also "End the request": "<name> was stopped."
-- **Waiting line**: when an approval, a question, a failed part, a part in review, or the request to
-  pick a member (004) holds back work that a Teams message started, or holds back a new Teams
-  message: "<name> waits for you in ROBot. Open the app to answer." It holds no text of the step or
-  of the question. One line goes out for each card.
+- **Stopped**: "<name> was stopped."
+- **Waiting line**: when an approval or a question holds back work that a Teams message started,
+  or holds back a new Teams message: "<name> waits for you in ROBot. Open the app to answer." It
+  holds no text of the step or of the question. One line goes out for each card.
 - The app replaces text that looks like a secret (014) with "[redacted]" before it makes the answer.
 
 The outbox:
@@ -233,7 +224,7 @@ restart.
 | Chat not found | No chat holds the title, or more than one does | "No chat found with this title" or "More than one chat has this title" | Sends nothing. Looks again every 30 seconds |
 | Offline | The page cannot reach Microsoft | "Teams cannot be reached" | Tries again every 30 seconds. This does not count for a pause |
 | Paused | A repeated failure | "Paused after repeated failure", the reason, and "Resume" | Reads and sends nothing, empties the outbox |
-| Target missing | The agent or channel is archived or deleted | "The target is not available" | Reads and sends nothing. The user turns the switch off, picks another target, and turns it on |
+| Target missing | The agent is archived or deleted | "The target is not available" | Reads and sends nothing. The user turns the switch off, picks another target, and turns it on |
 
 - **Repeated failure**: the link pauses itself when 20 reads in a row fail, or when 6 tries to send
   in a row fail. A read fails when the page cannot be read, for example when Teams changed its page.
@@ -241,8 +232,7 @@ restart.
   good read or a good send sets its count to 0. "Signed out", "Chat not found" and "Offline" are
   not failures.
 - One notification "Teams link needs you" goes out (015) when the state becomes Signed out or
-  Paused, once for each change. It does not go out when the user turned the link off. The Today
-  page shows a row until the state changes (021).
+  Paused, once for each change. It does not go out when the user turned the link off.
 - The switch refuses with a reason under the field when there is no sign-in, no target, an empty
   chat title, an empty allow list, no call text for a group chat, or a text over its limit. A name
   in both lists is kept, and a muted line says that the bot list wins.
@@ -258,7 +248,7 @@ interface says "Teams link", not "bridge", and it does not call the sign-in an "
 | Settings part | "Teams", with the nine facts of "Page text" |
 | Buttons | Set up, Sign in to Teams, Use this chat, Turn on, Back, Resume, Sign out of Teams, Remove link, Show the Teams page, Hide the Teams page |
 | Fields | Target, Chat title, Kind of chat (two choices), Allowed senders, Bots that get no answer, Call text, Marker |
-| Header of the linked place | A muted mark "Linked to Teams", with the state word when the state is not On |
+| Header of the linked direct chat | A muted mark "Linked to Teams", with the state word when the state is not On |
 | Message and task | The mark "From Teams" with the sender name, and the source "Teams" |
 | States and records | The eight states and the six reasons above |
 | Lines in Teams | The nine lines in quotes in this spec |
@@ -273,8 +263,8 @@ interface says "Teams link", not "bridge", and it does not call the sign-in an "
   (011) show no settings part. They show "From Teams" on a message and "Teams" as the source of a
   task. They answer a card of such work as any card.
 - Runtimes: nothing changes. An agent on a vendor runtime (006) gets the work as other work.
-- Seeing the state: the settings page, the header mark, the notification, the Today row and the
-  records. All stay after a restart, except the outbox.
+- Seeing the state: the settings page, the header mark, the notification and the records. All stay
+  after a restart, except the outbox.
 - Data: the link belongs to one computer and one profile (022). It does not sync (019). An export
   holds no link and no sign-in, and an import brings none back (014). A message from Teams and its
   mark sync with the message, and the sender name is stored with it. The link log (014) holds the
@@ -345,7 +335,7 @@ Checks:
   other chat gets no text, and the app never tries again.
 - The stand-in fails 3 sends in a row: the tries come after 5 and 10 seconds, the later answers
   wait until the third failure, then they go out. At 6 failed tries in a row the state is
-  "Paused", and one notification and one Today row show. "Resume" starts with a baseline read. The
+  "Paused", and one notification goes out. "Resume" starts with a baseline read. The
   stand-in fails 20 reads in a row: the state is "Paused" with the reason about the page.
 - The stand-in clock jumps by 10 minutes, and a call arrived in the gap: it gets no answer, and
   the stand-in gets the line about the gap. A call after the jump gets an answer.
@@ -362,10 +352,6 @@ Checks:
 - "Sign out of Teams" deletes the sign-in. "Remove link" deletes the link and the sign-in profile.
   The field "Browser profile" of an agent does not list the sign-in profile, and a request to give
   it to an agent is refused. Settings, Browser lists it with "Used by the Teams link" and no delete.
-- Channel with a lead: a call with no mention goes to the lead. The lead splits the job into two
-  parts. The stand-in gets the summary only, not the plan. A call with a mention of one member
-  gets the reply of that member, with the member name and a colon. With no lead and no mention:
-  the waiting line goes out, the user picks a member in the app, and the result then goes out.
 - Archive the target agent: the state is "Target missing" and nothing is read.
 - A linked computer and the phone do not show the settings part. They show "From Teams" on the
   message and the source "Teams" on the task.

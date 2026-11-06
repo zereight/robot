@@ -9,9 +9,7 @@ as tools. Every use goes through the same approval and rule system as the built-
 
 - **Connection**: a link to a tool provider that speaks MCP (Model Context Protocol, an open
   standard). It has a name, a kind, the settings of its kind, an on or off switch, and the agents
-  that may use it ("All agents", or a list). The list can hold agents and organizations. An
-  organization in the list has the value "On" or "Off", and it gives or takes away the connection
-  for its members and for the members of its lower organizations (030, "Tools").
+  that may use it ("All agents", or a list of agents).
   - The name holds 1 to 40 characters. It is unique, and the check ignores case.
 - **Kind**: one of three.
   - **Program on this computer**: the app starts a program. The settings are the command, a list
@@ -242,7 +240,7 @@ action log as any other connection, with these differences:
 
 ## Out of scope
 
-- A row on the Today page (021) or a notice for held tools.
+- A notice for held tools.
 - A sign-in through a browser window for a connection. The user can put an access token in a
   header instead.
 - A catalogue of ready connections, or a download of connection programs. A built-in connection may

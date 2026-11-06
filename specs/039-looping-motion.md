@@ -8,7 +8,7 @@ when the user asks for less motion.
 ## Concepts
 
 - **Spinner**: a turning mark for a step or a task that is running. Examples: the turning mark in
-  the sidebar, in a channel step and in the lead of a chat.
+  the sidebar and at the head of a chat.
 - **Pulse**: a mark that grows and fades again and again to show that an agent works. Examples:
   the working dot of the sidebar and the glow of the brand mark.
 
@@ -24,7 +24,7 @@ when the user asks for less motion.
 
 ## Surfaces
 
-The sidebar and its header, the channel view, the chat view and the brand mark. The status island
+The sidebar and its header, the chat view and the brand mark. The status island
 keeps its own rules (015).
 
 ## Out of scope
@@ -34,7 +34,7 @@ island window.
 
 ## Acceptance
 
-- Two spinners on one screen, for example in a channel and in the sidebar, turn in step with the
-  same period.
+- Two spinners on one screen, for example in a chat and in the sidebar, turn in step with the same
+  period.
 - Turn on "reduce motion": every spinner and every pulse is still, and each is still visible.
 - Turn it off: they move again with no restart.

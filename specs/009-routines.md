@@ -6,11 +6,10 @@ Agents do repeat work on a schedule without the user starting it.
 
 ## Concepts
 
-- **Routine**: agent, prompt, one trigger, on/off, the place where results post (the agent's chat
-  or a channel), and a model and effort. The model and effort are "Same as the agent" by default.
-  The user can pick another model and effort for the routine only, for example a cheaper model
-  for a simple check. A routine can also have a token limit for each run (see "Limits and
-  safeguards").
+- **Routine**: agent, prompt, one trigger, on/off, and a model and effort. Results post in the
+  chat of the agent. The model and effort are "Same as the agent" by default. The user can pick
+  another model and effort for the routine only, for example a cheaper model for a simple check. A
+  routine can also have a token limit for each run (see "Limits and safeguards").
 - **Routines page**: the list of routines. The Routines button on the rail opens it (001). The
   page does not show workflows. A linked computer shows the button, and the page says to open
   the list on the server (012). The phone has no routines page in this version (011).
@@ -25,8 +24,8 @@ Agents do repeat work on a schedule without the user starting it.
 
 ## Flows
 
-1. Create: from the agent profile or the routines list, the user sets prompt, trigger, place, and
-   if wanted a model and effort. For a schedule, the app shows the next three run times in words.
+1. Create: from the agent profile or the routines list, the user sets prompt, trigger, and if
+   wanted a model and effort. For a schedule, the app shows the next three run times in words.
 2. Calendar: a week and a month view show past runs (done or failed) and future runs.
 3. Run now: starts a run at once, outside the schedule.
 4. Pause and resume: a paused routine keeps its settings and does not run.
@@ -59,7 +58,7 @@ Agents do repeat work on a schedule without the user starting it.
   - for a command or a tool: the old and the new result, each cut to 20000 characters.
   The change text is outside content (see 007).
 - A switch "Post when nothing changed" is off by default. When it is on, each check with no
-  change posts one muted line in the place of the routine. No task is made for it.
+  change posts one muted line in the chat of the agent. No task is made for it.
 - A check has a time limit of 60 seconds and keeps at most 1 MB of output. A check that fails
   (a missing path, a time limit, a failed tool call, a refusal by a rule) counts as a failed run
   for "Repeated failure". It shows as Failed in the calendar, with the reason. A command that
@@ -100,7 +99,7 @@ Agents do repeat work on a schedule without the user starting it.
     the reason of the last failure. The calendar keeps all past runs.
   - The user gets one notification of the kind "routine failed" (see 015). Its text says that the
     routine is paused.
-  - Resume, and any edit of the prompt, the trigger, the agent or the place, sets the count to 0.
+  - Resume, and any edit of the prompt, the trigger or the agent, sets the count to 0.
     A restart of the app keeps the count.
 
 ## Rules

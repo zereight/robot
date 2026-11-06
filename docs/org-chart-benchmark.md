@@ -2,7 +2,7 @@
 
 This note compares one feature of one public project with ROBot. It is not a spec. It was written
 on 2026-11-04 by a spec author, from public documents. Check a fact again before a spec relies on
-it. The result is spec 029 ([Org chart](../specs/029-org-chart.md)).
+it. The result was spec 029 (Org chart). That spec is deleted (decision 2 of [the rebuild plan](rebuild-plan.md)).
 
 How sure a fact is:
 

@@ -199,9 +199,9 @@ its parts, so that this spec says what the rules cover:
 
 ## Surfaces
 
-- **Ways in**: the page button "Test devices", after the org chart (001). The button "Device" in the
-  header of a conversation. The settings section "Test devices" (013). The search field (Cmd+K) lists
-  test devices by name; a press on a name opens the panel.
+- **Ways in**: the page button "Test devices", after the button "Tasks" (001). The button "Device"
+  in the header of a conversation. The settings section "Test devices" (013). The search field
+  (Cmd+K) lists test devices by name; a press on a name opens the panel.
 - **Devices**: this computer shows and controls its own test devices. A linked computer (012) shows
   the page with the line "Open this on <server name>."
 - **Ways out**: close the panel (the stream stops, and the test devices stay on). Stop (the step

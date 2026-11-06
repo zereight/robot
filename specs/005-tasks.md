@@ -1,23 +1,23 @@
-# 005 Tasks and plan steps
+# 005 Tasks
 
 ## Purpose
 
-Every piece of agent work is a task the user can see, stop and retry, in chats, channels, routines
-and workflows.
+Every piece of agent work is a task the user can see, stop and retry, in chats, routines and
+workflows.
 
 ## Concepts
 
-- **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
-  workflow, another agent, a memory check (008), a card of the board (024), an outside program
-  (023), a message from Teams (028), a handover (003), a follow-up (see "Follow-up"), or a
-  mention in a direct chat (003)), its parent task if any, its state, start and end time, and
-  its result or error.
+- **Task**: who does it (agent), what (prompt), where it came from (chat, routine, workflow,
+  another agent, a memory check (008), an outside program (023), a message from Teams (028), a
+  handover (003), a follow-up (see "Follow-up"), or a mention in a direct chat (003)), its parent
+  task if any, its state, start and end time, and its result or error.
+- **Parent task**: a task that another agent starts with "send message" (007) is a child of the
+  task that sent the message. No other source makes a child task.
 - **Depth**: a number. A task that the user, a routine, a workflow, a memory check, a handover,
   an outside program, a message from Teams, a follow-up or a mention in a direct chat starts has
   depth 0. See "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
-  cancelled. A part of a channel that asks for review has one more state, in review, before done
-  (see "Review").
+  cancelled.
 - **Times**: each task keeps three times, in seconds.
   - **Wait**: from the moment the task is made to the moment it starts.
   - **First reply**: from the message that started the task to the first part of the reply that
@@ -31,9 +31,6 @@ and workflows.
 - **Progress**: how far the turn of a task went. See "How far a turn went".
 - **Usage**: the tokens that the turns of the task used, as the provider reports them. See "Usage
   of a task".
-- **Done test** and **verdict**: a part of a channel (see 004) can have a done test. After the
-  check of the lead it can have a verdict, "Met" or "Not met" with a reason. Both are fields of
-  the task. The verdict is not a state: a part with a verdict is still Done.
 
 ## Tasks page
 
@@ -41,19 +38,12 @@ and workflows.
 - The page holds two tabs at the top of its header line: "Tasks" and "Events" (038). The tab
   "Events" holds the list of the events of this computer. Nothing else on the page changes.
 - Filters: state, agent, source. Search by label.
-- A task that the user starts from a card (024) has the source "Board" and the title of the card as
-  its label. Its view shows a link "Card #<number>" that opens the card, or the line "Card
-  removed." when the user deleted the card.
 - A row opens the task: its prompt, its steps, its messages, its child tasks as a tree, and its
   three times. The messages that joined the task during its turn (see 003) are listed under the
-  prompt, with their times. For a part it also shows the done test and the verdict. It shows a
-  list of moments too (see "Moments"). For a part it also lists the questions of the part, with
-  who answered each one: the user, or the lead with its reason (004). For a part with an own copy
-  it shows the own copy line (025).
-- Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
-  request changes (in review; see "Review"), run next (queued; see "Queue"), open source place,
-  make a skill (done; see 017, "Make a skill from work"). "Make a skill" is on the computer only.
-- A task of a channel (see 004) also has "End the request", which cancels the whole request.
+  prompt, with their times. It shows a list of moments too (see "Moments").
+- Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), run next
+  (queued; see "Queue"), open source place, make a skill (done; see 017, "Make a skill from
+  work"). "Make a skill" is on the computer only.
 - A queued task shows what it waits behind: the work that its agent runs now, with the place of
   that work. If the agent is busy in its own chat, the line says so. If the agent is busy in
   another thread, the line says so. A task that waits for a free slot (see "Queue") says so and
@@ -61,8 +51,8 @@ and workflows.
 
 ## Usage of a task
 
-The usage page (006) shows usage per agent and day. A job of a channel or a run of a routine can
-use many agents. The user must see what one piece of work used.
+The usage page (006) shows usage per agent and day. A run of a routine, or a task that sends work
+to other agents (007), can use many agents. The user must see what one piece of work used.
 
 - Each task keeps the tokens that its turns used, as the provider reports them: input, output, and
   cached input when the provider reports it. When the provider reports a cost, the task keeps the
@@ -72,8 +62,6 @@ use many agents. The user must see what one piece of work used.
   the largest total first.
 - The cached share is cached input divided by all input, in percent. It shows only when the
   provider reports cached input.
-- In a channel, the card of the lead in the activity panel (004) shows the total tokens of the job
-  that runs. It changes when a turn of the job ends.
 - A run of a routine (009) shows the total tokens of its tasks in the run details.
 - An agent on a vendor runtime (006) reports usage at the end of each turn. Its share changes only
   then. A runtime that reports no usage adds nothing, and its line shows "—".
@@ -84,17 +72,12 @@ use many agents. The user must see what one piece of work used.
 
 - The task view lists the moments of the task, each with its clock time. A moment that did not
   happen does not show.
-  1. Given: the task was made, and by whom (the source, the lead, or another agent).
+  1. Given: the task was made, and by whom (the source or another agent).
   2. Started: the agent began the turn.
-  3. Ended: the turn ended. The line says how: done, failed, blocked, cancelled, or waiting for
-     review.
-  4. Decided: the user accepted a part, or asked for changes. The line shows the text of the
-     request for changes.
-  5. Judged: the lead gave the verdict. The line shows the verdict and its reason.
-  6. Closed: the task reached a final state.
+  3. Ended: the turn ended. The line says how: done, failed, blocked or cancelled.
+  4. Closed: the task reached a final state.
 - The three times (see "Times") keep their own meaning. The moments only add the clock time of
   each event.
-- A task of a chat, a routine or a workflow has no "Decided" and no "Judged".
 - The list is plain text. It never shows the thinking of the agent.
 
 ## Limits of a task
@@ -103,8 +86,8 @@ These limits stop a chain or a task that runs without progress. They are not a c
 cost of many tasks.
 
 - **Message chain.** A task that starts because another agent sent a message (007), or because
-  the reply to such a message came back, has the depth of the task that caused it, plus 1. A part
-  of a plan (004), a nudge and a retry keep the depth of the task that made them.
+  the reply to such a message came back, has the depth of the task that caused it, plus 1. A nudge
+  and a retry keep the depth of the task that made them.
 - The tool "send message" fails when the task that sends has depth 8 or more. No task starts.
   The step shows the reason "The chain of agent messages is at its limit (8)." The sender gets
   the same reason as a failed step, and its turn goes on. A reply that comes back always starts
@@ -120,13 +103,9 @@ cost of many tasks.
 
 ## Blocked
 
-- The app itself ends a task as Blocked, with no turn, when the daily token limit of an
-  organization that its agent is a member of, or of a higher organization of it, is used (030). The
-  reason names that organization. A task from a direct chat is never ended in this way.
-
-- A task from a part of a plan, a message of another agent, a routine or a workflow tells its
-  agent this: if you could not do the work, end the reply with a last line that starts with
-  "Blocked:" and gives the reason in one sentence. Write that line in no other case. A task from
+- A task from a message of another agent, a routine or a workflow tells its agent this: if you
+  could not do the work, end the reply with a last line that starts with "Blocked:" and gives the
+  reason in one sentence. Write that line in no other case. A task from
   a direct chat, including a mention in that chat, gets no such text, because the user reads the
   reply there.
 - When a turn ends with no error, the app reads the last line of the reply that has text. If it
@@ -134,26 +113,9 @@ cost of many tasks.
   after the colon, cut at 200 characters. The line stays in the reply.
 - A turn that ends with an error is Failed, not Blocked. A turn that the user stops is
   Cancelled.
-- Blocked is a final state. A parent that waits for the task goes on. Retry works as for a
-  failed task. A blocked task counts as a failed one for the lead and the main agent (004, 007),
-  the pause of a routine (009), a workflow step (010) and the notice "task failed" (015). The
-  Tasks page and the plan steps show it with its own label and icon.
-
-## Review
-
-A channel can ask for the review of its parts (004, "Review of parts").
-
-- **In review**: the turn of a part ended with no error and no "Blocked:" line, and the result
-  waits for the user. The state is not final, so the parent keeps waiting.
-- A task in review does not hold the place of its agent. The agent can run other tasks.
-- The user decides. **Accept** ends the task as Done. **Request changes** needs a text of 1 to
-  2000 characters. It ends the task as Done and starts a new part for the same member, with that
-  text as its prompt. The new part links to the old one, as after Retry, and belongs to the same
-  request. It can go to review again.
-- The user decides on the computer that owns the task. The other computer of a sync pair, and a
-  client of a linked server, show the state and a muted line "Decide on <name>" (012, 019).
-- A task in review stays in review after an app restart. It has no time limit.
-- "End the request" cancels a task in review. "Stop" does not change it.
+- Blocked is a final state. Retry works as for a failed task. A blocked task counts as a failed
+  one for the main agent (007), the pause of a routine (009), a workflow step (010) and the notice
+  "task failed" (015). The Tasks page shows it with its own label and icon.
 
 ## Keep going
 
@@ -173,19 +135,17 @@ so the user does not need to sit by it.
 - It is the same task. The steps add to the step limit and to the usage of the task. The silent
   limit, Stop and "Messages during a turn" (003) work as before. A message of the user during a
   continuation joins the turn.
-- A request can go on at most 8 times. A request is the message, the run of a routine, the
-  workflow step or the part that made the task.
+- A request can go on at most 8 times. A request is the message, the run of a routine or the
+  workflow step that made the task.
 - The continuations stop earlier when the open steps are the same as before the last
   continuation: the same count and the same labels. The task then ends as it does without Keep
-  going: Done, when the last turn ended with no error (In review for a part of a channel that asks
-  for review). The chat shows no line for this stop.
+  going: Done, when the last turn ended with no error. The chat shows no line for this stop.
 - A question card is a wait, not an end, so no continuation starts while it shows. A question
   in the plain text of a reply makes no card. The go-on message does not answer it. The app
   never answers a question of the agent for the user.
 - A turn that a continuation follows makes no notification, no result card and no sound for its
   end (015). They come when the task ends.
-- A task that is cancelled, failed or blocked does not go on. A part of a channel job goes on
-  before it is done, so the check of the lead (004) starts only after the last continuation.
+- A task that is cancelled, failed or blocked does not go on.
 - The muted line is stored with the chat and syncs with the messages (019). A linked device and
   the phone show it. The setting is local to the computer (013).
 
@@ -204,11 +164,10 @@ CI run, without holding a process open and without the user setting a routine.
   ends its turn as it does without the call.
 - **A follow-up is a row of its own**: the agent, the conversation (a direct chat or one of its
   threads), the reason, the action, the time, and the id of the task that made it. It shows in the
-  details of that task and in "Next 24 hours" of the Today page (021). The details name the
-  action: "Starts a new turn" for "queue", and "Joins this chat if it is working" for "steer".
-- A follow-up works in a direct chat and its threads only. A call in a channel, in a workflow step
-  or in a routine fails with the reason "A follow-up works in a direct chat." and the turn goes
-  on. A channel already has routines (009), and a part of a channel job belongs to a job (004).
+  details of that task. The details name the action: "Starts a new turn" for "queue", and "Joins
+  this chat if it is working" for "steer".
+- A follow-up works in a direct chat and its threads only. A call in a workflow step or in a
+  routine fails with the reason "A follow-up works in a direct chat." and the turn goes on.
 - The setting "While an agent works, new messages" (003) does not change the action. The action
   is the choice of the agent.
 - **When the time comes**, the app does what the action says. Then the follow-up is gone. It does
@@ -259,9 +218,9 @@ A step that may change things is a file write, a shell command, or a tool of a c
 that the action log lists with the result Ran, Failed or Stopped. A step that failed or stopped
 may have run in part.
 
-- The user can press Retry on a failed, blocked or cancelled task, here and in 003 and 004. If the
-  earlier try has at least one step that may change things, a note shows first and the new try
-  waits. If it has none, the retry starts at once.
+- The user can press Retry on a failed, blocked or cancelled task, here and in 003. If the earlier
+  try has at least one step that may change things, a note shows first and the new try waits. If
+  it has none, the retry starts at once.
 - The note says that the first try ran steps that may have changed things, that Failed, Blocked
   and Cancelled do not undo them, and that the user should check the state before another try.
   It lists at most 5 of these steps, newest first, with the kind, the target and the result. If
@@ -316,8 +275,8 @@ its Retry shows no retry note.
   answer for 1 minute." when N is 1). The failed row has Retry (003).
 - A failed task by this rule is like any failed task: one notification of the kind "task failed"
   (015), and for a routine run the count of failed runs (009).
-- The limit holds for every turn: a chat, a part of a channel job, a routine, a step of a
-  workflow, and a message from another agent.
+- The limit holds for every turn: a chat, a routine, a step of a workflow, and a message from
+  another agent.
 
 ### Quiet line
 
@@ -336,17 +295,16 @@ stops the turn.
   on the quiet clock, so it starts at the quiet time. It reads m:ss, and h:mm:ss after one hour,
   and changes once each second.
 - The places are: the working line of a chat (003), including a turn of a routine or a step of a
-  workflow that shows there, the plan step of a part in the activity panel (004, as the text label
-  of the running icon and its tooltip), the row of the task on the Tasks page (as the state text),
-  the live run state of a workflow (010), the row of the agent in the detail card of the status
-  island (015), and the same places on a phone and on a linked device (011, 012).
+  workflow that shows there, the row of the task on the Tasks page (as the state text), the live
+  run state of a workflow (010), the row of the agent in the detail card of the status island
+  (015), and the same places on a phone and on a linked device (011, 012).
 - Each place keeps its own elapsed time of the turn. The quiet line replaces only the text.
 - The quiet line does not stop the turn. Stop stays where it was. The user can stop the turn, or
   wait.
 - At the next sign of life, the quiet line goes away at once, and the place shows its working
   text again. The quiet clock starts again at 0.
-- The quiet line makes no notification, no sound, no row on the Today page (021), and no entry
-  in the action log. A turn that becomes quiet more than once shows the line each time.
+- The quiet line makes no notification, no sound, and no entry in the action log. A turn that
+  becomes quiet more than once shows the line each time.
 - When the silent limit is reached, the turn fails as before. The failed row replaces the quiet
   line.
 - The quiet line is not stored. It does not sync (019), an export (014) does not hold it, and the
@@ -363,26 +321,24 @@ stops the turn.
 
 - Each agent has one queue. A task joins it when the app makes the task. All threads of the agent
   (003) share this queue. The rules of this section are the same for every runtime (006).
-- The queue of an agent holds at most 20 queued tasks. A task that waits for the user, or for a
-  task that it gave out, is not queued and does not count. The reason for a task over the limit is
-  "<name> has 20 tasks that wait. Try again later." What happens:
+- The queue of an agent holds at most 20 queued tasks. A task that waits for the user is not
+  queued and does not count. The reason for a task over the limit is "<name> has 20 tasks that
+  wait. Try again later." What happens:
   - A message of the user: the app makes no task. The box keeps its text and shows the reason. A
     queued message (003) that the app sends at the end of a turn stays in the message queue and
     shows the reason.
   - A run of a routine: the app makes no task, and the run is Failed (009).
   - A step of a workflow: the app makes no task, and the step fails (010).
-  - A part of a channel job: the app makes the part in the state Failed, with the reason, so that
-    the lead and Retry see it.
   - "Send message" (007) and an outside program (023): the call gets the reason. No task is made.
   - A message from Teams (028): no task is made. Teams gets the line of 028 with the reason.
   - A reply that comes back (see "Limits of a task") always makes its task, also over the limit.
   - A memory check (008) is not added. The app adds it after the next turn that ends as done.
-  - Retry, a nudge and a request for changes follow the rule of their source.
+  - Retry and a nudge follow the rule of their source.
 - **Order**: the tasks that wait start in this order. It holds for the queue of one agent and for
   the slots described below.
   1. The tasks that the user picked with "Run next", the latest pick first.
-  2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent, an
-     outside program, Teams, and a question from a channel (030, "Ask up the line").
+  2. The tasks of normal sources, the oldest first. These are a chat, another agent, an outside
+     program and Teams.
   3. The tasks of background sources, the oldest first. These are a routine, a workflow and a
      follow-up.
   4. A memory check. It starts only when its agent has no other task that runs or waits (008).
@@ -391,8 +347,8 @@ stops the turn.
   the next run is due counts as a run that is still going, so the next run is Skipped (009).
 - **Run next**: on a queued task, the user picks "Run next" on the Tasks page or on the line of the
   queued task. The task goes to the front of the order. It does not stop the task that runs. It
-  works for every queued task, also a part of a channel job and a workflow step. It cannot start a
-  task before a task of its agent that waits for the user. It is off for a task that is not
+  works for every queued task, also a workflow step. It cannot start a task before a task of its
+  agent that waits for the user. It is off for a task that is not
   queued. It has no undo: the position matters only until the task starts. A linked computer and
   the phone do not have it in this version (011, 012).
 - **Agents at once**: a setting in General (013), "Agents working at once". It is a whole number
@@ -400,12 +356,10 @@ stops the turn.
   time.
   - At most that many tasks run at the same time in one profile (022). Each profile uses its own
     number, also when it is not open. Each task that runs uses one slot.
-  - A task that waits for the user (an approval or a question) uses no slot. A task that waits for
-    a task that it gave out uses no slot either. So a parent task and its child cannot hold each
-    other, also when the number is 1.
-  - When the user answers, or when the last child ends, the task needs a slot again. If none is
-    free, it waits as queued at the front of the order, before the "Run next" picks. Its agent
-    stays held, so no other task of that agent starts.
+  - A task that waits for the user (an approval or a question) uses no slot.
+  - When the user answers, the task needs a slot again. If none is free, it waits as queued at the
+    front of the order, before the "Run next" picks. Its agent stays held, so no other task of
+    that agent starts.
   - A task that cannot start because all slots are in use waits as queued. Its line says "Waits
     for a free slot". When a slot is free, the first task in the order whose agent is not busy
     starts. The tasks of a busy agent keep their place in the order.
@@ -421,11 +375,6 @@ stops the turn.
   "Queue". When two computers sync (019) and both are online, this holds across both computers.
 - A task waiting for the user (an approval or a question) does not block other agents.
 - Stopping a parent stops its children.
-- A parent task waits for the tasks it gave out. So the cancel of one child alone would leave the
-  parent waiting for ever. "End the request" finds the first task of the request and cancels
-  every task of that request that is not final. It clears their errors and stops the turns that
-  still run. A task that is done keeps its result. After the cancel, no task of the request starts
-  again by itself. Retry still makes a new task.
 - A routine run whose tasks are all cancelled shows as cancelled, not as done (see 009).
 - A message that joins a running turn (see 003) belongs to the task of that turn. It does not
   make a new task. The prompt of the task stays the message that started it.
@@ -455,8 +404,8 @@ stops the turn.
   task ends. Pick it on the second afterwards: the second starts before the third.
 - The queue of an agent holds 20 queued tasks. The 21st chat message is not made as a task, and the
   box keeps its text and shows "<name> has 20 tasks that wait. Try again later." A routine run in
-  the same state is a failed run with that reason. A part of a channel job is made as Failed with
-  that reason. A reply that comes back from another agent still starts its task.
+  the same state is a failed run with that reason. A reply that comes back from another agent
+  still starts its task.
 - Set "Agents working at once" to 2 and give a task to each of three agents. Two tasks run. The
   third shows "Waits for a free slot". Stop one running task: the third starts at once. Raise the
   number to 3 while one waits: it starts at once and the tasks that run go on.
@@ -467,8 +416,6 @@ stops the turn.
 - The number is 1. Task A waits for an approval, and the task of another agent runs and takes the
   slot. The user allows the step of A: A waits as queued, with its agent held, and runs when the
   slot is free.
-- The number is 1. Agent A gives a part to agent B and waits for its answer. B starts, and A holds
-  no slot. The part ends and A goes on.
 - Two tasks of one agent in two threads: the second waits, and its thread shows "Waits for another
   thread".
 - Restart during a task: it shows as failed with the restart reason and can be retried.
@@ -480,17 +427,15 @@ stops the turn.
   again. Allow the step: the task goes on.
 - A task waits for an approval, and a second task for the same agent is queued. Restart the app:
   the first task still waits. The second task shows as failed with the restart reason.
-- A channel request has a parent and two child tasks. One child fails. "End the request" cancels
-  the other child and the parent. A child that is done stays done.
 - A stand-in provider makes agent A send a message to agent B, and B send one back, without end.
   The send of the task at depth 8 fails with the reason of the chain limit and the step shows it.
   No more task starts from a send. The reply that was due still comes back.
-- A channel job with two parts. The stand-in providers report 1000 input and 200 output tokens for
-  the lead, and 3000 and 500 for each part. The task view of the job shows a total of 7000 input
-  and 1200 output tokens, with one line for each of the three agents, largest first. The card of
-  the lead in the activity panel shows the same total.
-- A channel job with three parts, where the third member uses a stand-in that reports no usage:
-  its line shows "—", and the total counts the other agents only.
+- Agent A sends a message to agent B and to agent C in one turn. The stand-in providers report
+  1000 input and 200 output tokens for A, and 3000 and 500 for each of B and C. The task view of
+  the task of A shows a total of 7000 input and 1200 output tokens, with one line for each of the
+  three agents, largest first.
+- The same with a stand-in for C that reports no usage: the line of C shows "—", and the total
+  counts A and B only.
 - A stand-in reports 8000 input tokens with 6000 of them cached: the task view shows a cached
   share of 75%. A stand-in that reports no cached input shows no cached share.
 - A routine run with two tasks shows the total tokens of both in its run details.
@@ -522,13 +467,8 @@ stops the turn.
   task shows the line for "Started". A task that was only queued shows the line for "Not sent".
 - Retry a task whose line said "Started": the new task runs, and its progress starts at "Not
   sent".
-- A part with a done test ends, and the lead gives it "Not met". The task view shows the done test,
-  the verdict "Not met" with its reason, and the moments Given, Started, Ended, Judged and Closed
-  with times. The state of the part is still Done.
-- Turn on "Review parts". A part ends and the user accepts it: the moments show Decided and no
-  Judged, and the done test still shows.
-- A task of a direct chat ends: its view shows Given, Started, Ended and Closed. It shows no done
-  test, no verdict, no Decided and no Judged.
+- A task of a direct chat ends: its view shows the moments Given, Started, Ended and Closed, with
+  times.
 - A stand-in runtime ends its turn with a list of two open steps: the app sends the short message,
   the chat shows "Kept going (1 of 8)", and no row of the user. The stand-in closes both steps and
   ends: one task, ended Done once, with the usage of both turns.
@@ -552,5 +492,3 @@ stops the turn.
   its prompt says that it is 2 minutes late. It starts 13 hours late: no task starts, and the
   follow-up leaves the list.
 - The user deletes a follow-up before its time: no task starts.
-- A follow-up due in 3 hours shows in "Next 24 hours" of the Today page with its reason, and a
-  click opens the task that made it. When its task starts, the row leaves.

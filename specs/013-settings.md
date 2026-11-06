@@ -21,9 +21,7 @@ The user sets the app up the way they like in one place.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default), "Show tool steps" (on or off;
   the default is on), which folds each run of finished plain tool steps into one muted line with
-  the count when off (see 003, "Folded tool steps"), and "Show the organization before an agent
-  name" (on or off; the default is on), which writes "[Docs]" before the name of an agent that is
-  in the organization "Docs" (see 036).
+  the count when off (see 003, "Folded tool steps").
 - **Test devices**: the switch "Test devices", off by default. When it is on, the section shows the
   state of the download, of the server and of each tool that a test device needs, the version, the
   size, the source, "Download", "Delete", "Check for a new version" and "Update", and "Delete all
@@ -31,8 +29,8 @@ The user sets the app up the way they like in one place.
   line says that the program is from another vendor, that it runs with the rights of the user, and
   what its panel does not do (032, "Rules").
 - **Providers**: see 006.
-- **Decision model**: the fast model for channel picks, computer use and permission checks. See
-  "Decision model".
+- **Decision model**: the fast model for computer use and permission checks. See "Decision
+  model".
 - **Token savings**: three switches that cut repeated work in long runs, off at first. See 026.
 - **Handbook**: one text that every agent reads. See 002, "Handbook".
 - **Roles**: the role lines of all agents. See "Roles".
@@ -43,12 +41,9 @@ The user sets the app up the way they like in one place.
 - **Connections**: the outside tools that agents can use. See 018. A built-in connection has no row
   here; its feature holds its page and its switch.
 - **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
-- **Hand-off rules**: the hand-off rule ("Any agent" or "Along the organizations") and the switch
-  "Ask up the line", off at first. See 030. These two sync like the handbook (019).
 - **Chase interval**: how long work that an agent gave may stay quiet before the giver asks for its
-  state: Off, 5, 10, 15, 30 or 60 minutes. The first value is 15 minutes. It applies to the parts
-  of a lead (004) and to "send message" (007). It is local to this computer, as the silent limit
-  is (019).
+  state: Off, 5, 10, 15, 30 or 60 minutes. The first value is 15 minutes. It applies to "send
+  message" (007). It is local to this computer, as the silent limit is (019).
 - **Teams**: the link to one Microsoft Teams chat, off at first. See 028.
 - **Setup actions**: the agents of this computer, the setup list of the picked agent, and its
   allow. See 035. It shows on the computer only.
@@ -56,7 +51,7 @@ The user sets the app up the way they like in one place.
   that can open this computer, with the switch "Can create and change agents" for each, and the
   computers this computer can open, see 012. Each linked computer has a sync row, see 019.
 - **Notifications**: see 015.
-- **Archive**: archived agents and channels with restore and delete.
+- **Archive**: archived agents with restore and delete.
 - **Profiles**: add, rename, change the face of and delete profiles, see 022.
 - **Data**: open data folder, open logs folder, export, see 014.
 - **About**: version, licenses of dependencies.
@@ -66,7 +61,7 @@ The user sets the app up the way they like in one place.
 A decision model is a small model that answers fast, with a probability for each option. It makes
 small choices for the app. It is off by default. When it is off, nothing is sent to it.
 
-- The user picks one of five choices: "Lead's model" (off, the default), Jev from TypeSafe,
+- The user picks one of five choices: "Off" (the default), Jev from TypeSafe,
   Jev through OpenRouter, Clef on Cloudflare Workers AI, and "Local server".
 - What each choice asks for:
   - Jev from TypeSafe: an API key.
@@ -79,22 +74,21 @@ small choices for the app. It is off by default. When it is off, nothing is sent
     sign-in part, path or query. Any other address is refused with a message that says only
     an address on this computer works. The settings text tells how to install and start such a
     server. The text says the choice is experimental, and that a small free model is often
-    unsure, so the lead decides then.
+    unsure, so a step that needs a decision asks the user, as with the choice off.
 - Each service takes its request in the form of its public API document. The services are
   `api.typesafe.ai`, `openrouter.ai` and `api.cloudflare.com`. They keep requests under their own
   terms. The app does not store the answers.
 - Keys are stored in the system keychain (see 014). The settings page only learns whether a
   key is saved. A save names the keys it changes: a key that is not named stays, and the user can
   remove a key. A key that this computer cannot read counts as no key.
-- A choice that lacks its key, account or model asks nobody. The lead's model decides, as if the
-  choice were off.
-- "Test" sends one real request with three made-up members to the saved choice. It shows who was
-  chosen and the time taken, or the reason: wrong key (an error code from the service), timeout,
-  network error, unsure answer, or not set up.
+- A choice that lacks its key, account or model asks nobody. The app acts as if the choice were
+  off.
+- "Test" sends one real request with three made-up options to the saved choice. It shows which
+  option was chosen and the time taken, or the reason: wrong key (an error code from the service),
+  timeout, network error, unsure answer, or not set up.
 - A switch for the fast path of computer use (see 007) is off by default. Its text says that
   the names of the controls of a window go to the service above. The same section shows from the
   computer use page, so the user can turn it on where the user gives the system permission.
-- Channel picks use this model (see 004, "Fast pick").
 - A switch "Permission checks" is off by default. With it on, agents at the level "Ask when
   unsure" ask this model before a checked step (see 007, "Ask when unsure"). Its text says that the
   words of the user in a turn, and the command text, the host or the name of a tool, go to the
@@ -121,8 +115,7 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 
 ## Archive
 
-- The page lists archived agents and archived channels, each with "Restore" and "Delete". The
-  text says "archived" for both.
+- The page lists archived agents, each with "Restore" and "Delete". The text says "archived".
 
 ## Logs
 
@@ -150,7 +143,7 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   the key.
 - Change the silent limit to 30 minutes: a turn that starts after the change fails after 30 minutes
   of silence and not after 10. Choose Never: a silent turn does not fail by itself.
-- Set "Chase interval" to Off: a quiet part or a quiet send gets no message. Set it to 5 minutes:
+- Set "Chase interval" to Off: a quiet send gets no message. Set it to 5 minutes:
   the next quiet one gets its message after 5 minutes.
 - Turn off "Compact long chats automatically": a chat that is at 90 percent use, or at 400000
   tokens, starts its next turn with no compact. Turn it on: the next turn compacts first.

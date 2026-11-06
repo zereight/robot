@@ -12,8 +12,8 @@ A new word goes here in the same pull request as the spec that brings it.
 
 | Term | Meaning | Korean | Avoid |
 | --- | --- | --- | --- |
-| Agent | A member that does work, with a face, name, role line, model, workspace and memory (002). | 에이전트 | bot (except the bot tag), assistant, employee, coworker |
-| Main agent | The one agent that can split work across the others (002). It is the switch "Main agent" in the profile of an agent, and at most one agent has it. It is the root of the org chart (029). | 메인 에이전트 | boss, manager |
+| Agent | A worker that does one role, with a face, name, role line, model, workspace and memory (002). | 에이전트 | bot (except the bot tag), assistant, employee, coworker |
+| Main agent | The agent with the switch "Main agent" in the profile of an agent, and at most one agent has it. | 메인 에이전트 | boss, manager |
 | Role line | The short line under the name of an agent. It works as a label: the user picks it from a list, adds a new one, or removes it (002). | 역할 | job title |
 | Role badge | The small label that shows the role line of an agent in a row of the place list (001). Not shown as a word in the interface. | — | — |
 | Instructions | The text that an agent follows in every turn (002). | 지침 | prompt, soul, persona |
@@ -37,20 +37,18 @@ A new word goes here in the same pull request as the spec that brings it.
 | Permission checks | The switch that lets the decision model check steps (013). | 권한 판단 (proposed) | classifier, guard |
 | Read-only mark | The mark of a connection that a tool changes nothing (018). | 읽기 전용 표시 (proposed) | safe tool |
 | Handbook | One text that every agent of a server reads (002). | 핸드북 (proposed) | company docs, soul, system prompt |
-| Channel instructions | The text that each member reads in turns of one channel (004). | 채널 지침 (proposed) | channel prompt |
-| Channel note | A memory item of an agent for one channel (008). | 채널 메모 (proposed) | group memory |
 | Memory check | A short turn that suggests facts that an agent did not save (008). | 메모리 점검 (proposed) | reflection, learning |
 | Token limit | The most tokens that one run of a routine may use (009). | 토큰 한도 (proposed) | budget (ROBot shows no money limit) |
 | Outside program | A program on this computer that reads and sends work in ROBot through MCP (023). | 외부 프로그램 (proposed) | integration, API client |
 | Helper | The small program of ROBot that an outside program starts (023). | 도우미 프로그램 (proposed) | bridge, server, agent |
 | Access key | The secret that tells ROBot which outside program calls (023). | 접근 키 (proposed) | token, password |
 | Read, Read and send work, Read, send work and manage | The three accesses of an outside program (023, 037). | 읽기, 읽기와 작업 보내기, 읽기·작업 보내기·관리 (proposed) | read-only, full access, admin |
-| Manage tools | The tools that make and change agents, channels and routines (037). | 관리 도구 (proposed) | admin tools, API |
+| Manage tools | The tools that make and change agents and routines (037). | 관리 도구 (proposed) | admin tools, API |
 | Change request | One call of a manage tool that waits for the user to allow it (037). | 변경 요청 (proposed) | proposal, ticket |
 | Trust read-only marks | The switch of a connection that lets marked tools run with no card (018). | 읽기 전용 표시 믿기 (proposed) | safe mode |
 | Read the handbook | The switch of an agent that gives it the handbook (002). | 핸드북 읽기 (proposed) | — |
 | Cached share | Cached input divided by all input, in percent (005). | 캐시 비율 (proposed) | cache hit rate |
-| Holds outside content | The mark of a chat, thread or channel whose turns still see outside text (007). | 바깥 내용 포함 (proposed) | tainted, unsafe |
+| Holds outside content | The mark of a chat or thread whose turns still see outside text (007). | 바깥 내용 포함 (proposed) | tainted, unsafe |
 | Program mark | The part of that mark that says the text came from an outside program (007, 023). Not shown as a word in the interface. | — | — |
 | Action log | The list of tool steps and who decided them (007). | 작업 기록 | history, audit |
 | Profile | A separate space on one computer (022). | 프로필 | account, user, workspace |
@@ -80,22 +78,13 @@ A new word goes here in the same pull request as the spec that brings it.
 | Message queue | The short list of messages above the message box that wait for the end of a turn (003). | 메시지 대기열 | task queue |
 | Slot | One of the tasks that can run at the same time, set by "Agents working at once" (005, 013). | 실행 자리 | place, worker |
 | Agents working at once | The setting for the number of slots (013). | 동시에 일하는 에이전트 수 | concurrency, workers |
-| Channel | A conversation of the user and several agents (004). | 채널 | room, group |
-| Lead | The agent that splits a channel job (004), or the one member that leads an organization (030). | 리드 | foreman, manager |
-| Part | One piece of a channel job, for one member (004). | 부분 | subtask, ticket |
-| Done test | The check that the lead writes for a part (004). | 완료 기준 | acceptance criteria |
-| Verdict | The judgement of the lead on a done test (004). | 판정 | score, grade |
-| Met, Not met | The two verdicts (004). | 충족, 미충족 | pass, fail |
 | Task | One piece of work of one agent (005). | 작업 | job, run (except for a routine run) |
 | Turn | One request and the work of the agent that follows it, until the reply ends (003, 005). | — | message, session |
 | Blocked | A task that ended because the agent could not do the work (005). | 막힘 | failed (a blocked task did not fail) |
-| In review | A part that waits for the user to accept it (004, 005). | 검토 중 | pending, done |
-| Answered by the lead | The mark of a question of a member that the lead answered in place of the user (004). | 리드가 답함 (proposed) | auto answer, bot answer |
 | Shared folder | A workspace that two or more agents use (025). | 공유 폴더 (proposed) | shared workspace, project |
 | File claim | The mark that a task holds on a file that it changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
-| Own copy | A separate working copy of a Git repository that one part of a channel job uses (025). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
+| Own copy | A workspace that is a linked Git worktree (035). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
 | Setup action | A named command in `robot.json` that the app can run from the chat, at the start of a turn, or on the first turn in an own copy (035). | 준비 동작 (proposed) | script, hook, task |
-| Branch of a part | The new Git branch of an own copy (025). | 부분 브랜치 (proposed) | — |
 | Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |
 | Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |
 | Routine | A task that runs on a schedule or a watch (009). | 루틴 | job, cron, automation |
@@ -105,55 +94,16 @@ A new word goes here in the same pull request as the spec that brings it.
 | Recorded | A run of "Record only": what fired, with no task (spec question of 009, 010). | 기록됨 | skipped, ignored |
 | Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
 | Diagram | The Mermaid text of the open workflow. The app shows the text and does not draw the picture (010). | 다이어그램 | chart, graph image |
-| Owner (of a workflow) | The organization or the agent that a workflow belongs to. "None" is the default (010). | 소유자 (proposed) | creator, author |
+| Owner (of a workflow) | The agent that a workflow belongs to. "None" is the default (010). | 소유자 (proposed) | creator, author |
 | Shared workflow | A workflow with no owner. Every agent can work in it (010). | 공용 워크플로우 (proposed) | public workflow, global workflow |
-| Participant | An agent that may be the agent of an agent step of a workflow with an owner (010). | 참석자 (proposed) | member (that is 030), guest |
+| Participant | An agent that may be the agent of an agent step of a workflow with an owner (010). | 참석자 (proposed) | member, guest |
 | Not a participant | The reason on a step and on a failed run when the agent of the step is no participant (010). | 참석자 아님 (proposed) | no access, forbidden |
-| Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (031). | — (proposed: 스타터) | template, preset |
-| Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (031). | — (proposed: 채널 스타터) | team starter, team, squad |
-| Saved starter | A channel starter that the user made. It stays on this computer and in this profile (031). | — (proposed: 내 스타터) | team template, squad template, preset |
+| Starter | A ready setup for one job. It fills the new agent form (002) or makes a workflow (010). | — (proposed: 스타터) | template, preset |
 | CC Workflow Studio file | A JSON file of the public tool CC Workflow Studio. ROBot imports it as a workflow and writes a workflow to it (010). The name of the tool stays in English. | CC Workflow Studio 파일 (proposed) | workflow file (that name is the ROBot file), project file |
 | Not exported | The list after an export to CC Workflow Studio: what the file does not hold (010). The list "Not imported" is its pair (014). | 내보내지 않는 항목 (proposed) | skipped, ignored |
-| Goal text | The words that the user types in the goal dialog. They stay on this computer and are not kept (031). | — (proposed: 목표 글) | prompt, task description |
-| Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
-| Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |
-| Board | The page of cards in four columns (024). | 보드 (proposed) | kanban (as a name in the interface), project |
-| Card | One piece of planned work on the board (024). | 카드 (proposed) | ticket, issue, task (a card is not a task) |
-| Work card | A card that the board makes by itself for a task that has no card (024). | 진행 중인 작업 카드 (proposed) | planned card, ticket |
-| Backlog, To do, Doing, Done | The four columns of the board (024). Agents leave "Backlog" alone. | 백로그, 할 일, 진행 중, 완료 (proposed) | In progress, Review |
-| Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
-| Org chart | The page that draws the main agent, the organizations with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows organizations and hand-offs, and the tree of organizations (030). It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
-| Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 | delegation, assignment |
-| Legend words of the org chart | The three kinds of line, named in the legend (029): "Leads" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 이끌어요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to, gives parts |
-| No organization | The node of the org chart, and the drop area, for agents that are in no organization (029, 030). It is also the last section of the view "By organization" of Agents (001). | 조직 없음 | unassigned, ungrouped |
-| No members. | The line of an organization node that has no member (029). | 멤버가 없어요. | empty, nobody |
-| Also in | The line of the org chart that names the other organization of an agent that shows in more than one node (029). | {organization}에도 있어요 | duplicate, copy of |
-| Fit to view | The button and the key "0" that frame the whole org chart with room around it (029). | 화면에 맞추기 | reset, zoom to 100% |
-| Organization | A group of agents with a lead, a parent organization and access. It is not a channel (030). | 조직 | company, department, team (Teams is the link of 028), channel |
-| Parent organization | The organization that an organization sits inside (030). | 상위 조직 | parent team, department |
-| Sub-organization | An organization with a parent organization (030). | 하위 조직 | sub-team, child organization |
-| Top organization | An organization with no parent organization (030). | 최상위 조직 | root organization |
-| On one line | Two organizations are on one line when one is a higher organization of the other. An agent can be a member only of organizations that are on one line (030). | 한 줄에 있어요 | same branch, parent and child |
-| Deepest organization | The lowest of the organizations of an agent. They are on one line, so there is one (030, 036). | 가장 낮은 조직 | main organization, primary team |
-| Remove from an organization | What the user does with a menu or the form, and what the app does when it repairs a line: the agent stays an agent and stays a member of the other organizations (030). | 조직에서 빼요 | delete, kick out, fire |
-| Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (036). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
-| Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (036). | 보이는 이름 (proposed) | display name, nickname |
-| Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (036, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
-| By organization | The choice in the menu of the Agents header that groups the agents in organization sections (001). | 조직별 (proposed) | by team, group by |
+| Needs you | Items that wait for the user (011). | 내 확인이 필요해요 | inbox |
 | My sections | The other choice in that menu: the user sections and "Unassigned" (001). It is the first choice. | 내 섹션 (proposed) | custom view, default view |
-| Organization section | A section of the view "By organization" that holds the agents whose deepest organization is one organization. The app makes it, and it is read only (001). | 조직 섹션 (proposed) | team section, group |
-| Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 | permission, permission level (that is 007) |
-| Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬, 끔 | default, copy |
-| Chase interval | The setting that says how long work that an agent gave may stay quiet before the giver asks for its state: Off, 5, 10, 15, 30 or 60 minutes (013, 004, 007). | 확인 간격 | ping interval, nudge timer |
-| Hand-off rules | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 전달 규칙 | organization, Teams (that is the link of 028) |
-| Hand-off rule | The rule of who may send work to whom with "send message" (030). Values: "Any agent", "Along the organizations". | 전달 규칙, 아무 에이전트에게, 조직을 따라 | chain of command, reporting line |
-| Hand-off range | The field of an organization that says to whom its members may send work when the rule is "Along the organizations": "Inherit", "Own organization", "Own and lower organizations", "All agents" (030). | 전달 범위, 자기 조직, 자기 조직과 하위 조직, 모든 에이전트, 상속 | scope, reach |
-| Ask up the line | The switch that sends a question that the lead of a channel passes to the leads of the organizations of the member and to the main agent before the user (030). | 위로 물어보기 (proposed) | escalate, auto answer |
-| Tools | The skills and connections that an organization gives to its members and to the members of its lower organizations, with the values "Inherit", "On" and "Off" (030). | 도구 | team permissions, inherited tools |
-| Organization mark | The small word "organization" beside an organization in the list of who may use a skill or a connection, (017, 018, 030). | 조직 | group mark |
-| Tools from organizations | The block of an agent profile that lists each skill and connection that the agent has from an organization, each with the line "From <organization>" (002, 030). | 조직에서 받은 도구, {organization}에서 받음 | inherited tools |
-| Now (the muted line) | The line under the value "Inherit" in the part "Tools" of the form of an organization: "Now: <value> from <organization>", or "Now: none" when no organization above gives a value (030). | 지금: {value}, {organization}에서 받음 / 지금: 없음 (proposed) | current, effective |
-| Daily token limit | The most tokens that the tasks of the members of an organization and of its lower organizations may use in one day (030). | 하루 토큰 한도 | budget, quota |
+| Chase interval | The setting that says how long work that an agent gave may stay quiet before the giver asks for its state: Off, 5, 10, 15, 30 or 60 minutes (013, 007). | 확인 간격 | ping interval, nudge timer |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 | Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |
@@ -177,7 +127,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Keep phones quiet | The setting that holds notices to phones while the user works at the computer (015). | 일하는 동안 폰 알림 보류 (proposed) | focus mode |
 | Sensitive read | A step that reads a place with keys or logins. The turn then holds a mark (007). | 민감한 정보 읽기 | leak, breach |
 | Control place | A place that starts a program later or gives access to the computer. A change there is a hard step (007). | 제어 위치 (proposed) | system folder |
-| Teams link | The link between one Microsoft Teams chat and one agent or one channel. It is off at first (028). | Teams 연동 (proposed) | bridge, bot, connection (that is 018), integration |
+| Teams link | The link between one Microsoft Teams chat and one agent. It is off at first (028). | Teams 연동 (proposed) | bridge, bot, connection (that is 018), integration |
 | Allowed senders | The names of the people in a Teams chat whose messages the app answers (028). | 허용된 보낸 사람 (proposed) | allowlist, whitelist, users |
 | Call text | The text that a message of a Teams chat must hold to call the app, for example "@ROBot" (028). | 호출 문구 (proposed) | trigger, keyword, prefix |
 | Marker | The text at the start of every message that the app writes in Teams. The app never reads a message with it (028). | 표시 문구 (proposed) | tag, signature |
@@ -210,7 +160,7 @@ A new word goes here in the same pull request as the spec that brings it.
 
 - "Learns", "trains", "evolves", "gets smarter" about an agent or a model. An agent gets better
   only through things that the user can see and edit (000).
-- "Hire", "fire", "employee", "coworker" for an agent. The words "agent", "member" and "New agent"
+- "Hire", "fire", "employee", "coworker" for an agent. The words "agent" and "New agent"
   stay (see `docs/spec-changes.md`, "Decided against").
 - "Autonomous" and "24/7". ROBot runs while the computer runs.
 - "Bot" as a name for an agent. "Bot" is only the tag beside the name.

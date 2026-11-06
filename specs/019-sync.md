@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The user has the same agents, chats, channels, memory, routines and workflows on two computers,
+The user has the same agents, chats, memory, routines and workflows on two computers,
 for example MacBook 1 and MacBook 2. A change on one computer reaches the other. The user can
 switch computers and carry on. Data goes straight between the two computers (012). No other
 service holds it.
@@ -27,14 +27,10 @@ service holds it.
 | Role instructions | The text of each role (002). It is data of the agents, like the handbook. The later change wins. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state. |
-| Organizations (030) | Name, members, lead, parent organization, hand-off range and daily token limit. The tools of an organization do not sync, because skills and connections do not sync. |
-| Hand-off rules (030) | The hand-off rule and the switch "Ask up the line". They are data of the agents, like the handbook. The later change wins. |
-| Messages | Direct chats with their threads, and channels, with tool cards, plan steps, reply chips and the rows "Compacted". |
-| Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
-| Memory | The items of each agent, with the channel of a channel note. |
+| Messages | Direct chats with their threads, with tool cards and the rows "Compacted". |
+| Tasks | State (also blocked), reason and result, how far a failed turn went, and the usage of the task (005). They show on the tasks page with the name of the origin. |
+| Memory | The items of each agent. |
 | Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes and its owner (010)), the run history, and the "Runs on" computer. |
-| Board (024) | The cards with their number, title, description, column, place, agent, Mine switch and writer, their comments, and their links to tasks. The card follows its newest task on both computers. |
 | Read state | The last place that the user read in each chat. |
 | The mark of outside content and the mark of a sensitive read of a place (007) | The marks and their clear. A turn on either computer then asks in the same way. |
 | A handover (003) | The new thread, the card, the message of the user, and the muted lines. The links between the two threads sync by id. |
@@ -54,14 +50,12 @@ service holds it.
 | Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
-| The view of the board: the switch "Work of agents" and the dismissed work cards (024) | They are the layout of one computer, like settings. The board shows the tasks of both computers; a dismiss hides a card on one computer only. |
-| User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives with no section. An agent then shows in "Unassigned". |
-| The positions that the user set on the org chart (029) | They are the layout of one computer, like sections. Two computers draw the chart from the same data, each with its own positions. |
+| User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent arrives with no section. It then shows in "Unassigned". |
 | Pinned places (001) | They are part of the layout of one computer, like sections. |
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
 | The secret of a web hook (010) | It is in the keychain of one computer, like a saved secret. |
 | Saved logins (020) | Their values are in the keychain of one computer, like saved secrets. |
-| The decision model and the other settings of 013, except the handbook and the part "Hand-off rules" | Settings are local. The handbook and the part "Hand-off rules" are data of the agents (002, 030). |
+| The decision model and the other settings of 013, except the handbook | Settings are local. The handbook is data of the agents (002). |
 | Linked devices and their keys | They are not data of the agents. |
 | The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
 | Outside programs and their keys (023) | A key reaches one computer only. |
@@ -74,7 +68,7 @@ service holds it.
 1. Settings → Devices → pick a linked computer → "Sync with this computer". The computer must
    be online. The link must go both ways. If it goes one way, the dialog says that the other
    computer will also be able to open this one.
-2. The dialog shows what each computer holds: agents, channels, messages. The user picks how to
+2. The dialog shows what each computer holds: agents and messages. The user picks how to
    start:
    - "Merge" (default): both computers keep their data and get the data of the other.
    - "Use the data of <name> here": this computer takes the data of the other one. Data of the
@@ -83,7 +77,7 @@ service holds it.
      the other computer has is removed.
 3. The other computer shows "Sync with <name>?" with the choice, the "Syncs" and "Does not sync"
    lists in short, and how many items it will drop. The text says that <name> can change and
-   delete its agents, channels, chats, memory, routines and workflows, and can answer the
+   delete its agents, chats, memory, routines and workflows, and can answer the
    approval requests of its tasks, including steps that change files and run commands (as a
    linked device can, 012). The text also says that the user can stop at any time. The
    buttons are Allow and Deny.
@@ -113,8 +107,6 @@ off. "Stop syncing" returns the switch to the value that it had before sync bega
 - A message that came from the other computer never starts a task here.
 - Retry on a task from the other computer makes a new task that runs here. The retry note (005)
   has no list of steps, because the action log stays on its computer.
-- The user decides a review (005) on the computer that owns the task. The other computer shows
-  "Decide on <name>".
 - A message or a card that was made on the other computer shows "from <device name>" (012).
 
 ### Routines and workflows
@@ -126,10 +118,6 @@ off. "Stop syncing" returns the switch to the value that it had before sync bega
 3. Only the computer that will run a routine or workflow can choose to run it. A change from the
    other computer that makes it run on this computer is ignored. The user here decides with
    "Run on this computer".
-4. A workflow with a channel trigger fires on its "Runs on" computer for a message from either
-   computer. A message that is older than 5 minutes when it arrives does not fire it. The age
-   uses the difference between the two clocks, which the computers measure when they connect.
-   So a wrong clock does not make an old message look new, or a new one look old.
 
 ### Files of messages
 
@@ -179,22 +167,16 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   their send time. Messages from one computer keep their order.
 - **Names**: a name stays unique on its server (002), and the rule ignores case. When two
   different agents with one name meet in a merge, the one that comes in gets the name of its
-  origin computer in brackets, for example "Writer (MacBook 2)". The same holds for channels.
+  origin computer in brackets, for example "Writer (MacBook 2)".
   Model accounts with the same name, vendor and address are one account.
 - **One main agent**: at most one agent on a server has the switch "Main agent" (002). When two
   computers turn it on for two different agents while apart, the agent whose change is the later
   one keeps it after the sync, and the other loses it on both computers. A user sees no notice.
-- **One line of organizations**: the organizations of one agent are on one line (030, "One
-  line"). When two computers add the same agent to two organizations that are not on one line while
-  apart, or one moves an organization while the other adds a member, the agent stays in the
-  organization where it was added first, and the other computer ends with the same members. The
-  open org chart shows a line about it, and a user sees no other notice.
-- **Delete**: deleting an agent or a channel deletes it on the other computer too. The delete
-  dialog says so. Sync never deletes files: the workspace folder of an agent that sync removes
-  stays on disk, and the change list shows its path. If one sync would delete 5 or more agents
-  and channels on a computer, that computer asks first: "<name> wants to delete 8 agents and
-  channels here." with Delete and Keep. Keep leaves them here, and they come back to the other
-  computer.
+- **Delete**: deleting an agent deletes it on the other computer too. The delete dialog says so.
+  Sync never deletes files: the workspace folder of an agent that sync removes stays on disk, and
+  the change list shows its path. If one sync would delete 5 or more agents on a computer, that
+  computer asks first: "<name> wants to delete 8 agents here." with Delete and Keep. Keep leaves
+  them here, and they come back to the other computer.
 - **One task per agent**: while both computers are online, an agent runs one task at a time
   across both (005). A task that waits shows "Waits for the task on <name>." There is no lock
   between the computers. If the user starts a task for one agent on both computers within about
@@ -216,10 +198,6 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - Only a linked computer that the user set to sync can send changes. Turning "Let other devices
   connect" off, or removing the link, stops the flow at once.
 - The tasks page lists tasks of both computers, with the name of the origin and a filter.
-- The org chart (029) adds nothing to "Syncs". Each computer draws it from
-  its own copy of agents, organizations and tasks. The hand-offs count the tasks of both computers.
-  Two computers that are up to date draw the same chart, except for the state "offline" of an
-  agent, which depends on the model accounts of each computer.
 - Sync data is not part of an export (014).
 - A big history, for example 50,000 messages, copies in batches. The app stays usable while it
   copies.
@@ -229,7 +207,7 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - More than two computers in one sync pair.
 - Sync of workspace folders and files.
 - Sync of settings, secrets, permission levels, browser sessions and usage numbers.
-- Choosing single agents, channels or kinds of data to sync.
+- Choosing single agents or kinds of data to sync.
 - Sync through a service on the internet. The two computers must reach each other as in 012.
 - A phone in a sync pair. The phone opens a computer as a client.
 - Undo of one change. The backup and the change list are the way back.
@@ -237,7 +215,7 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 ## Acceptance
 
 - MacBook 2 is new. On MacBook 2: sync with MacBook 1, choose "Use the data of MacBook 1 here".
-  After the copy, MacBook 2 shows the same agents, channels, messages and memory. Its model
+  After the copy, MacBook 2 shows the same agents, messages and memory. Its model
   accounts show "Not connected". Its agents use "Ask for everything". A backup folder exists on
   both computers.
 - Both computers have an agent named "Writer". Merge. Both computers show "Writer" and "Writer
@@ -251,9 +229,6 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - Edit one memory item on both computers while MacBook 2 is off. After the next sync both show
   the same newest text, and the older text exists as a second item.
 - A task on MacBook 1 waits for an approval. Answer it on MacBook 2. The task goes on.
-- Agent A on MacBook 2 sends three messages to agent B with the tool "send message". After the
-  sync, the org chart on MacBook 1 shows a hand-off line from A to B with the number 3. The groups
-  and leads of both charts are equal (029).
 - A routine from MacBook 1 does not run on MacBook 2 at its time. "Run on this computer" on
   MacBook 2 moves it, and MacBook 1 shows "Runs on MacBook 2".
 - Delete an archived agent on MacBook 1. It is gone on MacBook 2, and its workspace folder is

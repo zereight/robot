@@ -77,19 +77,14 @@ An agent has:
    too. If the agent owns workflows (see 010), the text also says how many, and that they have no
    owner then. Any agent can work in them. The workflows stay.
 10. Export agents: from the menu of the Agents section header, the user picks agents and a file
-    name. The same dialog has three tick boxes, all off at the start: "Channels of these agents",
-    "Skills of these agents" and "Handbook". The app writes one file. Import agents: the user
+    name. The same dialog has two tick boxes, both off at the start: "Skills of these agents" and
+    "Handbook". The app writes one file. Import agents: the user
     picks such a file. The app shows the review screen (see 014, "Review before an import"), asks for one model for all of them (see
     006), and asks to confirm.
 11. Recent work: the profile lists the latest tasks of the agent (see "Recent work").
-12. Organizations: the profile has a row "Organizations" with the organizations of the agent, and
-    each skill and connection that the agent has from an organization shows the line "From
-    <organization>" (see 030). A deleted agent leaves every organization.
-13. Workflows: the profile has a row "Workflows" with the workflows that the agent owns (see 010,
+12. Workflows: the profile has a row "Workflows" with the workflows that the agent owns (see 010,
     "Owner and participants"). A click on a name closes the profile and shows the card of the
     workflow on the Workflows page. An agent with no workflow shows no row.
-14. Make an agent from an organization: the form of an organization (030) opens the form of
-    flow 1 over itself. The agent is made as in flow 1, but the app does not open its direct chat.
 
 ## Role label
 
@@ -130,13 +125,10 @@ The field "Role" of the form of a new agent and of the profile works like a labe
 - **What the model reads**: a direct chat and a thread do not give the role line to the model. The
   text of a turn holds the handbook, the role instructions and the instructions of the agent. The
   role line is not in it.
-  - A model reads the role line in three places only: the check of the lead (004), the fast pick
-    (004), and the answer of the settings tool (002, "Changes from the chat"), which lists it among
-    the values of the agent.
-  - A turn of a channel names the agent and the names of its members, and no role line (004). The
-    instructions of the channel are a separate text in that turn (004, "Rules").
+  - A model reads the role line in one place only: the answer of the settings tool (002, "Changes
+    from the chat"), which lists it among the values of the agent.
   - So a change of the role line changes no answer of a direct chat. It changes the badge (001), the
-    filter of places (001), the Roles page (013), a check of the lead and a fast pick.
+    filter of places (001) and the Roles page (013).
   - This rule holds on an API provider and on a vendor runtime: a runtime also gets no role line,
     because the text of the turn holds none.
 - **Data**: nothing new. The role line syncs (019), goes in an export (014) and in an agent file,
@@ -165,9 +157,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
   connections and skills that it may use, saved secrets (020), sync, devices, archive and delete,
   the fields of other agents (the main agent can ask for them with the manage tools, 037, and the user
   allows each change), the handbook, the switch "Read the handbook", the memory check
-  (008), the instructions of a channel (004), and the Teams link (028). When the user asks for one
-  of these, the agent
-  says where in the profile or in settings the user can change it.
+  (008), and the Teams link (028). When the user asks for one of these, the agent says where in
+  the profile or in settings the user can change it.
 - The agent changes a setting only when the user asks for it. A question such as "which model
   are you?" reads the settings and changes nothing.
 - After a change, the chat shows a muted line, for example "Changed the model: A → B", or
@@ -203,13 +194,6 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - Import makes new agents only. It never changes an agent that exists. A name that is taken gets
   a number, ignoring case, inside the length limit. Every imported routine starts paused.
 - If an import fails, the agents made so far stay. The error says why it stopped.
-- **Channels in the file**: with "Channels of these agents", the file holds each channel whose
-  members are all among the picked agents and that is not archived: name, topic, instructions, the
-  setting "Review parts", the members and the lead, by the names of the agents in the file. It holds
-  no message, no section and no memory note, and no organization, parent, tool or token limit (030). Import makes new channels only. A name that is taken
-  gets a number. A channel whose member the user did not tick on the review screen is made without
-  that member. A lead that is not made leaves the channel with no lead. A channel with no member
-  left is not made, and the review screen lists it under "Not imported" with the reason.
 - **Skills in the file**: with "Skills of these agents", the file holds each skill that the picked
   agents may use, with its name, its instructions, and the agents in the file that may use it. A
   skill for all agents is written for the agents in the file only. Import makes new skills only. A
@@ -218,8 +202,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - **Handbook in the file**: with "Handbook", the file holds the handbook. On import, the review
   screen shows it not ticked, with the first lines and "Show all", which opens the full text. When the user ticks it, it replaces the
   handbook of this server, and the old text stays in the handbook history (see "Handbook").
-- The limits stay: at most 40 agents and 10 MB. The file also holds at most 40 channels and 100
-  skills. A file over a limit is refused.
+- The limits stay: at most 40 agents and 10 MB. The file also holds at most 100 skills. A file
+  over a limit is refused.
 - A file of the first format version, with agents only, can still be read.
 
 ## Starters
@@ -227,7 +211,7 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 A **starter** is a ready setup for one job. It fills the new agent form. It can also make a routine
 and skills for the new agent.
 
-- The choice "Start from" of the form lists "From a goal…" first (see 031), then "Blank" and then the starters in this order:
+- The choice "Start from" of the form lists "Blank" first and then the starters in this order:
   Assistant, Briefer, Researcher, Reviewer, Organizer. Each choice shows the job name and one line
   that says what the agent does. A muted line says what else the starter makes, for example "A
   paused routine, 1 skill". For a starter that makes nothing else, the line says so.
@@ -246,7 +230,7 @@ and skills for the new agent.
 - A starter does not set a model, a permission level or a workspace. The agent starts with the
   defaults (see 006 and 007). A starter makes no memory and no knowledge.
 - A linked device (see 012) that makes an agent from a starter gets the three fields only. It
-  makes no routine and no skill, and its choice shows no muted line. The choice "From a goal…" does not show on a linked computer (see 031).
+  makes no routine and no skill, and its choice shows no muted line.
 - The instructions of a starter guide the agent. They do not limit it. The permission level limits
   it (see 007).
 - The user cannot make or edit starters in this version. The app does not write an agent setup
@@ -263,12 +247,11 @@ and skills for the new agent.
 ## Recent work
 
 - The agent profile shows a block "Recent work". It lists the last 20 tasks of this agent (see
-  005), newest first. The Today page (021) is for all agents. This block is for one agent.
-- A row shows the label of the task, its source (the chat, a channel, a routine, a workflow, or
-  another agent), its state in words, and the time since its last change. For a task that has not
-  ended, the words say what it waits for: "Waits for your approval", "Waits for your answer",
-  "Waits for your review", or "Waits behind <place>". A blocked task shows "Blocked" and its
-  reason.
+  005), newest first. The Tasks page (005) is for all agents. This block is for one agent.
+- A row shows the label of the task, its source (the chat, a routine, a workflow, or another
+  agent), its state in words, and the time since its last change. For a task that has not ended,
+  the words say what it waits for: "Waits for your approval", "Waits for your answer", or "Waits
+  behind <place>". A blocked task shows "Blocked" and its reason.
 - A row opens the task view. "Show all" opens the Tasks page with the filter set to this agent.
 - The block changes while the profile is open. With no task, one muted line says "No work yet."
 - The block does not show the thinking of the agent.
@@ -283,10 +266,8 @@ agent.
   (019) and an export holds it (014). It holds 0 to 20000 characters. It is empty at the
   start. An empty handbook gives nothing to any agent.
 - Before each turn, an agent with "Read the handbook" on gets the handbook before its own
-  instructions. The goal of each organization of the agent comes after the handbook. The role
-  instructions come after the goal, and before its own instructions (030, "Goal"; "Role
-  instructions"). In a channel, the instructions of the channel come after the
-  instructions of the agent (004). When two texts say different things, the later text wins. The app
+  instructions. The role instructions come after the handbook, and before its own instructions
+  (see "Role instructions"). When two texts say different things, the later text wins. The app
   tells the agent this order. The rules of the app (007, 014) always win over all of these texts.
 - The switch "Read the handbook" is in the profile of the agent, under the instructions. The user
   turns it off for an agent that must not get it.
@@ -309,7 +290,7 @@ role line, and every agent with that role line follows them.
   field "Instructions", read only, with a link to the Roles page. The text does not change the
   own instructions of the agent.
 - Before each turn, an agent that has the role line gets the role instructions after the
-  handbook and the goal of its organization, and before its own instructions. The app tells the
+  handbook, and before its own instructions. The app tells the
   agent this order, as for the handbook. When two texts say different things, the later text wins.
   The rules of the app (007, 014) always win.
 - Lines that differ only in case are one role, and share one text (013, "Roles").
@@ -325,10 +306,10 @@ role line, and every agent with that role line follows them.
 
 ## Avatars
 
-An avatar is the small round mark that shows who speaks, or whose place it is. ROBot has four: the
-face of an agent, the picture of an agent, the mark of the user, and the mark of a channel. They
-follow the theme. In the dark theme they are one family with the app mark: a very dark disc with
-a thin rim of light, and features or a glyph of light that glow. The app mark is not an avatar.
+An avatar is the small round mark that shows who speaks, or whose place it is. ROBot has three:
+the face of an agent, the picture of an agent, and the mark of the user. They follow the theme. In
+the dark theme they are one family with the app mark: a very dark disc with a thin rim of light,
+and features or a glyph of light that glow. The app mark is not an avatar.
 It does not change with the theme.
 
 - **Drawn face in the dark theme**: a very dark disc that the hue tints, with a thin rim of light
@@ -345,14 +326,10 @@ It does not change with the theme.
   7 to 1 or more, at every size.
 - **Picture**: an uploaded picture is round and has the same thin rim as a drawn face, in the
   hue of the agent. The theme does not change the picture. Its rim shows in both themes: it
-  has the colour of the rim of a drawn face in that theme. A channel picture (004) has the same
-  rim, in the colour of the light of the app mark in the dark theme, and in a darker form of that
-  colour in the light theme.
+  has the colour of the rim of a drawn face in that theme.
 - **Mark of the user**: a disc with the same thin rim and one glyph: a person on the desktop, and
   the first letter of the word for "you" on the phone. In the dark theme, the disc is dark and
   the glyph is light. In the light theme, the disc is light and the glyph is dark.
-- **Mark of a channel**: a disc with the same thin rim and a `#`. The colours follow the rule of
-  the mark of the user. A channel with a picture shows the picture in its place.
 - **Theme change**: a change of the theme changes every avatar at once, with no motion. The
   choice "system" works as it does for the rest of the app (013).
 - **The glow is still.** It shows in the dark theme only. It does not pulse, move, or change when
@@ -420,9 +397,6 @@ It does not change with the theme.
   where the user can change it.
 - Change the role line of an agent, then send a message in its direct chat: the request to the
   model holds no role line, and the chat shows the new role as the badge of the row.
-  Set the role of a member of a channel with fast pick on, and post a job that fits it: the role
-  line of that member is in the request to the decision model. A check of the lead in that channel
-  also holds the role line of each member.
 - Ask the agent to rewrite its instructions: the history has one more version, from the chat.
   Restore the older version: the instructions are the old text, and the history has a version
   from a restore.
@@ -436,8 +410,7 @@ It does not change with the theme.
 - Make two agents from Researcher: the second skill gets a number, and both agents list their own
   skill.
 - Open the profile of an agent that has 25 tasks: "Recent work" lists 20. A task that waits for an
-  approval says "Waits for your approval". A part in review says "Waits for your review". "Show
-  all" opens the Tasks page for this agent.
+  approval says "Waits for your approval". "Show all" opens the Tasks page for this agent.
 - Write a handbook "Answer in Korean." An agent with "Read the handbook" on answers in Korean. Turn
   the switch off for that agent: its next turn does not get the handbook.
 - Write role instructions "Answer in Korean." for the role "Reviewer". Two agents with that role
@@ -451,11 +424,9 @@ It does not change with the theme.
   user can change it.
 - Change the handbook three times, and restore the first version: the handbook has the first text,
   and the history has a new version.
-- Export two agents with "Channels of these agents" and "Skills of these agents" ticked. One
-  channel has both agents, another has a third agent too. Import the file in an empty app: the
-  review screen lists the first channel and the skills of the two agents. After the import, the
-  channel exists with both members and its lead, the skills exist and are off, and the second
-  channel does not exist.
+- Export two agents with "Skills of these agents" ticked. Import the file in an empty app: the
+  review screen lists the skills of the two agents. After the import, the skills exist and are
+  off.
 - Import a file with a handbook into an app that has a handbook: the review screen shows the
   handbook not ticked. Import without the tick: the handbook does not change.
 - Make agents of all six shapes. In the dark theme, each face shows its features and its glow, the
@@ -466,7 +437,7 @@ It does not change with the theme.
   and the disc stays light. For all six shapes and ten hues, at 16 px and at 80 px, the features
   stand out from the disc by a contrast of 7 to 1 or more.
 - Switch from the dark theme to the light theme: every avatar changes at once, with no motion.
-  The mark of the user and the mark of a channel have a light disc and a dark glyph. A picture
+  The mark of the user has a light disc and a dark glyph. A picture
   does not change, and its rim shows. The app mark does not change. Switch back: the dark discs
   and the glow come back.
 - Choose the theme "system" and change the theme of the system: the avatars follow it.

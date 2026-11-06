@@ -8,11 +8,10 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | No. | Area | State |
 | --- | --- | --- |
 | 000 | [Product](000-product.md) | Draft |
-| 001 | [Window layout: server rail, place list with user sections, conversation, activity panel](001-window-layout.md) | Draft |
+| 001 | [Window layout: server rail, agent list with user sections, direct chat, activity panel](001-window-layout.md) | Draft |
 | 002 | [Agents: create, starters, face, name, role, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
 | 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context, mentions](003-direct-chat.md) | Draft |
-| 004 | [Channels: several agents, one job, lead agent, split work, check and verdicts, `@all`, fast pick](004-channels.md) | Draft |
-| 005 | [Tasks and plan steps: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
+| 005 | [Tasks: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |
 | 007 | [Agent workspace and tools: files, shell, browser, approvals, permission rules, action log, other agents, computer use](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what an agent keeps between chats, and how the user edits it](008-memory.md) | Draft |
@@ -28,27 +27,26 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
-| 021 | [Today: what waits for the user, what went wrong, what ran today, what runs next](021-today.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
-| 024 | [Board: one board for all agents, work of every agent as it runs, planned cards, start a card as a task, tools for agents](024-board.md) | Draft |
-| 025 | [Shared folders: file claims between agents in one folder, own copies of a Git repository for parts](025-shared-folders.md) | Draft |
+| 025 | [Shared folders: file claims between agents in one folder](025-shared-folders.md) | Draft |
 | 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which agents each one reaches](026-token-savings.md) | Draft |
 | 027 | [Voice: dictate into the message box, read a reply aloud, voice chat on the phone](027-voice.md) | Draft |
-| 028 | [Chat bridge: talk to one agent or one channel from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
-| 029 | [Org chart: the main agent, the organizations with their members, leads and sub-organizations, the state of each agent, the work that agents handed to each other, and the new organization and edits of members, leads and parents; a read-only list on the phone](029-org-chart.md) | Draft |
-| 030 | [Organization: nested organizations of agents, access that goes down the tree (tools, daily token limit, hand-off range), the hand-off rule, ask up the line, migration from the channel tree](030-organization.md) | Draft |
-| 031 | [Channel starters and the goal dialog: a goal in a few words shows the starters that fit, and a channel with its agents is made from a fixed list](031-channel-starters.md) | Draft |
+| 028 | [Chat bridge: talk to one agent from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
-| 036 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](036-organization-prefix.md) | Draft |
-| 037 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
+| 037 | [Manage tools: the main agent and an outside program make and change agents and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
 | 038 | [Events: what arrived from a schedule, a watch, a web hook, an outside program or Teams, which place took it, and the reason when nothing did](038-events.md) | Draft |
 | 039 | [Looping motion: spinners and pulses that show running work move at one pace and stop with reduce motion](039-looping-motion.md) | Draft |
 
 ## Milestones
+
+The specs 004, 021, 024, 029, 030, 031 and 036 are deleted, and the other specs lost their parts
+about organizations, the org chart, channels, channel starters, the board and Today (decision 2
+of [docs/rebuild-plan.md](../docs/rebuild-plan.md)). The rows below are a record of past slices.
+Their words about those areas do not apply now.
 
 | Milestone | Specs | Result |
 | --- | --- | --- |

@@ -116,7 +116,6 @@ Knowledge keeps longer, structured notes that cite where they come from.
 - Archiving an agent keeps its knowledge. Deleting an agent deletes it with the workspace.
 - Knowledge is part of the export (014). Sources are copied as they are. An import restores it.
 - An agent file (002) holds no knowledge, as it holds no memory.
-- In a channel (004), an agent uses only its own knowledge.
 
 ## Out of scope
 

@@ -14,10 +14,10 @@ and linked devices. A phone that is paired with one profile sees that profile an
 - **Open profile**: the profile that the window shows. A window shows one profile at a time.
 - **Server**: one profile on one computer (see 000 and 012). Each profile is a server for its own
   agents.
-- **What a profile holds**: everything that 014 lists as local data: agents, channels, chats,
-  tasks, the board, routines, workflows, memory, knowledge, skills, connections, saved secrets, permission
-  rules, the Teams link and its sign-in (028), the action log, usage numbers, settings, model
-  accounts and their keys, browser sessions of agents, the default folder for workspaces, linked
+- **What a profile holds**: everything that 014 lists as local data: agents, chats, tasks,
+  routines, workflows, memory, knowledge, skills, connections, saved secrets, permission rules, the
+  Teams link and its sign-in (028), the action log, usage numbers, settings, model accounts and
+  their keys, browser sessions of agents, the default folder for workspaces, linked
   devices and their keys, and the sync pair.
 - **What the computer holds for all profiles**: the list of profiles, which one is open, the
   settings "start at login" and "Show in the menu bar", the programs that the app downloaded for agent runtimes (006), and
@@ -38,7 +38,7 @@ and linked devices. A phone that is paired with one profile sees that profile an
 1. When the computer has two or more profiles, the rail shows the profile button below help and
    settings (001). It shows the face of the open profile.
 2. The user clicks it. A menu lists every profile with its face and name. The open profile has a
-   check mark. A profile that has something waiting for the user ("Needs you", see 021) has a dot.
+   check mark. A profile that has a task waiting for the user (005) has a dot.
    The menu ends with "Add profile" and "Manage profiles". The second opens Settings → Profiles.
 3. The user picks a profile. The whole window changes at once: the rail, the place list, the pages,
    the settings and the activity panel. The window opens the page and the place where the user
@@ -103,7 +103,7 @@ apart").
 
 - No screen, search, tool or agent of one profile reads or changes the data of another profile.
   The tools "list agents", "send message", "search chats" and "read chat" (007) see only the
-  agents and chats of their own profile. The board tools (024) use only the board of their own profile.
+  agents and chats of their own profile.
 - All settings belong to the profile, except the list of profiles, "start at login" and "Show in
   the menu bar", which belong to the computer. The menu bar item shows the open profile (015).
 - A new profile has no model account. The keys and tokens of each profile are in the keychain,
@@ -151,7 +151,7 @@ The profiles of one computer share these things:
 - A password, a PIN or a biometric lock for a profile, and encryption of one profile with its
   own key.
 - Two profiles in two windows at the same time.
-- Sharing agents, channels, chats or memory between profiles. To move an agent, the user writes
+- Sharing agents, chats or memory between profiles. To move an agent, the user writes
   an agent file in one profile and imports it in the other (002). To move all data, the user
   exports one profile and imports it in an empty profile (014).
 - Different system permissions for each profile.
