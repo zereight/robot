@@ -28,6 +28,7 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { useOwnedWorkflows } from "../workflows/useOwner.ts"
 import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
+import { byMemberName } from "./memberOrder.ts"
 import { OrgLimitField } from "./OrgLimit.tsx"
 import { OrgRange } from "./OrgRange.tsx"
 import { OrgToolsPart } from "./OrgTools.tsx"
@@ -122,12 +123,14 @@ export const OrgDialog = (props: {
     (serverId) => call("agents.list", { serverId, archived: true }).catch((): Agent[] => []),
   )
   const archived = () => (archivedAll() ?? []).filter((a) => was.memberIds.includes(a.id))
-  const choices = createMemo<MemberChoice[]>(() => [
-    ...agents.agents().map((agent) => ({ agent, archived: false })),
-    ...archived()
-      .filter((a) => !agents.agents().some((x) => x.id === a.id))
-      .map((agent) => ({ agent, archived: true })),
-  ])
+  const choices = createMemo<MemberChoice[]>(() =>
+    byMemberName([
+      ...agents.agents().map((agent) => ({ agent, archived: false })),
+      ...archived()
+        .filter((a) => !agents.agents().some((x) => x.id === a.id))
+        .map((agent) => ({ agent, archived: true })),
+    ]),
+  )
   // Every agent that the rule "One line" reads: the ones in the list and the archived ones.
   const lineAgents = createMemo(() => [
     ...agents.agents(),

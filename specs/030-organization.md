@@ -228,6 +228,8 @@ An agent can be a member of more than one organization only when all of them are
   The form, the menus and the drags of the chart (029), and a linked computer (012) use the same
   rules. An agent that is archived still counts, because it stays a member. A save of the form is
   checked as one change, with all its fields.
+- **The order of Members**: the field "Members" lists the agents by name, ignoring case. An agent
+  that is archived or muted stands in its place by name, not after the others.
   1. **Add or move a member**: refused when the agent would be in an organization that is not on
      one line with another organization of the agent. The line is "<agent> is in <other>, which is
      not on one line with <organization>." <other> is the first of the conflicting organizations in
