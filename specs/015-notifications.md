@@ -186,6 +186,9 @@ The user knows when an agent needs them or finishes, without watching the window
   attention again, in the same way as a new request. It asks once.
 - Motion in the island is short (under 300 ms) and follows reduce motion. With reduce motion on,
   the cards still show and close, with no movement.
+- When the island changes its size (the bar grows to a card, or a card closes to the bar), the
+  shape grows or shrinks in one smooth move, and does not jump in one frame. Each corner at the
+  bottom of the shape stays round during the move, at the left and at the right.
 - Each part of the island has a text label for screen readers: the rows, the count, "1 of N",
   and the buttons.
 - The island keeps its size to its content. It never needs a scroll bar. A card is 460 px wide,
