@@ -93,9 +93,9 @@ client shows it and sends commands.
 
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
-| See the workflow list with the state of the last run and of the check, unread counts, working dots | Delete or restore a workflow without the switch (see below) |
+| See the workflow list with the state of the last run and of the check | Delete or restore a workflow without the switch (see below) |
 | Read messages in the chat of a workflow | Change model accounts, skills, connections and settings (this includes the decision model of 013). Review the tools of a connection (018). Make a skill from work (017) |
-| Send, stop, reply, edit the last message, retry | Make the permission level of a workflow or of a node looser, or add, edit or delete a permission rule (007) |
+| Send, stop, reply, edit the last message, retry | Change the permission level of a workflow or of a node, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions, and pick an option on the card of a decision node | The usage page, the action log, knowledge (016), download or repair a vendor runtime (006) |
 | See the task list and task details; stop a task | Browser "Take control"; memory proposals and memory history (008); the proposals of self-improvement and their change log (010) |
@@ -122,31 +122,24 @@ workflows of the server in the same screens as on the server (010, 008).
   threshold of a decision node), its connections, its trigger, and the text of its responsible
   document. A client can also read and change the memory of a workflow (008).
 - **Memory:** a client does the same four things as the memory page of a workflow on the server
-  (008): list and search, add, edit and delete items. It has no switch for memory on or off. Whether
-  a client can turn the memory check (008) on or off is open (see the questions for 012).
-- **Outside content:** whether a client shows the mark "Holds outside content" (007) for the chat
-  of a workflow, and whether it can clear it, is open (see the questions for 012). 019 still syncs
-  the mark.
-- **Names:** whether the name of a workflow must be unique on a server, and what a client sees for
-  a name that is taken, are open (see the questions for 019).
+  (008): list and search, add, edit and delete items. It has no switch for memory on or off.
+- **Names:** the name of a workflow is unique on a server, ignoring case. A client that sets a name
+  that is taken gets a plain error: "That name is taken."
 - **Model:** the client picks from the model accounts that are connected on the server. It cannot
   add, change or disconnect an account, and it never sees a key.
 - **Workspace:** the server makes a new, empty workspace folder in its default folder (013) for
   each workflow that a client creates or duplicates. A client cannot choose or change a folder.
   The workflow on a client says "Workspace: on <server name>" and shows no path.
 - **Permission level:** a workflow that a client creates starts at the level that the server uses
-  for new workflows ("Ask for risky steps"). Open: the owner has not confirmed that a client may
-  set a stricter level for a workflow or for a node. Decision 18 says only the user changes the
-  levels (see the questions for 012). A client cannot set a looser level, and it cannot add an
-  "Always allow" rule. From the loosest to the strictest, the levels are "Full access", "Ask when
-  unsure", "Ask for risky steps", "Ask for everything" and "Read only" (007).
+  for new workflows ("Ask for risky steps"). A client cannot change the level of a workflow or of
+  a node, and it cannot add an "Always allow" rule. Only the user at the server changes a level
+  (010, 007). From the loosest to the strictest, the levels are "Full access", "Ask when unsure",
+  "Ask for risky steps", "Ask for everything" and "Read only" (007).
 - **Running workflows:** a client cannot edit a workflow while it runs (010). It stops the run
   first.
-- **The chat:** open (see the questions for 012). The chat of a workflow may change the graph for
-  a client that has the switch, in the same way as for the user at the server (010, "Assistant").
-  The earlier spec kept the assistant panel on the server only. If the chat does change the graph,
-  the change counts as a change by the client: it needs the switch, and it follows all the rules
-  of this section.
+- **The chat:** the chat of a workflow changes the graph for a client that has the switch, in the
+  same way as for the user at the server (010, "Assistant"). The change counts as a change by the
+  client: it needs the switch, and it follows all the rules of this section.
 - **Record:** after a change by a client, the workflow shows "Last changed by <device name>" with
   the time. A later change on the server removes the line. A change that arrives by sync (019)
   leaves it. A change shows on the server and on all clients at once.
@@ -234,8 +227,7 @@ means a profile on a computer.
   stop a run.
 - The aim of the phone app (011) is that the phone can do whatever the user can do in the chat of
   a workflow on the computer. Start and fork a thread, compact a chat and "Run next" are on no
-  client in this version (003, 005), and each of them needs its own slice. Whether threads and
-  forks exist for the chat of a workflow is open (see the questions for 000 and 003 in W1).
+  client in this version (003, 005).
 - The rules of "Create and change workflows" and "Workflows" apply to every client, the phone too:
   running and stopping a workflow, asking about a run and giving feedback need only the right to
   send messages, and a change to a workflow needs the switch "Can create and change workflows".
@@ -319,8 +311,8 @@ accept connections, this is the same computer.
   and a model. The workflow shows on MacBook 2 with a new empty workspace folder, "Last changed
   by MacBook 1", and the level "Ask for risky steps". Edit its responsible document from
   MacBook 1: the change shows on MacBook 2 at once and applies to the next run.
-- On MacBook 1, try to set a level that is looser than the level of the workflow: the client
-  offers none, and a request for one gets "Not allowed".
+- On MacBook 1, try to change the level of a workflow or of a node: the client offers no control
+  for it, and a request for a change gets "Not allowed".
 - Turn the switch off on MacBook 2 while MacBook 1 is connected: the next change from MacBook 1
   fails with the line that names MacBook 2, and the buttons and fields on MacBook 1 turn
   read-only. Ask the chat of a workflow from MacBook 1 to add a node: the chat says that the

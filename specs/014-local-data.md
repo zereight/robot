@@ -19,9 +19,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
   messages for offline reading. The cache is deleted when the link ends and is never exported.
   The state of a sync (019) is not exported either. Backups that sync makes are in a "backups"
-  folder in the data folder. Open: where the articles and sources of knowledge (016) live for a
-  workflow is not decided, and 016 is in no slice (see the questions for 014). Until then, this
-  spec says nothing about them.
+  folder in the data folder.
 - The app never sends chat content, files, or commands anywhere except the model provider
   a node uses, the pages a node visits, and the devices that the user linked (012). Traffic
   to a linked device is end-to-end encrypted. There is one more exception, and it is off by
@@ -54,9 +52,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   exception. It sends no content of the user. Test device data (032 to 034) stays on this computer,
   per profile, in the data folder of the profile, and is not in an export. The export holds the
   switch "Test devices" only.
-- Voice (027) keeps no sound. Recognition runs on the device. A trigger of a workflow that listens
-  for a call is not decided (see the questions for 010). If it exists, where it listens and where
-  its secret is kept are open (see the questions for 014).
+- Voice (027) keeps no sound. Recognition runs on the device.
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up, to a page that a node visits, or to a download that the user starts (see the
   download exception below).
@@ -73,7 +69,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   responsible document and its prompts, and the times of each task (005). The times hold no
   message text.
 - A recording of "Teach a task" (017) stays on this computer. The app sends its list of steps once
-  to the model that answers in the chat of the workflow (not decided, see the questions for 014),
+  to the model that answers in the chat of the workflow,
   to write the draft skill. The app deletes the recording when the
   user saves or discards the draft.
 
@@ -96,7 +92,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 ## Export and backup
 
 - Export: one archive for one profile (022), with the database, attachments, and a readme of the
-  format. Whether it holds the knowledge files (016) is open (see the questions for 014). Secrets are not included. The Teams link and its sign-in (028) are
+  format. Secrets are not included. The Teams link and its sign-in (028) are
   not included, and an import brings none back. The archive holds the rules, the action log, the
   skills and
   the connections without their secret values.
@@ -109,19 +105,15 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   connection comes back turned off (see 018), so an import never starts a program or sends data.
   It comes back with no reviewed tools, so the user reviews its tools again (018). An archive of
   an earlier version, with agents and routines, is not moved to workflows (000, "Out of scope").
-  What an import does with it is not decided (see the questions for 014).
 
 ## Review before an import
 
 An import of a workflow file (010, `docs/workflow-file-format.md`) shows a review screen before it
 makes anything. The user sees each part that the file holds and picks what to keep. The check
-(010) has read the file before the screen shows (see the questions for 014).
+(010) has read the file before the screen shows.
 
 - The screen lists each workflow of the file with a tick box. Under each workflow are its trigger
-  and the number of its nodes. What else the screen lists for a workflow is open: the number of
-  its decision nodes, and a tick box for each rule that the file holds beyond the standard rules
-  of the app (010, "Check"). Which parts have their own tick box is open too (see the questions
-  for 014).
+  and the number of its nodes.
 - Ticks at the start:
   - Workflows are ticked. An imported workflow is off, so it starts nothing (010, "File").
   - A part whose text had a secret that the app hid (see "Secrets in text" in

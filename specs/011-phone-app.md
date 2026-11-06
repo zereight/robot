@@ -21,10 +21,8 @@ it, and give feedback, from the phone.
 1. **Servers**: list of paired servers with the connection state of 012 and the total unread
    count of each. Add server opens the pairing camera.
 2. **Workflows**: the workflows of the server, as the workflow list on the computer (001). A card
-   shows the name, the state of the last run, the state of the check, the unread count of the
-   chat and a working dot. The dot breathes as it does on the desktop (000), and the breath
-   follows the setting "Reduce Motion" of the system. In this version the phone cannot make a
-   workflow from the list. The user does this on the computer.
+   shows the name, the state of the last run and the state of the check. In this version the
+   phone cannot make a workflow from the list. The user does this on the computer.
 3. **Workflow**: one workflow. It has two parts: the run view and the chat.
    - **Run view**: the nodes as a numbered list, not as a canvas. Each line shows the number, the
      name, the kind (text node or decision node) and the state of the node in the last run or in
@@ -47,8 +45,7 @@ it, and give feedback, from the phone.
    list.
 7. **Change a workflow**: the user changes a workflow on the phone only through the chat. The
    responsible document changes the graph (010). This needs the switch "Can create and change
-   workflows" of that computer (012). Whether the chat of a client may change the graph is open
-   (see the questions for 012). Without the switch the chat tells the user that the change is not
+   workflows" of that computer (012). Without the switch the chat tells the user that the change is not
    allowed. The canvas and the file of a workflow are on the computer only in this version.
 8. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
    switch "Show tool steps", on at first.

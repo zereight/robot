@@ -3,38 +3,35 @@
 Status: draft. This document tells what a workflow file holds, and what the user sees when ROBot
 writes or reads one. The behaviour is in [specs/010-workflows.md](../specs/010-workflows.md),
 section "File", and in [specs/014-local-data.md](../specs/014-local-data.md), section "Review before
-an import". Owner decisions 7, 14, 15 and 16 of `docs/proposal-workflow-first.md` fix the
-points below.
+an import".
 
 The file is a **TLA module**. TLA means Temporal Logic of Actions (010). The check of a workflow
-reads the module (010, "Check"). The exact text form of the module is not decided (see "Open
-points"). So a tool cannot yet make a module for ROBot from this document alone.
+reads the module (010, "Check"). The exact text form of the module is open (see "Open points"). So a tool cannot yet make a module
+for ROBot from this document alone.
 
 The code of the app still reads and writes the earlier JSON format, version 1. The end of this
 document keeps the text of that format, under "Earlier format: JSON, version 1". Do not use it for
-new files. The code slice that changes the app to the module removes that part with the code.
+new files. The change of the code to the module removes that part with the code.
 
 ## What the file is
 
 - The file is a text file in UTF-8. A byte order mark at the start is allowed.
 - The file holds the module of at least one workflow, and at most 20 workflows. Whether one file
-  holds one workflow or several is not decided (see "Open points").
+  holds one workflow or several is open (see "Open points").
 - The file is at most 10 MB (10 485 760 bytes). ROBot refuses a larger file before it reads it.
 - The file is text that the user can read.
-- The file name, and the way to get a file out of the app, are not decided (see "Open points").
+- The file name, and the way to get a file out of the app, are open (see "Open points").
 
 ## What the file holds
 
-The module holds three kinds of content (decision 14). The file holds nothing that is not in
-this list, except the points that are not decided.
+The module holds three kinds of content. The file holds nothing that is not in this list, except
+the open points at the end of this document.
 
 | Content | Who writes it | Rule |
 | --- | --- | --- |
 | The graph | The app writes it from the workflow. The user can change it. | The nodes and the connections of the workflow (010). The graph follows the rules of the graph (see "When ROBot refuses a file"). |
 | The prompts | The app writes them. The user can change them. | The prompt of each text node, as a string. A prompt can hold `{{input}}` and `{{trigger}}`. These two words stay English (010, "Check"). |
-| The rules of the check | The app writes the standard rules. The user adds more. | The standard rules are: no deadlock, every node can run, and every approval node comes before its effect (decision 15, 010). A rule that the user adds is a rule about the states of the workflow. |
-
-Points that the owner has not decided are not in the list above. They are in "Open points".
+| The rules of the check | The app writes the standard rules. The user adds more. | The standard rules are: no deadlock, every node can run, and every approval node comes before its effect (010). A rule that the user adds is a rule about the states of the workflow. |
 
 ## What the file does not hold
 
@@ -53,11 +50,11 @@ The file holds none of these (010, "File").
 | Size of the file | 10 MB (10 485 760 bytes) |
 | Workflows in one file | 20 at most |
 | Nodes in one workflow | 30 at most |
-| Names | The names of the workflows in one file differ, ignoring case. The length limit of a name is not decided. |
+| Names | The names of the workflows in one file differ, ignoring case. The length limit of a name is open. |
 
 ## The rules of the check in the file
 
-- The app writes the standard rules. The user adds more (decision 15, 010).
+- The app writes the standard rules. The user adds more (010).
 - The user adds rules in the module. A rule that the user adds is run by the check on every change
   (010, "Check"). The check reports a state that breaks it, with the path to the state.
 
@@ -83,7 +80,7 @@ review screen with the mark "A secret was removed" (014).
 ## How the user changes the file
 
 - Where the user changes the module, and what the app does with the changes when it writes the
-  module again, are not decided (see "Open points"). The rules below hold in each case.
+  module again, are open (see "Open points"). The rules below hold in each case.
 - An import of a module that the user changed works as any import (see "How ROBot imports a
   file"). It makes a new workflow. It never changes a workflow that exists (010, "File").
 - A change that fails the check does not save (010, "Check"). The user sees the first problem,
@@ -95,7 +92,7 @@ review screen with the mark "A secret was removed" (014).
    or one workflow breaks a rule of the graph, ROBot refuses the whole file and makes no
    workflow.
 2. ROBot runs the check on each workflow of the file (010, "Check"). What it does with a workflow
-   that has a problem is not decided (see "Open points").
+   that has a problem is open (see "Open points").
 3. The user sees the review screen (014, "Review before an import"): each workflow with a tick box,
    its parts, and the parts that ROBot does not make. The user confirms.
 4. ROBot makes the workflows in the order of the file. It makes **new workflows only**. It never
@@ -125,13 +122,12 @@ The message names the workflow and the place of the fault.
 | A decision node has fewer than two options, or an option with no connection. | |
 | A workflow has more than 30 nodes. | |
 
-A loop of nodes is not decided (see "Open points").
+A loop of nodes is open (see "Open points").
 
 ## Open points
 
-The owner has not decided these. They are rows in
-[docs/spec-questions.md](spec-questions.md), under the headings "W1" and "W3". This document does
-not guess them.
+These points have no answer in this document. Each one is a row in
+[docs/spec-questions.md](spec-questions.md), under the heading "W1" or "W3".
 
 | Point | Rows |
 | --- | --- |
@@ -149,7 +145,7 @@ not guess them.
 ## Earlier format: JSON, version 1
 
 This part is only the earlier format of the code. It is not the file that ROBot makes after the
-code slice. That file is the TLA module (see [specs/010-workflows.md](../specs/010-workflows.md),
+code changes. That file is the TLA module (see [specs/010-workflows.md](../specs/010-workflows.md),
 section "File", and the first part of this document). Do not use this part for new files.
 
 Format name: **`robot-workflows`**. Format version: **1**.
