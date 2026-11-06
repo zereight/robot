@@ -753,3 +753,49 @@ describe("an order of a lead (spec 007)", () => {
     }
   })
 })
+
+describe("the lead accepts the result of an order (spec 030)", () => {
+  test("the result waits until the lead accepts it, and the lead accepts it with review_result", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    const order = (await s.received("D"))[0]
+    expect(order?.state).toBe("done")
+    expect(order?.verdict).toBeNull()
+    const step = await s.call("P", "review_result", { from: "D", accepted: true })
+    expect(step.state).toBe("done")
+    const judged = (await s.received("D"))[0]
+    expect(judged?.verdict).toBe("met")
+    expect(judged?.judgedAt).not.toBeNull()
+    // The result is judged once: a second review has nothing to judge.
+    const again = await s.call("P", "review_result", { from: "D", accepted: true })
+    expect(again.state).toBe("failed")
+  })
+
+  test("a lead that does not accept gives a reason, and the verdict is not met", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    const step = await s.call("P", "review_result", {
+      from: "D",
+      accepted: false,
+      reason: "The test is missing.",
+    })
+    expect(step.state).toBe("done")
+    const judged = (await s.received("D"))[0]
+    expect(judged?.verdict).toBe("not_met")
+    expect(judged?.verdictReason).toBe("The test is missing.")
+  })
+
+  test("only the lead who gave the order reviews it", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    // A is a colleague of D, and X is in no organization: neither gave the order.
+    for (const who of ["A", "X"]) {
+      const step = await s.call(who, "review_result", { from: "D", accepted: true })
+      expect(step.state).toBe("failed")
+    }
+    expect((await s.received("D"))[0]?.verdict).toBeNull()
+  })
+})

@@ -17,6 +17,7 @@ import {
   checkRequestAddress,
   classifyHostWriting,
   cleanFollowUpReason,
+  cleanReason,
   commandChangesControl,
   commandReads,
   commandTarget,
@@ -36,6 +37,7 @@ import {
   holdSensitive,
   hostOf,
   insideWorkspace,
+  isLeadOrder,
   isPlainField,
   isSecretName,
   isSecretValue,
@@ -555,6 +557,19 @@ const DEFS: Record<string, ToolDef> = {
     schema: object(
       { to: str("The name of the agent."), text: str("The message, with all that it needs.") },
       ["to", "text"],
+    ),
+  },
+  review_result: {
+    name: "review_result",
+    description:
+      "Judge the result of an order that you gave to a member of your organization. Give the name of the member. Set accepted to true when the result is what you asked for. Set accepted to false and give a reason when it is not; then send a new order for what to change. You can judge the latest result of that member once.",
+    schema: object(
+      {
+        from: str("The name of the member that did the work."),
+        accepted: { type: "boolean", description: "True when you accept the result." },
+        reason: str("Why you do not accept it, in one line. Leave it out when you accept."),
+      },
+      ["from", "accepted"],
     ),
   },
   save_memory: {
@@ -2538,6 +2553,52 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return { output: lines.join("\n") || "There are no other agents.", failed: false }
       }
 
+      /**
+       * The lead judges the latest finished result of an order that it gave (spec 030, "Lead and
+       * members as agent and sub-agents"). The verdict is the field of the task (spec 005). Only
+       * the sender of the order can judge it, and only once.
+       */
+      const reviewResult = (ctx: ToolContext, args: Record<string, unknown>): ToolOutcome => {
+        const name = text(args, "from").trim()
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        const member = db.get<{ id: string }>(
+          "SELECT id FROM agent WHERE server_id = ? AND name_key = ?",
+          server?.server_id ?? "",
+          name.toLocaleLowerCase(),
+        )
+        if (!member) return { output: "No agent has this name. Use list_agents.", failed: true }
+        const model = organization.model(server?.server_id ?? "")
+        const task = db.get<{ id: string }>(
+          `SELECT id FROM task
+           WHERE agent_id = ? AND source = 'agent' AND source_id = ? AND state = 'done'
+             AND verdict IS NULL AND origin IS NULL
+           ORDER BY created_at DESC LIMIT 1`,
+          member.id,
+          ctx.agentId,
+        )
+        if (!task || !isLeadOrder(model, ctx.agentId, member.id))
+          return { output: `${name} has no finished result of yours to judge.`, failed: true }
+        const accepted = args.accepted === true
+        const reason = accepted ? null : cleanReason(args.reason)
+        db.run(
+          "UPDATE task SET verdict = ?, verdict_reason = ?, judged_at = ? WHERE id = ?",
+          accepted ? "met" : "not_met",
+          reason,
+          Date.now(),
+          task.id,
+        )
+        bus.emit("tasks.changed", { serverId: server?.server_id ?? "" })
+        return {
+          output: accepted
+            ? `You accepted the result of ${name}.`
+            : `You did not accept the result of ${name}. Send a new order for what to change.`,
+          failed: false,
+        }
+      }
+
       const sendMessage = async (
         ctx: ToolContext,
         call: ToolCall,
@@ -2808,6 +2869,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return listAgents(ctx)
           case "send_message":
             return await sendMessage(ctx, call, args)
+          case "review_result":
+            return reviewResult(ctx, args)
           case "ask_user": {
             const question = text(args, "question")
             const choices = Array.isArray(args.choices)
