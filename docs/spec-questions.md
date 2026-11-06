@@ -700,3 +700,5 @@ implementer made to continue. A spec author answers by changing the spec.
 | 017 | Do the user's own skills and the slash call stay? | Open. Needs the owner. Proposed: they stay as texts that a node prompt can include. |
 | 010, 014 | What does the TLA module hold: the graph, the prompts, the rules? | Open. Needs the owner. Proposed: graph, prompts as strings, and the rules of the check. |
 | 010 | Which rules does the user write in TLA, and which does the app write? | Open. Needs the owner. Proposed: the app writes no deadlock, every node can run, every approval before its effect. |
+| 010, 013 | A decision node uses a decision model (013). When no option reaches the threshold, or the model does not answer, what does the run do? | Open. Needs the owner. Proposed: it asks the user; a scheduled run with no user waits as a task that waits for the user (005). |
+| 010, 013 | The owner wrote "jev omini". Does "omini" mean Clef (013), or Gemini as a decision model? | Open. Needs the owner. The proposal covers the decision models of 013 only. |

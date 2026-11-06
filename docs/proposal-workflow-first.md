@@ -15,6 +15,7 @@ spec-writer slice changes the specs. This note changes no behaviour.
 | 6 | Each workflow has one chat. |
 | 7 | The workflow file stays editable, and it is in TLA form. |
 | 8 | The check verifies the TLA. |
+| 9 | A node can use a decision model (013), for example Jev. |
 
 ## The model
 
@@ -27,7 +28,12 @@ node      =  prompt  +  provider  +  model  +  reasoning level
   character and its limits. It is the Soul of the old model. The user edits the text. There is no
   "change the agent" action. The text can change by a self-improvement proposal that the user
   accepts.
-- **Node**: has no agent. It runs its prompt on its model, after the responsible document.
+- **Node**: has no agent. It runs its prompt on its model, after the responsible document. A node
+  is a **text node** (a model that writes text) or a **decision node** (see below).
+- **Decision node**: asks a decision model (013, "Decision model") one question with a fixed list
+  of options. The model gives a probability for each option. The node takes the option with the
+  highest probability when it is at least the threshold of the node. Each option is one outgoing
+  connection. It uses no reasoning level and writes no text.
 - **Chat**: the user talks to the workflow. The responsible document answers. The talk edits the
   workflow. A change keeps the earlier graph as a version.
 - **Memory**: one scope for each workflow. The workflow learns from its runs.
@@ -77,6 +83,20 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 2. At run time the app sends the responsible document and the node prompt to the model of the
    node. The node gets the input of the step before it.
 3. Open question 2 says what tools a node can use.
+
+### Decision node
+
+1. The user writes the question and 2 or more options, and sets a threshold (the default is 0.9).
+2. The model is one of the choices of 013: Jev, Clef or a local server. The workflow uses the
+   choice that the user saved in settings.
+3. At run time the node sends the question, the options and the input of the step. The run goes
+   on along the connection of the option that wins.
+4. The run view shows the probability of each option.
+5. When no option reaches the threshold, when the model gives no answer in 3 seconds, or when the
+   choice is off or has no key, the node asks the user to pick the option, with the approval card
+   (the same rule as 007, "Ask when unsure"). Open question 8 says if this is right.
+6. The words of the input go to the service of the choice. The settings text of 013 says so.
+7. The check (below) sees a decision node as a branch with one state for each option.
 
 ### Check
 
@@ -133,3 +153,8 @@ These are also in `docs/spec-questions.md`. Do not guess them in a spec.
    The user adds more in the module.
 7. **Existing data.** The rebuild plan erases the database (decision 1). Does an old agent become a
    workflow? Proposed: no migration, as decided.
+8. **Decision node.** When no option wins, does the run ask the user (proposed), take a default
+   option that the user names, or fail? A workflow that runs by a schedule has no user at hand.
+9. **Name of the model.** The owner wrote "jev omini". The repository holds Jev and Clef (013) and
+   a "Gemini CLI" preset (006). Is "omini" Clef, or Gemini as a decision model? The proposal covers
+   the decision models of 013 only.
