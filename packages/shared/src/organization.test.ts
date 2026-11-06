@@ -3,6 +3,7 @@ import {
   allowedSends,
   checkHandOff,
   firstOnPath,
+  HAND_OFF_HINT,
   type HandOffAgent,
   type HandOffModel,
   type HandOffOrg,
@@ -11,6 +12,7 @@ import {
   handOffRange,
   handOffRangeNow,
   handOffRangeUnder,
+  handOffRefusalOutput,
   handOffRefusalText,
   isHandOffRule,
   MAIN_AGENT_HAND_OFF_RULE,
@@ -304,6 +306,15 @@ describe("the refusal and the first agent on the path", () => {
     expect(r?.next).toBeNull()
     expect(handOffRefusalText("A", null)).toBe(
       "A is not on your path, and no agent can pass it on. Tell the user.",
+    )
+  })
+
+  test("the output of a refused send holds the reason and the hint (spec 030, 'The hint')", () => {
+    expect(handOffRefusalOutput("A", "M")).toBe(
+      "A is not on your path. Send it to M.\nThe user can change this in Settings, Hand-off rules, or put both agents in one organization.",
+    )
+    expect(handOffRefusalOutput("A", null)).toBe(
+      `${handOffRefusalText("A", null)}\n${HAND_OFF_HINT}`,
     )
   })
 

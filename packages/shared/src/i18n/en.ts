@@ -3052,6 +3052,7 @@ export const en = {
   "error.hand_off_path": "{detail} is not on your path. Send it to {next}.",
   "error.hand_off_none":
     "{detail} is not on your path, and no agent can pass it on. Tell the user.",
+  "error.hand_off.open": "Open Hand-off rules",
   "orgchart.edit.retro": "Look back…",
   "retro.title": "Look back at {organization}",
   "retro.writing": "Looking back at the work of the last 7 days…",
