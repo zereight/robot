@@ -20,22 +20,31 @@ body,
   /* The height comes from the content. The page tells the window how big it is. */
   /* The width comes from the window, which the main process fits to the notch (spec 015). */
   width: 100%;
-  height: auto;
+  height: 100%;
   background: #000;
   color: #f2f2f2;
+  /* The window is the shape. It changes its size in steps, and this keeps both bottom corners round. */
   border-radius: 0 0 18px 18px;
-  padding: 0 14px;
+  overflow: hidden;
   animation: appear var(--motion-slow) var(--ease-out);
 }
 
-.island[data-view="detail"],
-.island[data-view="attention"],
-.island[data-view="result"] {
+/* The content keeps its own size while the window moves to it, so the text does not reflow. */
+.island-body {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 14px;
+}
+
+.island[data-view="detail"] .island-body,
+.island[data-view="attention"] .island-body,
+.island[data-view="result"] .island-body {
   width: 460px;
 }
 
 /* The attention card has no bar. It starts below the camera notch. */
-.island[data-view="attention"] {
+.island[data-view="attention"] .island-body {
   padding-top: 38px;
 }
 

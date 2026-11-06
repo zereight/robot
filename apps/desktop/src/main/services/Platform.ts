@@ -168,7 +168,7 @@ export interface PlatformService {
   /** The width choice of the island bar (spec 015). Other systems ignore it. */
   setIslandWidth(width: IslandWidth): void
   /** The island window takes the size of its content, in px. It stays at the top centre. */
-  fitIsland(size: { width: number; height: number }): void
+  fitIsland(size: { width: number; height: number; animate?: boolean | undefined }): void
   /** The browser page of an agent. The same agent always gets the same page object. */
   browser(agentId: string): BrowserPage
   /**
