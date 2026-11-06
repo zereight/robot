@@ -370,7 +370,13 @@ describe("claude run", () => {
       "sonnet",
     ])
     expect(args).not.toContain("--effort")
-    expect(args).toContain("AskUserQuestion")
+  })
+
+  test("the workflow feature of the program is off, so a workflow is a ROBot workflow (spec 010)", () => {
+    const args = claudeArgs(run())
+    const denied = (args[args.indexOf("--disallowedTools") + 1] ?? "").split(",")
+    expect(denied).toContain("Workflow")
+    expect(denied).toContain("AskUserQuestion")
   })
 
   test("effort and instructions are passed; a text-only turn has no tools", () => {

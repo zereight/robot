@@ -54,6 +54,7 @@ import {
   type PlaceEnv,
   parseOrigin,
   parseSecretAuth,
+  planMakeWorkflow,
   REPEATED_READ_TEXT,
   type ReadGuard,
   type RefusalReason,
@@ -83,6 +84,7 @@ import {
   sendsData,
   skillNameKey,
   skillPickSource,
+  starterWorkflowName,
   type TaskSource,
   type ToolAsk,
   type TurnMark,
@@ -121,6 +123,7 @@ import { SavedSecrets } from "./SavedSecrets.ts"
 import { Search } from "./Search.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
+import { insertWorkflow } from "./workflowInsert.ts"
 
 export interface ToolContext {
   readonly agentId: string
@@ -736,6 +739,34 @@ const MANAGE_DEFS: readonly ToolDef[] = [
         effort: str("An effort level that the model takes. Default: the middle level."),
       },
       ["name", "model"],
+    ),
+  },
+  {
+    name: "make_workflow",
+    description:
+      'Ask the user to make a new ROBot workflow: a graph of steps that runs on a trigger. Use it when the user asks for a workflow; do not use any other workflow feature. The user reads the whole change and allows or denies it; nothing is made before that. The workflow has the trigger "manual" and no owner, and the steps are joined in a line in the order you give. The user adds conditions, places and triggers on the canvas. When the user denies it, do not ask again for the same workflow.',
+    schema: object(
+      {
+        name: str("The name, 1 to 60 characters. A name in use gets a number."),
+        steps: {
+          type: "array",
+          description:
+            "The steps in order, 30 at most. An agent step runs an agent with a prompt; use {{input}} for the result of the step before. An approval step waits for the user. A notify step shows a system notification.",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["agent", "approval", "notify"] },
+              name: str("The name of the step. Default: the agent name or the kind."),
+              agent: str("For an agent step: the name of an agent that is not archived."),
+              prompt: str("For an agent step: the prompt."),
+              message: str("For an approval step: what the user is asked."),
+              title: str("For a notify step: the title of the notification."),
+            },
+            required: ["kind"],
+          },
+        },
+      },
+      ["name"],
     ),
   },
 ]
@@ -2181,6 +2212,59 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       /**
+       * "Make a workflow" (spec 037, 010). A call that fails a check makes no card. Otherwise the
+       * user reads the whole workflow on a card and allows or denies it, at every level but "Read
+       * only", which refuses it.
+       */
+      const makeWorkflowTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        if (!isMainAgent(ctx.agentId)) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const caller = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const serverId = caller.server_id
+        const plan = planMakeWorkflow(
+          args,
+          db.all<{ id: string; name: string }>(
+            "SELECT id, name FROM agent WHERE server_id = ? AND archived_at IS NULL ORDER BY name_key",
+            serverId,
+          ),
+          db
+            .all<{ name: string }>("SELECT name FROM workflow WHERE server_id = ?", serverId)
+            .map((r) => r.name),
+        )
+        if (plan.kind === "refused") return { output: plan.reason, failed: true }
+        const made = await guarded(ctx, call.id, {
+          step: MANAGE_STEP,
+          target: `Make workflow: ${plan.create.name}`,
+          card: plan.detail,
+          work: async () => {
+            const taken = db
+              .all<{ name: string }>("SELECT name FROM workflow WHERE server_id = ?", serverId)
+              .map((r) => r.name)
+            const name = starterWorkflowName(plan.create.name, taken)
+            insertWorkflow(db, bus, {
+              serverId,
+              name,
+              trigger: { kind: "manual" },
+              steps: plan.create.steps,
+              edges: plan.create.edges,
+            })
+            return name
+          },
+        })
+        return {
+          output: `Made the workflow "${made}". It has the trigger "manual". The user can set a trigger, conditions and places on the canvas of the Workflows page.`,
+          failed: false,
+        }
+      }
+
+      /**
        * A read of a file or a page that gives the same result as the two reads before it, in the
        * same turn, is refused with a short text (spec 005, "Repeated reads").
        */
@@ -2586,6 +2670,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await readAgentTool(ctx, call, args)
           case "make_agent":
             return await makeAgentTool(ctx, call, args)
+          case "make_workflow":
+            return await makeWorkflowTool(ctx, call, args)
           case "read_article":
             return await readTool(ctx, call, args)
           case "write_article":
