@@ -21,6 +21,7 @@ import {
   SIGN_IN_ID,
   UiStatePatch,
   type Workflow,
+  WorkflowChatSend,
   WorkflowCreate,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
@@ -29,6 +30,7 @@ import { ActionLog } from "./services/ActionLog.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
+import { Chat } from "./services/Chat.ts"
 import { Connections } from "./services/Connections.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
@@ -611,6 +613,36 @@ export const handlers: Handlers = {
   "workflows.versions.restore": (input) =>
     decode(Schema.Struct({ id: Schema.String, versionId: Schema.String }))(input).pipe(
       Effect.flatMap(({ id, versionId }) => Workflows.use((w) => w.restoreVersion(id, versionId))),
+    ),
+  "chat.history": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.history(workflowId))),
+    ),
+  "chat.send": (input) =>
+    decode(WorkflowChatSend)(input).pipe(Effect.flatMap((v) => Chat.use((c) => c.send(v)))),
+  "chat.stop": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.stop(workflowId))),
+      done,
+    ),
+  "chat.delete": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Chat.use((c) => c.deleteWaiting(id)))),
+  "chat.sendNow": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Chat.use((c) => c.sendNow(id))),
+      done,
+    ),
+  "chat.retry": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.retry(workflowId))),
+      done,
+    ),
+  "chat.resume": (input) =>
+    decode(
+      Schema.Struct({ workflowId: Schema.String, mode: Schema.Literals(["continue", "again"]) }),
+    )(input).pipe(
+      Effect.flatMap(({ workflowId, mode }) => Chat.use((c) => c.resume(workflowId, mode))),
+      done,
     ),
   "workflows.delete": (input) =>
     decode(ById)(input).pipe(

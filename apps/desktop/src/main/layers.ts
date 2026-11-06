@@ -3,6 +3,7 @@ import { Layer } from "effect"
 import type { OpenSocket } from "./link/nearby.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
+import { Chat } from "./services/Chat.ts"
 import { Connections, type ConnectionsOptions } from "./services/Connections.ts"
 import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
@@ -12,6 +13,7 @@ import { Host } from "./services/Host.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Rules } from "./services/Rules.ts"
+import { RunFacts } from "./services/RunFacts.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import type { Secrets } from "./services/Secrets.ts"
@@ -75,7 +77,9 @@ export const appLayer = (options: AppLayerOptions) => {
   // The connections use the rules, to remove the rules of a connection that is removed (spec 018).
   const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(rules))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(connections))
-  return BrowserProfiles.layer.pipe(Layer.provideMerge(workflows))
+  const runFacts = RunFacts.layer.pipe(Layer.provideMerge(workflows))
+  const chat = Chat.layer.pipe(Layer.provideMerge(runFacts))
+  return BrowserProfiles.layer.pipe(Layer.provideMerge(chat))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>

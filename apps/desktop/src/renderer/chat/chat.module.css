@@ -1,0 +1,635 @@
+/* The chat of a workflow, in its own column beside the canvas (spec 001, 003). */
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+  overflow: hidden;
+}
+
+.loading {
+  margin: var(--spacing-lg);
+  color: var(--c-text-muted);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-md) 0;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-xl) var(--spacing-lg);
+  text-align: center;
+  color: var(--c-text-muted);
+}
+
+.empty strong {
+  color: var(--c-text);
+  font-size: var(--text-m);
+}
+
+.day {
+  margin: var(--spacing-md) var(--spacing-lg) var(--spacing-xs);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+}
+
+.row {
+  position: relative;
+  padding: 2px var(--spacing-lg);
+  min-width: 0;
+}
+
+.row:hover {
+  background: var(--c-hover);
+}
+
+.row[data-flash="true"] {
+  background: var(--c-selected);
+}
+
+.rowHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.sender {
+  font-weight: 600;
+}
+
+.time {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+}
+
+.plain {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-s);
+  line-height: 1.55;
+}
+
+.quote {
+  display: block;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 2px var(--spacing-sm);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: var(--c-selected);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  text-align: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note {
+  margin: 2px 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.linkButton {
+  border: 0;
+  background: transparent;
+  color: var(--c-accent-ink);
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.thinking {
+  margin: 2px 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.thinking summary {
+  cursor: pointer;
+}
+
+.thinking p {
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+
+.tool {
+  margin: 4px 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  font-size: var(--text-xs);
+}
+
+.tool summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+}
+
+.toolName {
+  font-family: var(--font-mono);
+}
+
+.toolState {
+  margin-inline-start: auto;
+  color: var(--c-text-muted);
+}
+
+.tool[data-state="failed"] .toolState {
+  color: var(--c-danger);
+}
+
+.toolBody {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-top: 1px solid var(--c-border);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.files,
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin: 2px 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px var(--spacing-sm);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  font-size: var(--text-xs);
+}
+
+.chipRemove {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-muted);
+  padding: 0;
+}
+
+.thumb {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: var(--radius-s);
+}
+
+.errorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-xs) 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--c-danger);
+  border-radius: var(--radius-m);
+  color: var(--c-danger);
+  font-size: var(--text-s);
+}
+
+.actions {
+  position: absolute;
+  top: 0;
+  inset-inline-end: var(--spacing-md);
+  display: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+.row:hover .actions,
+.row:focus-within .actions {
+  display: flex;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--c-text-muted);
+}
+
+.action:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.working {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.elapsed {
+  font-size: var(--text-xs);
+}
+
+.jumpLatest {
+  position: absolute;
+  inset-inline-end: var(--spacing-lg);
+  bottom: 96px;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-l);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  font-size: var(--text-xs);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin: 0 var(--spacing-md) var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  font-size: var(--text-s);
+}
+
+.findBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-elevated);
+}
+
+.findInput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--text-s);
+}
+
+.findCount {
+  min-width: 56px;
+  text-align: end;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+}
+
+::highlight(chat-find) {
+  background-color: var(--c-selected);
+  color: var(--c-text);
+}
+
+::highlight(chat-find-current) {
+  background-color: var(--c-accent);
+  color: var(--c-accent-text);
+}
+
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+  border-top: 1px solid var(--c-border);
+}
+
+.dragging {
+  background: var(--c-selected);
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--text-s);
+  line-height: 1.5;
+  padding: var(--spacing-xs);
+}
+
+.send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--c-accent);
+  color: var(--c-accent-text);
+}
+
+.send:disabled {
+  background: var(--c-border);
+}
+
+.composerError {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+
+.blocked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.replying {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-s);
+  background: var(--c-selected);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.replyingText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queued {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-m);
+  font-size: var(--text-xs);
+}
+
+.queuedText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker {
+  margin: 0;
+  padding: var(--spacing-xs);
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+.pickerItem {
+  display: flex;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--text-s);
+  text-align: start;
+}
+
+.pickerActive,
+.pickerItem:hover {
+  background: var(--c-hover);
+}
+
+.pickerName {
+  font-weight: 600;
+}
+
+.pickerHint,
+.pickerNone {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.pickerNone {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* Markdown */
+/* A reply is prose the user reads, so it takes the body step. The measure is capped on the
+   paragraph, not on the whole block: a table and a code line need the room they ask for. */
+.markdown {
+  font-size: var(--text-s);
+  line-height: 1.55;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 6px;
+  max-width: 68ch;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+
+.markdown blockquote {
+  margin: 4px 0;
+  padding: 2px 10px;
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--c-border) 40%, transparent);
+  color: var(--c-text-muted);
+}
+
+.markdown a {
+  color: var(--c-accent-ink);
+}
+
+.heading {
+  margin: 10px 0 4px;
+  font-size: var(--text-l);
+}
+
+.inlineCode {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 1px 4px;
+  border-radius: var(--radius-s);
+  background: var(--c-selected);
+}
+
+.codeBlock {
+  margin: 6px 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.codeTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px 2px 10px;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.codeCopy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  padding: 3px 6px;
+  border-radius: var(--radius-s);
+}
+
+.codeCopy:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding: 10px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-s);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.tableWrap table {
+  border-collapse: collapse;
+  font-size: var(--text-s);
+}
+
+.tableWrap th,
+.tableWrap td {
+  border: 1px solid var(--c-border);
+  padding: 4px 8px;
+}
+
+.tableWrap th {
+  background: var(--c-sidebar);
+  font-weight: 600;
+}
+
+.image {
+  max-width: min(100%, 480px);
+  border-radius: var(--radius-m);
+  display: block;
+  margin: 6px 0;
+}
+
+/* A picture from the web that the user did not load yet (spec 003, "Pictures from the web"). */
+.pictureBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  max-width: min(100%, 480px);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+}
+
+.pictureAlt {
+  font-size: var(--text-s);
+  color: var(--c-text);
+  overflow-wrap: anywhere;
+}
+
+.pictureAddress {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.pictureLoad {
+  margin-top: 2px;
+}
