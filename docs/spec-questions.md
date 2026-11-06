@@ -728,3 +728,86 @@ implementer made to continue. A spec author answers by changing the spec.
 | 010 | The earlier 010 let one file hold up to 20 workflows. Decisions 7 and 14 name one TLA module. Does one file hold one workflow or several? | Open. 010 keeps the limits of the earlier spec (see "File"). |
 | 010 | The earlier 010 gave a node with no provider the preferred provider, then the default one. The preferred provider came from the nearest agent step, and that agent is gone. Which provider is preferred, and which is the default? | Open. 010 names the rule, not the providers. |
 | 010 | The earlier 010 skipped a provider that cannot answer a prompt with no tools and no chat (Muse Code). Text nodes can use tools. Does the skip still apply to text nodes? | Open. 010 names no skip rule. |
+
+## W2: the agent is no longer an object (open points for 002, 003, 005, 007, 008, 009, 017, 037)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 002 | Where does the user open the responsible document, and where is the switch "Self-improvement" of a workflow? | Open. 002 names no place. |
+| 002 | Which text wins when the responsible document and a node prompt say different things? The Soul of the earlier text came last and won. | Open. 002 gives the order (document first, node prompt after, 010) and says that the rules of the app win. |
+| 002 | The earlier 002 had a handbook (one text for all agents of a server) and role instructions (one text for each role line), with the Roles page (013). Do they stay, as a text that every responsible document reads? | Open. 002 does not keep them. 013 still names roles. |
+| 002, 010 | Does the workflow file (the TLA module) hold the responsible document? | Open. 002 says it is not decided. |
+| 002 | The earlier "Changes from the chat" let the agent change its own Soul at the word of the user, with Undo. 010 says the responsible document changes only by a proposal that the user accepts. Does a request of the user in the chat apply at once, with Undo? | No. A request in the chat becomes a proposal, and the chat shows its card. |
+| 002, 013 | The earlier settings tool let the agent read and change the language, theme, text size and other app settings. Does the chat keep this? | No. 002 does not keep it. |
+| 002, 010 | Is the responsible document read-only while a run works? 010 says the workflow is read-only. | Yes. A proposal for it cannot be accepted until the run ends. |
+| 002 | How big may one graph change be? May a graph change set the provider, the model or the reasoning level of a node? | No size limit. A graph change may set the model of a node only to a value that the account of the node offers (006). It never sets the permission level. |
+| 000, 002, 017 | 000 names skills among the things that a workflow improves. 010 lists the responsible document, a node prompt, the graph and the memory. Do skill proposals and "Make a skill" stay? | No. 002 and 017 do not keep them. 000 needs a change. |
+| 002 | The starters (Assistant, Briefer, Researcher, Reviewer, Organizer), the face and the avatars, the role line and the Roles badge, the sections, the main agent, archive and duplicate, "Recent work", and the agent files are removed with the agent. Does the workflow get a replacement for any of them? `docs/agent-file-format.md` still describes the agent file. | No. 002 has none. The workflow file is in 010 and in the slice W3. |
+| 002, 003, 010, 011 | The effort levels, the backup model (006) and the avatars on the phone (011) belonged to agents. Which of them move to a node or to the chat? | Open. 002 names none of them. |
+| 002, 003 | What does feedback do in all cases: reach a node that works, end a wait, or make a node run again? | Feedback goes with the input of the text nodes that start after it. No node that ended runs again. |
+| 002, 003, 010 | 010 says the chat does not show the output of a node. The owner requires that the responsible document tells the intermediate results. | 002, 003 and 007 let the chat give the result of a node that has ended. 010 needs a change of that line. |
+| 002 | The glossary (`docs/glossary.md`) still defines Agent, Main agent, Role line, Role badge, Soul, Soul history, Workspace, Handbook, Read the handbook and Starter. The Korean word for "responsible document" is a proposal. | Open. The glossary is not in the slice W2. |
+| 009 | Decision 12 ends spec 009. The slice deletes `specs/009-routines.md`. Its rules (the calendar, missed runs, run limits, pause after repeated failures, the check of overlaps and of runs at once, "works only while on") are in the history of the repository, at commit 8e562285. Which of them move to the schedule trigger of 010? | Open (also a W1 row for 010 and 009). No spec holds these rules now. |
+| 005 | Is a reply of the responsible document in the chat a task? Decision 11 says a task is one run of a node. | No. 005 calls it a turn, not a task. The silent limit and the quiet line cover every turn. Queue, slots and the Tasks page cover tasks only. |
+| 005, 000 | 000 lists six states and no "Blocked". Does Blocked stay as a state? | Blocked stays in 005 as a seventh state. |
+| 005, 010 | What are the states of a run? 010 shows run states but does not name them. | 005 gives no names. It says only that a run follows its tasks. |
+| 005 | Does one workflow run one task at a time, or can parallel branches run at the same time? The old rule was one agent, one task. | One workflow runs one task at a time. |
+| 005 | The queue limit is now 20 queued tasks per workflow, not per agent. Is that the right number and scope? | Kept at 20 per workflow. |
+| 005 | What does Retry do to a run that a failed node stopped: a new task in the same run, or a new run from this node? | Retry makes a new task of the same node with the same input. The effect on the run is not written. |
+| 005 | Does a chat turn or a memory check use a slot? | Not written. Slots count tasks only. |
+| 005, 013 | The setting "Agents working at once" still says agents. What is its new name? | Unchanged. It is a 013 name. |
+| 005, 006 | The usage page groups by agent and day. It also showed the median "First reply" time of chat tasks. What does it group by now? | Not written. |
+| 005, 023, 028 | An outside program (023) and a Teams message (028) started a task of an agent. Can they start a run of a workflow? How do they count in the queue limit? | The sources are removed. 005 is silent. |
+| 005 | "Wait until" (follow-up) was a call in a direct chat that made a new turn later. Does it stay? | Removed from 005. |
+| 005, 010 | What happens when a schedule fires while a run of the workflow still goes? 009 used to skip it. | Not written. It stays under the 010 trigger rules. |
+| 005, 017 | "Make a skill" from a done task (017) is kept in the actions of the Tasks page. Does 017 keep it, given that skills are no proposal kind? | The action stays in 005. 017 decides. |
+| 005, 003 | After a restart, a chat turn that waits for an approval: does it still wait, or fail? The old rule said "still waits" only for a task outside a workflow run. | 005 covers tasks only. 003 decides. |
+| 008 | Where does the memory page open from in the workflow view? | Not decided. |
+| 008, 003 | Can the responsible document use the memory tool in the chat to save or suggest a fact? Decision 17 names text nodes only. | Text nodes only. The chat is not decided. |
+| 008 | Does a chat turn add to the memory-check count? Does the check read chat messages? | No to both. The count is done tasks of text nodes, and the check reads only their input and result. |
+| 008 | Which provider, model and reasoning level does the memory check use? The workflow has no model. | Not decided. |
+| 008, 005 | Where does the user see a memory check and its usage? A check is not a task. | Not decided. It shows nowhere. |
+| 008, 007 | The tools "search chats" and "read chat" in 007 named earlier chats. With one chat per workflow, which of them stay? | 008 keeps the rule as "earlier messages of the chat of the workflow". 007 decides. |
+| 008, 017 | The old "Make a skill" menu item on a memory item made a draft skill proposal. Does it stay? | Removed from 008. |
+| 003 | May the one chat of a workflow hold threads and forks (also a W1 row for 000, 003)? | Open. 003 keeps the earlier text for threads and forks, with a line that says the owner has not decided. |
+| 003, 005 | Is a turn of the chat a task? Task is one run of a node (decision 11). Does a chat turn use a slot, show on the Tasks page, or have a source and a depth? | Open. 003 says a turn is not a node and writes no task rule for it. A thread waits behind a turn of another thread with the line "Waits for another thread". Compact holds the chat, not a slot. |
+| 003, 002, 017 | Which provider, model and reasoning level answer in the chat? The responsible document is a text, not a model. | Open. 003 says "the model that answers in the chat" and sets no choice. |
+| 003, 013 | The setting "While an agent works, new messages" and the setting "Compact long chats automatically" are in 013. Does 013 rename the first? | 003 keeps both names and notes that 013 says "agent". 013 needs the new name. |
+| 003 | Does a workflow have a face or a mark in a message row, and where does the unread count show (the workflow card, a menu)? Same as the W1 rows for 000 and 001. | Open. A row has the name of the sender and the time. The count shows in the chat only. The earlier "Mark as unread" in the menu of a place is not kept. |
+| 003 | Does a result in an answer hide text that looks like a secret (014)? | Yes, it shows `[redacted]`, as the earlier brief of a handover did. |
+| 003 | Does feedback go to a decision node? The words of the input of a decision node go to the service of 013. | No. Feedback goes with the input of text nodes only. |
+| 003 | How does the user name the node or the run in feedback, and may the user undo the line "Feedback added to the run"? | The user names the node in the words or replies to its result. With two runs, the responsible document asks which run. No Undo on the line. |
+| 003 | May feedback end the wait of a decision node or an approval, or change a pick? | No. The card still waits for its answer. |
+| 003 | Does feedback sync and does an export hold it? | It is a message of the chat, so it syncs (019) and an export holds it (014). It is not in the workflow file. |
+| 003 | Does feedback work for a run that a trigger started, with no user at the screen? | Yes, while the user writes in the chat. The run needs no user otherwise. |
+| 003 | May a text node ask the user a question card (007, 005)? 010 names approval cards and the pick of a decision node only. | 003 keeps the rule: a message is the answer to a waiting question card, and it is not feedback. |
+| 003, 023, 028 | Where does work from an outside program or from Teams go? 023 and 028 still name agents. | The main thread of the chat of a workflow. Routines, workflows and other agents no longer send work to a chat. |
+| 003, 026 | Does the saving "Compact at finished steps" (026) still apply to the model that answers in the chat? | Yes, as the earlier text said. 026 still names agents. |
+| 003, 011, 012 | The phone and linked computers show the main thread only and use "Needs you". Do they keep that? | Unchanged. 003 keeps the words of the earlier text. |
+| 003 | Handover to another agent, and the mention of another agent with `@`, end because the agent is not an object. Does the user need a way to carry a chat to another workflow? | No. 003 has no handover and no mention. |
+| 037 | Which callers have the manage tools? The earlier text gave them to the main agent and to outside programs. | The responsible document in a chat turn, and an outside program with the access "Read, send work and manage". |
+| 037 | Does "Read a workflow" give the text of the responsible document and the prompts to an outside program? The earlier "Read an agent" gave the Soul. | Yes. It gives no memory, no run result and no chat. |
+| 037 | Which fields can "Make a workflow" set? Can it make a decision node or set the responsible document text? | Text nodes only, with a name, prompt, provider, model and reasoning level. The responsible document has the default text. |
+| 037 | Does a manage tool start a run of a workflow? The earlier text had "Run a routine now" as a request. | No. 037 lists it as out of scope. |
+| 037 | May an outside program change a workflow that exists? | No, as before. Only the chat of 010 "Assistant" does. |
+| 037, 012 | The switch of a linked device is "Can create and change agents" (012). What is its name now? | 037 says "when the user lets it change workflows (012)". 012 needs the new name. |
+| 037, 009, 010 | The earlier tools "Make, change, resume, run and pause a routine" end with 009. Do the tools for a trigger return when the rules of the trigger are decided? | No tool for a trigger now. |
+| 007 | May two workflows use one folder, and do the rules of 025 (shared folders) apply to workflows? | Open. 007 says it is not decided. |
+| 007 | Decision 17 names shell, files, browser and memory. Which other tools may a text node use: computer use, connections (018), saved secrets (020), test devices (032 to 034), the question card, and "wait until"? | Open. 007 keeps the rules for computer use, connections, secrets, test devices and the question card, and lists them as "not decided". The section "Look again later" is removed, because a follow-up (005) was a later turn of an agent. |
+| 007 | Decision 17 does not name the fetch of a web page. Is it part of the browser? | Fetch stays with the browser tools of a text node. |
+| 007 | Does a text node use "search chats" and "read chat"? Does the search cover threads of the chat? | Only the responsible document in the chat uses them. Text nodes do not. Threads are open (see the 003 row). |
+| 007 | Does the permission level apply to the tools of the chat? Reading a run and adding feedback are allowed at every level. Starting a run is refused at "Read only", as before. | As written in 007. |
+| 007 | What are the words of the user for a text node: the text typed at a manual start, or the live feedback? | Neither. A text node has no words of the user, so a checked step always asks. |
+| 007 | Is there a size limit for a node result that the chat reads? | Open. 007 names none. |
+| 007 | Do rules (Allow and Deny) belong to a workflow, and does a rule "for all workflows" stay? | Rules move from the agent to the workflow, with "all workflows" kept. |
+| 007 | Does the switch for computer use, and the browser data (cookies, logins), belong to the workflow? | Yes, for each workflow. |
+| 007 | The guarded steps named a change of the agent's own settings and of the app settings from the chat (old 002 "Changes from the chat"). | The guarded step is a change of the workflow by the chat (graph, node, prompt, responsible document). The app-settings change is not named. |
+| 007 | Outside content or a sensitive read in one task: does it pass on to a node that receives its result as input? | Yes. The mark passes along the connection, and a task has no "Clear". |
+| 007 | Where does the approval card of a task show: in the run view, in the chat, or both? | Run view. The chat can tell the user what waits. |
+| 007, 003 | Does a thread or a fork of the chat keep the outside-content mark? | Open. 007 says it is not decided. |
+| 017 | Which fields (name, description, instructions) do the responsible document and a node prompt use? Are they listed in Skills? | Open. 017 says only that they have the form of a skill. |
+| 017 | Does a text node load a skill by itself? | Open. 017 says "not decided". |
+| 017, 010 | How does a node prompt include a skill, and does the slash call work inside a prompt? | Open (also in the 010 rows). |
+| 017 | "Make a skill" and skill proposals are not kept (self-improvement proposes only the document, a node prompt, the graph and memory). Do they return? | Not kept. |
+| 017, 003 | Which model writes the draft of "Teach a task"? | Open. 017 says "the model of the chat". |
+| 017, 010 | Does a workflow file hold the skills that a prompt includes? | Open. The file holds prompts as strings only. |

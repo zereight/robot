@@ -9,13 +9,12 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | --- | --- | --- |
 | 000 | [Product](000-product.md) | Draft |
 | 001 | [Window layout: server rail, workflow list, workflow view with its chat, activity panel](001-window-layout.md) | Draft |
-| 002 | [Agents: create, starters, face, name, role, Soul, self-improvement, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
-| 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context, mentions](003-direct-chat.md) | Draft |
-| 005 | [Tasks: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
+| 002 | [Responsible document: the text that answers for a workflow, its history, progress and feedback in the chat, and self-improvement](002-agents.md) | Draft |
+| 003 | [Workflow chat: send, stream, stop, attach, reply, progress of a run, results and feedback, threads, context](003-direct-chat.md) | Draft |
+| 005 | [Tasks: one run of a node, queue, wait, finish, fail, retry, reasons and results](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |
-| 007 | [Agent workspace and tools: files, shell, browser, approvals, permission rules, action log, other agents, computer use](007-workspace-and-tools.md) | Draft |
-| 008 | [Memory: what an agent keeps between chats, how the user edits it, and memory proposals](008-memory.md) | Draft |
-| 009 | [Routines: scheduled jobs, calendar, missed runs, limits and pause on repeated failure, and the check of overlaps, loops and runs at once](009-routines.md) | Draft |
+| 007 | [Workflow folder and tools: files, shell, browser, approvals, permission rules, action log, computer use, and the tools of the chat for a run](007-workspace-and-tools.md) | Draft |
+| 008 | [Memory: what a workflow keeps between runs, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
 | 012 | [Device link: pair phones and computers, messages, identity, offline behaviour](012-device-link.md) | Draft |
@@ -23,7 +22,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
-| 017 | [Skills: saved instructions that the user calls with a slash, or that the agent loads or proposes](017-skills.md) | Draft |
+| 017 | [Skills: saved instructions that the user calls with a slash, and that a prompt can include](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
@@ -37,7 +36,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
-| 037 | [Manage tools: the main agent and an outside program make and change agents and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
+| 037 | [Manage tools: the responsible document and an outside program make workflows, each change a request that the user allows](037-manage-tools.md) | Draft |
 | 038 | [Events: what arrived from a schedule, a watch, a web hook, an outside program or Teams, which place took it, and the reason when nothing did](038-events.md) | Draft |
 | 039 | [Looping motion: spinners and pulses that show running work move at one pace and stop with reduce motion](039-looping-motion.md) | Draft |
 
@@ -91,6 +90,7 @@ Their words about those areas do not apply now.
 | M39 | 038, and the changes to 001, 005, 009, 010, 023 and 028 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S139: the tab "Events" and "Check where this goes" |
 | M40 | The changes to 014, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S140 to S143: org chart arrange, outlines, details and step |
 | M41 | The changes to 002, 010 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S144 to S146: the owner of a workflow and the participants of its agent steps, the workflows of organizations and agents, and the button "New agent" in the form of an organization |
+| W2 | The changes to 002, 003, 005, 007, 008, 017 and 037, and the end of 009, as listed in [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md) | Slice W2: the agent is no longer an object. The responsible document, the chat, the memory and self-improvement belong to the workflow. Spec 009 is deleted (decision 12). |
 
 ## Surfaces check
 
