@@ -8,7 +8,7 @@ when the user asks for less motion.
 ## Concepts
 
 - **Spinner**: a turning mark for a step or a task that is running. Examples: the turning mark in
-  the sidebar and in the lead of a chat.
+  the sidebar and at the head of a chat.
 - **Pulse**: a mark that grows and fades again and again to show that an agent works. Examples:
   the working dot of the sidebar and the glow of the brand mark.
 

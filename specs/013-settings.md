@@ -74,7 +74,7 @@ small choices for the app. It is off by default. When it is off, nothing is sent
     sign-in part, path or query. Any other address is refused with a message that says only
     an address on this computer works. The settings text tells how to install and start such a
     server. The text says the choice is experimental, and that a small free model is often
-    unsure, so the app then goes on as if the choice were off.
+    unsure, so a step that needs a decision asks the user, as with the choice off.
 - Each service takes its request in the form of its public API document. The services are
   `api.typesafe.ai`, `openrouter.ai` and `api.cloudflare.com`. They keep requests under their own
   terms. The app does not store the answers.

@@ -10,7 +10,7 @@ implementer made to continue. A spec author answers by changing the spec.
 | 013 | Devices and Notifications belong to M5 and M6. What shows in M1? | The sections show in the list with one muted line: this part comes in a later version. |
 | 013 | What is the default folder for agent workspaces? | `workspaces` inside the data folder, so a copy of the data folder (014) also moves the workspaces. |
 | 013 | What are the three text sizes? | Root size 13, 14 and 16 px. All sizes scale from it. |
-| 001 | Which place list sections exist, and can the user make new ones? | One fixed section: Agents. No user sections yet. |
+| 001 | Which place list sections exist, and can the user make new ones? | See 001. |
 | 001 | What does the add button on the server rail do in M1? No spec describes adding a second computer. | It opens a short dialog: this comes in a later version. |
 | 001 | What does the help button open? | A help page with the keyboard shortcuts. |
 | 001 | What does the activity panel show for a direct chat? | A muted line "Nothing is running." until tasks exist (M2). |
@@ -686,7 +686,7 @@ implementer made to continue. A spec author answers by changing the spec.
 | 007, 002 | The row above (007, 002: "The app has no flag for the main agent") put the text "do not look for another way" in the instructions of every agent. Now that the flag exists, does it go to the main agent only? | No change. It stays in every agent that has the tool "send message", as that row decided. The longer text for the main agent (split the request, send the parts together, merge the answers) belongs to the tools of S21 (007, "Working with other agents") and is not built in this slice. |
 | 010, 002 | The field "Agent" of "New from a starter" starts with the main agent. | It does now: the main agent that is not archived, else the first agent of the list. The row of 010 that said "the app has no main agent flag yet" is answered. |
 | 005, 007 | A task that another agent starts with "send message" is now a child of the task that sent it (R1). Is the task of the reply, which comes back to the sender, part of that tree? Does a parent wait for its child? | The reply is not part of the tree. The parent does not wait (007). |
-| 003 | The mention list followed the order of 004, which is deleted. Which order does it use now? | No order is set in the spec. Keep the order of the code until a spec sets one. |
+| 003 | The mention list followed the order of 004, which is deleted. Which order does it use now? | No order is set in the spec. Order by name until a spec sets one. |
 | 025, 035 | Own copies of a Git repository existed only for parts of a channel job, and are removed (R1). Does an agent get an own copy when another agent hands it work? | No. 035 still runs the own-copy actions in a workspace that is a linked Git worktree. |
 | 010 | The step "post message" and the trigger "message in a channel" are removed (R1). `docs/workflow-file-format.md` and `docs/cc-wf-studio-format.md` still name the kind `"post"`, and a unit test reads the example of the workflow file format. | The code slice C2 removes the kind from the code, from both format documents and from the test in one change. |
 | 015 | "N waiting for you" in the menu bar opened Today, which is deleted (R1). Which place does it open now? | The place of the oldest request, as a click on a notification does. |

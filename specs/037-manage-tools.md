@@ -62,7 +62,7 @@ Changes (each makes a change request, except "Pause a routine"):
   model and the effort. A model named in loose words follows the rule of 002, "Changes from the
   chat".
 - **Archive an agent**: the user restores it as in 002.
-- **Make a routine**: agent, prompt, a schedule, the place of the results, model and effort. The
+- **Make a routine**: agent, prompt, a schedule, model and effort. The
   routine starts paused, and it counts in the limit of 50 (009).
 - **Change a routine**: the same fields. A routine with a watch (009) is refused with the reason.
 - **Resume a routine**: its own request. The card shows the whole prompt and the next three run

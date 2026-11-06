@@ -147,7 +147,10 @@ The user knows when an agent needs them or finishes, without watching the window
   badge when something waits for the user.
 - A click opens a menu. It has one row for each working agent (face, name, place, and the time, as
   in the detail card), at most 5, and a last line for the rest. It has the line "N waiting for
-  you", which opens the place of the oldest request, and the items "Open ROBot", "Settings" and
+  you", which opens the direct chat of the oldest request. N is the number of requests that wait
+  for an answer of the user (a card of a step that asks, or a question of an agent) in all
+  agents of the open profile. The oldest request is the one that has waited the longest. The line
+  is not there when N is 0, and the items "Open ROBot", "Settings" and
   "Quit".
   "Quit" follows the rule of 001.
 - The menu shows no command, path or file content, as the detail card does not.
