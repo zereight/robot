@@ -126,8 +126,15 @@ const faults = (model: ChartModel, layout: ChartLayout): string[] => {
       if (a && b && overlaps(a.rect, b.rect)) found.push(`${a.key} covers ${b.key}`)
     }
   }
-  for (const row of layout.rows)
-    if (row.w > ROW_MAX_PX) found.push(`a row is ${row.w} px wide, more than ${ROW_MAX_PX}`)
+  // A row of top organization nodes is at most 1,600 px wide, unless it holds one node alone: the
+  // sub-organizations of that node stand in one row, however wide.
+  for (const row of layout.rows) {
+    const tops = layout.areas.filter(
+      (x) => x.depth === 0 && x.rect.y === row.y && x.rect.x >= row.x && x.rect.x < row.x + row.w,
+    )
+    if (row.w > ROW_MAX_PX && tops.length > 1)
+      found.push(`a row is ${row.w} px wide, more than ${ROW_MAX_PX}`)
+  }
 
   // Every line has a path that stays out of every node, and it starts and ends on its nodes.
   const placed = new Map(layout.lines.map((l) => [l.id, l]))
@@ -588,6 +595,24 @@ describe("organization nodes with no member (spec 029)", () => {
     // It sits in the row of its sibling, one level under Product.
     expect(empty?.rect.y).toBe(docs?.rect.y)
     expect(layout.lines.some((l) => l.id === "s:o:Product>o:Empty")).toBe(true)
+  })
+})
+
+describe("siblings (spec 029)", () => {
+  test("the sub-organizations of one parent stand side by side in one row", () => {
+    const base = fortyAgents()
+    const a = ids("a", 40)
+    const orgs = [
+      org("Cto", a.slice(0, 1)),
+      ...Array.from({ length: 5 }, (_, i) =>
+        org(`Sub${i}`, a.slice(1 + i * 6, 7 + i * 6), { parentId: "Cto" }),
+      ),
+    ]
+    const model = buildChart(snap({ ...base, orgs }))
+    const layout = layoutChart(model, 14)
+    const subs = layout.areas.filter((x) => x.depth === 1)
+    expect(subs.length).toBe(5)
+    expect(new Set(subs.map((x) => x.rect.y)).size).toBe(1)
   })
 })
 

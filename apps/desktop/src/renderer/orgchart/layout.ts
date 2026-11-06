@@ -53,7 +53,7 @@ export interface ChartLayout {
   readonly lines: readonly PlacedLine[]
   /** The box around all nodes. The view fits to it. */
   readonly bounds: Rect
-  /** The box of each row of organization nodes, for the limit of the width of a row. */
+  /** The box of each row of top organization nodes, for the limit of the width of a row. */
   readonly rows: readonly Rect[]
   /** The area of each team: its organization node, its agent nodes and its sub-teams. */
   readonly areas: readonly PlacedArea[]
@@ -541,7 +541,8 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
 
   // A block is a organization node with the blocks of its sub-organizations (spec 030) in rows under it, one
   // level lower. The top blocks sit in rows under the root. Rows go left to right, then the next
-  // row, and a row is at most 1,600 px wide, also a row of sub-organizations.
+  // row, and a row of top blocks is at most 1,600 px wide. The sub-organizations of one parent
+  // stand in one row.
   interface Row {
     readonly blocks: { block: Block; x: number }[]
     w: number
@@ -580,7 +581,11 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     (limit: number) =>
     (group: Group): Block => {
       const inner = limit - 2 * AREA_PAD
-      const rows = packRows((children.get(group.org.key) ?? []).map(blockOf(inner)), inner)
+      // The sub-organizations of one parent are siblings: they stand side by side in one row.
+      const rows = packRows(
+        (children.get(group.org.key) ?? []).map(blockOf(inner)),
+        Number.POSITIVE_INFINITY,
+      )
       const rowsW = Math.max(0, ...rows.map((r) => r.w))
       const w = Math.max(group.w, rowsW) + 2 * AREA_PAD
       let y = AREA_PAD + group.h
@@ -612,7 +617,7 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   const rowRects: Rect[] = []
   const areas: PlacedArea[] = []
   const placeRow = (row: Row, x0: number, y0: number, depth: number) => {
-    rowRects.push({ x: px(x0), y: px(y0), w: px(row.w), h: px(row.h) })
+    if (depth === 0) rowRects.push({ x: px(x0), y: px(y0), w: px(row.w), h: px(row.h) })
     for (const { block, x } of row.blocks) placeBlock(block, x0 + x, y0, depth)
   }
   const placeBlock = (block: Block, x0: number, y0: number, depth: number) => {
