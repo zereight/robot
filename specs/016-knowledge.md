@@ -53,17 +53,18 @@ Knowledge keeps longer, structured notes that cite where they come from.
    article links to. The chat shows these findings as a message from the user, with a request to
    read all articles and to add statements that disagree. The agent answers with the report. It
    changes nothing until the user says so.
-8. Make a skill: the view of an article has "Make a skill". It opens the form of a new skill with a
-   draft that the model of the agent writes from the article (see 017, "Make a skill from work").
-   It is on the computer only.
+8. Make a skill: the view of an article has "Make a skill". It opens a card on the page
+   "Self-improvement" of the agent. The model of the agent writes a draft from the article, and the
+   draft is a proposal of a new skill (see 017, "Make a skill from work", and 002,
+   "Self-improvement"). Nothing is saved before the user accepts. It is on the computer only.
 
 ## States
 
 - Empty: "No articles yet." One muted line says that the agent adds articles as it works, and
   that the user can add one.
 - The page shows, under its title, the same muted line as the memory page (see 008): an agent gets
-  better through its instructions, memory and knowledge, and through skills that the user saves,
-  and ROBot does not train the model. The line shows also when knowledge is off.
+  better through its Soul, memory, knowledge and skills, and through the proposals that the user
+  accepts, and ROBot does not train the model. The line shows also when knowledge is off.
 - Working: while the agent writes, the chat shows the reply as usual. The change line appears when
   the change is saved.
 - Failed: a change that cannot be saved shows its error in the card. The turn continues.

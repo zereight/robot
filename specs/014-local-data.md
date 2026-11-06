@@ -7,8 +7,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 ## Rules
 
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
-  memory (with its proposals and history, see 008), settings, permission rules, the action log
-  (007), skills (017) and connections (018). Attachments are files next to it.
+  memory (with its proposals and history, see 008), the proposals and the change log of
+  self-improvement (002), settings, permission rules, the action log (007), skills (017) and
+  connections (018). Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
 - Each profile (022) has its own database, attachments, logs and keychain entries, apart from
   the other profiles. The rules of this spec hold for each profile.
@@ -69,7 +70,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   with that secret. The app sends it nothing else.
 - A watch routine on a tool of a connection (009) calls that tool at each check, with the
   arguments that the user saved.
-- The local database also holds the instruction history of each agent (002) and the times of
+- The local database also holds the Soul history of each agent (002) and the times of
   each task (005). The times hold no message text.
 - A recording of "Teach a task" (017) stays on this computer. The app sends its list of steps to
   the model of the agent once, to write the draft skill. The app deletes the recording when the
@@ -99,6 +100,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   the connections without their secret values.
 - The memory history in the archive follows the rule for secrets above: text that looks like a
   secret is replaced with "[redacted]".
+- The archive holds the proposals of self-improvement and the change log of each agent (002), as
+  it holds the rest of the database. An import brings them back. An agent file (002) holds
+  neither.
 - Import of a ROBot export into an empty profile (022) restores everything except secrets. Every
   connection comes back turned off (see 018), so an import never starts a program or sends data.
   It comes back with no reviewed tools, so the user reviews its tools again (018). The archive
@@ -110,10 +114,10 @@ An import of an agent file (002) or a workflow file (010) shows a review screen 
 anything. The user sees each part that the file holds and picks what to keep.
 
 - The screen lists each agent or workflow of the file with a tick box. Under each agent are its
-  instructions and each of its routines, each with a tick box. Under each workflow are its
+  Soul and each of its routines, each with a tick box. Under each workflow are its
   trigger, the number of its steps, and the agent names that ROBot cannot find.
 - Ticks at the start:
-  - Agents, workflows and instructions are ticked.
+  - Agents, workflows and Souls are ticked.
   - Routines are not ticked, because they run by themselves. A routine that the user ticks still
     starts paused.
   - A part whose text had a secret that the app hid (see "Secrets in text" in the file formats)
@@ -123,8 +127,8 @@ anything. The user sees each part that the file holds and picks what to keep.
 - An agent file can also hold skills and a handbook (002). The screen lists them after the agents,
   each with a tick box. Skills are ticked, and they say which agents they need. The handbook is not
   ticked, and the screen says that it replaces the handbook of this server. Skills are made off.
-- An agent that is not ticked takes its instructions and routines with it. Instructions that are
-  not ticked leave the new agent with empty instructions.
+- An agent that is not ticked takes its Soul and routines with it. A Soul that is not ticked
+  leaves the new agent with an empty Soul.
 - A file of CC Workflow Studio (010) goes through the same screen. The screen lists its one
   workflow with a tick box, the number of its steps, and the number of its notes. The file names
   no agent, so the line of agent names is the number of agent steps that need an agent. The screen
@@ -156,7 +160,7 @@ anything. The user sees each part that the file holds and picks what to keep.
 - Import an agent file with two agents and three routines. The review screen shows the routines
   not ticked. Tick one routine and untick one agent: one agent is made, with one paused routine,
   and its chat shows a checklist with "Turn on" for the routine. Turn it on: the item ticks.
-- An agent file whose instructions held a key: the review shows the instructions not ticked,
+- An agent file whose Soul held a key: the review shows the Soul not ticked,
   with "A secret was removed".
 - Import a CC Workflow Studio file with a question node between two prompt nodes: the review shows
   the workflow not ticked, with "Connections were lost", and "Not imported" names the question

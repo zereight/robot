@@ -19,10 +19,14 @@ A new word goes here in the same pull request as the spec that brings it.
 | Soul | The text that says who an agent is: its character, its values, its way of work and its limits. The agent follows it in every turn (002). It is the field that was called "instructions" before. | 소울 (proposed; see "Open points") | instructions (for this text), 지침 (the old word), prompt, persona, system prompt |
 | Soul history | The versions of the Soul of an agent, with Restore (002). | 소울 기록 (proposed) | instruction history |
 | Self-improvement | The flow in which an agent proposes changes to its own Soul, skills and memory from its work, and the user accepts, edits or rejects each one (002). Also the switch of an agent that turns it on and off. | 자기 개선 (proposed) | learning, training, evolving, self-learning, gets smarter |
-| Change log | The list of the proposals of an agent that do not wait any more: applied, rejected or failed, with Undo for an applied change (002). | 변경 기록 (proposed) | history (the memory history and the Soul history are other lists), audit |
+| Change log | The list of the proposals of an agent that do not wait any more: applied, rejected, failed or undone, with Undo for an applied change (002). It is also the name of a tab of the page "Self-improvement". | 변경 기록 (proposed) | log (alone: the action log of 007 and "Log session" of 033 are other lists), history (the memory history and the Soul history are other lists), audit |
 | Workspace | The folder of an agent (007). | 작업 폴더 | project, sandbox |
 | Memory | Short facts that an agent keeps between chats (008). | 메모리 | brain, learning |
 | Proposal | A change to its own Soul, a skill or its memory that an agent suggests, and that the user has not accepted (002, 008, 017). | 제안 | memory (a proposal is not memory), change (a proposal changes nothing yet), change request (that is 037) |
+| Proposals (N) | The link on the memory page to the proposals that wait, with their number (008, 002). | 제안 (N) (proposed) | inbox, requests |
+| Waiting | The state of a proposal that waits for the user, and the tab of the page "Self-improvement" that lists those proposals (002). | 대기 중 (proposed) | pending, queued (that is a task, 005) |
+| Accept, Edit and accept, Reject | The three buttons of the card of a proposal (002). | 수락, 수정 후 수락, 거절 (proposed) | approve, allow, deny (those answer an approval card or a change request, 007, 037), dismiss |
+| Undone | The state of a change log row after the user pressed "Undo" on it (002). | 되돌림 (proposed) | reverted, rolled back |
 | Knowledge | Linked articles that an agent writes and reads again (016). | 지식 | memory, wiki |
 | Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the Soul of an agent (소울). | 스킬 | plugin, tool |
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |

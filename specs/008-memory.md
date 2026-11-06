@@ -11,8 +11,9 @@ keep, and can undo a change.
   (a message, the user, or a proposal).
 - **Scope**: one agent. Agents do not read each other's memory.
 - **Memory saving**: a choice for each agent. It sits on the memory page of the agent, above the
-  tabs. "Save at once" is the default: the agent saves a fact as a memory item. "Ask me first":
-  the agent can only suggest a fact, and the user decides.
+  tabs. "Ask me first" is the default: the agent can only suggest a fact, and the user decides.
+  "Save at once": the agent saves a fact as a memory item. "Save at once" is a choice that the user
+  makes on purpose for one agent (002, "Self-improvement", "No change without approval").
 - **Proposal**: a fact that an agent suggests and the user has not accepted. It is a proposal of
   the kind "Memory item" of self-improvement (002, "Self-improvement"). That section holds the
   card, the states, the change log and the limits that all proposals share. A proposal is not
@@ -69,9 +70,16 @@ keep, and can undo a change.
 - A proposal with the same text as an item or as another proposal is not added. Spaces at both
   ends and the case of letters do not matter. The tool tells the agent that the fact is known.
 - How many proposals wait, and when they expire, is in 002, "Self-improvement", "Limits". The
-  limit is for all kinds of proposals of the agent together.
+  limit is for all kinds of proposals of the agent together. When 20 wait, a new memory proposal is
+  refused. It does not replace a proposal that waits.
+- A new agent starts at "Ask me first". No agent, starter, import or sync sets "Save at once". Only
+  the user sets it, on the memory page of one agent. An agent that had "Save at once" from the old
+  default, before this version, has "Ask me first" after the update, because the user did not
+  choose it.
 - "Save at once" is the choice of the user for new memory items of this agent. It does not cover a
   Soul change or a skill (002). With "Save at once", an item is saved with no card, and Undo stays.
+- "Save at once" counts only while the switch "Self-improvement" of the agent is on (002). With the
+  switch off, a new fact is a proposal, as with "Ask me first". The choice stays as the user set it.
 - A change of the choice leaves the proposals as they are. After the change to "Save at once",
   the proposals wait until the user answers them.
 - The memory tool refuses a text that looks like a secret (see 014). It does not save it and does
@@ -142,14 +150,16 @@ keep, and can undo a change.
 - Delete an item, then press Undo on its row: the item is back with its text.
 - Ask the agent to remember a text that looks like a key: no item and no proposal is made, and
   the agent says that it left the secret out.
-- Make 21 proposals: the tab "Waiting" shows 20, and the oldest one is in the change log as
-  Rejected with "Replaced by a newer proposal".
+- Make 21 proposals: the 21st is refused. The tab "Waiting" shows the first 20 and the line "20
+  proposals wait. Answer some before this agent can suggest more." No proposal is in the change log
+  as Rejected.
+- Make a new agent: "Memory saving" is "Ask me first".
 - Ask the agent to save a fact twice: the second call adds nothing, and the agent is told that the
   fact is known.
 - Turn memory off: the agent has no memory tools. The items stay in the tab.
 - Open the same agent on a linked device: the line "Saved to memory" has no undo control.
-- Turn "Memory check" on with "Save at once". After 10 done turns, a task "memory check" runs when
-  the agent is free. A stand-in model suggests 2 facts: the tab "Waiting" shows 2 proposals "From a
-  memory check", and no item is made. A failed turn does not count toward the 10.
+- Set "Save at once", and turn "Memory check" on. After 10 done turns, a task "memory check" runs
+  when the agent is free. A stand-in model suggests 2 facts: the tab "Waiting" shows 2 proposals
+  "From a memory check", and no item is made. A failed turn does not count toward the 10.
 - With "Memory check" on and 3 done turns since the last check, press "Check now": a check runs at
   once. With no turn since the last check, "Check now" is off.

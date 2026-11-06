@@ -4,7 +4,7 @@
 
 ROBot lets one person run AI agents on their own computer. Each agent does one role. An agent is
 the whole bot: the agent, its skills, its Soul and its self-improvement. Beside the agents, ROBot
-keeps routines and workflows, and the app checks the design of each one (009, 010). The
+keeps routines and workflows, and each of them has a "Check" (see 009 and 010). The
 interface follows a chat server: servers on the far left, the list of agents beside them, the
 direct chat in the middle, and an activity panel on the right. Agents appear with a face, a name
 and a bot tag, so the user reads their work as they read messages from colleagues.
@@ -35,8 +35,8 @@ and a bot tag, so the user reads their work as they read messages from colleague
   done, failed, or cancelled.
 - **Routine**: a task that runs on a schedule (009).
 - **Workflow**: a set of connected steps that runs when a trigger fires (010).
-- Routines and workflows are the two other areas that ROBot keeps beside the agents. The app
-  checks the design of each routine and workflow (009, 010).
+- Routines and workflows are the two other areas that ROBot keeps beside the agents. Each routine
+  and each workflow has a "Check" (see 009 and 010). Those specs say what it does.
 
 ## Platforms
 

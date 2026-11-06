@@ -161,7 +161,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
   connections and skills that it may use, saved secrets (020), sync, devices, archive and delete,
   the fields of other agents (the main agent can ask for them with the manage tools, 037, and the user
   allows each change), the handbook, the switch "Read the handbook", the memory check
-  (008), the switch "Self-improvement", and the Teams link (028). When the user asks for one of these, the agent says where in
+  (008), the choice "Memory saving" (008), the switch "Self-improvement", and the Teams link
+  (028). When the user asks for one of these, the agent says where in
   the profile or in settings the user can change it.
 - The agent changes a setting only when the user asks for it. A question such as "which model
   are you?" reads the settings and changes nothing. When the agent itself sees that its Soul
@@ -207,8 +208,9 @@ the field that was called "instructions" before. It is the same field, with the 
 ## Soul history
 
 - Each change of the Soul keeps the old text as a version. A version has the text, the date, and
-  where the change came from: the profile, the chat, a linked device (012), a proposal that the
-  user accepted (see "Self-improvement"), Undo, or a restore.
+  where the change came from: the profile, the chat, a linked device (012), a request of the manage
+  tools that the user allowed (037), an outside program (023), a proposal that the user accepted
+  (see "Self-improvement"), Undo, or a restore.
 - The profile has "Soul history": the versions, newest first. The user can open a version
   and restore it. A restore makes a new version. It does not delete the versions after it.
 - An agent keeps at most 50 versions. The oldest goes first.
@@ -233,20 +235,28 @@ proposals of 008 and "Make a skill" of 017 use it.
   - **Skill change**: a new description or new instructions for a skill that is for this agent
     only.
   - **Memory item**: a new fact for the memory of this agent (008).
+- **Target**: what a proposal changes. For a Soul change, the Soul of the agent. For a skill change,
+  that skill. Each new skill and each memory item is its own target, because it does not exist
+  yet.
 - **Reason**: one line from the agent that says what in its work led to the proposal. At most 200
   characters.
 - **Source**: a turn of the agent, with a link to its chat or its task; a memory check (008); or
   "Make a skill" that the user started (017).
 - **State**: one of these.
-  - **None**: the agent has no proposal. The page shows the empty state (see "States").
   - **Waiting**: the proposal waits for the user.
   - **Applied**: the user accepted it, and the change is made.
-  - **Rejected**: the user rejected it, it expired, or a newer proposal replaced it. Nothing
-    changed.
+  - **Rejected**: the user rejected it, or it expired. Nothing changed.
   - **Failed**: the user accepted it, and the change could not be made. Nothing changed.
-- **Switch "Self-improvement"**: in the profile of the agent, on by default. When it is off, the
-  agent cannot make a Soul change, a new skill or a skill change. Memory items follow the memory
-  choices of 008. "Make a skill" of the user still works. Proposals that wait stay.
+  - **Undone**: the change was applied, and then the user undid it: with "Undo" in the change
+    log, or, for a memory item, with "Undo" in the memory history (008). The change is not there
+    any more. Only an Applied row can become Undone.
+- **Switch "Self-improvement"**: in the profile of the agent, on by default. When it is off:
+  - The agent cannot make a Soul change, a new skill or a skill change.
+  - The agent saves no memory item by itself. A new fact is a proposal, as with "Ask me first"
+    (008), also when the choice "Memory saving" of the agent is "Save at once". The choice stays as
+    the user set it, and it counts again when the switch goes on.
+  - "Make a skill" of the user still works. Proposals that wait stay.
+  So with the switch off, nothing changes the agent before the user accepts a card.
 - **Change log**: the list of the proposals that do not wait any more, with their state.
 
 ### Flows
@@ -255,18 +265,21 @@ proposals of 008 and "Make a skill" of 017 use it.
    the limits (see "Limits"). When the proposal passes, it is Waiting, and the chat shows a muted
    line after the reply: "Suggested a change to its Soul", "Suggested a skill: <name>", "Suggested
    a change to the skill <name>", or "Suggested for memory". The line has the link "Review". When
-   the proposal does not pass, nothing is made, and the tool tells the agent the reason.
+   the proposal does not pass, nothing is made, and the tool tells the agent the reason. When the
+   reason is that 20 proposals wait, the chat also shows one muted line (see "How many wait").
 2. **See**: the profile of the agent has the page "Self-improvement" with two tabs. "Waiting" lists
-   the proposals that wait, oldest first. "Log" lists the change log, newest first. The row of the
-   page in the profile shows the number of proposals that wait. The link "Review" opens the card in
-   "Waiting". The memory page (008) has the link "Proposals (N)" to the same tab.
+   the proposals that wait, oldest first. "Change log" lists the change log, newest first. The row
+   of the page in the profile shows the number of proposals that wait. The link "Review" opens the
+   card in "Waiting". The memory page (008) has the link "Proposals (N)" to the same tab.
 3. **Card**: a card shows the kind, the target, the reason, the source and the time. For a Soul
    change and a skill change, it shows the old text and the new text, with the removed and the
    added parts marked. For a new skill and a memory item, it shows the full text. The card has
    three buttons: "Accept", "Edit and accept", and "Reject".
    - **Accept** makes the change as the card shows it. The state is Applied.
    - **Edit and accept** opens the new text in an editor in the card. For a new skill, it opens the
-     form of a new skill (017, flow 1) with the draft. The user changes the text and saves. The
+     form of a new skill (017, flow 1) with the draft. In that form, the field "Agents" shows this
+     agent only and is locked, so "Edit and accept" cannot give the skill to other agents. The user
+     changes the text and saves. The
      edited text is the change. The same limits and checks apply as in the profile or the form. A
      text that does not pass shows the reason and is not saved. "Cancel" closes the editor, and the
      proposal still waits.
@@ -274,45 +287,54 @@ proposals of 008 and "Make a skill" of 017 use it.
 4. **Apply**: the change counts from the next turn. A turn that runs keeps what it had.
    - Soul change: a new version in the Soul history, from "a proposal that the user accepted".
    - New skill: a skill as in 017, flow 1, for this agent only, and on. When the name is taken, the
-     app adds a number to the name.
+     app adds a number to the name. Later, the user can give the skill to other agents in the
+     form of the skill (017), as for any skill.
    - Skill change: the skill gets the new text. Old messages keep their copies (017).
    - Memory item: a memory item that came from a proposal, and a row in the memory history (008).
 5. **Fail**: when the change cannot be made at the moment of the accept, nothing changes. The state
-   is Failed, and the log row shows the reason. The reasons are:
+   is Failed, and the change log row shows the reason. The reasons are:
    - The target changed after the proposal: "The Soul changed after this proposal." or "The skill
      changed after this proposal."
    - The skill is deleted, or it is not for this agent only any more.
    - The server holds 100 skills (017).
    - Memory is off for the agent, or the same text is already an item (008).
    A failed proposal does not come back. The agent can make a new proposal.
-6. **Log row**: the kind, the target, the state, the time of the answer, and the source. A row for
-   Applied shows the old text and the new text and has the button "Undo". A row for Rejected or
-   Failed shows the reason and has no button.
+6. **Change log row**: the kind, the target, the state, the time of the answer, and the source.
+   A row for Applied shows the old text and the new text and has the button "Undo". A row for
+   Rejected or Failed shows the reason and has no button.
 7. **Undo**: Undo puts back the version before the change.
    - Soul change: the Soul gets the old text again, with a new version from Undo in the Soul
      history.
-   - New skill: the skill is deleted. Old messages that used it keep their chip and their copy.
+   - New skill: the app removes this agent from the list of agents of the skill. When no other
+     agent may use the skill, the skill is deleted. When the user gave the skill to other agents
+     after the accept, the skill stays for them. Old messages that used it keep their chip and their
+     copy.
    - Skill change: the skill gets its old description and instructions again.
    - Memory item: the item is removed. This is the same undo as the one in the memory history
      (008), and each place shows the result of the other.
-   - Undo is on only while the target is exactly as the change left it. Otherwise Undo is off, and
-     the row says: "A newer change exists. Undo that one first."
-   - After an undo, the row shows "Undone" and the time, and has no button. The Soul history and
-     the memory history keep their own rows for the undo.
+   - Undo is on only while the target is exactly as the change left it. For a new skill, the name,
+     the description and the instructions count, and the list of agents does not. Otherwise Undo
+     is off, and the row says: "A newer change exists. Undo that one first."
+   - After an undo, the state of the row is Undone. The row shows "Undone" and the time, and has no
+     button. The Soul history and the memory history keep their own rows for the undo.
 
 ### Limits
 
 - **How often**: in one turn, an agent makes at most 1 proposal of the kinds Soul change, new skill
-  and skill change together. In 24 hours, an agent makes at most 3 proposals of these kinds. A
-  memory check makes memory items only, at most 5 (008). The limits of how often do not apply to
-  "Make a skill", because the user starts it.
-- **One for each target**: at most one proposal waits for the Soul, and at most one for each skill.
-  A second proposal for the same target is refused, and the tool tells the agent that one waits.
-  A memory item with the same text as an item or as another proposal is refused (008).
+  and skill change together. In 24 hours, an agent makes at most 3 proposals of these kinds. Only
+  a proposal that passes all limits counts. A refused proposal does not count. A memory check makes
+  memory items only, at most 5 (008). The limits of how often do not apply to "Make a skill",
+  because the user starts it.
+- **One for each target**: at most one proposal waits for the Soul, and at most one for each skill
+  that exists. A second proposal for the same target is refused, and the tool tells the agent that
+  one waits. A memory item with the same text as an item or as another proposal is refused (008).
 - **How many wait**: at most 20 proposals wait for each agent, of all kinds together. When 20 wait,
-  a new proposal replaces the oldest one. The oldest one goes to Rejected with the reason
-  "Replaced by a newer proposal". A proposal that waits for 30 days goes to Rejected with the
-  reason "Expired".
+  a new proposal of any kind is refused. No proposal that waits is replaced, so memory items never
+  push out a Soul change or a draft of "Make a skill". The user sees one muted line: "20 proposals
+  wait. Answer some before this agent can suggest more." The line shows in the chat after the reply
+  of the turn that made the refused proposal, at the top of the tab "Waiting" while 20 wait, and on
+  the card of "Make a skill" in place of a draft (017). A proposal that waits for 30 days goes to
+  Rejected with the reason "Expired".
 - **Size**:
   - Soul change: the new Soul is at most 20000 characters. The removed text and the added text
     together are at most 2000 characters.
@@ -335,40 +357,66 @@ proposals of 008 and "Make a skill" of 017 use it.
   shows the muted line: "This work read outside content. Read the change before you accept."
   Nothing applies before the user accepts, so no approval card shows at the moment of the
   proposal.
-- **No change without approval**: the agent has no other way to change its Soul, its skills or its
-  memory by itself. Two ways are not proposals, because the user decided first: a change that the
-  user asks for in the chat (see "Changes from the chat"), and "Save at once" for new memory items
-  (008), which the user chose for that agent.
+- **No change without approval**: the agent never changes itself without approval of the user. It
+  has no other way to change its Soul, its skills or its memory by itself. Two ways are not
+  proposals, because the user decided first:
+  - a change that the user asks for in the chat (see "Changes from the chat");
+  - "Save at once" for new memory items (008). A new agent starts at "Ask me first". "Save at once"
+    is a choice that the user makes on purpose for one agent, on its memory page. No agent, starter,
+    import or sync sets it. It counts only while the switch "Self-improvement" is on (see
+    "Concepts").
 
 ### States
 
-- **None**: the tab "Waiting" shows one muted line: "No proposals. When this agent sees a better
-  way of work, it suggests a change here, and you decide." The tab "Log" shows "No changes yet."
+- **None**: a state of the page, not of a proposal: the agent has no proposal that waits and no
+  row in the change log. The tab "Waiting" shows one muted line: "No proposals. When this agent
+  sees a better way of work, it suggests a change here, and you decide." The tab "Change log" shows
+  "No changes yet."
 - **Switch off**: the tab "Waiting" shows "Self-improvement is off for this agent." above the
   proposals that still wait.
 - **Waiting**: the cards, and the number in the row of the page.
-- **Applied, Rejected, Failed**: the rows of the log, with their reason. The states stay after a
-  restart.
+- **Full**: 20 proposals wait. The tab "Waiting" shows the line of "How many wait" above the cards.
+- **Applied, Rejected, Failed, Undone**: the rows of the change log, with their reason. The states
+  stay after a restart.
 
 ### Surfaces
 
 - **Ways in**: the tool of the agent in a turn, a memory check (008), and "Make a skill" (017). The
   user answers in the tab "Waiting", from the link "Review" in the chat, or from the link on the
   memory page.
-- **Devices**: the page and the cards are on the computer where the proposal was made. A linked
+- **Devices**: the page and the cards are on the computer that holds the proposal. A linked
   device (012) and the phone (011) do not show them. There, the muted line in the chat is plain
   text with no link.
 - **Runtimes**: the tool is a tool of the app. An agent on a vendor runtime (006) that cannot call
   the tools of the app cannot propose. The switch is off for that agent, with the muted line
   "<program> cannot use self-improvement." "Make a skill" still works for that agent.
 - **Ways out**: "Reject" for a card, "Undo" for an applied change, and the switch for the agent.
-- **Data**: proposals and the change log stay on the computer where the proposal was made. They do
-  not sync (019), and an agent file holds none. An applied change is data of the agent, so it syncs
-  and exports as the Soul, a skill or a memory item does. The log keeps 90 days and at most 1000
-  rows for each agent. The oldest rows go first. Deleting an agent deletes its proposals and its
-  log. Archiving keeps them.
-- **Words**: "Self-improvement", "Proposal", "Accept", "Edit and accept", "Reject", "Undo". No text
-  says that the agent or the model learns, trains or evolves (000).
+- **Data**: proposals and the change log are in the local database of the profile (014).
+  - They do not sync (019). They stay on the computer that holds them.
+  - An export of data (014) holds them, as it holds the rest of the database. An import of that
+    export restores them with the agent.
+  - An agent file holds neither (see "Agent file").
+  - An applied change is data of its target, so it follows the sync and export rules of that
+    target: a Soul change and a memory item sync (019), and a skill does not (019). An export holds
+    all three.
+  - The change log keeps 90 days and at most 1000 rows for each agent. The oldest rows go first.
+  - Deleting an agent deletes its proposals and its change log. Archiving keeps them.
+- **Words**: the texts come from the catalogue in English and Korean (see
+  [docs/glossary.md](../docs/glossary.md)). No text says that the agent or the model learns, trains
+  or evolves (000).
+
+| English | Korean |
+| --- | --- |
+| Self-improvement | 자기 개선 (proposed) |
+| Proposal | 제안 |
+| Proposals (N) | 제안 (N) (proposed) |
+| Waiting | 대기 중 (proposed) |
+| Change log | 변경 기록 (proposed) |
+| Accept | 수락 (proposed) |
+| Edit and accept | 수정 후 수락 (proposed) |
+| Reject | 거절 (proposed) |
+| Undo | 되돌리기 |
+| Undone | 되돌림 (proposed) |
 
 ## Agent file
 
@@ -649,13 +697,22 @@ It does not change with the theme.
 - With a stand-in model, a turn proposes a Soul change with a reason. The chat shows "Suggested a
   change to its Soul" with "Review". The Soul does not change, and the next request holds the old
   Soul. Open the card: it shows the old and the new text with the changes marked. Press "Accept":
-  the Soul history has a version from a proposal, the log has a row Applied, and the next request
-  holds the new Soul. Press "Undo" on the row: the Soul is the old text, the history has a version
-  from Undo, and the row shows "Undone".
+  the Soul history has a version from a proposal, the change log has a row Applied, and the next
+  request holds the new Soul. Press "Undo" on the row: the Soul is the old text, the history has a
+  version from Undo, and the row shows "Undone".
 - Press "Edit and accept" on a Soul change, change one word, and save: the Soul is the edited text.
-- Press "Reject" on a proposal: nothing changes, and the log has a row Rejected.
+- Press "Reject" on a proposal: nothing changes, and the change log has a row Rejected.
 - A stand-in model proposes a new skill. Press "Accept": the skill exists for this agent only and is
-  on, and `/` in its chat lists it. "Undo" on the log row deletes the skill.
+  on, and `/` in its chat lists it. "Undo" on the change log row deletes the skill, and the row is
+  Undone.
+- Accept a new skill, then give the skill to a second agent in the form of the skill. Press "Undo"
+  on the change log row: the skill is not for this agent any more, and it stays for the second
+  agent.
+- A stand-in model proposes a change to the instructions of a skill for this agent only. Press
+  "Accept": the skill has the new instructions. Press "Undo" on the change log row: the skill has
+  its old description and instructions, and the row is Undone.
+- A skill change waits. Delete the skill, then press "Accept": the state is Failed, and the row
+  shows the reason that the skill is deleted. Nothing is made.
 - A Soul change waits. The user edits the Soul in the profile, then presses "Accept" on the card:
   the state is Failed with "The Soul changed after this proposal.", and the Soul keeps the text of
   the user.
@@ -667,14 +724,30 @@ It does not change with the theme.
   secret out.
 - A stand-in model tries to propose a change of its model or its permission level: the tool has no
   such kind, and nothing waits.
-- With 20 proposals that wait, one more replaces the oldest, which shows in the log as Rejected
-  with "Replaced by a newer proposal".
-- Accept a Soul change, then edit the Soul in the profile: "Undo" on the log row is off and says "A
-  newer change exists. Undo that one first."
+- With 20 proposals that wait, a Soul change among them, a stand-in model proposes a memory item:
+  the tool refuses it, the 20 proposals still wait, the Soul change is one of them, and the chat
+  shows "20 proposals wait. Answer some before this agent can suggest more." The tab "Waiting"
+  shows the same line. The refused proposal does not count toward the 3 in 24 hours.
+- With a test clock, a proposal waits for 30 days: it leaves the tab "Waiting", and the change log
+  has a row Rejected with "Expired". Nothing changed.
+- With a test clock, a change log row is 91 days old: it is not in the change log any more. The
+  change that it made stays.
+- An agent on a vendor runtime that cannot call the tools of the app: the switch "Self-improvement"
+  is off and shows "<program> cannot use self-improvement." "Make a skill" still works.
+- In the chat, ask the agent to turn off "Self-improvement": nothing changes, and the agent says
+  where in the profile the user can change it.
+- Accept a Soul change, then edit the Soul in the profile: "Undo" on the change log row is off and
+  says "A newer change exists. Undo that one first."
 - A turn that read a web page proposes a Soul change: the card shows "This work read outside
   content. Read the change before you accept.", and the Soul changes only after "Accept".
 - Turn "Self-improvement" off: the agent cannot propose a Soul change or a skill. With "Ask me
-  first" in memory, a memory item still waits as a proposal. Turn it on again: the proposals that
-  waited are still there.
+  first" in memory, a memory item still waits as a proposal. Set "Save at once", keep the switch
+  off, and tell the agent a fact: no item is saved, and the fact waits as a proposal. Turn the
+  switch on again: the proposals that waited are still there, and the next fact is saved at once.
+- Make a new agent: its choice "Memory saving" is "Ask me first". Tell it a fact: no item is saved,
+  and the fact waits as a proposal.
+- Export the data of the profile with a proposal that waits and a row Applied in the change log.
+  Import it into an empty app: the proposal still waits, and the row is in the change log. Write an
+  agent file of the same agent: it holds no proposal and no change log row.
 - Open the same agent on a linked device: no page "Self-improvement" shows, and the line in the
   chat has no link.

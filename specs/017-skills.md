@@ -130,18 +130,22 @@ log and Undo are in that section.
    The card shows the draft. When the name is taken, the app adds a number to the name of the
    draft.
 4. "Accept" saves the skill as flow 1, for the agent of the source only, and on. "Edit and accept"
-   opens the form of flow 1 with the draft. There the user can edit every field, also the field
-   "Agents". "Reject" saves nothing. The same limits, checks and warning about secrets apply.
+   opens the form of flow 1 with the draft. There the user can edit the name, the description and
+   the instructions. The field "Agents" shows this agent only and is locked: "Edit and accept"
+   cannot give the skill to other agents. After the accept, the user can add agents to the skill as
+   for any skill (flow 1). "Reject" saves nothing. The same limits, checks and warning about secrets
+   apply.
 5. When a turn of the task held outside content (007), the card shows the muted line of 002: "This
    work read outside content. Read the change before you accept." A skill is a lasting order, so
    the user reads it first. Nothing is saved before the user accepts.
 6. When the request fails, the card shows the reason and the button "Try again". No proposal is
    made, and nothing is saved.
 
-- "Make a skill" needs a connected model account. Without one, the form shows the same line as
-  "Teach a task" does.
+- "Make a skill" needs a connected model account. Without one, the card shows the same line as
+  "Teach a task" does, and no proposal is made.
 - The request makes no task and no message. The limits of how often a proposal can come (002) do
-  not apply, because the user starts it.
+  not apply, because the user starts it. The limit of 20 proposals that wait applies: when 20 wait,
+  the card shows the line of 002 ("20 proposals wait. …"), and no request is sent.
 - A skill made this way has no link to its source. A later change or delete of the source does not
   change the skill.
 - "Make a skill" is on the computer only. A linked device (012) and the phone (011) do not show it.
@@ -236,8 +240,9 @@ log and Undo are in that section.
   waits. The request to the stand-in holds the prompt, the two steps and the reply, and holds no
   output of a tool. Press "Accept": the skill shows in the list of skills, for the agent of the task
   only, and it is on. In the chat of that agent, `/` lists it. The change log has a row Applied.
-- Press "Edit and accept" on such a card: the form of a new skill opens with the draft, and Save
-  makes the skill with the edited fields.
+- Press "Edit and accept" on such a card: the form of a new skill opens with the draft, and the
+  field "Agents" shows this agent only and is locked. Save makes the skill with the edited fields,
+  for this agent only.
 - A task whose turn held outside content: the card shows "This work read outside content. Read the
   change before you accept."
 - "Make a skill" on an article and on a memory item: the card fills in the same way.
