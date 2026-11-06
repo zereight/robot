@@ -1381,9 +1381,6 @@ export const migrations: readonly string[] = [
   CREATE INDEX robot_event_at ON robot_event (server_id, at DESC);
   CREATE INDEX robot_event_call ON robot_event (server_id, call_id);
   CREATE INDEX robot_event_subject ON robot_event (server_id, source, subject);
-  -- The organization that a routine belongs to (spec 030, "A routine of an organization"). NULL for
-  -- every routine of today, so nothing changes for them. It syncs with the routine (019).
-  ALTER TABLE routine ADD COLUMN org_id TEXT;
   `,
   `
   -- The goal of an organization (spec 030, "Goal"): why it exists, in the words of the user. It goes
@@ -1400,6 +1397,13 @@ export const migrations: readonly string[] = [
   ALTER TABLE workflow ADD COLUMN owner_kind TEXT;
   ALTER TABLE workflow ADD COLUMN owner_id TEXT;
   `,
+  `
+  -- The organization that a routine belongs to (spec 030, "A routine of an organization"). NULL for
+  -- every routine of today, so nothing changes for them. It syncs with the routine (019). An older
+  -- build put this column inside a step that other profiles had run already, so the data step of
+  -- this step adds it only when it is missing.
+  SELECT 1; -- routine-org-id
+  `,
 ]
 
 /**
@@ -1414,4 +1418,9 @@ export const dataSteps: Readonly<Record<number, (db: DatabaseSync) => void>> = {
   // follows the steps that clear the old channel fields, so an older profile gets it too.
   [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_line_note"))]:
     repairLinesAfterMigration,
+  // The column routine.org_id for a profile that ran the older step without it.
+  [migrations.findIndex((sql) => sql.includes("-- routine-org-id"))]: (db) => {
+    const has = db.prepare("SELECT 1 FROM pragma_table_info('routine') WHERE name = 'org_id'").get()
+    if (!has) db.exec("ALTER TABLE routine ADD COLUMN org_id TEXT")
+  },
 }
