@@ -255,6 +255,7 @@ These are in the code today and the specs now say something else.
 | S147 | Refused send: the hint line in the step text and the button "Open Hand-off rules" on the card. | 030, 013 |
 | S148 | Role instructions: one text for each role line, written on the Roles page, read by every agent of the role before its own instructions; sync, rename, join, remove and the read-only view in the profile. | 002, 013, 019 |
 | S149 | Pinned places built (the menu, the group, the limit of 10), and order of places: drag and "Move up" / "Move down" inside one list. | 001, 011, 012 |
+| S150 | Goal dialog and starters (031): "From a goal…" in the New agent form, the keyword match, the nine starters with the new Product channel starter (PM, Planner, Designer, Developer, QA, Reviewer), the preview and Create, and saved starters ("My starters", "New starter", edit, delete, at most 20, kept on this computer only). The text for the roles is in English and Korean. | 031, 002, 004 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

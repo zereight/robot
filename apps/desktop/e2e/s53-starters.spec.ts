@@ -86,12 +86,13 @@ test("starters: the choice, the filled fields, the paused routine and the skill"
   const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1200, 900)
 
-  // The choice lists Blank and then the five starters. Each starter shows its job name, one line
+  // The choice lists "From a goal…", Blank and then the five starters. Each starter shows its job name, one line
   // about the job, and a muted line about what else it makes.
   await openForm(page)
   const buttons = choices(page).getByRole("button")
-  await expect(buttons).toHaveCount(6)
+  await expect(buttons).toHaveCount(7)
   const expected = [
+    ["From a goal…"],
     ["Blank"],
     ["Assistant", "Answers everyday questions and helps you write.", "Makes nothing else"],
     [
