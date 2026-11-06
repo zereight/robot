@@ -486,6 +486,18 @@ This holds only for an order of a lead (007), so a message between colleagues do
 - **Change in the course of work**: the lead can send a new instruction to a task that runs, and
   the member reads it at the next step. The lead can cancel the task. A task that a lead cancels
   sends no reply (005).
+- **A check by a second member**: before the lead accepts a result, it can ask another member to
+  check it, with an order of its own. The check is a task like any other. The lead decides. The
+  app does not ask for a check, and it does not make one.
+- **Accepted results are kept**: a result that the lead accepted stays on record with the task.
+  When the lead starts its work again, it reads the list of its accepted results of the last
+  work, with the member and one line for each, and it does not order the same work again unless
+  it says why. The list holds at most 20 results, the newest first. A result that the lead did
+  not accept is not on the list.
+- **One writer for one workspace**: while a task of a member runs and writes in a workspace, the
+  lead does not give an order to another member that writes in the same workspace. The second
+  order waits until the first task ends. Members with different workspaces run at the same time.
+  A task that only reads does not wait.
 - **Lower leads**: the lead of a sub-organization is a member of the organization above it. It
   takes an order as a member and gives orders as a lead. A task can be at most 3 levels deep in
   this way, as the tree is (see "Organization tree"). An order that would go deeper is refused
@@ -617,6 +629,13 @@ The first start of this version changes the data of each profile once.
 - A lead of a sub-organization takes an order as a member, and gives orders to its own members.
   An order at a fourth level is refused with a reason.
 - Jo sends a message to Kai. Kai reads it as input from a colleague, and no task is made.
+- Mia asks Kai to check the result of Jo before she accepts it. The check is a task of Kai. Mia
+  accepts after it. No check is made when Mia does not ask for one.
+- Mia accepts the result of Jo, and later starts the same work again. Mia reads Jo's accepted
+  result in the list and does not order it again. A result that Mia did not accept is not in the
+  list.
+- Jo and Kai share one workspace, and both get an order that writes. Kai's task waits until Jo's
+  task ends. "Jo" and "Lee" have different workspaces: both run at the same time.
 
 - Make organizations "Product", "Docs" and "Site" with the form. Set the parent of "Docs" to
   "Product" and of "Site" to "Docs". The parent field of "Product" shows "Docs" and "Site" muted
