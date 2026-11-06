@@ -42,7 +42,6 @@ import {
   type JSX,
   Show,
 } from "solid-js"
-import { GoalDialog } from "../goal/GoalDialog.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
@@ -254,7 +253,6 @@ export const AgentForm = (props: AgentFormProps) => {
    * loses its reason at once.
    */
   const [tried, setTried] = createSignal(false)
-  const [goalOpen, setGoalOpen] = createSignal(false)
   const shownNameProblem = () => (tried() ? nameProblem() : undefined)
   const shownRoleProblem = () => (tried() ? roleProblem() : undefined)
 
@@ -386,16 +384,6 @@ export const AgentForm = (props: AgentFormProps) => {
         <fieldset class={`${styles.field} ${styles.group}`}>
           <legend class={styles.label}>{t("agents.template")}</legend>
           <div class={styles.starters}>
-            <Show when={!remote()}>
-              <button
-                type="button"
-                class={styles.starter}
-                data-testid="starter-goal"
-                onClick={() => setGoalOpen(true)}
-              >
-                <span class={styles.starterName}>{t("agents.template.goal")}</span>
-              </button>
-            </Show>
             <button
               type="button"
               class={styles.starter}
@@ -803,13 +791,6 @@ export const AgentForm = (props: AgentFormProps) => {
           {props.agent ? t("agents.save") : t("agents.create.submit")}
         </Button>
       </div>
-      <Show when={goalOpen()}>
-        <GoalDialog
-          onClose={() => setGoalOpen(false)}
-          onAgentStarter={pickStarter}
-          onCreated={props.onCancel}
-        />
-      </Show>
     </form>
   )
 }

@@ -285,25 +285,12 @@ test("sync tasks: a routine and a workflow run on one computer only, and Run on 
       schedule: { kind: "every", minutes: 30, from: Date.now() },
       place: { kind: "agent" },
     })
-    const watched = await rpc<{ id: string }>(one.page, "channels.create", {
-      serverId: server,
-      name: "Watched",
-      topic: "",
-      memberIds: [agentId],
-      leadId: null,
-    })
-    const quiet = await rpc<{ id: string }>(one.page, "channels.create", {
-      serverId: server,
-      name: "Quiet",
-      topic: "",
-      memberIds: [agentId],
-      leadId: null,
-    })
+    // The workflow is due once, a few seconds from now.
     const flow = await rpc<{ id: string }>(one.page, "workflows.create", {
       serverId: server,
       name: "Deploy flow",
-      trigger: { kind: "channel", channelId: watched.id, contains: "deploy" },
-      steps: [{ id: "p", kind: "post", name: "p", x: 0, y: 0, channelId: quiet.id, text: "Ran" }],
+      trigger: { kind: "schedule", schedule: { kind: "once", at: Date.now() + 5_000 } },
+      steps: [{ id: "p", kind: "notify", name: "p", x: 0, y: 0, title: "Ran" }],
       edges: [],
     })
 
@@ -318,24 +305,13 @@ test("sync tasks: a routine and a workflow run on one computer only, and Run on 
     await expect(two.page.getByTestId("wf-runs-on")).toHaveText("Runs on MacBook 1")
     await expect(two.page.getByTestId("wf-card-run")).toHaveCount(0)
 
-    // A message that is sent on the second computer fires the workflow on the first one only.
-    await expect
-      .poll(
-        async () =>
-          (
-            await rpc<{ id: string }[]>(two.page, "channels.list", {
-              serverId: await localServer(two.page),
-            })
-          ).length,
-        { timeout: 20_000 },
-      )
-      .toBe(2)
-    await rpc(two.page, "channels.send", { channelId: watched.id, text: "please deploy now" })
+    // The due time fires the workflow on the first computer only.
     const runs = async (page: Page) =>
       (await rpc<unknown[]>(page, "workflows.runs", { workflowId: flow.id })).length
-    await expect.poll(() => runs(one.page), { timeout: 20_000 }).toBe(1)
-    await new Promise((r) => setTimeout(r, 1500))
-    // One run in all: the second computer did not fire it too.
+    await expect.poll(() => runs(one.page), { timeout: 45_000 }).toBe(1)
+    // The schedule loop checks every 15 seconds. After one more check, there is still one run in
+    // all: the second computer did not fire it too.
+    await new Promise((r) => setTimeout(r, 16_000))
     expect(await runs(one.page)).toBe(1)
     await expect.poll(() => runs(two.page), { timeout: 20_000 }).toBe(1)
 

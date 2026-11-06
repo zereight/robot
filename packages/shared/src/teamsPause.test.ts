@@ -208,10 +208,6 @@ describe("the notification", () => {
       teamsNoticeBodyKey("signedOut"),
       teamsNoticeBodyKey("paused"),
       "settings.notify.kind.teams_link",
-      "today.kind.teams_paused",
-      "today.kind.teams_signed_out",
-      "today.line.teamsPaused",
-      "today.line.teamsSignedOut",
     ] as const) {
       expect(catalogues.ko[key]).not.toBe(catalogues.en[key])
       expect(catalogues.ko[key]).toBeTruthy()

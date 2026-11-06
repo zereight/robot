@@ -3,7 +3,6 @@ import type { WorkflowOwner } from "@robot/shared"
 import { ownerChoice, ownerFromChoice } from "./ownerChoice.ts"
 
 describe("the choice of an owner in a select (spec 010)", () => {
-  const docs: WorkflowOwner = { kind: "organization", id: "org-1" }
   const ada: WorkflowOwner = { kind: "agent", id: "agent-1" }
 
   test("none is the empty choice", () => {
@@ -11,10 +10,8 @@ describe("the choice of an owner in a select (spec 010)", () => {
     expect(ownerFromChoice("")).toBeNull()
   })
 
-  test("an organization and an agent go to a choice and come back", () => {
-    expect(ownerFromChoice(ownerChoice(docs))).toEqual(docs)
+  test("an agent goes to a choice and comes back", () => {
     expect(ownerFromChoice(ownerChoice(ada))).toEqual(ada)
-    expect(ownerChoice(docs)).not.toBe(ownerChoice({ kind: "agent", id: docs.id }))
   })
 
   test("an id that holds a colon survives", () => {
@@ -22,8 +19,9 @@ describe("the choice of an owner in a select (spec 010)", () => {
     expect(ownerFromChoice(ownerChoice(odd))).toEqual(odd)
   })
 
-  test("a choice that no one made counts as none", () => {
+  test("a choice that names no agent counts as none", () => {
     expect(ownerFromChoice("team:1")).toBeNull()
+    expect(ownerFromChoice("organization:org-1")).toBeNull()
     expect(ownerFromChoice("agent:")).toBeNull()
   })
 })

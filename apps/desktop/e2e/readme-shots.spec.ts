@@ -16,7 +16,7 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
 // The pictures of the README. This file is not a check. It starts the real app against a scripted
-// stand-in model, builds a small team, and saves one picture of each screen that the README shows
+// stand-in model, makes a few agents, and saves one picture of each screen that the README shows
 // to build/e2e/readme. It runs only when README_SHOTS is set, so the normal suite skips it:
 //
 //   README_SHOTS=1 bun run --cwd apps/desktop e2e e2e/readme-shots.spec.ts
@@ -38,11 +38,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // ---- The scripted model -------------------------------------------------------------------------
 
 interface Scripted {
-  /** The reply. A reply with `whole` goes out as one part (a plan is JSON). */
+  /** The reply. */
   readonly text: string
   /** The wait between two words, in ms. */
   readonly delay?: number
-  readonly whole?: boolean
   /** A call of a tool at the end of the reply. A step that needs approval waits for the user. */
   readonly toolCall?: { readonly name: string; readonly args: Record<string, unknown> }
 }
@@ -71,53 +70,6 @@ const CHAT_REPLY = [
   "Tell me when the list is ready and I will hand the draft to Bo.",
 ].join("\n")
 
-const PLAN = JSON.stringify({
-  plan: "Two parts: Bo drafts the notes from the changelog, and Cy checks the facts and links.",
-  parts: [
-    {
-      member: "Bo",
-      label: "Draft the notes",
-      prompt: "Draft the notes for version 1.2 from the changelog. Keep them short.",
-      doneTest: "The draft has a title and one line for each change",
-    },
-    {
-      member: "Cy",
-      label: "Check facts and links",
-      prompt: "Check the facts and links of the notes for version 1.2.",
-      doneTest: "Every link opens and every date is right",
-    },
-  ],
-})
-
-const DRAFT = [
-  "**Release notes for version 1.2**",
-  "",
-  "- **New:** search finds messages in every chat.",
-  "- **New:** a routine can run every six hours.",
-  "- **Better:** long chats open faster.",
-  "- **Fixed:** a failed upload no longer blocks the message box.",
-  "",
-  "The release is on 12 November.",
-].join("\n")
-
-const CHECK = [
-  "I checked the draft against the changelog.",
-  "",
-  "- All 4 links open.",
-  "- One date was wrong: the release is on 14 November, not 12 November. I fixed it.",
-  "- Every other line matches the changelog.",
-  "",
-  "The draft is ready to post.",
-].join("\n")
-
-const SUMMARY =
-  "The notes for version 1.2 are ready. Bo wrote the draft and Cy checked it: all links open, and one date is now right (14 November). Next: read the draft in this channel and tell me to post it."
-
-const LONG = Array.from(
-  { length: 40 },
-  (_, i) => `- Page ${i + 1}: title, summary and links collected.\n`,
-).join("")
-
 const COPY_ASK = "I will copy the notes to the docs server. The copy needs your approval."
 
 /** What the scripted model answers, by the last line of the last message of the user. */
@@ -132,18 +84,12 @@ const scripted = (line: string): Scripted | undefined => {
       },
     }
   if (line.includes("ship the 1.2 docs")) return { text: CHAT_REPLY, delay: 8 }
-  if (line.startsWith("Write one short summary")) return { text: SUMMARY, delay: 14 }
-  if (line.includes("notes for version 1.2 from the channel"))
-    return { text: PLAN, whole: true, delay: 0 }
-  if (line.startsWith("Draft the notes for version 1.2")) return { text: DRAFT, delay: 90 }
-  if (line.startsWith("Check the facts and links of the notes")) return { text: CHECK, delay: 90 }
-  if (line.startsWith("Prepare the handbook index")) return { text: LONG, delay: 80 }
   return undefined
 }
 
 const streamScripted = async (res: ServerResponse, reply: Scripted) => {
   res.writeHead(200, { "content-type": "text/event-stream" })
-  const parts = reply.whole ? [reply.text] : (reply.text.match(/\S+\s*/g) ?? [reply.text])
+  const parts = reply.text.match(/\S+\s*/g) ?? [reply.text]
   for (const part of parts) {
     if (res.destroyed) return
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: part } }] })}\n\n`)
@@ -172,8 +118,8 @@ const textOf = (content: unknown) =>
 
 /**
  * A model provider in front of the stand-in of the end-to-end tests. It answers the requests that
- * the pictures need with the text above and passes every other request (the check of a lead, tool
- * calls) on to the stand-in. Its one model is called "demo-model".
+ * the pictures need with the text above and passes every other request (tool calls) on to the
+ * stand-in. Its one model is called "demo-model".
  */
 const startDemoProvider = async (upstream: string) => {
   const origin = new URL(upstream).origin
@@ -227,7 +173,7 @@ const startDemoProvider = async (upstream: string) => {
   }
 }
 
-// ---- The team -----------------------------------------------------------------------------------
+// ---- The agents --------------------------------------------------------------------------------
 
 interface AgentInfo {
   id: string
@@ -252,14 +198,14 @@ test("readme: pictures of the app", async () => {
   await rpc(page, "settings.update", { theme: "dark", language: "en" })
   await connectMock(page, demo.url, GOOD_KEY, "Demo model")
 
-  // The team: a lead, a writer, a fact checker and a planner.
+  // The agents: a planner of the docs, a writer, a fact checker and a keeper of the release plan.
   await createAgent(page, "Ada")
   const serverId = await serverOf(page)
   const ada = (await rpc<AgentInfo[]>(page, "agents.list", { serverId, archived: false }))[0]
   if (!ada) throw new Error("no agent")
   await rpc(page, "agents.update", {
     id: ada.id,
-    patch: { role: "Leads the docs team", face: { shape: 0, hue: 3 } },
+    patch: { role: "Plans the docs work", face: { shape: 0, hue: 3 } },
   })
   const made: Record<string, string> = {}
   for (const [name, role, shape, hue] of [
@@ -278,50 +224,26 @@ test("readme: pictures of the app", async () => {
     made[name] = agent.id
   }
   const [bo, cy, dee] = [made.Bo, made.Cy, made.Dee] as [string, string, string]
-  const channel = await rpc<{ id: string }>(page, "channels.create", {
-    serverId,
-    name: "Docs",
-    topic: "Release notes and the handbook",
-    memberIds: [ada.id, bo, cy],
-    leadId: ada.id,
-  })
 
-  // 1. A direct chat with a Markdown reply.
+  // 1. A direct chat with a Markdown reply. The chat is also filmed: build/e2e/videos/readme-demo.gif
+  // when ffmpeg is on the PATH.
   await page.getByTestId(`place-agent-${ada.id}`).click()
-  await page
-    .getByTestId("composer-input")
-    .fill("Outline how we ship the 1.2 docs: who does what, and the first command.")
-  await page.getByTestId("composer-input").press("Enter")
-  await idle(page)
-  await page.waitForTimeout(400)
-  await pic(page, "chat")
-
-  // 2. A channel: the lead splits one job into two parts, the members answer, the lead sums up.
-  // The whole job is also filmed: build/e2e/videos/readme-demo.gif when ffmpeg is on the PATH.
-  await page.getByTestId(`place-channel-${channel.id}`).click()
   const stopFilm = await startRecording(page, "readme-demo")
   await page.waitForTimeout(700)
-  await page.getByTestId("channel-input").click()
+  await page.getByTestId("composer-input").click()
   await page
-    .getByTestId("channel-input")
-    .pressSequentially("Please write the notes for version 1.2 from the channel history.", {
+    .getByTestId("composer-input")
+    .pressSequentially("Outline how we ship the 1.2 docs: who does what, and the first command.", {
       delay: 30,
     })
-  await page.getByTestId("channel-input").press("Enter")
-  // While the two members work, the panel shows the plan steps.
-  await expect(page.getByTestId("plan-step").first()).toBeVisible({ timeout: 30_000 })
-  await page.waitForTimeout(1800)
-  await pic(page, "channel-working")
-  await expect(page.locator("[data-testid=channel-message][data-kind=summary]")).toHaveCount(1, {
-    timeout: 90_000,
-  })
-  await expect(page.locator("[data-testid=message][data-status=streaming]")).toHaveCount(0)
+  await page.getByTestId("composer-input").press("Enter")
+  await idle(page)
   await page.waitForTimeout(1500)
-  await pic(page, "channel")
+  await pic(page, "chat")
   await stopFilm()
 
-  // 3. One hand-off from Bo to Cy, then Cy works on a long task and Dee waits for an answer. The
-  // command of Dee asks for approval, and the script never allows it.
+  // 2. One hand-off from Bo to Cy, then Dee waits for an answer. The command of Dee asks for
+  // approval, and the script never allows it.
   await rpc(page, "chat.send", {
     agentId: bo,
     text: 'TOOL send_message {"to":"Cy","text":"Please check the facts"}',
@@ -347,23 +269,8 @@ test("readme: pictures of the app", async () => {
   await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 20_000 })
   await page.waitForTimeout(600)
   await pic(page, "approval")
-  await rpc(page, "chat.send", {
-    agentId: cy,
-    text: "Prepare the handbook index for 1.2",
-    replyTo: null,
-  })
 
-  // 4. The org chart.
-  await page.getByTestId("page-orgchart").click()
-  await expect(page.getByTestId("org-node").first()).toBeVisible()
-  await expect(page.locator('[data-testid="org-node"][data-state="working"]')).toHaveCount(1, {
-    timeout: 20_000,
-  })
-  await page.waitForTimeout(2500)
-  await pic(page, "org-chart")
-  await rpc(page, "chat.stop", { agentId: cy })
-
-  // 5. Today: what waits for the user and what runs next.
+  // 3. Routines, and a workflow.
   await rpc(page, "routines.create", {
     serverId,
     agentId: bo,
@@ -378,7 +285,7 @@ test("readme: pictures of the app", async () => {
     name: "Friday report",
     prompt: "Sum up what the team shipped this week.",
     schedule: { kind: "weekly", days: [5], time: "17:00" },
-    place: { kind: "channel", channelId: channel.id },
+    place: { kind: "agent" },
   })
   await rpc(page, "routines.create", {
     serverId,
@@ -388,20 +295,13 @@ test("readme: pictures of the app", async () => {
     schedule: { kind: "every", minutes: 360, from: Date.now() },
     place: { kind: "agent" },
   })
-  await page.getByTestId("page-today").click()
-  await expect(page.getByTestId("today-page")).toBeVisible()
-  await expect(page.getByTestId("today-row").first()).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(800)
-  await pic(page, "today")
-
-  // 6. Routines, and a workflow.
   await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routine-card")).toHaveCount(3)
   await pic(page, "routines")
   await rpc(page, "workflows.create", {
     serverId,
     name: "Release notes",
-    trigger: { kind: "channel", channelId: channel.id, contains: "release" },
+    trigger: { kind: "manual" },
     steps: [
       {
         id: "draft",
@@ -410,7 +310,7 @@ test("readme: pictures of the app", async () => {
         x: 0,
         y: 240,
         agentId: bo,
-        prompt: "Write the release notes for: {{trigger}}",
+        prompt: "Write the release notes for version 1.2.",
         continueOnFailure: false,
       },
       {
@@ -441,13 +341,12 @@ test("readme: pictures of the app", async () => {
         message: "Post these release notes?",
       },
       {
-        id: "post",
-        kind: "post",
-        name: "Post to Docs",
+        id: "done",
+        kind: "notify",
+        name: "Notes approved",
         x: 880,
         y: 80,
-        channelId: channel.id,
-        text: "{{input}}",
+        title: "Notes approved",
       },
       { id: "notify", kind: "notify", name: "Tell me", x: 660, y: 400, title: "Facts need a look" },
     ],
@@ -455,13 +354,13 @@ test("readme: pictures of the app", async () => {
       { id: "e1", from: "draft", to: "check" },
       { id: "e2", from: "check", to: "ok" },
       { id: "e3", from: "ok", to: "approve", branch: "yes" },
-      { id: "e4", from: "approve", to: "post" },
+      { id: "e4", from: "approve", to: "done" },
       { id: "e5", from: "ok", to: "notify", branch: "no" },
     ],
     notes: [
       {
         id: "n1",
-        text: "A person decides before anything goes to the channel.",
+        text: "A person decides before the notes go out.",
         tone: "yellow",
         x: 660,
         y: 540,
@@ -477,7 +376,7 @@ test("readme: pictures of the app", async () => {
   await page.waitForTimeout(800)
   await pic(page, "workflow")
 
-  // 7. The form of a new agent, with the starters. The window is taller, so the form fits.
+  // 4. The form of a new agent, with the starters. The window is taller, so the form fits.
   await resizeWindow(app, 1400, 1180)
   await page.getByTestId("page-chats").click()
   await page.getByTestId(`place-agent-${ada.id}`).click()
@@ -490,11 +389,11 @@ test("readme: pictures of the app", async () => {
   await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
   await resizeWindow(app, 1400, 900)
 
-  // 8. The light theme.
+  // 5. The light theme.
   await rpc(page, "settings.update", { theme: "light" })
-  await page.getByTestId(`place-channel-${channel.id}`).click()
+  await page.getByTestId(`place-agent-${ada.id}`).click()
   await page.waitForTimeout(800)
-  await pic(page, "channel-light")
+  await pic(page, "chat-light")
 
   await app.close()
   await demo.close()

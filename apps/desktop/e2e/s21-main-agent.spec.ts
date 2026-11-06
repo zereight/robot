@@ -12,10 +12,9 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
 
-// Spec 002, flow 7 ("Main agent"), spec 029 ("Root"), spec 012 and spec 010. The switch "Main
-// agent" is in the profile of an agent. At most one agent has it; the old one loses it in the same
-// step. The root of the org chart is the main agent, and "You" when there is none or when the main
-// agent is archived. A linked computer sees the state and cannot change it. The screenshots start
+// Spec 002, flow 7 ("Main agent"), and spec 012. The switch "Main agent" is in the profile of an
+// agent. At most one agent has it; the old one loses it in the same step. A linked computer sees the
+// state and cannot change it. The screenshots start
 // with "s21-main-" so that they do not meet the screenshots of the other specs that start with s21.
 
 interface AgentInfo {
@@ -53,15 +52,7 @@ const saveProfile = async (page: Page) => {
   await page.getByTestId("agent-submit").click()
   await expect(page.getByTestId("agent-profile")).toBeHidden()
 }
-/** The root of the chart: the id of its agent, or null for "You". */
-const rootOf = async (page: Page) => {
-  await page.getByTestId("page-orgchart").click()
-  const root = page.getByTestId("org-root")
-  await expect(root).toBeVisible()
-  return root.getAttribute("data-agent-id")
-}
-
-test("main agent: the switch in the profile, one main agent, the root of the chart, archive, off", async () => {
+test("main agent: the switch in the profile, one main agent, archive, off", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
@@ -69,33 +60,28 @@ test("main agent: the switch in the profile, one main agent, the root of the cha
     await resizeWindow(app, 1300, 860)
     await connectMock(page, mock.openaiUrl, GOOD_KEY)
     for (const name of ["Ada", "Bo", "Cy"]) await createAgent(page, name)
-    const [ada, bo] = [await idOf(page, "Ada"), await idOf(page, "Bo")]
+    const bo = await idOf(page, "Bo")
 
-    // No main agent at the start: the root is "You", and every profile has the switch off.
+    // No main agent at the start: every profile has the switch off.
     expect(await mains(page)).toEqual([])
-    expect(await rootOf(page)).toBeNull()
-    await expect(page.getByTestId("org-root")).toHaveAttribute("aria-label", "You")
     await openProfile(page, "Ada")
     await expect(page.getByTestId("agent-main")).toHaveAttribute("aria-checked", "false")
     await expect(page.getByTestId("agent-main")).toBeEnabled()
     await expect(page.getByTestId("agent-main-server")).toHaveCount(0)
     await shot(page, "s21-main-01-profile-off")
 
-    // Turn it on for Ada and save: Ada is the main agent and the root of the chart.
+    // Turn it on for Ada and save: Ada is the main agent.
     await page.getByTestId("agent-main").click()
     await expect(page.getByTestId("agent-main")).toHaveAttribute("aria-checked", "true")
     await saveProfile(page)
     expect(await mains(page)).toEqual(["Ada"])
-    expect(await rootOf(page)).toBe(ada)
-    await expect(page.getByTestId("org-root")).toHaveAttribute("data-kind", "root")
-    await shot(page, "s21-main-02-root-is-ada")
+    await shot(page, "s21-main-02-ada-is-main")
 
     // Turn it on for Bo while Ada has it: only Bo has it, and the profile of Ada shows it off.
     await openProfile(page, "Bo")
     await page.getByTestId("agent-main").click()
     await saveProfile(page)
     expect(await mains(page)).toEqual(["Bo"])
-    expect(await rootOf(page)).toBe(bo)
     await openProfile(page, "Ada")
     await expect(page.getByTestId("agent-main")).toHaveAttribute("aria-checked", "false")
     await page.keyboard.press("Escape")
@@ -108,40 +94,21 @@ test("main agent: the switch in the profile, one main agent, the root of the cha
     await saveProfile(page)
     expect(await mains(page)).toEqual(["Bo"])
 
-    // The field "Agent" of a workflow starter starts with the main agent, not the first agent.
-    await page.getByTestId("page-workflows").click()
-    await page
-      .getByTestId("wf-tabs")
-      .getByText(/^(Workflows|워크플로우)$/)
-      .click()
-    await page.getByTestId("wf-menu").click()
-    await page.getByTestId("wf-menu-starter").click()
-    await expect(
-      page
-        .getByTestId("wf-starter-dialog")
-        .getByTestId("wf-starter-agent")
-        .locator("option:checked"),
-    ).toHaveText("Bo")
-    await page.getByTestId("wf-starter-cancel").click()
-    await expect(page.getByTestId("wf-starter-dialog")).toBeHidden()
-
-    // Archive the main agent: the root is "You". Restore it: it is the root again.
+    // Archive the main agent: no agent that is not archived has it. Restore it: it is the main
+    // agent again.
     await openProfile(page, "Bo")
     await page.getByTestId("agent-archive").click()
     await expect(page.getByTestId("agent-profile")).toBeHidden()
-    expect(await rootOf(page)).toBeNull()
-    await expect(page.getByTestId("org-root")).toHaveAttribute("aria-label", "You")
-    await shot(page, "s21-main-03-archived-root-is-you")
+    await expect.poll(() => mains(page)).toEqual([])
     await rpc(page, "agents.restore", { id: bo })
-    await expect.poll(() => rootOf(page)).toBe(bo)
+    await expect.poll(() => mains(page)).toEqual(["Bo"])
 
-    // Turn it off: no agent has it, and the root is "You".
+    // Turn it off: no agent has it.
     await openProfile(page, "Bo")
     await page.getByTestId("agent-main").click()
     await expect(page.getByTestId("agent-main")).toHaveAttribute("aria-checked", "false")
     await saveProfile(page)
     expect(await mains(page)).toEqual([])
-    expect(await rootOf(page)).toBeNull()
 
     // A copy of the main agent is not the main agent.
     await openProfile(page, "Ada")

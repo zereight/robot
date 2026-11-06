@@ -38,7 +38,7 @@ export interface Palette {
   markEyes: string
   markGlow: string
   /**
-   * The mark of the user and the mark of a channel (spec 002). They follow the theme: a dark disc
+   * The mark of the user (spec 002). They follow the theme: a dark disc
    * with a glyph of light in the dark theme, a light disc with a dark glyph in the light theme.
    */
   avatarTile: string

@@ -1,10 +1,9 @@
 import { useState } from "react"
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native"
+import { StyleSheet, Text, TextInput, View } from "react-native"
 import { useApp, useServer } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { Button, ErrorLine } from "../ui/kit.tsx"
 import type { ToolPart } from "./MessageRow.tsx"
-import { passKey } from "./pass.ts"
 
 /**
  * The card of a step that waits for the user (spec 007, 011): an approval with Allow and Deny,
@@ -114,36 +113,6 @@ export const AskCard = (props: {
           <Text selectable style={[styles.summary, { color: palette.text }]}>
             {ask.question}
           </Text>
-          {/* The lead of the channel looks at the question; the user can still answer (spec 004). */}
-          {ask.lead ? (
-            <View
-              testID="ask.lead"
-              accessibilityRole="text"
-              accessibilityLiveRegion="polite"
-              style={styles.leadRow}
-            >
-              <ActivityIndicator size="small" color={palette.textMuted} />
-              <Text style={[styles.xs, { color: palette.textMuted }]}>
-                {t("tool.leadLooks", { name: ask.lead.name })}
-              </Text>
-            </View>
-          ) : null}
-          {/* One line for each pass, the lead first (spec 004, 030). */}
-          {(ask.passes ?? (ask.passed ? [ask.passed] : [])).map((pass, i) => (
-            <Text
-              // biome-ignore lint/suspicious/noArrayIndexKey: the passes are a fixed list in order
-              key={`${pass.agentId}-${i}`}
-              testID="ask.passed"
-              style={[styles.small, { color: palette.textMuted }]}
-            >
-              {t(passKey(pass.kind, pass.reason), { name: pass.name, reason: pass.reason })}
-            </Text>
-          ))}
-          {ask.lineLate ? (
-            <Text testID="ask.lineLate" style={[styles.small, { color: palette.textMuted }]}>
-              {t("tool.leadPass.lineLate")}
-            </Text>
-          ) : null}
           {ask.choices.length > 0 ? (
             <View style={styles.choices}>
               {ask.choices.map((choice) => (
@@ -198,7 +167,6 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: radius.l, padding: space.m, gap: space.s },
   small: { fontSize: text.s, lineHeight: 19 },
   xs: { fontSize: text.xs },
-  leadRow: { flexDirection: "row", alignItems: "center", gap: space.s },
   body: { fontSize: text.m, lineHeight: 22 },
   summary: { fontSize: text.m, lineHeight: 22, fontWeight: "600" },
   mono: { fontFamily: "Menlo", fontSize: text.xs, lineHeight: 17 },

@@ -147,14 +147,7 @@ test("island detail card: rows, place, what the agent does, time, size, closing,
   mkdirSync(shotsDir, { recursive: true })
   const { app, page } = await setup()
   for (const name of ["Ada", "Bo", "Cy"]) await createAgent(page, name)
-  const { serverId, id } = await agentsOf(page)
-  const channel = await rpc<Named>(page, "channels.create", {
-    serverId,
-    name: "Launch",
-    topic: "",
-    memberIds: [id("Bo")],
-    leadId: null,
-  })
+  const { id } = await agentsOf(page)
   const island = await islandPage(app)
 
   // Idle: no card, even when the pointer is on the island.
@@ -165,10 +158,10 @@ test("island detail card: rows, place, what the agent does, time, size, closing,
   await expect(island.getByTestId("island-bar")).toHaveAttribute("aria-label", "ROBot")
   await island.mouse.move(3000, 3000)
 
-  // Three agents work: one in a direct chat, one on a command, one in a channel.
+  // Three agents work: two in a direct chat, one on a command.
   await sendTo(page, id("Ada"), "run long")
   await sendTo(page, id("Cy"), 'TOOL run_command {"command":"sleep 40 && echo SECRET-CMD"}')
-  await rpc(page, "channels.send", { channelId: channel.id, text: "@Bo run long" })
+  await sendTo(page, id("Bo"), "run long")
   await expect(island.getByTestId("island-count")).toHaveText("3", { timeout: 20_000 })
   await expect(island.getByTestId("island-bar")).toHaveAttribute("aria-label", "Agents working: 3")
   await expect(island.getByTestId("island-detail")).toHaveCount(0)
@@ -186,7 +179,7 @@ test("island detail card: rows, place, what the agent does, time, size, closing,
   await expect(row("Ada").getByTestId("island-row-doing")).toHaveText("Working…")
   await expect(row("Cy").getByTestId("island-row-place")).toHaveText("Direct chat")
   await expect(row("Cy").getByTestId("island-row-doing")).toHaveText("Running a command")
-  await expect(row("Bo").getByTestId("island-row-place")).toHaveText("#Launch")
+  await expect(row("Bo").getByTestId("island-row-place")).toHaveText("Direct chat")
   await expect(row("Bo").getByTestId("island-row-doing")).toHaveText("Working…")
   await expect(row("Cy")).toHaveAttribute(
     "aria-label",
@@ -240,7 +233,7 @@ test("island detail card: rows, place, what the agent does, time, size, closing,
   await island.mouse.move(3000, 3000)
   await island.getByTestId("island-bar").hover()
   await row("Bo").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
+  await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
 
   // Seven agents work: five rows and a line for the two more.
   for (const name of ["Di", "Ed", "Flo", "Gus"]) await createAgent(page, name)
@@ -256,36 +249,10 @@ test("island detail card: rows, place, what the agent does, time, size, closing,
   await snap(island, "s33-02-more.png")
 
   // Stopped agents leave the card; with none left the island is idle.
-  for (const name of ["Ada", "Cy", "Di", "Ed", "Flo", "Gus"])
+  for (const name of ["Ada", "Bo", "Cy", "Di", "Ed", "Flo", "Gus"])
     await rpc(page, "chat.stop", { agentId: more.id(name) })
-  await rpc(page, "channels.stop", { channelId: channel.id })
   await expect(island.getByTestId("island-idle")).toBeVisible({ timeout: 20_000 })
   await expect(island.getByTestId("island-detail")).toHaveCount(0)
-  await app.close()
-})
-
-test("island plan step: the row shows the label of the plan step that runs", async () => {
-  test.setTimeout(120_000)
-  const { app, page } = await setup()
-  for (const name of ["Lia", "Bo"]) await createAgent(page, name)
-  const { serverId, id } = await agentsOf(page)
-  const channel = await rpc<Named>(page, "channels.create", {
-    serverId,
-    name: "Launch",
-    topic: "",
-    memberIds: [id("Lia"), id("Bo")],
-    leadId: id("Lia"),
-  })
-  const island = await islandPage(app)
-  await rpc(page, "channels.send", { channelId: channel.id, text: "split hold" })
-  await expect(island.getByTestId("island-count")).toHaveText("2", { timeout: 30_000 })
-  await island.getByTestId("island-bar").hover()
-  const rows = island.getByTestId("island-row")
-  await expect(rows).toHaveCount(2)
-  const bo = rows.filter({ hasText: "Bo" })
-  await expect(bo.getByTestId("island-row-doing")).toHaveText("Hold the line")
-  await expect(bo.getByTestId("island-row-place")).toHaveText("#Launch")
-  await rpc(page, "channels.stop", { channelId: channel.id })
   await app.close()
 })
 
@@ -294,14 +261,7 @@ test("island attention card: place, kind of step, 1 of N, previous and next, ans
   mkdirSync(shotsDir, { recursive: true })
   const { app, page, notices, victim } = await setup()
   for (const name of ["Ada", "Bo", "Cy", "Dee"]) await createAgent(page, name)
-  const { serverId, id } = await agentsOf(page)
-  const channel = await rpc<Named>(page, "channels.create", {
-    serverId,
-    name: "Launch",
-    topic: "",
-    memberIds: [id("Cy")],
-    leadId: null,
-  })
+  const { id } = await agentsOf(page)
   const island = await islandPage(app)
   const attention = island.getByTestId("island-attention")
   const position = island.getByTestId("island-position")
@@ -309,14 +269,14 @@ test("island attention card: place, kind of step, 1 of N, previous and next, ans
   const rm = (path: string) => `TOOL run_command ${JSON.stringify({ command: `rm "${path}"` })}`
   const paths = { Ada: victim("a-first"), Bo: victim("b-second"), Cy: victim("c-third") }
 
-  // Three requests wait, oldest first: a direct chat, a direct chat, and a channel.
+  // Three requests wait, oldest first, each in a direct chat.
   await sendTo(page, id("Ada"), rm(paths.Ada))
   await expect(attention).toBeVisible({ timeout: 20_000 })
   await expect(position).toHaveCount(0)
   await expect(island.getByTestId("island-meta")).toHaveText("Direct chat · Command")
   await sendTo(page, id("Bo"), rm(paths.Bo))
   await expect(position).toHaveText("1 of 2")
-  await rpc(page, "channels.send", { channelId: channel.id, text: `@Cy ${rm(paths.Cy)}` })
+  await sendTo(page, id("Cy"), rm(paths.Cy))
   await expect(position).toHaveText("1 of 3")
   await expect(position).toHaveAttribute("aria-label", "Request 1 of 3")
   await expect(summary).toContainText("a-first.txt")
@@ -348,7 +308,7 @@ test("island attention card: place, kind of step, 1 of N, previous and next, ans
   await island.getByTestId("island-next").click()
   await expect(position).toHaveText("3 of 3")
   await expect(summary).toContainText("c-third.txt")
-  await expect(island.getByTestId("island-meta")).toHaveText("#Launch · Command")
+  await expect(island.getByTestId("island-meta")).toHaveText("Direct chat · Command")
   await island.getByTestId("island-prev").click()
   await island.getByTestId("island-prev").click()
   await expect(position).toHaveText("1 of 3")

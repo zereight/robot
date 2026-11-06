@@ -2,20 +2,15 @@ import { type Workflow, type WorkflowOwner, workflowParticipants } from "@robot/
 import { createMemo, createResource, onCleanup } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 
 /**
  * The agents that may work in a step of a workflow with this owner (spec 010, "Owner and
- * participants"). It reads the same rule as the run, from the agents and organizations on screen,
- * so a change of a member or of a lead shows at once.
+ * participants"). It reads the same rule as the run, from the agents on screen.
  */
 export const useParticipants = (owner: () => WorkflowOwner | null) => {
   const agents = useAgents()
-  const orgs = useOrgs()
-  return createMemo(() =>
-    workflowParticipants(owner(), { agents: agents.agents(), orgs: orgs.orgs() }),
-  )
+  return createMemo(() => workflowParticipants(owner(), { agents: agents.agents(), orgs: [] }))
 }
 
 /**
@@ -24,7 +19,6 @@ export const useParticipants = (owner: () => WorkflowOwner | null) => {
  */
 export const useOwnerNames = (workflows: () => readonly Workflow[]) => {
   const agents = useAgents()
-  const orgs = useOrgs()
   const ui = useUi()
   const missing = () =>
     workflows().some((w) => w.owner?.kind === "agent" && !agents.byId(w.owner.id))
@@ -35,13 +29,13 @@ export const useOwnerNames = (workflows: () => readonly Workflow[]) => {
   )
   return (owner: WorkflowOwner | null): string => {
     if (owner === null) return ""
-    if (owner.kind === "organization") return orgs.byId(owner.id)?.name ?? ""
+    if (owner.kind !== "agent") return ""
     return agents.byId(owner.id)?.name ?? archived().find((a) => a.id === owner.id)?.name ?? ""
   }
 }
 
 /**
- * The workflows that one organization or one agent owns, by name (spec 010). It reads the server on
+ * The workflows that one agent owns, by name (spec 010). It reads the server on
  * screen unless `serverId` names another, and it follows the list. Nothing is read for no owner.
  */
 export const useOwnedWorkflows = (

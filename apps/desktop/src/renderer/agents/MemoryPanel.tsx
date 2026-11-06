@@ -1,12 +1,8 @@
 import {
   checkNowState,
-  type MemoryChannelRef,
-  type MemoryFilter,
   type MemoryHistoryRow,
-  type MemoryItem,
   type MemoryMode,
   type MemoryProposal,
-  type MemoryScope,
   type MessageKey,
 } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
@@ -27,7 +23,7 @@ import { useApp } from "../state/app.tsx"
 import { clearMemoryTarget, type MemoryTab, memoryTarget } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
-import { Menu, type MenuItem } from "../ui/Menu.tsx"
+import { Menu } from "../ui/Menu.tsx"
 import styles from "./agents.module.css"
 
 /** A line that shows why a call failed. */
@@ -55,86 +51,23 @@ const guarded =
     }
   }
 
-/** The value of the filter select: "all", "general", or the id of a channel. */
-const filterOf = (value: string): MemoryFilter =>
-  value === "all" || value === "general" ? { kind: value } : { kind: "channel", id: value }
-
 /**
- * The memory items of one agent: filter, search, add, edit, delete and move. A channel note
- * shows the channel name, and "Not a member" while the agent is not a member (spec 008).
+ * The memory items of one agent: search, add, edit and delete. All items are general: there are no
+ * channel notes (spec 008).
  */
 const Items = (props: { agentId: string; own: boolean }) => {
   const { t } = useApp()
-  const ui = useUi()
+  const _ui = useUi()
   const [query, setQuery] = createSignal("")
   const [draft, setDraft] = createSignal("")
-  const [filter, setFilter] = createSignal("all")
   const [editing, setEditing] = createSignal<{ id: string; text: string }>()
   const [error, setError] = createSignal<ErrorText>()
   const run = guarded(setError)
   const [items, { refetch }] = createResource(
-    () => ({ agentId: props.agentId, query: query(), filter: filterOf(filter()) }),
+    () => ({ agentId: props.agentId, query: query(), filter: { kind: "all" as const } }),
     (input) => call("memory.list", input),
   )
-  const [scopes, { refetch: refetchScopes }] = createResource(
-    () => props.agentId,
-    (agentId) => call("memory.scopes", { agentId }),
-  )
-  onCleanup(
-    window.robot.on("memory.changed", () => {
-      void refetch()
-      void refetchScopes()
-    }),
-  )
-  // A change of the members of a channel changes where an item can go, and who reads a note.
-  onCleanup(
-    window.robot.on("channels.changed", () => {
-      void refetch()
-      void refetchScopes()
-    }),
-  )
-  // One entry for each channel that has notes of this agent.
-  const withNotes = (): readonly MemoryScope[] => (scopes() ?? []).filter((c) => c.notes > 0)
-  // A filter on a channel that has no note any more shows everything again.
-  createEffect(() => {
-    const value = filter()
-    if (
-      value !== "all" &&
-      value !== "general" &&
-      scopes() &&
-      !withNotes().some((c) => c.id === value)
-    )
-      setFilter("all")
-  })
-  // "Move to": General, and every channel that the agent is a member of. The place of the item
-  // shows as the current one, also when the agent has left that channel.
-  const moveItems = (item: MemoryItem): MenuItem[] => {
-    const here = item.channel?.id ?? null
-    const target = (id: string | null, label: string, testId: string): MenuItem => ({
-      label,
-      checked: here === id,
-      onSelect: () => {
-        if (here !== id) void run(() => call("memory.move", { id: item.id, channelId: id }))
-      },
-      testId,
-    })
-    const members = (scopes() ?? []).filter((c) => c.member)
-    const out: MenuItem[] = [
-      { label: t("memory.move.heading"), onSelect: () => {}, heading: true },
-      target(null, t("memory.scope.general"), "memory-move-general"),
-      ...members.map((c) => target(c.id, c.name, "memory-move-channel")),
-    ]
-    // The channel of the note, when the agent is no member: shown as the current place only.
-    if (item.channel && !members.some((c) => c.id === item.channel?.id))
-      out.push({
-        label: item.channel.name ?? t("memory.note.channelGone"),
-        checked: true,
-        disabled: true,
-        onSelect: () => {},
-        testId: "memory-move-current",
-      })
-    return out
-  }
+  onCleanup(window.robot.on("memory.changed", () => void refetch()))
 
   const add = () =>
     run(async () => {
@@ -147,27 +80,6 @@ const Items = (props: { agentId: string; own: boolean }) => {
   return (
     <>
       <div class={styles.memoryRow}>
-        <select
-          class={styles.input}
-          value={filter()}
-          aria-label={t("memory.filter.label")}
-          onChange={(e) => setFilter(e.currentTarget.value)}
-          data-testid="memory-filter"
-        >
-          <option value="all" selected={filter() === "all"}>
-            {t("memory.filter.all")}
-          </option>
-          <option value="general" selected={filter() === "general"}>
-            {t("memory.filter.general")}
-          </option>
-          <For each={withNotes()}>
-            {(scope) => (
-              <option value={scope.id} selected={filter() === scope.id}>
-                {t("memory.filter.channel", { name: scope.name, count: scope.notes })}
-              </option>
-            )}
-          </For>
-        </select>
         <input
           class={styles.input}
           value={query()}
@@ -199,7 +111,7 @@ const Items = (props: { agentId: string; own: boolean }) => {
       <Failure error={error()} />
       <Show when={(items() ?? []).length === 0}>
         <span class={styles.hint} data-testid="memory-empty">
-          {t(filter() === "all" && !query().trim() ? "agents.memory.empty" : "memory.filter.empty")}
+          {t(!query().trim() ? "agents.memory.empty" : "memory.filter.empty")}
         </span>
       </Show>
       <For each={items() ?? []}>
@@ -211,25 +123,6 @@ const Items = (props: { agentId: string; own: boolean }) => {
                 <>
                   <div class={styles.memoryBody}>
                     <span class={styles.memoryText}>{item.text}</span>
-                    <Show when={item.channel}>
-                      {(channel) => (
-                        <span class={styles.hint} data-testid="memory-note-meta">
-                          <span data-testid="memory-note-channel">
-                            {channel().name === null
-                              ? t("memory.note.channelGone")
-                              : t("memory.note.channel", { name: channel().name ?? "" })}
-                          </span>
-                          <Show when={!channel().member}>
-                            <span title={t("memory.note.notMember.hint")}>
-                              {" · "}
-                              <span class={styles.notMember} data-testid="memory-not-member">
-                                {t("memory.note.notMember")}
-                              </span>
-                            </span>
-                          </Show>
-                        </span>
-                      )}
-                    </Show>
                   </div>
                   <span class={styles.hint}>{t(`agents.memory.source.${item.source}`)}</span>
                   <Button
@@ -245,24 +138,18 @@ const Items = (props: { agentId: string; own: boolean }) => {
                   >
                     {t("agents.memory.delete")}
                   </Button>
-                  {/* "Make a skill" is on the computer only (spec 008, 017). A move changes the
-                      item, so a linked device needs the switch for it, as for an edit. */}
-                  <Show when={props.own || ui.canChange()}>
+                  {/* "Make a skill" is on the computer only (spec 008, 017). */}
+                  <Show when={props.own}>
                     <Menu
                       label={t("memory.item.menu")}
                       icon={<Ellipsis size={16} />}
                       testId="memory-item-menu"
                       items={[
-                        ...(props.own
-                          ? [
-                              {
-                                label: t("skills.make"),
-                                onSelect: () => makeSkillFromWork({ kind: "memory", id: item.id }),
-                                testId: "memory-make-skill",
-                              },
-                            ]
-                          : []),
-                        ...moveItems(item),
+                        {
+                          label: t("skills.make"),
+                          onSelect: () => makeSkillFromWork({ kind: "memory", id: item.id }),
+                          testId: "memory-make-skill",
+                        },
                       ]}
                     />
                   </Show>
@@ -356,18 +243,6 @@ const Proposals = (props: { proposals: readonly MemoryProposal[] }) => {
             <span class={styles.hint} data-testid="memory-proposal-meta">
               {formatDateTime(app.locale(), proposal.createdAt)}
               <Show when={origin(proposal)}>{(from) => <> · {from()}</>}</Show>
-              <Show when={proposal.channel}>
-                {(channel) => (
-                  <>
-                    {" · "}
-                    <span data-testid="memory-proposal-channel">
-                      {channel().name === null
-                        ? t("memory.proposals.channelGone")
-                        : t("memory.proposals.channel", { name: channel().name ?? "" })}
-                    </span>
-                  </>
-                )}
-              </Show>
             </span>
             <div class={styles.memoryActions}>
               <Show
@@ -426,23 +301,6 @@ const History = (props: { rows: readonly MemoryHistoryRow[] }) => {
   const text = (value: string | null): JSX.Element => (
     <span class={styles.historyText}>{value}</span>
   )
-  // The place of an item in a row: a channel name, or "General" for a general item.
-  const place = (ref: MemoryChannelRef | null) =>
-    ref === null
-      ? t("memory.scope.general")
-      : ref.name === null
-        ? t("memory.note.channelGone")
-        : ref.name
-  // A move tells from where and to where. Another change of a note tells its channel.
-  const where = (row: MemoryHistoryRow): string | undefined => {
-    if (row.kind === "moved")
-      return t("memory.history.moved", {
-        from: place(row.channelBefore),
-        to: place(row.channelAfter),
-      })
-    const ref = row.kind === "deleted" ? row.channelBefore : row.channelAfter
-    return ref ? t("memory.history.inChannel", { name: place(ref) }) : undefined
-  }
   return (
     <>
       <Failure error={error()} />
@@ -464,13 +322,6 @@ const History = (props: { rows: readonly MemoryHistoryRow[] }) => {
               {t(`memory.history.actor.${row.actor}` as MessageKey)} ·{" "}
               {t(`memory.history.kind.${row.kind}` as MessageKey)}
             </span>
-            <Show when={where(row)}>
-              {(line) => (
-                <span class={styles.hint} data-testid="memory-history-channel">
-                  {line()}
-                </span>
-              )}
-            </Show>
             <div class={styles.historyBody} data-testid="memory-history-text">
               <Show
                 when={row.kind === "edited"}

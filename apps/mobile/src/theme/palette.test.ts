@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { palettes as desktopPalettes } from "../../../desktop/src/renderer/theme/tokens.ts"
 import { contrast, mark, palettes } from "./palette.ts"
 
-describe("the marks of the user and of a channel follow the theme", () => {
+describe("the mark of the user follows the theme", () => {
   for (const [theme, p] of Object.entries(palettes)) {
     test(`${theme}: the glyph stands out from the disc at 7:1`, () => {
       expect(contrast(p.avatarGlyph, p.avatarTile)).toBeGreaterThanOrEqual(7)

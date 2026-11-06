@@ -1,13 +1,11 @@
 import {
   AGENT_FILE_MAX_AGENTS,
-  AGENT_FILE_MAX_CHANNELS,
   AGENT_FILE_MAX_SKILLS,
   type AgentFileFailure,
   type AgentFilePreview,
   type AgentModel,
   agentCounts,
   agentPicks,
-  channelsForFile,
   handbookPreview,
   type MessageKey,
   type NotImported,
@@ -28,7 +26,6 @@ import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useScheduleWords } from "../routines/RoutinesPage.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -44,7 +41,6 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
   const [picked, setPicked] = createSignal<ReadonlySet<string>>(
     new Set(agents.agents().map((a) => a.id)),
   )
-  const channels = useChannels()
   const [skills] = createResource(
     () => ui.server()?.id,
     (serverId) => call("skills.list", { serverId }).catch(() => [] as readonly Skill[]),
@@ -54,8 +50,7 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
     () => ui.server()?.id,
     (serverId) => call("handbook.get", { serverId }).catch(() => undefined),
   )
-  // The three tick boxes are off at the start (spec 002).
-  const [withChannels, setWithChannels] = createSignal(false)
+  // The two tick boxes are off at the start (spec 002).
   const [withSkills, setWithSkills] = createSignal(false)
   const [withHandbook, setWithHandbook] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
@@ -63,7 +58,6 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
   const [saved, setSaved] = createSignal<{
     path: string
     count: number
-    channels: number
     skills: number
     handbook: boolean
     team: boolean
@@ -71,10 +65,8 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
 
   const allPicked = () => agents.agents().length > 0 && picked().size === agents.agents().length
   const tooMany = () => picked().size > AGENT_FILE_MAX_AGENTS
-  /** The channels and skills that the file would hold for the agents that are picked now. */
-  const channelCount = () => channelsForFile(channels.channels(), picked()).length
+  /** The skills that the file would hold for the agents that are picked now. */
   const skillCount = () => skillsForFile(skills(), picked()).length
-  const tooManyChannels = () => withChannels() && channelCount() > AGENT_FILE_MAX_CHANNELS
   const tooManySkills = () => withSkills() && skillCount() > AGENT_FILE_MAX_SKILLS
   const handbookEmpty = () => (handbook()?.text ?? "").trim() === ""
   const toggle = (id: string) => {
@@ -92,7 +84,7 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
       const result = await call("agentFile.export", {
         serverId,
         agentIds: [...picked()],
-        channels: withChannels(),
+        channels: false,
         skills: withSkills(),
         handbook: withHandbook(),
       })
@@ -100,10 +92,9 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
         setSaved({
           path: result.path,
           count: result.count,
-          channels: result.channels,
           skills: result.skills,
           handbook: result.handbook,
-          team: withChannels() || withSkills(),
+          team: withSkills(),
         })
     } catch (e) {
       setError(describeError(e))
@@ -165,23 +156,6 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
               <label class={review.tickRow}>
                 <input
                   type="checkbox"
-                  checked={withChannels()}
-                  onChange={(e) => setWithChannels(e.currentTarget.checked)}
-                  data-testid="agent-export-channels"
-                />
-                <span class={review.rowText}>
-                  <span class={styles.label}>
-                    {t("agentFile.export.team.channels")}{" "}
-                    <span class={styles.hint} data-testid="agent-export-channels-count">
-                      {t("agentFile.export.team.found", { count: channelCount() })}
-                    </span>
-                  </span>
-                  <span class={styles.hint}>{t("agentFile.export.team.channels.hint")}</span>
-                </span>
-              </label>
-              <label class={review.tickRow}>
-                <input
-                  type="checkbox"
                   checked={withSkills()}
                   onChange={(e) => setWithSkills(e.currentTarget.checked)}
                   data-testid="agent-export-skills"
@@ -221,11 +195,6 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
             {t("agentFile.export.limit")}
           </div>
         </Show>
-        <Show when={tooManyChannels()}>
-          <div class={styles.error} role="alert" data-testid="agent-export-limit-channels">
-            {t("agentFile.export.limit.channels")}
-          </div>
-        </Show>
         <Show when={tooManySkills()}>
           <div class={styles.error} role="alert" data-testid="agent-export-limit-skills">
             {t("agentFile.export.limit.skills")}
@@ -244,7 +213,6 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
               {done().team
                 ? t("agentFile.exported.team", {
                     count: done().count,
-                    channels: done().channels,
                     skills: done().skills,
                     path: done().path,
                   })
@@ -263,9 +231,7 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
           <Show when={!saved()}>
             <Button
               variant="primary"
-              disabled={
-                picked().size === 0 || tooMany() || tooManyChannels() || tooManySkills() || busy()
-              }
+              disabled={picked().size === 0 || tooMany() || tooManySkills() || busy()}
               onClick={submit}
               data-testid="agent-export-submit"
             >
@@ -289,7 +255,12 @@ const readFailure = (error: unknown): AgentFileFailure | undefined => {
 }
 
 /** One line of the part "Not imported": where it is in the file, and why it is not made. */
-export const NotImportedList = (props: { items: readonly NotImported[]; testId: string }) => {
+export const NotImportedList = (props: {
+  items: readonly NotImported[]
+  /** The channels of a file of an older version. ROBot has no channels now (spec 002). */
+  channels?: readonly string[]
+  testId: string
+}) => {
   const { t } = useApp()
   const where = (item: NotImported): string => {
     switch (item.reason) {
@@ -322,10 +293,18 @@ export const NotImportedList = (props: { items: readonly NotImported[]; testId: 
     <div data-testid={props.testId}>
       <h3 class={review.sectionTitle}>{t("importReview.notImported.title")}</h3>
       <Show
-        when={props.items.length > 0}
+        when={props.items.length > 0 || (props.channels?.length ?? 0) > 0}
         fallback={<p class={review.hint}>{t("importReview.notImported.empty")}</p>}
       >
         <ul class={review.notImported}>
+          <For each={props.channels ?? []}>
+            {(name) => (
+              <li data-testid="not-imported-item">
+                <span>{t("importReview.notImported.channel", { owner: name })}</span>{" "}
+                <span class={review.hint}>{t("importReview.reason.channel_gone")}</span>
+              </li>
+            )}
+          </For>
           <For each={props.items}>
             {(item) => (
               <li data-testid="not-imported-item">
@@ -362,11 +341,11 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
   const [ticks, setTicks] = createStore<
     { agent: boolean; instructions: boolean; routines: boolean[] }[]
   >(startAgentTicks(props.preview.agents).map((a) => ({ ...a, routines: [...a.routines] })))
-  // Channels and skills start ticked; the handbook does not (spec 014).
+  // Skills start ticked; the handbook does not (spec 014). Channels are not imported (spec 002).
   const [team, setTeam] = createStore(
     (() => {
       const start = startTeamTicks(props.preview)
-      return { channels: [...start.channels], skills: [...start.skills], handbook: start.handbook }
+      return { skills: [...start.skills], handbook: start.handbook }
     })(),
   )
   const [showAll, setShowAll] = createSignal(false)
@@ -374,31 +353,27 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
   const [error, setError] = createSignal<ErrorText>()
   /** Set when the import stopped: the agents made so far stay, so it cannot run again. */
   const [stopped, setStopped] = createSignal(false)
-  const hasTeam = () =>
-    props.preview.channels.length > 0 ||
-    props.preview.skills.length > 0 ||
-    props.preview.handbook !== null
-  /** What the ticks make of the channels and skills: a part may lose its members (spec 002). */
+  const hasTeam = () => props.preview.skills.length > 0 || props.preview.handbook !== null
+  /** What the ticks make of the skills: a skill may lose its agents (spec 002). */
   const plan = createMemo(() =>
     planTeam({
-      channels: props.preview.channels,
+      channels: [],
       skills: props.preview.skills,
       made: (agent) => ticks[agent]?.agent === true,
-      channelPicks: tickedPlaces(team.channels),
+      channelPicks: [],
       skillPicks: tickedPlaces(team.skills),
       skillRoom: props.preview.skillRoom,
     }),
   )
   const counts = () => ({
     ...agentCounts(ticks),
-    channels: plan().channels.length,
     skills: plan().skills.length,
     handbook: team.handbook && props.preview.handbook !== null,
   })
   /** The numbers of the counts line, for the text. */
   const countWords = () => {
-    const { agents, routines, channels, skills } = counts()
-    return { agents, routines, channels, skills }
+    const { agents, routines, skills } = counts()
+    return { agents, routines, skills }
   }
   const nothing = () => counts().agents === 0 && !counts().handbook
   const notImported = () => [
@@ -423,21 +398,16 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
         serverId,
         model: model(),
         pick: agentPicks(ticks),
-        channels: tickedPlaces(team.channels),
+        channels: [],
         skills: tickedPlaces(team.skills),
         handbook: counts().handbook,
       })
       // The dialog closes. A line tells what was made, and the new things show in their lists.
-      showToast(
-        "success",
-        result.channels + result.skills > 0 ? "agentFile.imported.team" : "agentFile.imported",
-        {
-          agents: result.agents,
-          routines: result.routines,
-          channels: result.channels,
-          skills: result.skills,
-        },
-      )
+      showToast("success", result.skills > 0 ? "agentFile.imported.team" : "agentFile.imported", {
+        agents: result.agents,
+        routines: result.routines,
+        skills: result.skills,
+      })
       if (result.handbook) showToast("success", "agentFile.imported.handbook")
       props.onClose()
     } catch (e) {
@@ -447,19 +417,16 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
           new RpcFailure({ code: failure.code, message: failure.detail ?? failure.code }),
         )
         const key: MessageKey =
-          failure.kind === "channel"
-            ? "agentFile.import.stopped.channel"
-            : failure.kind === "skill"
-              ? "agentFile.import.stopped.skill"
-              : failure.kind === "handbook"
-                ? "agentFile.import.stopped.handbook"
-                : "agentFile.import.stopped"
+          failure.kind === "skill"
+            ? "agentFile.import.stopped.skill"
+            : failure.kind === "handbook"
+              ? "agentFile.import.stopped.handbook"
+              : "agentFile.import.stopped"
         setError({
           key,
           params: {
             name: failure.name,
             made: failure.made,
-            channels: failure.madeChannels ?? 0,
             skills: failure.madeSkills ?? 0,
             reason: t(reason.key, reason.params),
           },
@@ -565,67 +532,6 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
             )}
           </For>
         </ul>
-        <Show when={props.preview.channels.length > 0}>
-          <div data-testid="channel-import">
-            <h3 class={review.sectionTitle}>{t("importReview.team.channels.title")}</h3>
-            <p class={review.hint}>{t("importReview.channel.needs")}</p>
-            <ul class={review.teamList} data-testid="channel-import-list">
-              <For each={props.preview.channels}>
-                {(item, i) => (
-                  <li class={review.reviewItem} data-testid="channel-import-item">
-                    <label class={review.tickRow}>
-                      <input
-                        type="checkbox"
-                        checked={team.channels[i()]}
-                        onChange={(e) => setTeam("channels", i(), e.currentTarget.checked)}
-                        data-testid="channel-import-tick"
-                      />
-                      <span class={review.rowText}>
-                        <span class={styles.label}>{item.name}</span>
-                        <Show when={item.fileName}>
-                          {(original) => (
-                            <span class={styles.hint}>
-                              {t("agentFile.import.renamed", { name: original() })}
-                            </span>
-                          )}
-                        </Show>
-                        <Show when={item.topic}>
-                          <span class={styles.hint}>{item.topic}</span>
-                        </Show>
-                        <span class={styles.hint} data-testid="channel-import-members">
-                          {t("importReview.channel.members", { names: names(item.members) })}
-                          {" · "}
-                          <span data-testid="channel-import-lead">
-                            {item.lead === null
-                              ? t("importReview.channel.noLead")
-                              : t("importReview.channel.lead", { name: names([item.lead]) })}
-                          </span>
-                        </span>
-                        <Show when={item.reviewParts || item.instructionsLength > 0}>
-                          <span class={styles.hint}>
-                            {[
-                              ...(item.reviewParts ? [t("importReview.channel.reviewParts")] : []),
-                              ...(item.instructionsLength > 0
-                                ? [
-                                    t("importReview.instructions", {
-                                      count: item.instructionsLength,
-                                    }),
-                                  ]
-                                : []),
-                            ].join(" · ")}
-                          </span>
-                        </Show>
-                        <Show when={item.secretRemoved}>
-                          <SecretMark />
-                        </Show>
-                      </span>
-                    </label>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </div>
-        </Show>
         <Show when={props.preview.skills.length > 0}>
           <div data-testid="skill-import">
             <h3 class={review.sectionTitle}>{t("importReview.team.skills.title")}</h3>
@@ -710,7 +616,11 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
             </div>
           )}
         </Show>
-        <NotImportedList items={notImported()} testId="agent-import-not-imported" />
+        <NotImportedList
+          items={notImported()}
+          channels={props.preview.channels.map((c) => c.name)}
+          testId="agent-import-not-imported"
+        />
         <div class={styles.field}>
           <span class={styles.label}>{t("agentFile.import.model")}</span>
           <ModelPicker value={model()} onChange={setModel} />

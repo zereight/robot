@@ -1,7 +1,7 @@
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import { connectMock, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 const OR_KEY = "sk-or-e2e-0123456789abcdef"
@@ -63,15 +63,10 @@ const startDecisionService = async () => {
   }
 }
 
-const post = async (page: Page, text: string) => {
-  await page.getByTestId("channel-input").fill(text)
-  await page.getByTestId("channel-input").press("Enter")
-}
-const msgs = (page: Page) => page.getByTestId("channel-message")
 const choose = (page: Page, value: string) =>
   page.getByTestId("setting-decision-choice").locator(`label[data-value="${value}"]`).click()
 
-test("decision model: Jev through OpenRouter in settings, Test, and the fast pick in a channel", async () => {
+test("decision model: Jev through OpenRouter in settings, and Test", async () => {
   test.setTimeout(150_000)
   const mock = await startMockProvider()
   const service = await startDecisionService()
@@ -80,14 +75,13 @@ test("decision model: Jev through OpenRouter in settings, Test, and the fast pic
   const { app, page } = await launch(userData, env)
   await resizeWindow(app, 1300, 860)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
-  for (const name of ["Lia", "Bo", "Cy"]) await createAgent(page, name)
 
-  // Off by default: the lead's model decides, and nothing is sent.
+  // Off by default: nothing is sent.
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-decision").click()
-  await expect(
-    page.getByTestId("setting-decision-choice").locator('label[data-value="off"] input'),
-  ).toBeChecked()
+  const off = page.getByTestId("setting-decision-choice").locator('label[data-value="off"]')
+  await expect(off.locator("input")).toBeChecked()
+  await expect(off).toHaveText("Off")
   await expect(page.getByTestId("setting-decision-key")).toHaveCount(0)
   await shot(page, "decision-00-off")
 
@@ -141,47 +135,12 @@ test("decision model: Jev through OpenRouter in settings, Test, and the fast pic
   expect(await page.content()).not.toContain(OR_KEY)
   await page.getByTestId("settings-close").click()
 
-  // A channel with a lead and three members. A job that names nobody goes to the member that the
-  // model chose, not to the lead.
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Launch")
-  await page.getByTestId("channel-topic").fill("Ship the first release")
-  for (const name of ["Lia", "Bo", "Cy"]) await page.getByTestId(`channel-member-${name}`).check()
-  await page.getByTestId("channel-lead").selectOption({ label: "Lia" })
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
-
-  service.mode.choice = "member_3"
-  await post(page, "Please check the budget numbers")
-  await expect(msgs(page)).toHaveCount(2, { timeout: 15_000 })
-  await expect(msgs(page).last()).toContainText("Cy")
-  const job = service.asked.at(-1)
-  expect(job?.body.state?.job).toBe("Please check the budget numbers")
-  await shot(page, "decision-03-fast-pick")
-
-  // An unsure answer: the lead reads the job as if the pick did not exist.
-  service.mode.probability = 0.4
-  await post(page, "Now plan the next step")
-  await expect(msgs(page)).toHaveCount(4, { timeout: 15_000 })
-  await expect(msgs(page).last()).toContainText("Lia")
-
-  // A failing service, and no lead: the user picks.
-  service.mode.status = 503
-  await page.getByTestId("channel-settings").click()
-  await page
-    .getByTestId("channel-lead")
-    .selectOption({ label: "No lead: ask me who takes each job" })
-  await page.getByTestId("channel-submit").click()
-  await post(page, "Who takes this one")
-  await expect(page.getByTestId("pick-member")).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId("pick-Bo").click()
-  await expect(msgs(page).last()).toContainText("Bo", { timeout: 15_000 })
-
   // Korean works.
   await page.getByTestId("open-settings").click()
   await page.getByTestId("setting-language").locator('label[data-value="ko"]').click()
   await page.getByTestId("settings-nav-decision").click()
   await expect(page.getByTestId("setting-decision-choice-row")).toContainText("결정 모델")
+  await expect(off).toHaveText("끄기")
   await expect(page.getByTestId("setting-decision-sends")).toContainText("OpenRouter")
   await shot(page, "decision-04-korean")
 

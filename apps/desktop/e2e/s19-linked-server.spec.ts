@@ -111,10 +111,9 @@ test("linked server: an agent of another computer works in this window, offline 
     await expect(one.page.locator("[data-testid^=place-agent-]")).toHaveCount(1)
     await one.page.locator("[data-testid^=place-agent-]").first().click()
     await expect(one.page.getByTestId("chat-header-agent")).toContainText("Ada")
-    // A client sees the agent but cannot edit it, and cannot create agents or channels.
+    // A client sees the agent but cannot edit it, and cannot create agents.
     await expect(one.page.getByTestId("chat-header-agent")).toHaveAttribute("data-readonly", "true")
     await expect(one.page.getByTestId("new-agent")).toHaveCount(0)
-    await expect(one.page.getByTestId("new-channel")).toHaveCount(0)
     await shot(one.page, "s19-01-linked-server")
 
     // The profile opens as text only, with the line that says where to turn the switch on.

@@ -7,16 +7,15 @@ import type { Place, PlaceSection } from "@robot/shared"
 /** The collapse key of "Unassigned". The same key as in the desktop list. */
 export const UNASSIGNED_SECTION_ID = "unassigned:agents"
 
-/** True when places with no section show before the user sections. Agents show them last. */
-export const loosePlacesFirst = (id: PlaceSection["id"]) => id !== "agents"
+/** The built-in sections that the phone shows: Agents only. An older server also sends Channels. */
+export const shownSections = (sections: readonly PlaceSection[] | null): readonly PlaceSection[] =>
+  (sections ?? []).filter((s) => s.id === "agents")
 
-/** Every place of a built-in section, in the order the list shows. */
-export const allPlaces = (section: PlaceSection): readonly Place[] => {
-  const nested = section.sections.flatMap((s) => s.places)
-  return loosePlacesFirst(section.id)
-    ? [...section.places, ...nested]
-    : [...nested, ...section.places]
-}
+/** Every place of a built-in section, in the order the list shows: user sections first. */
+export const allPlaces = (section: PlaceSection): readonly Place[] => [
+  ...section.sections.flatMap((s) => s.places),
+  ...section.places,
+]
 
 /** What a collapsed header shows: the sum of the unread counts, and whether a place works. */
 export const summarize = (places: readonly Place[]) => ({
@@ -26,7 +25,7 @@ export const summarize = (places: readonly Place[]) => ({
 
 /** The unread count of a whole server, for the Servers screen. */
 export const serverUnread = (sections: readonly PlaceSection[] | null) =>
-  (sections ?? []).reduce((sum, s) => sum + summarize(allPlaces(s)).unread, 0)
+  shownSections(sections).reduce((sum, s) => sum + summarize(allPlaces(s)).unread, 0)
 
 interface Message {
   readonly id: string
@@ -51,7 +50,3 @@ export const upsertMessage = <T extends Message>(list: readonly T[], message: T)
 
 export const removeMessage = <T extends Message>(list: readonly T[], id: string) =>
   list.filter((m) => m.id !== id)
-
-/** The key of a place, for the open and closed state of sections and for the cache. */
-export const placeKey = (place: { readonly kind: "agent" | "channel"; readonly id: string }) =>
-  `${place.kind}:${place.id}`

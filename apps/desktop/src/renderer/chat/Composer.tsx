@@ -36,14 +36,11 @@ import {
   onMount,
   Show,
 } from "solid-js"
-import { MentionList } from "../channels/MentionList.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, stageFile } from "../lib/rpc.ts"
-import { AgentInLine } from "../orgs/AgentName.tsx"
 import skillStyles from "../skills/skills.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -51,6 +48,7 @@ import { echo } from "../ui/echo.ts"
 import { compactOffKey } from "./ContextMeter.tsx"
 import styles from "./chat.module.css"
 import { pendingFill, takeFill } from "./fill.ts"
+import { MentionList } from "./MentionList.tsx"
 import { pastedFiles } from "./paste.ts"
 import { threadPart } from "./threads.ts"
 
@@ -248,7 +246,6 @@ export const Composer = (props: ComposerProps) => {
   const [dismissed, setDismissed] = createSignal(false)
   // The `@` list (spec 003, "Mention another agent"). It has no `@all`.
   const agents = useAgents()
-  const orgs = useOrgs()
   const [caret, setCaret] = createSignal(0)
   const [mentionHighlight, setMentionHighlight] = createSignal(0)
   const [mentionDismissed, setMentionDismissed] = createSignal(false)
@@ -256,16 +253,8 @@ export const Composer = (props: ComposerProps) => {
   const mentionable = createMemo(() => {
     const open = mention()
     if (!open) return []
-    // Each agent brings the whole name of its organization, so the list also matches it (spec 036).
-    const others = agents
-      .agents()
-      .filter((agent) => agent.id !== props.agent.id)
-      .map((agent) => ({ ...agent, organization: orgs.prefixOrg(agent.id) }))
-    // The agents of an organization that the chat's agent is in come first (spec 003).
-    const mine = new Set(orgs.ofAgent(props.agent.id).map((o) => o.id))
-    return mentionEntries(others, open.query, false, (agent) =>
-      orgs.ofAgent(agent.id).some((o) => mine.has(o.id)),
-    )
+    const others = agents.agents().filter((agent) => agent.id !== props.agent.id)
+    return mentionEntries(others, open.query, false)
   })
   const mentionOpen = () => mentionable().length > 0 && !mentionDismissed()
   createEffect(
@@ -755,15 +744,9 @@ export const Composer = (props: ComposerProps) => {
           {(quoted) => (
             <div class={styles.quote} data-testid="reply-quote">
               <span class={styles.quoteText}>
-                {quoted().author === "agent" ? (
-                  <AgentInLine
-                    line={(name) => t("chat.replyingTo", { name })}
-                    id={props.agent.id}
-                    name={props.agent.name}
-                  />
-                ) : (
-                  t("chat.replyingTo", { name: t("chat.you") })
-                )}
+                {t("chat.replyingTo", {
+                  name: quoted().author === "agent" ? props.agent.name : t("chat.you"),
+                })}
                 {": "}
                 {messageText(quoted()).slice(0, 80)}
               </span>

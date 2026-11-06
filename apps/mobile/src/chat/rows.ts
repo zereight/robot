@@ -4,11 +4,11 @@ import type { ChatMessage, MessagePart } from "@robot/shared"
 // one header for the messages of one sender within 5 minutes. The app cannot load the runtime of
 // `@robot/shared` (it needs Effect), so the same rules are here, with tests.
 
-/** The fields of a chat or channel message that the rows need. */
+/** The fields of a chat message that the rows need. */
 export interface RowMessage {
   readonly id: string
   readonly author: "user" | "agent"
-  /** The agent that wrote it. In a channel two agents are two senders. */
+  /** The agent that wrote it. Two agents are two senders (spec 003). */
   readonly agentId: string | null
   readonly parts: readonly MessagePart[]
   readonly createdAt: number

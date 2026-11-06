@@ -10,10 +10,15 @@ import {
 import { createResource, For, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Segmented, Switch } from "../ui/controls.tsx"
 import styles from "./notifications.module.css"
+
+/**
+ * The kinds that the user can turn off (spec 015). A mention in a channel and the review of a part
+ * belonged to channels, which are gone.
+ */
+const SHOWN_KINDS = NOTIFY_KINDS.filter((kind) => kind !== "mention" && kind !== "part_review")
 
 /** The state of one mute as a choice for the select. */
 const choiceOf = (mute: Mute | undefined, now: number): MuteChoice => {
@@ -60,7 +65,6 @@ export const NotificationsSection = () => {
   const app = useApp()
   const { t } = app
   const ui = useUi()
-  const channels = useChannels()
   const [mutes, { refetch }] = createResource(() => call("notifications.mutes"), {
     initialValue: [] as readonly Mute[],
   })
@@ -71,7 +75,7 @@ export const NotificationsSection = () => {
     <div class={styles.section} data-testid="notifications-section">
       <h2 class={styles.title}>{t("settings.notify.kinds")}</h2>
       <p class={styles.hint}>{t("settings.notify.hint")}</p>
-      <For each={NOTIFY_KINDS}>
+      <For each={SHOWN_KINDS}>
         {(kind) => (
           <div class={styles.row}>
             <span>{t(`settings.notify.kind.${kind}` as MessageKey)}</span>
@@ -127,17 +131,6 @@ export const NotificationsSection = () => {
           />
         )}
       </Show>
-      <For each={channels.channels()}>
-        {(c) => (
-          <MuteSelect
-            label={`# ${c.name}`}
-            kind="channel"
-            id={c.id}
-            mutes={mutes()}
-            testId={`mute-channel-${c.name}`}
-          />
-        )}
-      </For>
     </div>
   )
 }

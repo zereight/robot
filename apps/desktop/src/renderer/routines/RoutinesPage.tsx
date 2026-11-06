@@ -30,13 +30,10 @@ import {
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
-import { useShownText } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
@@ -98,23 +95,12 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const shownText = useShownText()
-  const channels = useChannels()
   const providers = useProviders()
   const _format = useFormat()
   const initial = props.routine?.schedule
   const [name, setName] = createSignal(props.routine?.name ?? "")
   const [prompt, setPrompt] = createSignal(props.routine?.prompt ?? "")
   const [agentId, setAgentId] = createSignal(props.routine?.agentId ?? agents.agents()[0]?.id ?? "")
-  // The organizations of this computer, for the field "Organization" (spec 030).
-  const orgs = useOrgs()
-  const [orgId, setOrgId] = createSignal<string>(props.routine?.orgId ?? "")
-  /** The agent of the routine is a member of the chosen organization: the rule of the spec. */
-  const orgRuleHolds = () =>
-    orgId() === "" || (orgs.byId(orgId())?.memberIds ?? []).includes(agentId())
-  const [place, setPlace] = createSignal(
-    props.routine?.place.kind === "channel" ? props.routine.place.channelId : "agent",
-  )
   const initialWatch = props.routine?.watch ?? undefined
   const [trigger, setTrigger] = createSignal<"schedule" | "watch">(
     initialWatch ? "watch" : "schedule",
@@ -136,7 +122,6 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
 
-  const memberChannels = () => channels.channels().filter((c) => c.memberIds.includes(agentId()))
   const triggerValid = () => (trigger() === "watch" ? watchValid() : valid())
   // A server holds at most 50 routines, a paused one too. The form for a new routine says so and
   // does not save (spec 009). The main process refuses it as well, in case the list is old.
@@ -170,7 +155,6 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
     agentId() &&
     triggerValid() &&
     (!ownModel() || model() !== null) &&
-    orgRuleHolds() &&
     !busy()
 
   /**
@@ -182,8 +166,8 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
     if (!serverId) return
     const w = watch()
     const kind = trigger() === "watch" ? "watch" : "schedule"
-    const placeText =
-      place() === "agent" ? t("routines.place.agent") : (channels.byId(place())?.name ?? "")
+    // The results go to the chat of the agent (spec 009).
+    const placeText = t("routines.place.agent")
     const paused = props.routine !== undefined && props.routine.enabled === false
     try {
       await call("events.test", {
@@ -230,9 +214,10 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
       name: name().trim(),
       prompt: prompt(),
       ...(trigger() === "watch" && w ? { watch: w } : { schedule: schedule() }),
-      place: place() === "agent" ? { kind: "agent" } : { kind: "channel", channelId: place() },
+      // The results go to the chat of the agent (spec 009).
+      place: { kind: "agent" },
       model: ownModel() ? model() : null,
-      orgId: orgId() === "" ? null : orgId(),
+      orgId: null,
       // A program that reports no tokens cannot use the limit: the field is off and sends none.
       tokenLimit: limitOff()
         ? null
@@ -297,35 +282,11 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
           <select
             class={styles.input}
             value={agentId()}
-            onChange={(e) => {
-              setAgentId(e.currentTarget.value)
-              setPlace("agent")
-            }}
+            onChange={(e) => setAgentId(e.currentTarget.value)}
             data-testid="routine-agent"
           >
-            <For each={agents.agents()}>
-              {(a: Agent) => <option value={a.id}>{shownText(a.id, a.name)}</option>}
-            </For>
+            <For each={agents.agents()}>{(a: Agent) => <option value={a.id}>{a.name}</option>}</For>
           </select>
-        </label>
-        {/* The organization that the routine belongs to (spec 030, "A routine of an
-            organization"). Its daily token limit counts the runs. */}
-        <label class={styles.field}>
-          <span>{t("routines.field.org")}</span>
-          <select
-            class={styles.input}
-            value={orgId()}
-            onChange={(e) => setOrgId(e.currentTarget.value)}
-            data-testid="routine-org"
-          >
-            <option value="">{t("routines.field.org.none")}</option>
-            <For each={orgs.orgs()}>{(o) => <option value={o.id}>{o.name}</option>}</For>
-          </select>
-          <Show when={!orgRuleHolds()}>
-            <span class={styles.hint} data-testid="routine-org-rule">
-              {t("error.routine_not_member")}
-            </span>
-          </Show>
         </label>
         <label class={styles.field}>
           <span>{t("routines.field.prompt")}</span>
@@ -336,18 +297,6 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
             onInput={(e) => setPrompt(e.currentTarget.value)}
             data-testid="routine-prompt"
           />
-        </label>
-        <label class={styles.field}>
-          <span>{t("routines.field.place")}</span>
-          <select
-            class={styles.input}
-            value={place()}
-            onChange={(e) => setPlace(e.currentTarget.value)}
-            data-testid="routine-place"
-          >
-            <option value="agent">{t("routines.place.agent")}</option>
-            <For each={memberChannels()}>{(c) => <option value={c.id}>{c.name}</option>}</For>
-          </select>
         </label>
 
         <label class={styles.field}>
@@ -647,8 +596,6 @@ export const RoutinesView = () => {
   const { t } = useApp()
   const app = useApp()
   const ui = useUi()
-  // The organizations, for the chip of a routine (spec 030).
-  const orgs = useOrgs()
   const format = useFormat()
   const words = useScheduleWords()
   const intervalWords = useIntervalWords()
@@ -662,7 +609,7 @@ export const RoutinesView = () => {
     (serverId) => call("routines.list", { serverId }),
     { initialValue: [] },
   )
-  // The Today page asks for a routine: its card lights up. A routine that is gone is dropped.
+  // A page asks for a routine: its card lights up. A routine that is gone is dropped.
   createEffect(() => {
     const target = openTarget()
     const list = routines()
@@ -769,18 +716,7 @@ export const RoutinesView = () => {
                 data-enabled={r.enabled}
               >
                 <div class={styles.cardMain}>
-                  <span class={styles.cardTitle}>
-                    <strong>{r.name}</strong>
-                    {/* The organization that the routine belongs to (spec 030). It reads as the
-                        role badge of a place, a chip under the name. */}
-                    <Show when={r.orgId}>
-                      {(id) => (
-                        <span class={styles.orgChip} data-testid="routine-org-chip">
-                          {orgs.byId(id())?.name ?? ""}
-                        </span>
-                      )}
-                    </Show>
-                  </span>
+                  <strong>{r.name}</strong>
                   <span class={styles.hint}>
                     {r.agentName} ·{" "}
                     {r.watch

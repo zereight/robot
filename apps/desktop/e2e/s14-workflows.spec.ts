@@ -51,26 +51,20 @@ test("workflows: build, connect, zoom and pan, run, history, approval and read-o
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
 
-  // A channel for the final message.
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Out")
-  await page.getByTestId("channel-member-Ada").check()
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Out")
-
   await page.getByTestId("page-workflows").click()
   await expect(page.getByTestId("wf-list-empty")).toBeVisible()
   await page.getByTestId("wf-new").click()
   await expect(page.getByTestId("wf-empty")).toBeVisible()
   await page.getByTestId("wf-name").fill("Haiku flow")
 
-  // Three steps: two agent steps and a post step.
+  // Three steps: two agent steps and a notify step. The editor has no step "post message".
   await page.getByTestId("wf-add-agent").click()
   await page.getByTestId("wf-step-prompt").fill("Write a haiku")
   await page.getByTestId("wf-add-agent").click()
   await page.getByTestId("wf-step-prompt").fill("Translate this: {{input}}")
-  await page.getByTestId("wf-add-post").click()
-  await page.getByTestId("wf-step-text").fill("Final: {{input}}")
+  await expect(page.getByTestId("wf-add-post")).toHaveCount(0)
+  await page.getByTestId("wf-add-notify").click()
+  await page.getByTestId("wf-step-title").fill("Haiku ready")
   await expect(page.getByTestId("wf-node")).toHaveCount(3)
 
   // A drag moves a node.
@@ -131,7 +125,6 @@ test("workflows: build, connect, zoom and pan, run, history, approval and read-o
   await expect(page.getByTestId("wf-run-step").nth(1)).toContainText("You said: Write a haiku")
   await shot(page, "s14-02-run-done")
 
-  // The final message is in the channel.
   await page.getByTestId("wf-back").click()
   await expect(page.getByTestId("wf-card")).toHaveCount(1)
 
@@ -139,8 +132,8 @@ test("workflows: build, connect, zoom and pan, run, history, approval and read-o
   await page.getByTestId("wf-new").click()
   await page.getByTestId("wf-name").fill("Gate")
   await page.getByTestId("wf-add-approval").click()
-  await page.getByTestId("wf-add-post").click()
-  await page.getByTestId("wf-step-text").fill("approved")
+  await page.getByTestId("wf-add-notify").click()
+  await page.getByTestId("wf-step-title").fill("approved")
   await connect(page, 0, 1)
   await page.getByTestId("wf-run").click()
   await expect(page.locator("[data-testid=wf-node][data-state=waiting]")).toHaveCount(1, {

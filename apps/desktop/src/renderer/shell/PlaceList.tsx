@@ -12,8 +12,6 @@ import {
   type MessageKey,
   markedParts,
   moveInList,
-  NO_ORG_SECTION_ID,
-  organizationSections,
   PLACE_LIST_MAX,
   PLACE_LIST_MIN,
   type Place,
@@ -32,7 +30,7 @@ import {
   type UserSectionView,
   withoutPinned,
 } from "@robot/shared"
-import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis, Hash } from "lucide-solid"
+import { ChevronDown, ChevronLeft, ChevronRight, Ellipsis } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -49,14 +47,10 @@ import { formatHitTime } from "../chat/format.ts"
 import { openThread } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
-import { AgentName } from "../orgs/AgentName.tsx"
 import { useApp } from "../state/app.tsx"
 import { setFocusMessage, setSearchOrigin } from "../state/focus.ts"
 import { linkEpoch } from "../state/link.ts"
-import { setOrgFilter } from "../state/orgFilter.ts"
-import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
-import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { type MenuItem, PopupMenu } from "../ui/Menu.tsx"
@@ -184,7 +178,6 @@ export const PlaceList = (props: PlaceListProps) => {
   const app = useApp()
   const { t } = app
   const ui = useUi()
-  const orgs = useOrgs()
   const [query, setQuery] = createSignal("")
   const [menu, setMenu] = createSignal<MenuState>()
   const [renaming, setRenaming] = createSignal<string>()
@@ -204,10 +197,12 @@ export const PlaceList = (props: PlaceListProps) => {
    */
   const readOnly = () => ui.linked()
 
-  // The search also matches the whole name of the organization of an agent, with the prefix on (spec 036).
+  // The place list is the list of agents (spec 001). A server of an older version may still send
+  // other sections: they do not show.
   const matching = createMemo(() =>
-    filterPlaces(ui.sections(), query(), (place) =>
-      place.kind === "agent" ? orgs.prefixOrg(place.id) : null,
+    filterPlaces(
+      ui.sections().filter((section) => section.id === "agents"),
+      query(),
     ),
   )
   // A pinned place shows in the group "Pinned" and not in its section (spec 001).
@@ -215,34 +210,7 @@ export const PlaceList = (props: PlaceListProps) => {
   const sections = createMemo(() => withoutPinned(matching()))
   const searching = () => query().trim().length > 0
   const anyMatch = () => pinned().length > 0 || sections().some((s) => allPlaces(s).length > 0)
-  /**
-   * The organizations of this computer that the text matches (spec 029, "Ways in"). The chart of a
-   * linked server is not kept here, so its organizations are not in this list.
-   */
-  const orgHits = createMemo(() => {
-    if (!searching() || ui.linked()) return []
-    const q = query().trim().toLocaleLowerCase()
-    return orgs
-      .orgs()
-      .filter((o) => o.name.toLocaleLowerCase().includes(q))
-      .slice(0, 5)
-  })
-  /** Opens the org chart with the organization in its search field. */
-  const openOrgHit = (name: string) => {
-    setOrgFilter(name)
-    ui.selectPage("orgchart")
-    setQuery("")
-  }
-
-  // The view "By organization" of Agents (spec 001): the matching agents, in the section of their
-  // deepest organization. It does not follow the switch of the prefix.
-  const orgView = () => ui.ui.agentView === "organization"
-  const byOrganization = createMemo(() => {
-    const agents = sections().find((section) => section.id === "agents")
-    return organizationSections(agents ? allPlaces(agents) : [], orgs.deepestOf)
-  })
-  /** The sections of this view come from the organizations, so an agent cannot move or drag. */
-  const locked = (place: Place) => readOnly() || (place.kind === "agent" && orgView())
+  const locked = () => readOnly()
 
   // Message search (spec 001) ------------------------------------------------------------------
 
@@ -441,17 +409,13 @@ export const PlaceList = (props: PlaceListProps) => {
     ui.saveWidth()
   }
 
-  /** The role line that a row shows: an agent with one has it. A channel never does. */
+  /** The role line that a row shows: an agent with one has it. */
   const roleOf = (place: Place) =>
     place.kind === "agent" && place.role?.trim() ? place.role.trim() : undefined
 
-  /** The name of a row for a screen reader: the prefix adds the whole organization name (spec 036). */
-  const labelOf = (place: Place) =>
-    place.kind === "agent" ? orgs.shown(place.id, place.name).label : place.name
-
-  const accessibleName = (place: Place, withPrefix: boolean) =>
+  const accessibleName = (place: Place) =>
     [
-      withPrefix ? labelOf(place) : place.name,
+      place.name,
       // The whole role line is part of the name of an agent row (spec 001).
       roleOf(place) ? t("places.role", { role: roleOf(place) ?? "" }) : "",
       place.working ? t("places.working") : "",
@@ -492,12 +456,8 @@ export const PlaceList = (props: PlaceListProps) => {
     const ref = { kind: place.kind, id: place.id }
     const pick = (sectionId: string | null) => () => ui.movePlace(ref, sectionId)
     const full = pinsFull(pinnedPlaces(ui.sections()).length)
-    // The order is set in the whole list, not in a filtered one, and not under the organizations.
-    const orderOff = searching()
-      ? t("places.orderFiltered")
-      : place.kind === "agent" && orgView()
-        ? t("places.orderByOrganization")
-        : undefined
+    // The order is set in the whole list, not in a filtered one.
+    const orderOff = searching() ? t("places.orderFiltered") : undefined
     const whole = listOfPlace(ui.sections(), ref)
     const step = (direction: "up" | "down"): MenuItem => ({
       label: t(direction === "up" ? "sections.moveUp" : "sections.moveDown"),
@@ -515,39 +475,28 @@ export const PlaceList = (props: PlaceListProps) => {
           onSelect: () => ui.pinPlace(ref, true),
           testId: "place-pin",
         }
-    // The view "By organization" has no user sections to move to (spec 001).
-    const moveTo: MenuItem[] = locked(place)
-      ? [
-          {
-            label: t("sections.moveTo"),
-            disabled: true,
-            reason: t("sections.byOrganization.reason"),
-            onSelect: () => {},
-            testId: "move-to-section",
-          },
-        ]
-      : [
-          {
-            label: t("sections.moveTo"),
-            heading: true,
-            onSelect: () => {},
-            testId: "move-to-section",
-          },
-          ...mine.map(
-            (s): MenuItem => ({
-              label: s.name,
-              checked: place.sectionId === s.id,
-              onSelect: pick(s.id),
-              testId: `move-to-${s.id}`,
-            }),
-          ),
-          {
-            label: t("sections.none"),
-            checked: place.sectionId === null,
-            onSelect: pick(null),
-            testId: "move-to-none",
-          },
-        ]
+    const moveTo: MenuItem[] = [
+      {
+        label: t("sections.moveTo"),
+        heading: true,
+        onSelect: () => {},
+        testId: "move-to-section",
+      },
+      ...mine.map(
+        (s): MenuItem => ({
+          label: s.name,
+          checked: place.sectionId === s.id,
+          onSelect: pick(s.id),
+          testId: `move-to-${s.id}`,
+        }),
+      ),
+      {
+        label: t("sections.none"),
+        checked: place.sectionId === null,
+        onSelect: pick(null),
+        testId: "move-to-none",
+      },
+    ]
     openMenu({
       label: place.name,
       returnTo: row,
@@ -710,14 +659,14 @@ export const PlaceList = (props: PlaceListProps) => {
 
   // Parts of the list ---------------------------------------------------------------------
 
-  const renderPlace = (place: Place, withPrefix: boolean) => {
+  const renderRow = (place: Place) => {
     const selected = () =>
       ui.ui.page === "chats" && ui.place()?.kind === place.kind && ui.place()?.id === place.id
     return (
       <button
         type="button"
         class={styles.row}
-        draggable={locked(place) ? "false" : "true"}
+        draggable={locked() ? "false" : "true"}
         data-place-row
         data-place-name={place.name}
         data-testid={`place-${place.kind}-${place.id}`}
@@ -726,34 +675,27 @@ export const PlaceList = (props: PlaceListProps) => {
         data-drop-edge={spot()?.key === `${place.kind}:${place.id}` ? spot()?.edge : undefined}
         {...(readOnly() ? {} : rowDrop(place))}
         aria-current={selected()}
-        aria-label={accessibleName(place, withPrefix)}
+        aria-label={accessibleName(place)}
         onClick={() => ui.selectPlace({ kind: place.kind, id: place.id })}
         onContextMenu={(event) => {
           if (!readOnly()) placeMenu(event, place)
         }}
         onDragStart={(event) => {
-          if (locked(place)) event.preventDefault()
+          if (locked()) event.preventDefault()
           else startDrag(event, place)
         }}
         onDragEnd={endDrag}
       >
         <span class={styles.mark}>
-          {/* The window draws a channel with its picture, or the mark with the `#`. */}
-          {place.kind === "channel"
-            ? (props.face?.(place) ?? <AvatarMark icon={Hash} size={24} testId="channel-mark" />)
-            : props.face?.(place)}
+          {props.face?.(place)}
           <Show when={place.working}>
             <span class={styles.workingDot} data-testid="working-dot" />
           </Show>
         </span>
         <span class={styles.rowName} data-with-badge={roleOf(place) ? "true" : undefined}>
-          {place.kind === "agent" && withPrefix ? (
-            <AgentName id={place.id} name={place.name} />
-          ) : (
-            place.name
-          )}
+          {place.name}
         </span>
-        {/* The badge is the role line of an agent. A channel never has one. The name comes first:
+        {/* The badge is the role line of an agent. The name comes first:
             the slot is what is left of the row, the badge is cut with an ellipsis inside it, and
             it hides when less than 4 characters of it fit (the sheet does that). */}
         <Show when={roleOf(place)}>
@@ -771,11 +713,6 @@ export const PlaceList = (props: PlaceListProps) => {
       </button>
     )
   }
-
-  const renderRow = (place: Place) => renderPlace(place, true)
-
-  /** Under an organization section the header names the organization, so the row has no prefix. */
-  const renderRowUnderOrganization = (place: Place) => renderPlace(place, false)
 
   /** The chevron, the name, and on a collapsed header the working dot and the unread sum. */
   const headerContent = (name: JSX.Element, collapsed: boolean, summary: SectionSummary) => (
@@ -908,25 +845,16 @@ export const PlaceList = (props: PlaceListProps) => {
         data-message-id={hit.messageId}
         data-hit-place={hit.placeName}
         aria-label={t("search.hit", {
-          place:
-            hit.kind === "agent" ? orgs.shown(hit.placeId, hit.placeName).label : hit.placeName,
+          place: hit.placeName,
           time: time(),
           text: hit.snippet,
         })}
         onClick={() => openHit(hit)}
       >
         <span class={styles.hitHead}>
-          <span class={styles.hitMark}>
-            {hit.kind === "channel"
-              ? (hitFace(hit) ?? <AvatarMark icon={Hash} size={24} />)
-              : hitFace(hit)}
-          </span>
+          <span class={styles.hitMark}>{hitFace(hit)}</span>
           <span class={styles.hitPlace} data-user-data>
-            {hit.kind === "agent" ? (
-              <AgentName id={hit.placeId} name={hit.placeName} />
-            ) : (
-              hit.placeName
-            )}
+            {hit.placeName}
           </span>
           <span class={styles.hitTime}>{time()}</span>
         </span>
@@ -953,11 +881,10 @@ export const PlaceList = (props: PlaceListProps) => {
     ) : null
 
   /**
-   * A section that the app keeps: "Unassigned", and the sections of the view "By organization". It
-   * has no menu. Only "Unassigned" takes a dropped row. `testId` starts the test ids of its parts.
+   * A section that the app keeps: "Unassigned" and "Pinned". It has no menu. Only "Unassigned" takes a dropped row. `testId` starts the test ids of its parts.
    */
   const renderFixedSection = (
-    fixed: { key: string; testId: string; userData?: boolean; drop?: boolean },
+    fixed: { key: string; testId: string; drop?: boolean },
     view: () => { name: string; places: readonly Place[] },
     emptyLine: string,
     row: (place: Place) => JSX.Element,
@@ -984,18 +911,7 @@ export const PlaceList = (props: PlaceListProps) => {
             onClick={() => ui.toggleSection(fixed.key)}
             data-testid={`${fixed.testId}-toggle`}
           >
-            {headerContent(
-              // The name of an organization is text of the user. A long one is cut, and the note
-              // holds the whole name.
-              <span
-                title={fixed.userData ? view().name : undefined}
-                data-user-data={fixed.userData ? "" : undefined}
-              >
-                {view().name}
-              </span>,
-              collapsed(),
-              summary(),
-            )}
+            {headerContent(<span>{view().name}</span>, collapsed(), summary())}
           </button>
         </div>
         <Presence when={!collapsed()}>
@@ -1029,43 +945,9 @@ export const PlaceList = (props: PlaceListProps) => {
     )
   }
 
-  /** The sections of the view "By organization", and "No organization" last (spec 001). */
-  const renderByOrganization = () => {
-    const gone = { name: "", places: [] }
-    // The list holds the keys, so a change of a section keeps its rows and their focus.
-    const keys = () => byOrganization().sections.map((s) => s.id)
-    return (
-      <>
-        <For each={keys()}>
-          {(key) =>
-            renderFixedSection(
-              { key, testId: "org", userData: true },
-              () => byOrganization().sections.find((s) => s.id === key) ?? gone,
-              "",
-              renderRowUnderOrganization,
-            )
-          }
-        </For>
-        <Show when={!searching() || byOrganization().none.length > 0}>
-          {renderFixedSection(
-            { key: NO_ORG_SECTION_ID, testId: "no-org" },
-            () => ({ name: t("orgchart.noOrganization"), places: byOrganization().none }),
-            t("sections.byOrganization.none"),
-            renderRow,
-          )}
-        </Show>
-      </>
-    )
-  }
-
-  /**
-   * True when the section has something to list. The view "By organization" has no user sections, so
-   * an empty user section does not count there (spec 001).
-   */
+  /** True when the section has something to list. */
   const holdsPlaces = (section: PlaceSection) =>
-    section.id === "agents" && orgView()
-      ? allPlaces(section).length > 0
-      : section.places.length > 0 || section.sections.length > 0
+    section.places.length > 0 || section.sections.length > 0
 
   const renderSection = (section: PlaceSection) => {
     const kind = sectionKind(section.id)
@@ -1114,23 +996,12 @@ export const PlaceList = (props: PlaceListProps) => {
                     </>
                   }
                 >
-                  <Show
-                    when={section.id === "agents" && orgView()}
-                    fallback={
-                      <>
-                        <Show when={loosePlacesFirst(section.id)}>
-                          <For each={section.places}>{renderRow}</For>
-                        </Show>
-                        <For each={section.sections}>
-                          {(user) => renderUserSection(section.id, user)}
-                        </For>
-                        {newSectionBox(kind)}
-                        <Show when={section.id === "agents"}>{renderUnassigned(section)}</Show>
-                      </>
-                    }
-                  >
-                    {renderByOrganization()}
+                  <Show when={loosePlacesFirst(section.id)}>
+                    <For each={section.places}>{renderRow}</For>
                   </Show>
+                  <For each={section.sections}>{(user) => renderUserSection(section.id, user)}</For>
+                  {newSectionBox(kind)}
+                  <Show when={section.id === "agents"}>{renderUnassigned(section)}</Show>
                 </Show>
               </SectionBody>
             )}
@@ -1181,30 +1052,6 @@ export const PlaceList = (props: PlaceListProps) => {
           <div class={styles.sectionEmpty} role="status" data-testid="search-offline">
             {t("search.offline", { name: ui.server()?.name ?? "" })}
           </div>
-        </Show>
-        {/* The organizations of this computer that match (spec 029, "Ways in"). A click opens the
-            org chart with the organization in its search field. */}
-        <Show when={orgHits().length > 0}>
-          <section data-testid="search-orgs" aria-label={t("search.orgs")}>
-            <div class={styles.sectionTop}>
-              <span class={styles.groupHeader}>{t("search.orgs")}</span>
-            </div>
-            <For each={orgHits()}>
-              {(org) => (
-                <button
-                  type="button"
-                  class={styles.place}
-                  onClick={() => openOrgHit(org.name)}
-                  data-testid="search-org-hit"
-                  data-org-name={org.name}
-                >
-                  <span class={styles.hitPlace} data-testid="search-org-name">
-                    {org.name}
-                  </span>
-                </button>
-              )}
-            </For>
-          </section>
         </Show>
         {/* A section with no match hides itself while the user searches. */}
         <Show when={pinned().length > 0}>

@@ -5,17 +5,14 @@ import { join } from "node:path"
 import { type AsyncSecretStore, type BrowserWebSocketClass, browserSocket } from "@robot/link"
 import {
   MemoryStorage,
-  type OrgChartPhase,
   ATTACH_BYTES as PHONE_ATTACH_BYTES,
   ATTACH_MAX as PHONE_ATTACH_MAX,
   PhoneHub,
   type ServerView,
-  unsupportedByServer,
 } from "@robot/phone"
 import {
   ATTACH_BYTES,
   ATTACH_MAX,
-  type ChartModel,
   type ChatMessage,
   type MessagePart,
   messageText,
@@ -26,7 +23,6 @@ import { Agents } from "../services/Agents.ts"
 import { Chat } from "../services/Chat.ts"
 import { Devices } from "../services/Devices.ts"
 import { EventBus } from "../services/EventBus.ts"
-import { Organizations } from "../services/Organizations.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 import { SettingsStore } from "../services/Settings.ts"
@@ -504,166 +500,7 @@ describe("the phone on a real computer", () => {
     ).rejects.toThrow()
   }, 30_000)
 
-  test("the phone asks for the org chart with the same request as a computer, and needs no switch", async () => {
-    const pc = await computer("Studio")
-    const phone = await openPhone()
-    await phone.setDeviceName("Pixel")
-    const { run } = await pair(pc, phone)
-    const link = await run.done
-    await waitFor(
-      () => view(phone, link.id).state,
-      (s) => s === "online",
-    )
-    // The switch "Can create and change agents" is off for a phone, and the request works.
-    await expect(phone.request(link.id, "agents.create", {})).rejects.toMatchObject({
-      code: "change_off",
-    })
-    const model = await phone.request<ChartModel>(link.id, "orgChart.model", {
-      serverId: pc.local.id,
-    })
-    // The model is ready for a list: the nodes in order, the state and the counts of each block.
-    expect(model.root).toBeNull()
-    expect(model.orgs.map((c) => [c.name, c.memberCount])).toEqual([["", 1]])
-    expect(model.orgs[0]?.nodes.map((n) => [n.name, n.state])).toEqual([["Ada", "idle"]])
-    expect(model.orgs[0]?.counts).toEqual({ working: 0, waiting: 0, idle: 1, offline: 0 })
-    // A change on the computer shows in the next read. The phone stays online.
-    await pc.run(Agents.use((x) => x.update(pc.agent.id, { name: "Ada L" })))
-    const again = await waitFor(
-      () => phone.request<ChartModel>(link.id, "orgChart.model", { serverId: pc.local.id }),
-      (m) => m.orgs[0]?.nodes[0]?.name === "Ada L",
-    )
-    expect(again.orgs[0]?.nodes[0]?.name).toBe("Ada L")
-    expect(view(phone, link.id).state).toBe("online")
-  }, 30_000)
-  test("the phone reads the deepest organization of each agent, follows a rename, and keeps it in the cache (spec 036, 011)", async () => {
-    const pc = await computer("Studio")
-    const storage = new MemoryStorage()
-    const secrets = memorySecrets()
-    const phone = await openPhone(storage, secrets)
-    await phone.setDeviceName("Pixel")
-    const { run } = await pair(pc, phone)
-    const link = await run.done
-    await waitFor(
-      () => view(phone, link.id).state,
-      (s) => s === "online",
-    )
-    // No organization yet: the phone holds an empty list, so no agent has a prefix.
-    await waitFor(
-      () => view(phone, link.id).data.agentOrgs,
-      (o) => o !== null && Object.keys(o).length === 0,
-    )
-    // Ada is in "Docs" under "Product" and in "Product": the deepest one is "Docs".
-    const product = await pc.run(
-      Organizations.use((o) =>
-        o.create({
-          serverId: pc.local.id,
-          name: "Product",
-          memberIds: [pc.agent.id],
-          leadId: null,
-        }),
-      ),
-    )
-    const docs = await pc.run(
-      Organizations.use((o) =>
-        o.create({
-          serverId: pc.local.id,
-          name: "Docs",
-          memberIds: [pc.agent.id],
-          leadId: null,
-          parentId: product.id,
-        }),
-      ),
-    )
-    await waitFor(
-      () => view(phone, link.id).data.agentOrgs,
-      (o) => o?.[pc.agent.id] === "Docs",
-    )
-    // A rename reaches the phone with no new pairing; the prefix text changes at the next read.
-    await pc.run(Organizations.use((o) => o.update(docs.id, { name: "Documentation" })))
-    await waitFor(
-      () => view(phone, link.id).data.agentOrgs,
-      (o) => o?.[pc.agent.id] === "Documentation",
-    )
-    // The cache holds the names; a restart with the server away still shows them.
-    await phone.flush()
-    phone.close()
-    await pc.run(Devices.use((d) => Effect.promise(() => d.setAccept(false))))
-    const later = await openPhone(storage, secrets)
-    await waitFor(
-      () => view(later, link.id).state,
-      (s) => s === "offline",
-    )
-    expect(view(later, link.id).data.agentOrgs).toEqual({ [pc.agent.id]: "Documentation" })
-  }, 40_000)
-
-  test("the phone watches the org chart: the model, the pushes, nothing held while the server is not online, and a new read when it is back", async () => {
-    const pc = await computer("Studio")
-    const storage = new MemoryStorage()
-    const phone = await openPhone(storage)
-    await phone.setDeviceName("Pixel")
-    const { run } = await pair(pc, phone)
-    const link = await run.done
-    await waitFor(
-      () => view(phone, link.id).state,
-      (s) => s === "online",
-    )
-    await phone.flush()
-
-    const phases: OrgChartPhase[] = []
-    const watch = phone.watchOrgChart(link.id, (p) => phases.push(p))
-    const last = () => phases.at(-1)
-    const names = (p: OrgChartPhase | undefined) =>
-      p?.kind === "ready" ? p.model.orgs.flatMap((c) => c.nodes.map((n) => n.name)) : null
-    // The first model comes from the request.
-    await waitFor(last, (p) => p?.kind === "ready")
-    expect(phases[0]).toEqual({ kind: "loading" })
-    expect(names(last())).toEqual(["Ada"])
-
-    // A change on the computer comes as a push. The phone asks nothing again for it.
-    await pc.run(Agents.use((x) => x.update(pc.agent.id, { name: "Ada L" })))
-    await waitFor(last, (p) => names(p)?.[0] === "Ada L")
-
-    // The computer does not accept connections: the phone goes away from "online", and the chart
-    // is not held. The phase is "off", with no model.
-    await pc.run(Devices.use((d) => Effect.promise(() => d.setAccept(false))))
-    await waitFor(
-      () => view(phone, link.id).state,
-      (s) => s !== "online",
-    )
-    await waitFor(last, (p) => p?.kind === "off")
-    const whileAway = phases.length
-
-    // The computer accepts again: the phone reads the chart again by itself.
-    await pc.run(Devices.use((d) => Effect.promise(() => d.setAccept(true))))
-    phone.reconnect(link.id)
-    await waitFor(last, (p) => p?.kind === "ready")
-    expect(phases.slice(whileAway).map((p) => p.kind)).toEqual(["loading", "ready"])
-    expect(names(last())).toEqual(["Ada L"])
-
-    // Nothing of the chart is on the disk of the phone. The normal cache (places, agents and
-    // channels) may end a write at any time, so this does not compare with the files of an earlier
-    // moment. It allows the known files only, and it needs that no file holds a field that only
-    // the model of the chart has.
-    await phone.flush()
-    const known = (path: string) =>
-      path === "device.json" ||
-      path === "servers.json" ||
-      /^cache\/[^/]+\/(places|agents|channels|agent-orgs)\.json$/.test(path)
-    expect([...storage.files.keys()].filter((path) => !known(path))).toEqual([])
-    for (const text of storage.files.values()) {
-      expect(text).not.toContain("handoffsCapped")
-      expect(text).not.toContain("leadKey")
-    }
-
-    // Stopping the watch ends it: a later change tells nobody.
-    watch.stop()
-    const count = phases.length
-    await pc.run(Agents.use((x) => x.update(pc.agent.id, { name: "Ada M" })))
-    await Bun.sleep(600)
-    expect(phases).toHaveLength(count)
-  }, 40_000)
-
-  test("a server answers an unknown request with Not allowed, and that is what the phone takes for an older server", async () => {
+  test("a server answers an unknown request from the phone with Not allowed", async () => {
     const pc = await computer("Old")
     const phone = await openPhone()
     await phone.setDeviceName("Pixel")
@@ -673,9 +510,8 @@ describe("the phone on a real computer", () => {
       () => view(phone, link.id).state,
       (s) => s === "online",
     )
-    const error = await phone.request(link.id, "orgChart.no-such-request", {}).catch((e) => e)
+    const error = await phone.request(link.id, "no-such.request", {}).catch((e) => e)
     expect(error).toMatchObject({ code: "not_allowed" })
-    expect(unsupportedByServer(error)).toBe(true)
   }, 30_000)
 
   test("a quiet turn reaches the phone with its name and seconds, also a phone that connects later; Stop ends it (spec 005, 011, 012)", async () => {

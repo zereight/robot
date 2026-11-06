@@ -61,15 +61,12 @@ const noMotion = () =>
   settings().reduceMotion === "on" || (settings().reduceMotion === "system" && systemReduced())
 createRoot(() => createEffect(() => (document.documentElement.lang = locale())))
 
-const placeText = (place: string | null) =>
-  place === null ? t("island.place.direct") : t("island.place.channel", { name: place })
+/** The island place is the direct chat of the agent (spec 015). Channels are gone. */
+const placeText = (_place: string | null) => t("island.place.direct")
 
+/** What the agent does. The plan step of a lead is gone with channels (spec 015). */
 const doingText = (doing: IslandDoing) =>
-  doing.kind === "plan"
-    ? doing.label
-    : doing.kind === "tool"
-      ? t(`island.doing.${doing.tool}`)
-      : t("island.doing.working")
+  doing.kind === "tool" ? t(`island.doing.${doing.tool}`) : t("island.doing.working")
 
 /** The kind of step for an approval, or "Question". */
 const stepText = (a: IslandAttention) =>

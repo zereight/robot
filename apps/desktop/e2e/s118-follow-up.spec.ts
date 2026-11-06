@@ -50,16 +50,8 @@ test("follow-up: the call ends the turn, and its task starts in the same chat", 
     })
     .toBe(1)
 
-  // The follow-up is due in one minute. It shows in "Next 24 hours" of the Today page.
-  await page.getByTestId("page-today").click()
-  await expect(page.getByTestId("today-page")).toBeVisible()
-  const row = page.locator("[data-testid=today-row][data-kind=followup_next]")
-  await expect(row).toHaveCount(1)
-  await expect(row.getByTestId("today-line")).toHaveText("CI of the deploy")
-  await shot(page, "s118-02-today-next")
-
-  // The time comes: a task with the source "follow-up" starts in the same chat, with the label of
-  // the reason. The row leaves the page.
+  // The follow-up is due in one minute. The time comes: a task with the source "follow-up" starts
+  // in the same chat, with the label of the reason.
   await expect
     .poll(
       async () => {
@@ -70,7 +62,6 @@ test("follow-up: the call ends the turn, and its task starts in the same chat", 
       { timeout: 120_000, intervals: [1000] },
     )
     .toBe("done|Look again: CI of the deploy")
-  await expect(row).toHaveCount(0, { timeout: 15_000 })
   await shot(page, "s118-03-follow-up-ran")
 
   // The task is in the Tasks page with its source label.
@@ -85,7 +76,7 @@ test("follow-up: the call ends the turn, and its task starts in the same chat", 
   await mock.close()
 })
 
-test("follow-up: a channel turn gets the refusal and the turn goes on", async () => {
+test("follow-up: a routine turn gets the refusal and the turn goes on", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })

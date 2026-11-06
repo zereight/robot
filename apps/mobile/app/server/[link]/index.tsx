@@ -1,21 +1,20 @@
-import { allPlaces, loosePlacesFirst, summarize, UNASSIGNED_SECTION_ID } from "@robot/phone"
-import type { Agent, Channel, Place, PlaceSection } from "@robot/shared"
+import { allPlaces, shownSections, summarize, UNASSIGNED_SECTION_ID } from "@robot/phone"
+import type { Agent, Place, PlaceSection } from "@robot/shared"
 import { router, Stack, useLocalSearchParams } from "expo-router"
 import { useState } from "react"
 import { PixelRatio, Pressable, StyleSheet, Text, View } from "react-native"
+import { waitingCards } from "../../../src/notices.ts"
 import { toggleSection } from "../../../src/prefs.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { radius, space, text } from "../../../src/theme/palette.ts"
-import { ChannelMark } from "../../../src/ui/ChannelMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
-import { ShownText, useShownName } from "../../../src/ui/names.tsx"
 import { stateText } from "../../../src/ui/states.ts"
 import { WorkingDot } from "../../../src/ui/WorkingDot.tsx"
 
 /**
- * Places (spec 011): the sections of the server, read only. The phone remembers which sections
- * the user closed; it cannot make, order or rename them.
+ * Places (spec 011): the sections of the server and their agents, read only. The phone remembers
+ * which sections the user closed; it cannot make, order or rename them.
  */
 export default function Places() {
   const { link } = useLocalSearchParams<{ link: string }>()
@@ -24,9 +23,7 @@ export default function Places() {
   if (!view) return <Screen>{null}</Screen>
   const { data, state } = view
   const closed = prefs.closed[link] ?? []
-  const waiting = data.attention.filter(
-    (n) => n.kind === "approval" || n.kind === "question",
-  ).length
+  const waiting = waitingCards(data.attention).length
 
   return (
     <>
@@ -61,14 +58,12 @@ export default function Places() {
             }
           />
         )}
-        <OrgChartRow linkId={link} serverName={view.link.name} />
-        {(data.places ?? []).map((section) => (
+        {shownSections(data.places).map((section) => (
           <Section
             key={section.id}
             linkId={link}
             section={section}
             agents={data.agents ?? []}
-            channels={data.channels ?? []}
             closed={closed}
             toggle={(key) => setPrefs((p) => toggleSection(p, link, key))}
           />
@@ -78,37 +73,10 @@ export default function Places() {
   )
 }
 
-/** The way into the screen "Org chart" (spec 011, screen 8). It shows in every state of the link. */
-const OrgChartRow = (props: { readonly linkId: string; readonly serverName: string }) => {
-  const { t, palette } = useApp()
-  return (
-    <Pressable
-      testID="places.orgChart"
-      accessibilityRole="button"
-      accessibilityLabel={t("places.orgChart")}
-      accessibilityHint={t("places.orgChart.hint", { name: props.serverName })}
-      onPress={() =>
-        router.push({ pathname: "/server/[link]/org", params: { link: props.linkId } })
-      }
-      style={({ pressed }) => [
-        styles.entry,
-        {
-          borderColor: palette.border,
-          backgroundColor: pressed ? palette.pressed : palette.surface,
-        },
-      ]}
-    >
-      <Text style={[styles.entryText, { color: palette.text }]}>{t("places.orgChart")}</Text>
-      <Text style={[styles.entryChevron, { color: palette.textMuted }]}>›</Text>
-    </Pressable>
-  )
-}
-
 const Section = (props: {
   readonly linkId: string
   readonly section: PlaceSection
   readonly agents: readonly Agent[]
-  readonly channels: readonly Channel[]
   readonly closed: readonly string[]
   readonly toggle: (key: string) => void
 }) => {
@@ -116,14 +84,13 @@ const Section = (props: {
   const { section } = props
   const everything = allPlaces(section)
   const open = !props.closed.includes(section.id)
-  const title = section.id === "agents" ? t("places.agents") : t("places.channels")
+  const title = t("places.agents")
   const row = (place: Place) => (
     <PlaceRow
       key={`${place.kind}:${place.id}`}
       linkId={props.linkId}
       place={place}
       agent={props.agents.find((a) => a.id === place.id)}
-      channel={props.channels.find((c) => c.id === place.id)}
     />
   )
   return (
@@ -139,10 +106,9 @@ const Section = (props: {
         <>
           {everything.length === 0 ? (
             <Body muted style={styles.empty}>
-              {section.id === "agents" ? t("places.empty.agents") : t("places.empty.channels")}
+              {t("places.empty.agents")}
             </Body>
           ) : null}
-          {loosePlacesFirst(section.id) ? section.places.map(row) : null}
           {section.sections.map((user) => {
             const key = `user:${user.id}`
             const userOpen = !props.closed.includes(key)
@@ -166,7 +132,7 @@ const Section = (props: {
               </View>
             )
           })}
-          {section.id === "agents" && everything.length > 0 ? (
+          {everything.length > 0 ? (
             <View style={styles.userSection}>
               <Header
                 title={t("places.unassigned")}
@@ -246,20 +212,12 @@ const PlaceRow = (props: {
   readonly linkId: string
   readonly place: Place
   readonly agent: Agent | undefined
-  readonly channel: Channel | undefined
 }) => {
   const { t, palette } = useApp()
   const { place } = props
-  // An agent shows its organization prefix before the name (spec 036). The accessible name adds
-  // the whole organization name. A channel has none.
-  const shownName = useShownName(props.linkId)
-  const shown =
-    place.kind === "agent"
-      ? shownName(place.id, place.name)
-      : { prefix: null, organization: null, name: place.name, text: place.name, label: place.name }
-  // The role line of an agent shows as a badge after the name (spec 001, 011). A channel has none,
-  // and a computer that does not send it yet gives no badge.
-  const role = place.kind === "agent" ? place.role?.trim() : undefined
+  // The role line of an agent shows as a badge after the name (spec 001, 011). A computer that does
+  // not send it yet gives no badge.
+  const role = place.role?.trim()
   const [slot, setSlot] = useState(0)
   const details = [
     role ? t("places.role", { role }) : null,
@@ -273,7 +231,7 @@ const PlaceRow = (props: {
     <Pressable
       testID={`place.${place.name}`}
       accessibilityRole="button"
-      accessibilityLabel={t("places.row", { name: shown.label, details })}
+      accessibilityLabel={t("places.row", { name: place.name, details })}
       onPress={() =>
         router.push({
           pathname: "/server/[link]/[kind]/[id]",
@@ -286,11 +244,7 @@ const PlaceRow = (props: {
       ]}
     >
       <View style={styles.mark}>
-        {place.kind === "agent" ? (
-          <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
-        ) : (
-          <ChannelMark picture={props.channel?.picture} size={36} />
-        )}
+        <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
         {/* The dot sits on the face, with its ring, as on the desktop (spec 001). */}
         {place.working ? (
           <View style={styles.markDot}>
@@ -300,14 +254,15 @@ const PlaceRow = (props: {
       </View>
       <View style={styles.placeText}>
         <View style={styles.placeTop}>
-          <ShownText
-            shown={shown}
+          <Text
             numberOfLines={1}
             style={[
               styles.placeName,
               { color: palette.text, fontWeight: place.unread > 0 ? "700" : "500" },
             ]}
-          />
+          >
+            {place.name}
+          </Text>
           {role ? (
             // The name comes first. The slot is what is left of the line. The badge is cut with an
             // ellipsis in it, and it hides when less than 4 characters of it fit.
@@ -345,17 +300,6 @@ const PlaceRow = (props: {
 const roleBadgeMin = () => Math.ceil(4 * text.xs * 0.62 * PixelRatio.getFontScale()) + 14
 
 const styles = StyleSheet.create({
-  entry: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 48,
-    paddingHorizontal: space.m,
-    borderWidth: 1,
-    borderRadius: radius.l,
-  },
-  entryText: { fontSize: text.m, fontWeight: "600" },
-  entryChevron: { fontSize: text.xl },
   section: { gap: space.xs },
   userSection: { gap: space.xs, marginLeft: space.s },
   empty: { fontSize: text.s, paddingHorizontal: space.s, paddingVertical: space.xs },
@@ -381,7 +325,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.m,
   },
   placeText: { flex: 1, gap: 2 },
-  // The face, picture or `#` mark of a place, with the working dot at its lower right (spec 001).
+  // The face of an agent, with the working dot at its lower right (spec 001).
   mark: { width: 36, height: 36 },
   markDot: { position: "absolute", right: -4, bottom: -4 },
   placeTop: { flexDirection: "row", alignItems: "center", gap: space.s },

@@ -14,8 +14,7 @@ import {
 } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
-// S66: the handbook and the instructions of a channel (spec 002, "Handbook"; spec 004, "Rules";
-// spec 013). The model is a stand-in that records each request. The scenario runs once in English
+// S66: the handbook (spec 002, "Handbook"; spec 013). The model is a stand-in that records each request. The scenario runs once in English
 // and once in Korean, at 1100 px wide.
 
 interface Words {
@@ -226,37 +225,9 @@ const scenario = (words: Words) => async () => {
     expect(lastSystem(mock)).not.toContain("Answer in Korean.")
     report.push("7. After the text is cleared no agent gets a handbook.")
 
-    // ---- the instructions of a channel: after the instructions of the agent ----
-    await openHandbook(page)
-    await saveHandbook(page, "Answer in Korean.")
-    await closeSettings(page)
-    await page.getByTestId("new-channel").click()
-    await page.getByTestId("channel-name").fill("Launch")
-    await page.getByTestId("channel-member-Ada").check()
-    await page.getByTestId("channel-lead").selectOption({ label: "Ada" })
-    await page.getByTestId("channel-instructions").fill("Write the answer as a list.")
-    await expect(page.getByTestId("channel-instructions-count")).toContainText("27")
-    await shot(page, `s66-07-channel-field-${words.shots}`)
-    await page.getByTestId("channel-submit").click()
-    await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
-    await page.getByTestId("channel-input").fill("@Ada write it")
-    await page.getByTestId("channel-input").press("Enter")
-    await expect
-      .poll(() => lastSystem(mock), { timeout: 20_000 })
-      .toContain("Write the answer as a list.")
-    const inChannel = lastSystem(mock)
-    expect(inChannel.indexOf("Answer in Korean.")).toBeGreaterThanOrEqual(0)
-    expect(inChannel.indexOf("Answer in Korean.")).toBeLessThan(inChannel.indexOf("Be brief."))
-    expect(inChannel.indexOf("Be brief.")).toBeLessThan(
-      inChannel.indexOf("Write the answer as a list."),
-    )
-    report.push(
-      "8. In a channel: handbook, then the instructions of the agent, then those of the channel.",
-    )
-
     // ---- the role line: a label, and no text of a turn (spec 002, "Role label") ----
     const role = `Role ${Date.now()}`
-    // Back to the direct chat of Ada: the profile of an agent opens from its own chat.
+    // The direct chat of Ada: the profile of an agent opens from its own chat.
     await page.locator('[data-place-row][data-place-name="Ada"]').click()
     await page.getByTestId("chat-header-agent").click()
     await expect(page.getByTestId("agent-profile")).toBeVisible()
@@ -268,7 +239,7 @@ const scenario = (words: Words) => async () => {
     const withRole = lastSystem(mock)
     expect(withRole).not.toContain(role)
     expect(withRole).toContain("Be brief.")
-    report.push("9. A role line is on the agent, and no text of the turn holds it.")
+    report.push("8. A role line is on the agent, and no text of the turn holds it.")
   } finally {
     writeReport(`s66-handbook-${words.shots}`, report)
     await app.close()
@@ -276,11 +247,5 @@ const scenario = (words: Words) => async () => {
   }
 }
 
-test(
-  "handbook: the page, the history, the switch and the channel instructions (English)",
-  scenario(EN),
-)
-test(
-  "handbook: the page, the history, the switch and the channel instructions (Korean)",
-  scenario(KO),
-)
+test("handbook: the page, the history, the switch and the role line (English)", scenario(EN))
+test("handbook: the page, the history, the switch and the role line (Korean)", scenario(KO))

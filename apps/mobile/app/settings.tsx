@@ -81,12 +81,6 @@ export default function Settings() {
           value={prefs.showToolSteps}
           onChange={(showToolSteps) => setPrefs((p) => ({ ...p, showToolSteps }))}
         />
-        <Toggle
-          testID="settings.showOrgPrefix"
-          label={t("settings.showOrgPrefix")}
-          value={prefs.showOrgPrefix}
-          onChange={(showOrgPrefix) => setPrefs((p) => ({ ...p, showOrgPrefix }))}
-        />
       </Section>
 
       <Section title={t("settings.notifications")}>

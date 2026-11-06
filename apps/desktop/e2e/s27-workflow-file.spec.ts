@@ -245,7 +245,7 @@ test("workflow file: import into an app without the agent", async () => {
   const mock = await startMockProvider()
   const work = mkdtempSync(join(tmpdir(), "robot-s27-"))
   const workflowFile = join(work, "hand-written.json")
-  // A file that another tool could write: plain keys, a post step and an agent that does not exist.
+  // A file that another tool could write: plain keys, a notify step and an agent that does not exist.
   const file = {
     format: "robot-workflows",
     version: 1,
@@ -254,7 +254,7 @@ test("workflow file: import into an app without the agent", async () => {
         name: "Ask Zed",
         steps: [
           { kind: "agent", name: "Zed works", agent: "Zed", prompt: "Say hi", x: 0, y: 0 },
-          { kind: "post", name: "Share", text: "{{input}}", x: 260, y: 0 },
+          { kind: "notify", name: "Share", title: "{{input}}", x: 260, y: 0 },
         ],
         connections: [{ from: 1, to: 2 }],
       },
@@ -274,20 +274,16 @@ test("workflow file: import into an app without the agent", async () => {
   await page.getByTestId("wf-menu-import-file").click()
   const dialog = page.getByTestId("workflow-import-dialog")
   await expect(dialog.getByTestId("workflow-import-item")).toHaveCount(1)
-  // The list names the agent that the app cannot find, and "Not imported" names the post step.
+  // The list names the agent that the app cannot find.
   await expect(dialog.getByTestId("workflow-import-missing")).toHaveText("Agents not found: Zed")
-  await expect(dialog.getByTestId("workflow-import-not-imported")).toContainText(
-    "Ask Zed, step 2 “Share”: the channel",
-  )
   await shot(page, "s27-07-import-missing")
   await dialog.getByTestId("workflow-import-submit").click()
   await expect(dialog).toHaveCount(0)
 
-  // The agent step shows "Pick an agent"; the post step shows "Pick a place". No agent is made.
+  // The agent step shows "Pick an agent". No agent is made.
   await page.getByTestId("wf-open").click()
   await expect(page.getByTestId("wf-node")).toHaveCount(2)
   await expect(page.getByTestId("wf-node").first()).toContainText("Pick an agent")
-  await expect(page.getByTestId("wf-node").nth(1)).toContainText("Pick a place")
   await page.getByTestId("wf-node").first().click()
   await expect(page.getByTestId("wf-step-agent")).toHaveValue("")
   await shot(page, "s27-08-pick-an-agent")

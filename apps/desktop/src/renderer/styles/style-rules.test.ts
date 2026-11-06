@@ -89,7 +89,6 @@ rule(
     "chat/chat.module.css | font-size: 1.25rem",
     "chat/chat.module.css | font-size: 0.8rem",
     "devices/devices.module.css | font-size: 2rem",
-    "shell/shell.module.css | font-size: 0.7rem",
     "shell/shell.module.css | font-size: 0.9rem",
   ],
 )

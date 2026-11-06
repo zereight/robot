@@ -6,18 +6,15 @@ import { ContextMeter } from "../chat/ContextMeter.tsx"
 import { formatUntil } from "../chat/format.ts"
 import { createHandoverState, HandoverDialog, offKey } from "../chat/Handover.tsx"
 import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
-import { TeamChip } from "../chat/TeamChip.tsx"
 import { ThreadList } from "../chat/ThreadList.tsx"
 import { createThreads, openThreadOf } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
-import { AgentName } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { TeamsMark } from "../settings/TeamsMark.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
 import { memoryTarget } from "../state/memoryLink.ts"
-import { profileTarget, setProfileTarget } from "../state/profileTarget.ts"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
@@ -123,12 +120,6 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
   createEffect(() => {
     if (memoryTarget()?.agentId === props.agent.id) setOpen(true)
   })
-  // A page that names this agent (the org chart, spec 029) asks for the profile once.
-  createEffect(() => {
-    if (profileTarget() !== props.agent.id) return
-    setProfileTarget(undefined)
-    setOpen(true)
-  })
   const teach = useTeach()
   // "Hand over" is off with a reason in words (spec 003, "Hand over"). This computer only.
   const handover = createHandoverState(
@@ -161,9 +152,7 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
           size={24}
           agentId={props.agent.id}
         />
-        <span>
-          <AgentName id={props.agent.id} name={props.agent.name} />
-        </span>
+        <span>{props.agent.name}</span>
       </button>
       <Show
         when={ui.canChange()}
@@ -186,7 +175,6 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
       {/* The Teams link serves this agent: a muted mark, with the state word if it is not On. */}
       <TeamsMark kind="agent" id={props.agent.id} />
       {/* A linked computer and the phone show the main thread only (spec 003, 011, 012). */}
-      <TeamChip agentId={props.agent.id} />
       <Show when={!ui.linked()}>
         <ThreadList agentId={props.agent.id} />
         <ContextMeter agentId={props.agent.id} threadId={openThreadOf(props.agent.id)} />
@@ -322,9 +310,7 @@ const Start = (props: { agent: Agent }) => {
   return (
     <div class={styles.start} data-testid="chat-start">
       <Face face={props.agent.face} image={props.agent.faceImage} size={80} />
-      <h2>
-        <AgentName id={props.agent.id} name={props.agent.name} />
-      </h2>
+      <h2>{props.agent.name}</h2>
       <p>{t("chat.start")}</p>
       <Show when={props.agent.role}>
         <p>{props.agent.role}</p>

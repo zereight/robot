@@ -17,7 +17,7 @@ const rows = (page: Page) => page.locator("[data-place-row]")
 const rowNamed = (page: Page, name: string) =>
   rows(page).filter({ hasText: new RegExp(`^${name}$`) })
 
-// The disc of the mark of the user and of a channel, in each theme. In the dark theme it is the
+// The disc of the mark of the user, in each theme. In the dark theme it is the
 // tile of the app mark. The app mark itself does not change with the theme.
 const MARK_TILE = "rgb(10, 8, 23)"
 const MARK_TILE_LIGHT = "rgb(225, 247, 239)"
@@ -93,7 +93,7 @@ const setTheme = async (page: Page, theme: "dark" | "light") => {
     }
     const sample = () => {
       for (const el of document.querySelectorAll(
-        "svg[data-face-shape], img, [data-testid=user-mark], [data-testid=channel-mark]",
+        "svg[data-face-shape], img, [data-testid=user-mark]",
       )) {
         const seen = looks.get(el) ?? new Set<string>()
         seen.add(read(el))
@@ -184,16 +184,6 @@ test("avatars: they follow the theme, layers that follow the size, a still glow,
   await expect(you).toHaveCSS("border-radius", "50%")
   expect(await you.evaluate((el) => getComputedStyle(el).boxShadow)).toContain("inset")
 
-  // The mark of a channel: the same disc with a `#`.
-  await page.getByTestId("new-channel").click()
-  await page.getByTestId("channel-name").fill("Launch")
-  for (const name of ["Ada", "Bea"]) await page.getByTestId(`channel-member-${name}`).check()
-  await page.getByTestId("channel-lead").selectOption({ label: "Ada" })
-  await page.getByTestId("channel-submit").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Launch")
-  const channelMark = rows(page).filter({ hasText: "Launch" }).getByTestId("channel-mark")
-  await expect(channelMark).toHaveCSS("background-color", MARK_TILE)
-
   // A picture has the same rim of light, in the hue of the agent, and stays round.
   await rowNamed(page, "Bea").click()
   await page.getByTestId("chat-header-agent").click()
@@ -232,9 +222,8 @@ test("avatars: they follow the theme, layers that follow the size, a still glow,
   const lightBig = await look(page.getByTestId("chat-start").locator("svg[data-face-shape]"))
   expect(lightBig.layers).toBe(1)
   expect(contrast(lightBig.core, lightBig.tile)).toBeGreaterThanOrEqual(7)
-  // The mark of the user and of a channel: a light disc, a dark glyph, no wide copy of the glyph.
+  // The mark of the user: a light disc, a dark glyph, no wide copy of the glyph.
   await expect(you).toHaveCSS("background-color", MARK_TILE_LIGHT)
-  await expect(channelMark).toHaveCSS("background-color", MARK_TILE_LIGHT)
   await expect(you.locator(":scope > span")).toHaveCount(1)
   expect(
     contrast(
@@ -259,7 +248,6 @@ test("avatars: they follow the theme, layers that follow the size, a still glow,
   expect(again.core).toBe(small.core)
   expect(again.layers).toBe(small.layers)
   await expect(you).toHaveCSS("background-color", MARK_TILE)
-  await expect(channelMark).toHaveCSS("background-color", MARK_TILE)
   await expect(you.locator(":scope > span")).toHaveCount(2)
   await app.close()
 })

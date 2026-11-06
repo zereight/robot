@@ -4,20 +4,17 @@ import { formatDateTime } from "../chat/format.ts"
 import { KnowledgePage } from "../knowledge/KnowledgePage.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
-import { OwnedWorkflows } from "../orgs/OwnedWorkflows.tsx"
-import orgStyles from "../orgs/orgs.module.css"
 import { useApp } from "../state/app.tsx"
 import { memoryTarget } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { OwnedWorkflows } from "../workflows/OwnedWorkflows.tsx"
 import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
-import { AgentOrgs } from "./AgentOrgs.tsx"
 import styles from "./agents.module.css"
 import { BrowserProfileField } from "./BrowserProfileField.tsx"
 import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
-import { OrgToolsLines } from "./OrgToolsLines.tsx"
 import { RecentWork } from "./RecentWork.tsx"
 import { RoleChip } from "./RoleField.tsx"
 import { markBorn } from "./reactions.ts"
@@ -142,13 +139,7 @@ const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
   )
 }
 
-export const NewAgentDialog = (props: {
-  onClose: () => void
-  /** Runs after save and before the agent opens, for example to add it to a channel (029). */
-  onCreated?: (agent: Agent) => Promise<void>
-  /** True keeps the page that is open: the profile of the new agent does not open (029). */
-  stay?: boolean
-}) => {
+export const NewAgentDialog = (props: { onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
   return (
@@ -160,9 +151,8 @@ export const NewAgentDialog = (props: {
           if (!serverId) return
           const agent = await createAgent(serverId, values)
           markBorn(agent.id)
-          await props.onCreated?.(agent)
           props.onClose()
-          if (!props.stay) ui.selectPlace({ kind: "agent", id: agent.id })
+          ui.selectPlace({ kind: "agent", id: agent.id })
         }}
       />
     </Dialog>
@@ -249,12 +239,9 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
           />
         </Show>
         <hr class={styles.divider} />
-        {/* The organizations of the agent, also on a device that cannot change them (spec 002, 030). */}
-        <AgentOrgs agent={props.agent} />
         {/* The workflows that the agent owns (spec 002, flow 13; spec 010). */}
         <OwnedWorkflows
           owner={{ kind: "agent", id: props.agent.id }}
-          fieldClass={`${styles.field} ${orgStyles.bare}`}
           legendClass={styles.label}
           testId="agent-workflows"
           itemTestId="agent-workflow"
@@ -335,8 +322,6 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         </Show>
         {/* The last tasks of this agent. A device that cannot change the agent sees them too. */}
         <RecentWork agent={props.agent} onNavigate={props.onClose} />
-        {/* The skills and connections that this agent has from organizations (spec 030). */}
-        <OrgToolsLines agent={props.agent} />
       </div>
       <Show when={tab() === "knowledge"}>
         {/* Knowledge belongs to the computer that runs the agent: a client does not open it. */}

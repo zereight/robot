@@ -57,7 +57,7 @@ test("review before an import: agent file and workflow file, ticks, not imported
           trigger: { kind: "schedule", schedule: daily },
           steps: [
             { kind: "agent", name: "Draft", agent: "Zed", prompt: "Write", x: 0, y: 0 },
-            { kind: "post", name: "Share", text: "{{input}}", x: 260, y: 0 },
+            { kind: "notify", name: "Share", title: "{{input}}", x: 260, y: 0 },
           ],
           connections: [{ from: 1, to: 2 }],
         },
@@ -164,7 +164,7 @@ test("review before an import: agent file and workflow file, ticks, not imported
   await expect(checklist.getByTestId("checklist-progress")).toHaveText("1 of 1 done")
   await shot(page, "s44-05-checklist-done")
 
-  // Workflow file with a post step: "Not imported" names its place.
+  // Workflow file with an agent that the app cannot find: the list names the agent.
   await page.getByTestId("page-workflows").click()
   await page.getByTestId("wf-menu").click()
   await page.getByTestId("wf-menu-import-file").click()
@@ -172,9 +172,6 @@ test("review before an import: agent file and workflow file, ticks, not imported
   await expect(wfDialog.getByTestId("workflow-import-item")).toHaveCount(1)
   await expect(wfDialog.getByTestId("workflow-import-tick")).toBeChecked()
   await expect(wfDialog.getByTestId("workflow-import-missing")).toHaveText("Agents not found: Zed")
-  await expect(wfDialog.getByTestId("workflow-import-not-imported")).toContainText(
-    "Share a draft, step 2 “Share”: the channel",
-  )
   await expect(wfDialog.getByTestId("workflow-import-counts")).toHaveText(
     "ROBot will make 1 workflows (off).",
   )
@@ -188,12 +185,9 @@ test("review before an import: agent file and workflow file, ticks, not imported
   // The canvas of the new workflow shows the checklist with "Pick".
   await page.getByTestId("wf-open").click()
   const wfChecklist = page.getByTestId("wf-checklist")
-  await expect(wfChecklist.getByTestId("checklist-item")).toHaveCount(3)
+  await expect(wfChecklist.getByTestId("checklist-item")).toHaveCount(2)
   await expect(wfChecklist.getByTestId("checklist-item").nth(0)).toContainText(
     "Pick an agent for step 1 “Draft”.",
-  )
-  await expect(wfChecklist.getByTestId("checklist-item").nth(1)).toContainText(
-    "Pick a place for step 2 “Share”.",
   )
   await expect(wfChecklist.getByTestId("checklist-action").nth(0)).toHaveText("Pick")
   await shot(page, "s44-07-canvas-checklist")
@@ -206,10 +200,6 @@ test("review before an import: agent file and workflow file, ticks, not imported
     "data-done",
     "true",
   )
-  await expect(wfChecklist.getByTestId("checklist-item").nth(1)).toHaveAttribute(
-    "data-done",
-    "false",
-  )
   await page.getByTestId("wf-save").click()
   // The import of S67 shows a toast of its own, and it can still be on screen: look for the toast
   // of the save by its text.
@@ -218,17 +208,17 @@ test("review before an import: agent file and workflow file, ticks, not imported
   )
 
   // "Turn on" opens the list at the workflow; turning it on ticks the last item.
-  await wfChecklist.getByTestId("checklist-item").nth(2).getByTestId("checklist-action").click()
+  await wfChecklist.getByTestId("checklist-item").nth(1).getByTestId("checklist-action").click()
   const wfCard = page.getByTestId("wf-card")
   await expect(wfCard.getByTestId("wf-enabled")).toBeFocused()
   await wfCard.getByTestId("wf-enabled").click()
   await expect(wfCard).toHaveAttribute("data-enabled", "true")
   await page.getByTestId("wf-open").click()
-  await expect(wfChecklist.getByTestId("checklist-item").nth(2)).toHaveAttribute(
+  await expect(wfChecklist.getByTestId("checklist-item").nth(1)).toHaveAttribute(
     "data-done",
     "true",
   )
-  await expect(wfChecklist.getByTestId("checklist-progress")).toHaveText("2 of 3 done")
+  await expect(wfChecklist.getByTestId("checklist-progress")).toHaveText("2 of 2 done")
   await shot(page, "s44-08-canvas-progress")
   await app.close()
   await mock.close()

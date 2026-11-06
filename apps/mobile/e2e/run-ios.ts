@@ -55,8 +55,8 @@ try {
   children.push(host)
   const hostDone = new Promise<number>((r) => host.on("exit", (code) => r(code ?? 1)))
   await waitFor(() => existsSync(join(out, "host.json")), 180_000, "the desktop pairing code")
-  // `control` is an address of the host that a flow can call to make the computer do something
-  // (apps/desktop/e2e/phone/phone-org-host.ts); the other hosts have none.
+  // `control` is an address of the host that a flow can call to make the computer do something.
+  // A host that has none leaves it out.
   const { address, code, control } = JSON.parse(readFileSync(join(out, "host.json"), "utf8"))
 
   if (!(await metroUp())) {

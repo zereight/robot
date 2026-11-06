@@ -11,7 +11,6 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
@@ -30,7 +29,6 @@ export const ConnectionsSection = () => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const orgs = useOrgs()
   const [fetched, { refetch }] = createResource(
     () => (ui.linked() ? undefined : true),
     () => call("connections.list"),
@@ -84,16 +82,14 @@ export const ConnectionsSection = () => {
         : t(`connections.state.${c.state}` as MessageKey)
 
   /**
-   * Who may use the connection: "All agents", or the names of the agents and of the organizations
-   * with the value "On" that are still there (spec 018, 030).
+   * Who may use the connection: "All agents", or the names of the agents that are still there
+   * (spec 018).
    */
   const forWhom = (c: ToolConnection) =>
     c.agents === "all"
       ? t("connections.agents.all")
-      : [
-          ...c.agents.map((id) => agents.byId(id)?.name),
-          ...c.organizations.filter((e) => e.value === "on").map((e) => orgs.byId(e.id)?.name),
-        ]
+      : c.agents
+          .map((id) => agents.byId(id)?.name)
           .filter((name): name is string => name !== undefined)
           .join(", ")
 

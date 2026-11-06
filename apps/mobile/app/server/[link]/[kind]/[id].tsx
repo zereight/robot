@@ -1,5 +1,4 @@
-import type { PlaceKind } from "@robot/phone"
-import { type Agent, type ChannelMessage, type QuietTurn, quietOfChat } from "@robot/shared"
+import { type QuietTurn, quietOfChat } from "@robot/shared"
 import * as Clipboard from "expo-clipboard"
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -22,9 +21,7 @@ import { setShownPlace } from "../../../../src/notices.ts"
 import { downloadAndOpen, uploadSource } from "../../../../src/platform/files.ts"
 import { useApp, useHubState, useServer } from "../../../../src/state/context.tsx"
 import { radius, space, text } from "../../../../src/theme/palette.ts"
-import { ChannelMark } from "../../../../src/ui/ChannelMark.tsx"
 import { Button, ErrorLine, Notice } from "../../../../src/ui/kit.tsx"
-import { useShownName } from "../../../../src/ui/names.tsx"
 import { Sheet } from "../../../../src/ui/Sheet.tsx"
 import { stateText } from "../../../../src/ui/states.ts"
 
@@ -37,16 +34,14 @@ const untilText = (locale: string, at: number) =>
       : { weekday: "short", hour: "numeric", minute: "2-digit" },
   ).format(at)
 
-/** The conversation of an agent or a channel (spec 011, 003, 004). */
+/** The direct chat of an agent (spec 011, 003). */
 export default function Conversation() {
-  const params = useLocalSearchParams<{ link: string; kind: string; id: string; call?: string }>()
+  // The route keeps the kind of the place. A place is always an agent now (spec 011).
+  const params = useLocalSearchParams<{ link: string; id: string; call?: string }>()
   const link = params.link
-  const kind: PlaceKind = params.kind === "channel" ? "channel" : "agent"
   const id = params.id
   const { hub, t, palette, locale, errorLine } = useApp()
   const view = useServer(link)
-  // The organization prefix of an agent (spec 036): the header, the quote lines and the lists.
-  const shownName = useShownName(link)
   const deviceName = useHubState().deviceName
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<Row<ShownMessage>>>(null)
@@ -61,16 +56,16 @@ export default function Conversation() {
   // Opening the place loads it (from the cache while offline) and marks it read. When the server
   // comes back online, the hub reads the open place again by itself.
   useEffect(() => {
-    void hub.openPlace(link, { kind, id })
-    return () => hub.closePlace(link, { kind, id })
-  }, [hub, link, kind, id])
+    void hub.openPlace(link, { kind: "agent", id })
+    return () => hub.closePlace(link, { kind: "agent", id })
+  }, [hub, link, id])
 
   // No notification for the place on the screen.
   useFocusEffect(
     useCallback(() => {
-      setShownPlace({ linkId: link, kind, id })
+      setShownPlace({ linkId: link, kind: "agent", id })
       return () => setShownPlace(null)
-    }, [link, kind, id]),
+    }, [link, id]),
   )
 
   const data = view?.data
@@ -79,48 +74,34 @@ export default function Conversation() {
     (agentId: string | null) => agents.find((a) => a.id === agentId),
     [agents],
   )
-  const agent = kind === "agent" ? agentOf(id) : undefined
-  const channel = kind === "channel" ? data?.channels?.find((c) => c.id === id) : undefined
-  const chat = kind === "agent" ? data?.chats[id] : undefined
+  const agent = agentOf(id)
+  const chat = data?.chats[id]
   const messages: readonly ShownMessage[] = useMemo(
     () =>
-      kind === "agent"
-        ? (chat?.messages ?? []).map((message) =>
-            message.author === "agent" && message.speakerId
-              ? { ...message, agentId: message.speakerId }
-              : message,
-          )
-        : ((data?.channelMessages[id] as readonly ChannelMessage[] | undefined) ?? []),
-    [kind, chat, data, id],
+      (chat?.messages ?? []).map((message) =>
+        message.author === "agent" && message.speakerId
+          ? { ...message, agentId: message.speakerId }
+          : message,
+      ),
+    [chat],
   )
-  const loaded = kind === "agent" ? chat !== undefined : data?.channelMessages[id] !== undefined
+  const loaded = chat !== undefined
   // The list is drawn upside down, so the newest row is at the bottom and stays in view.
   const rows = useMemo(() => buildRows(messages).reverse(), [messages])
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
-  const title =
-    kind === "agent"
-      ? agent
-        ? shownName(agent.id, agent.name).text
-        : ""
-      : channel
-        ? `#${channel.name}`
-        : ""
+  const title = agent?.name ?? ""
   const nameOf = (m: ShownMessage | undefined) => {
     if (!m) return ""
     if (m.author === "user") return t("chat.you")
     const sender = agentOf(m.agentId)
-    return sender ? shownName(sender.id, sender.name).text : "?"
+    return sender ? sender.name : "?"
   }
-  // The turn of this place that shows no sign of life (spec 005, "Quiet line"). A channel has no
-  // working line on the phone, so the first quiet part of the channel stands for it.
-  const quietTurn: QuietTurn | undefined =
-    kind === "agent"
-      ? quietOfChat(data?.quiet.turns ?? [], id, null)
-      : data?.quiet.turns.find((q) => q.source === "channel" && q.sourceId === id)
+  // The turn of this chat that shows no sign of life (spec 005, "Quiet line").
+  const quietTurn: QuietTurn | undefined = quietOfChat(data?.quiet.turns ?? [], id, null)
   const working =
-    (kind === "agent"
-      ? agent?.state === "working" || agent?.state === "waiting"
-      : channel?.working) || messages.some((m) => m.status === "streaming")
+    agent?.state === "working" ||
+    agent?.state === "waiting" ||
+    messages.some((m) => m.status === "streaming")
 
   const jumpTo = (messageId: string) => {
     const index = rows.findIndex((r) => r.kind === "message" && r.message.id === messageId)
@@ -143,8 +124,7 @@ export default function Conversation() {
   })
 
   const openFile: RowActions["onFile"] = (message, file) => {
-    const owner = message.agentId ?? (kind === "agent" ? id : null)
-    if (!owner) return
+    const owner = message.agentId ?? id
     setError(null)
     void downloadAndOpen(hub, link, { agentId: owner, path: file.path, name: file.name }).catch(
       (e) => setError(errorLine(e)),
@@ -166,7 +146,7 @@ export default function Conversation() {
     onLongPress: setMenu,
     onQuotePress: jumpTo,
     onFile: openFile,
-    ...(kind === "agent" ? { onRetry: (m: ShownMessage) => runRetry(m) } : {}),
+    onRetry: (m: ShownMessage) => runRetry(m),
     renderAsk: (message, tool) => (
       <AskCard linkId={link} agentId={message.agentId ?? id} tool={tool} />
     ),
@@ -181,15 +161,6 @@ export default function Conversation() {
         : view.state === "update_app"
           ? t("chat.updateBox")
           : t("chat.offlineBox", { name: view.link.name })
-  /** The whole name of the organization that the prefix of an agent shows, or null. */
-  const organizationOf = (agentId: string | null) => {
-    const sender = agentOf(agentId)
-    return sender ? shownName(sender.id, sender.name).organization : null
-  }
-  // The members in the order of the channel (spec 004), as on the computer.
-  const members = channel
-    ? channel.memberIds.flatMap((memberId) => agents.find((a) => a.id === memberId) ?? [])
-    : []
 
   return (
     <KeyboardAvoidingView
@@ -197,27 +168,7 @@ export default function Conversation() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
     >
-      {/* A channel with a picture shows it in place of the `#` (spec 004, 011). */}
-      <Stack.Screen
-        options={{
-          title,
-          ...(kind === "channel" && channel?.picture
-            ? {
-                headerTitle: () => (
-                  <View style={styles.channelTitle} testID="channel.title">
-                    <ChannelMark picture={channel.picture} size={28} />
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.channelTitleText, { color: palette.text }]}
-                    >
-                      {channel.name}
-                    </Text>
-                  </View>
-                ),
-              }
-            : {}),
-        }}
-      />
+      <Stack.Screen options={{ title }} />
       {view.state !== "online" ? (
         <View style={styles.banner}>
           <Notice
@@ -234,7 +185,7 @@ export default function Conversation() {
       ) : null}
       {/* The main model of the agent is held: the server tells until when (spec 006, 012). The
           phone has no button to end the hold in this version. */}
-      {kind === "agent" && agent?.hold && agent.hold.until > Date.now() ? (
+      {agent?.hold && agent.hold.until > Date.now() ? (
         <View style={styles.banner}>
           <Notice
             tone="muted"
@@ -263,11 +214,7 @@ export default function Conversation() {
         }
         ListFooterComponent={
           loaded && messages.length === 0 ? (
-            <Text style={[styles.empty, { color: palette.textMuted }]}>
-              {kind === "agent"
-                ? t("chat.empty")
-                : t("chat.empty.channel", { name: channel?.name ?? "" })}
-            </Text>
+            <Text style={[styles.empty, { color: palette.textMuted }]}>{t("chat.empty")}</Text>
           ) : undefined
         }
         renderItem={({ item }) =>
@@ -280,36 +227,22 @@ export default function Conversation() {
               })}
             </Text>
           ) : (
-            <View>
-              <MessageRow
-                message={item.message}
-                head={item.head}
-                agent={agentOf(item.message.agentId)}
-                organization={organizationOf(item.message.agentId)}
-                quoted={
-                  item.message.replyTo
-                    ? {
-                        name: nameOf(byId.get(item.message.replyTo)),
-                        text: quoteText(byId.get(item.message.replyTo)),
-                      }
-                    : null
-                }
-                flash={flash === item.message.id}
-                ownDevice={deviceName}
-                actions={actions}
-              />
-              {kind === "channel" && (item.message as unknown as ChannelMessage).awaiting ? (
-                <Pick
-                  members={members}
-                  shownName={shownName}
-                  onPick={(agentId) =>
-                    void hub
-                      .assign(link, id, item.message.id, agentId)
-                      .catch((e) => setError(errorLine(e)))
-                  }
-                />
-              ) : null}
-            </View>
+            <MessageRow
+              message={item.message}
+              head={item.head}
+              agent={agentOf(item.message.agentId)}
+              quoted={
+                item.message.replyTo
+                  ? {
+                      name: nameOf(byId.get(item.message.replyTo)),
+                      text: quoteText(byId.get(item.message.replyTo)),
+                    }
+                  : null
+              }
+              flash={flash === item.message.id}
+              ownDevice={deviceName}
+              actions={actions}
+            />
           )
         }
       />
@@ -344,42 +277,24 @@ export default function Conversation() {
       </View>
       <View style={{ paddingBottom: insets.bottom }}>
         <Composer
-          placeholder={
-            kind === "agent"
-              ? t("chat.placeholder", { name: agent?.name ?? "" })
-              : t("chat.placeholder.channel", { name: channel?.name ?? "" })
-          }
-          canAttach={kind === "agent"}
-          mentions={
-            kind === "channel"
-              ? members
-                  .filter((a) => !a.archived)
-                  .map((a) => ({ ...a, organization: shownName(a.id, a.name).organization }))
-              : agents
-                  .filter((a) => !a.archived && a.id !== id)
-                  .map((a) => ({ ...a, organization: shownName(a.id, a.name).organization }))
-          }
-          everyone={kind === "channel"}
+          placeholder={t("chat.placeholder", { name: agent?.name ?? "" })}
+          mentions={agents.filter((a) => !a.archived && a.id !== id)}
           working={!!working}
           blocked={blocked}
           reply={reply ? { name: nameOf(reply), text: quoteText(reply) } : null}
           onCancelReply={() => setReply(null)}
-          onStop={() => hub.stop(link, { kind, id })}
+          onStop={() => hub.stop(link, { kind: "agent", id })}
           onSend={async (draft, onProgress) => {
-            if (kind === "agent") {
-              await hub.send(
-                link,
-                {
-                  agentId: id,
-                  text: draft.text,
-                  replyTo: reply?.id ?? null,
-                  files: draft.files.map(uploadSource),
-                },
-                onProgress,
-              )
-            } else {
-              await hub.sendToChannel(link, id, draft.text)
-            }
+            await hub.send(
+              link,
+              {
+                agentId: id,
+                text: draft.text,
+                replyTo: reply?.id ?? null,
+                files: draft.files.map(uploadSource),
+              },
+              onProgress,
+            )
             setReply(null)
           }}
         />
@@ -425,36 +340,8 @@ export default function Conversation() {
   )
 }
 
-/** "Who takes this job?" under a channel message that waits for a pick (spec 004). */
-const Pick = (props: {
-  readonly members: readonly Agent[]
-  readonly shownName: ReturnType<typeof useShownName>
-  readonly onPick: (agentId: string) => void
-}) => {
-  const { t, palette } = useApp()
-  return (
-    <View style={[styles.pick, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-      <Text style={{ color: palette.text, fontSize: text.s, fontWeight: "600" }}>
-        {t("channel.pick")}
-      </Text>
-      <View style={styles.pickRow}>
-        {props.members.map((m) => (
-          <Button
-            key={m.id}
-            kind="secondary"
-            label={props.shownName(m.id, m.name).text}
-            onPress={() => props.onPick(m.id)}
-          />
-        ))}
-      </View>
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  channelTitle: { flexDirection: "row", alignItems: "center", gap: space.s, maxWidth: 240 },
-  channelTitleText: { fontSize: text.m, fontWeight: "600", flexShrink: 1 },
   banner: { paddingHorizontal: space.l, paddingTop: space.s },
   content: { paddingVertical: space.m },
   empty: { textAlign: "center", padding: space.xl, fontSize: text.s },
@@ -471,14 +358,4 @@ const styles = StyleSheet.create({
   queue: { paddingHorizontal: space.l, gap: 2 },
   queued: { fontSize: text.s },
   error: { paddingHorizontal: space.l },
-  pick: {
-    marginLeft: 36 + space.m + space.l,
-    marginRight: space.l,
-    marginTop: space.s,
-    borderWidth: 1,
-    borderRadius: radius.m,
-    padding: space.m,
-    gap: space.s,
-  },
-  pickRow: { flexDirection: "row", flexWrap: "wrap", gap: space.s },
 })

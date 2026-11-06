@@ -407,7 +407,7 @@ export const ProvidersSection = () => {
   const { t } = useApp()
   const providers = useProviders()
   const [adding, setAdding] = createSignal(false)
-  // The Today page asks for an account: its row lights up. An account that is gone is dropped.
+  // A page asks for an account: its row lights up. An account that is gone is dropped.
   createEffect(() => {
     const target = openTarget()
     if (target?.kind !== "account") return

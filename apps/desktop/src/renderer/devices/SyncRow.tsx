@@ -17,7 +17,6 @@ export const CountsLine = (props: { counts: SyncCounts; testId?: string }) => {
     <span data-testid={props.testId}>
       {t("sync.counts", {
         agents: n(props.counts.agents),
-        channels: n(props.counts.channels),
         messages: n(props.counts.messages),
       })}
     </span>

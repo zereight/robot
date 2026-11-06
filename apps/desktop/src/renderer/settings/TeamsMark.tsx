@@ -12,7 +12,7 @@ import { useUi } from "../state/ui.tsx"
 import styles from "./teams.module.css"
 
 /**
- * The muted mark "Linked to Teams" in the header of the agent or channel that the Teams link
+ * The muted mark "Linked to Teams" in the header of the agent that the Teams link
  * serves (spec 028). It names the state when the state is not On. A click opens Settings, Teams.
  * Only the computer that holds the link shows it: a linked device sees no mark here.
  */
