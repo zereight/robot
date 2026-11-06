@@ -80,10 +80,10 @@ workflow. The interface follows the layout of a chat server, with servers on the
   app makes for test devices is a download that the user starts (032, 014).
 - Secrets never appear in logs, exports or diagnostics.
 - ROBot does not train or change a model. A workflow gets better at its work only through things
-  that the user can see and edit: its responsible document, the prompts of its nodes, its graph,
-  its memory (008, changed in slice W2) and its skills (017, changed in slice W2). Self-improvement
-  (010) only proposes changes to these
-  things, and a change applies only when the user accepts it. Interface text and documents do not
+  that the user can see and edit: its responsible document, the prompts of its nodes, its graph
+  and its memory (008, changed in slice W2). Skills (017) change only when the user changes them.
+  Self-improvement (010) only proposes changes to these four things, and a change applies only
+  when the user accepts it. Interface text and documents do not
   say that a model learns, trains or evolves. The rule covers text that the user reads. It does
   not cover the instructions that the app sends to a model. The memory page of a workflow shows one
   muted line with this fact (see 008, changed in slice W2).

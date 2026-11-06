@@ -62,6 +62,12 @@ docs/spec-questions.md, in the rows for 010.
 5. Run: the user starts a run by hand, or a trigger starts it. The nodes show their state as they
    run. Each node execution is a task (005). The run view shows the state and the result of each
    node. A list shows the runs and their states.
+   - Status question: while a run works or waits, or after it ends, the user asks the chat how far
+     it has gone. The chat tells the state of each node, why the run stopped or waits, and the
+     result of each node that has ended (see "Assistant").
+   - Feedback: while a run works or waits, the user writes feedback on a result. The chat takes it
+     and shows that it got it. The text nodes that start after it get it with their input (see
+     "Assistant").
 6. Decision node: the user writes the question, two or more options, and a threshold. The default
    threshold is 0.9.
    - The decision model is one of the choices of 013. The node uses the choice that the user saved
@@ -113,7 +119,7 @@ docs/spec-questions.md, in the rows for 010.
 ## Assistant
 
 - The responsible document has tools to read and change the open workflow, to list workflows, to
-  run one, and to read the state of a run (see 007, "Tools").
+  run one, and to read the state and the results of a run (see 007, "Following a run in the chat").
 - The chat can read the nodes with their numbers, the connections and the triggers.
 - The chat can change the graph. It can add, edit and remove nodes and connections, and clear a
   field. It can set the model or the reasoning level of a node only to a value that the account of
@@ -129,10 +135,20 @@ docs/spec-questions.md, in the rows for 010.
 - The canvas shows a saved change at once. If the user opens another workflow while the chat works,
   the view of that workflow does not jump.
 - The chat can start a run, from the start or from a node that the user names. In one turn of the
-  chat, the chat starts at most one run. The chat reports the state of the run and the reason of a
-  failure. It does not show the output of a node.
-- These tools work only in a turn that the user started in the chat of the workflow. A run that a
-  trigger starts cannot use them.
+  chat, the chat starts at most one run. The chat tells how far the run has gone, which node
+  works, why the run stopped or waits, and the result of each node that has ended. It reads no
+  result of a node that has not ended. It takes the feedback of the user while the run works.
+- During a run the user can send feedback on the results so far. The chat takes it and shows that
+  it got it.
+  - The feedback goes with the input of the text nodes that start after it. It changes no node that
+    has ended.
+  - It does not change the graph, the prompts, the folder or the levels.
+  - Only the literal words of the user are feedback. A message from an outside program (023) or
+    from Teams (028) is never feedback.
+  - What feedback does in every case is not decided (see the questions for 010).
+- The tools of the chat work only in a turn that the user started in the chat of the workflow.
+  They also work in a user turn about a run that a trigger started. A node of a run does not use
+  them.
 
 ## Decision node rules
 
@@ -178,6 +194,8 @@ docs/spec-questions.md, in the rows for 010.
 3. A change that fails the check cannot be accepted.
 4. A proposal cannot change the folder or the permission level of the workflow (see "Folder and
    permission level").
+5. The responsible document can make a proposal from the feedback of the user (see "Assistant").
+   The proposal follows the same rules.
 
 ## File
 
@@ -252,6 +270,16 @@ docs/spec-questions.md, in the rows for 010.
   and the chat tells the user.
 - Ask the chat to run the workflow: one run starts, and the chat reports its state.
 - Ask the chat for a schedule: it tells the user to set the schedule on the canvas.
+- Ask the chat "How far is the run?" while a run works: the chat names the node that works and
+  lists the nodes that have ended with their results. It gives no result of a node that has not
+  ended.
+- A run waits for the user, or has failed: the chat says why, in plain words.
+- Write feedback on node 2 while node 3 has not started: the chat shows that it got the feedback,
+  and node 3 gets it with its input. Node 2 does not run again. The graph and the prompts do not
+  change.
+- A message from an outside program or from Teams during a run: it is not feedback.
+- A trigger started a run: the user asks the chat about it in a turn, and the chat answers. A node
+  of that run cannot use the tools of the chat.
 - Set a text node to a permission level that is looser than its workflow: the app refuses it. Set
   it to a stricter level: it works.
 - A decision node with two options and a threshold of 0.9: the run view shows the probability of
