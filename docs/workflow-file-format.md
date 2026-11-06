@@ -1,12 +1,156 @@
 # Workflow file format
 
-This document tells how to write and read a workflow file. A tool can use it to make workflow
-files for ROBot without the code of the app. The behaviour of export and import is in
-[specs/010-workflows.md](../specs/010-workflows.md), section "Workflow file".
+Status: draft. This document tells what a workflow file holds, and what the user sees when ROBot
+writes or reads one. The behaviour is in [specs/010-workflows.md](../specs/010-workflows.md),
+section "File", and in [specs/014-local-data.md](../specs/014-local-data.md), section "Review before
+an import".
+
+The file is a **TLA module**. TLA means Temporal Logic of Actions (010). The check of a workflow
+reads the module (010, "Check"). The exact text form of the module is open (see "Open points"). So a tool cannot yet make a module
+for ROBot from this document alone.
+
+The code of the app still reads and writes the earlier JSON format, version 1. The end of this
+document keeps the text of that format, under "Earlier format: JSON, version 1". Do not use it for
+new files. The change of the code to the module removes that part with the code.
+
+## What the file is
+
+- The file is a text file in UTF-8. A byte order mark at the start is allowed.
+- The file holds the module of at least one workflow, and at most 20 workflows. Whether one file
+  holds one workflow or several is open (see "Open points").
+- The file is at most 10 MB (10 485 760 bytes). ROBot refuses a larger file before it reads it.
+- The file is text that the user can read.
+- The file name, and the way to get a file out of the app, are open (see "Open points").
+
+## What the file holds
+
+The module holds three kinds of content. The file holds nothing that is not in this list, except
+the open points at the end of this document.
+
+| Content | Who writes it | Rule |
+| --- | --- | --- |
+| The graph | The app writes it from the workflow. The user can change it. | The nodes and the connections of the workflow (010). The graph follows the rules of the graph (see "When ROBot refuses a file"). |
+| The prompts | The app writes them. The user can change them. | The prompt of each text node, as a string. A prompt can hold `{{input}}` and `{{trigger}}`. These two words stay English (010, "Check"). |
+| The rules of the check | The app writes the standard rules. The user adds more. | The standard rules are: no deadlock, every node can run, and every approval node comes before its effect (010). A rule that the user adds is a rule about the states of the workflow. |
+
+## What the file does not hold
+
+The file holds none of these (010, "File").
+
+- **Runs, versions and chats.** A workflow comes without its history (010).
+- **Keys and secrets.** See "Secrets in text".
+- **Ids.** ROBot gives new ids when it imports.
+- **On or off.** Every imported workflow is off (010).
+- **The result of a check.** An imported workflow is checked again.
+
+## Limits
+
+| Limit | Value |
+| --- | --- |
+| Size of the file | 10 MB (10 485 760 bytes) |
+| Workflows in one file | 20 at most |
+| Nodes in one workflow | 30 at most |
+| Names | The names of the workflows in one file differ, ignoring case. The length limit of a name is open. |
+
+## The rules of the check in the file
+
+- The app writes the standard rules. The user adds more (010).
+- The user adds rules in the module. A rule that the user adds is run by the check on every change
+  (010, "Check"). The check reports a state that breaks it, with the path to the state.
+
+## Secrets in text
+
+ROBot replaces text that looks like a secret with `[redacted]`. It does this when it writes a file,
+and again when it reads one. This applies to every string of the file: the names, the prompts and
+the rules. It applies to:
+
+- keys that start with `sk-`
+- `Bearer` tokens
+- GitHub tokens
+- AWS access key IDs
+- Slack tokens
+- Google API keys
+- JSON web tokens
+- private key blocks
+- every key that is stored in the app on that computer
+
+A tool must not write secrets into a workflow file. A part whose text had a secret shows on the
+review screen with the mark "A secret was removed" (014).
+
+## How the user changes the file
+
+- Where the user changes the module, and what the app does with the changes when it writes the
+  module again, are open (see "Open points"). The rules below hold in each case.
+- An import of a module that the user changed works as any import (see "How ROBot imports a
+  file"). It makes a new workflow. It never changes a workflow that exists (010, "File").
+- A change that fails the check does not save (010, "Check"). The user sees the first problem,
+  with the shortest path to it.
+
+## How ROBot imports a file
+
+1. ROBot checks the size, then the whole file. If the file is not a module that ROBot can read,
+   or one workflow breaks a rule of the graph, ROBot refuses the whole file and makes no
+   workflow.
+2. ROBot runs the check on each workflow of the file (010, "Check"). What it does with a workflow
+   that has a problem is open (see "Open points").
+3. The user sees the review screen (014, "Review before an import"): each workflow with a tick box,
+   its parts, and the parts that ROBot does not make. The user confirms.
+4. ROBot makes the workflows in the order of the file. It makes **new workflows only**. It never
+   changes a workflow that exists.
+5. If the name of a workflow is taken, ignoring case, the workflow gets a number: `Digest` becomes
+   `Digest 2`, then `Digest 3`. The name stays inside the length limit of a name.
+6. **Every imported workflow is off.** Its schedule does not fire until the user turns it on.
+7. A new workflow gets an empty folder in the default workspace folder (013) and the default
+   permission level, "Ask for risky steps" (010, "Folder and permission level").
+8. If the import fails after some workflows are made, those workflows stay. ROBot shows the name of the
+   workflow where it stopped, and the reason.
+9. After the import, the chat of each new workflow shows a checklist of what still needs the user
+   (014).
+
+## When ROBot refuses a file
+
+The message names the workflow and the place of the fault.
+
+| Cause | Note |
+| --- | --- |
+| The text is not a module that ROBot can read. | |
+| The file is larger than 10 MB. | ROBot refuses it before it reads it. |
+| The file holds more than 20 workflows. | |
+| Two workflows have the same name. | ROBot ignores case when it compares. |
+| A connection names a node that does not exist. | |
+| A connection joins a node to itself. | |
+| A decision node has fewer than two options, or an option with no connection. | |
+| A workflow has more than 30 nodes. | |
+
+A loop of nodes is open (see "Open points").
+
+## Open points
+
+These points have no answer in this document. Each one is a row in
+[docs/spec-questions.md](spec-questions.md), under the heading "W1" or "W3".
+
+| Point | Rows |
+| --- | --- |
+| Is the module the saved form of a workflow, or does the app write it as a file? | W1, 010 |
+| What else the module holds: the provider, model and reasoning level of a node; the question, options and threshold of a decision node; the trigger; the folder and the level; the names; the responsible document; the memory | W1, 010; W3, file |
+| Which node kinds exist, and what counts as the effect of an approval node | W1, 010 |
+| Loops of nodes | W1, 010 |
+| One workflow or several in one file | W1, 010 |
+| The length limit of a name | W1, 010 |
+| The text form of the module, the file name and the format name | W3, file |
+| Where the user edits the module, and what the app does with the edits of the user when it writes the module again | W3, file |
+| What import does with a workflow that has a problem | W3, file |
+| Whether ROBot still reads the earlier JSON format | W3, file |
+
+## Earlier format: JSON, version 1
+
+This part is only the earlier format of the code. It is not the file that ROBot makes after the
+code changes. That file is the TLA module (see [specs/010-workflows.md](../specs/010-workflows.md),
+section "File", and the first part of this document). Do not use this part for new files.
 
 Format name: **`robot-workflows`**. Format version: **1**.
 
-## What the file is
+### What the file is
 
 - The file is one JSON object in UTF-8 text. A byte order mark at the start is allowed.
 - The file name ends in `.json`.
@@ -16,7 +160,7 @@ Format name: **`robot-workflows`**. Format version: **1**.
 - The file never holds a run, a version, a chat, a key, a secret, a channel, an id, or a check. See
   "What the file does not hold".
 
-## Fields
+### Fields
 
 Text lengths count characters, not bytes. A character with a code point above U+FFFF counts as
 one. "Removes spaces" means that ROBot removes the spaces at both ends of the text.
@@ -24,7 +168,7 @@ one. "Removes spaces" means that ROBot removes the spaces at both ends of the te
 A field that this document does not define is ignored. A field that is marked "no" in the column
 "Required" may be missing or `null`, and then it has its default.
 
-### The file object
+#### The file object
 
 | Field | Type | Required | Rule |
 | --- | --- | --- | --- |
@@ -32,7 +176,7 @@ A field that this document does not define is ignored. A field that is marked "n
 | `version` | integer | yes | Must be `1`. ROBot refuses a higher number. |
 | `workflows` | array of workflow objects | yes | 1 to 20 entries. |
 
-### Workflow object
+#### Workflow object
 
 | Field | Type | Required | Default | Rule |
 | --- | --- | --- | --- | --- |
@@ -42,7 +186,7 @@ A field that this document does not define is ignored. A field that is marked "n
 | `connections` | array of connection objects | no | `[]` | No limit of its own: the 10 MB limit of the file applies. |
 | `notes` | array of note objects | no | `[]` | 0 to 50 entries. Notes do not count towards the 30 steps. |
 
-### Trigger object
+#### Trigger object
 
 | `kind` | Other fields | Meaning |
 | --- | --- | --- |
@@ -53,7 +197,7 @@ A workflow that starts by a message in a channel, or by a web hook (spec 010), h
 the file. ROBot writes such a workflow with the trigger `"manual"`, and the secret of a web hook
 stays out of the file. A file with another `kind` is refused.
 
-### Schedule object
+#### Schedule object
 
 The field `kind` selects the form. All times use the time zone of the computer that runs the
 workflow. Other fields of the object are ignored.
@@ -69,7 +213,7 @@ workflow. Other fields of the object are ignored.
 A schedule that does not follow this table makes ROBot refuse the whole file. The schedule is the
 same as the schedule of a routine in the [agent file](agent-file-format.md).
 
-### Step object
+#### Step object
 
 Every step has these fields. The field `kind` selects the other fields.
 
@@ -87,7 +231,7 @@ should give a place to each step. A step is 180 wide and 64 high.
 Texts that are called "template" below may hold `{{input}}`, which becomes the result of the steps
 before, and `{{trigger}}`, which becomes the text that started the run.
 
-#### Kind `"agent"`: an agent step
+##### Kind `"agent"`: an agent step
 
 An agent does a job. It is a task of that agent.
 
@@ -98,7 +242,7 @@ An agent does a job. It is a task of that agent.
 | `effort` | string | no | the effort of the agent | One of `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`, `"ultra"`. The step runs one turn with this effort, if the model that runs the step lists it. If the model does not list it, the step uses the effort of the agent, and then the nearest level that the model lists (spec 006). |
 | `continueOnFailure` | boolean | no | `false` | When `true`, the run goes on if this step fails. |
 
-#### Kind `"condition"`: an if and else
+##### Kind `"condition"`: an if and else
 
 A condition takes the branch `"yes"` or the branch `"no"`. It passes its input on unchanged.
 
@@ -109,7 +253,7 @@ A condition takes the branch `"yes"` or the branch `"no"`. It passes its input o
 
 The file holds no model for mode `"ask"`. ROBot chooses the model when the step runs.
 
-#### Kind `"approval"`: wait for the user
+##### Kind `"approval"`: wait for the user
 
 The run waits at this step until the user approves or rejects. It passes its input on unchanged.
 
@@ -117,7 +261,7 @@ The run waits at this step until the user approves or rejects. It passes its inp
 | --- | --- | --- | --- | --- |
 | `message` | string | no | `""` | The text that the approver sees. At most 20 000 characters. |
 
-#### Kind `"notify"`: show a system notification
+##### Kind `"notify"`: show a system notification
 
 The step shows a system notification of the kind "workflow notice". The body is the first 200
 characters of the input of the step. The step passes its input on unchanged.
@@ -126,7 +270,7 @@ characters of the input of the step. The step passes its input on unchanged.
 | --- | --- | --- | --- | --- |
 | `title` | string | no | `""` | The title of the notification. At most 100 characters. When it is empty, the name of the step is the title. |
 
-### Connection object
+#### Connection object
 
 A connection joins the result of one step to the input of another. Steps are named by their node
 number: the place in the list `steps`, counted from **1**. So the first step of the list is 1.
@@ -139,7 +283,7 @@ number: the place in the list `steps`, counted from **1**. So the first step of 
 
 The same connection twice counts as once.
 
-### Note object
+#### Note object
 
 A note is a text on the canvas. It has no connection, no node number, and no effect on a run.
 
@@ -154,7 +298,7 @@ A note with no `x` and `y` goes on the same grid, in the rows below the steps: t
 notes is `ceil(number of steps / 3) + 1`, and `y = (that row + floor((m - 1) / 3)) * 110` for note
 number `m`. A note is 200 wide.
 
-## The rules of the graph
+### The rules of the graph
 
 ROBot checks these rules for each workflow when it reads the file, and again when it writes one.
 
@@ -169,7 +313,7 @@ ROBot checks these rules for each workflow when it reads the file, and again whe
 
 A workflow with no steps is allowed.
 
-## What the file does not hold
+### What the file does not hold
 
 The file has no field for these. If a tool writes one, ROBot ignores it.
 
@@ -182,7 +326,7 @@ The file has no field for these. If a tool writes one, ROBot ignores it.
 - **The check.** The file holds no result of a check and no switch "Check before a run" (spec 010,
   "Check"). An imported workflow is "Not checked", and its switch is on.
 
-## Secrets in text
+### Secrets in text
 
 ROBot replaces text that looks like a secret with `[redacted]`. It does this when it writes a file,
 and again when it reads one. This applies to every text of the file: the names, the prompts, the
@@ -201,7 +345,7 @@ to:
 
 A tool must not write secrets into a workflow file.
 
-## How ROBot imports a file
+### How ROBot imports a file
 
 1. ROBot checks the size, then the whole file. If one value is not valid, or one workflow breaks
    the rules of the graph, ROBot refuses the whole file and makes no workflow.
@@ -217,7 +361,7 @@ A tool must not write secrets into a workflow file.
 6. If a step fails after some workflows are made, those workflows stay. ROBot shows the name of the
    workflow where it stopped, and the reason.
 
-### How ROBot links the agent
+#### How ROBot links the agent
 
 An agent step is linked to the agent of the same server that has the same name as `agent`. ROBot
 ignores case and spaces at both ends when it compares names. An agent that is archived does not
@@ -226,7 +370,7 @@ count.
 If there is no such agent, the step has no agent. It shows "Pick an agent", and a run fails at that
 step with the reason "No agent". `agent` that is empty or missing has the same result.
 
-## Older files
+### Older files
 
 Older versions of ROBot had a step of kind `"post"` and a trigger of kind `"channel"`. ROBot has
 no channels now. It still reads such a file and does not refuse it:
@@ -239,7 +383,7 @@ no channels now. It still reads such a file and does not refuse it:
 
 ROBot never writes a step of kind `"post"` or a trigger of kind `"channel"`.
 
-## When ROBot refuses a file
+### When ROBot refuses a file
 
 | Cause | Note |
 | --- | --- |
@@ -254,7 +398,7 @@ ROBot never writes a step of kind `"post"` or a trigger of kind `"channel"`.
 | A schedule is not valid. | The message names the place, for example `workflows[0].trigger.schedule`. |
 | A workflow breaks a rule of the graph. | The message names the workflow and the place: a step or a connection, counted from 1. |
 
-## Example
+### Example
 
 This file holds one workflow. It asks the agent `Ada` for a draft, asks a model if the draft is
 polite, shows a notification with the result if it is, and shows another notification if it is not.

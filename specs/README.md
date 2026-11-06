@@ -17,15 +17,15 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 008 | [Memory: what an agent keeps between chats, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 009 | [Routines: scheduled jobs, calendar, missed runs, limits and pause on repeated failure, and the check of overlaps, loops and runs at once](009-routines.md) | Draft |
 | 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
-| 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
-| 012 | [Device link: pair phones and computers, messages, identity, offline behaviour](012-device-link.md) | Draft |
+| 011 | [Phone app: pair with a computer, run workflows, ask and give feedback, read and send, notifications](011-phone-app.md) | Draft |
+| 012 | [Device link: pair phones and computers, what a client does with workflows, messages, identity, offline behaviour](012-device-link.md) | Draft |
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
-| 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
+| 014 | [Local data, privacy, secrets, export, and the review before an import of a workflow file](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
 | 017 | [Skills: saved instructions that the user calls with a slash, or that the agent loads or proposes](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
-| 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
+| 019 | [Sync between two computers: what syncs, conflicts, where workflows run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
