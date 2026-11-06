@@ -899,6 +899,9 @@ describe("browser for an agent runtime", () => {
       "read_skill",
       "list_agents",
       "send_message",
+      "review_result",
+      "steer_order",
+      "cancel_order",
     ])
   })
 
