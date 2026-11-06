@@ -1579,7 +1579,7 @@ export const en = {
   "settings.notify.islandWidth.compact": "Compact",
   "settings.notify.islandWidth.wide": "Wide",
   "settings.notify.mutes": "Mute",
-  "settings.notify.mutes.hint": "A muted server or channel sends no notification.",
+  "settings.notify.mutes.hint": "A muted server sends no notification.",
   "settings.notify.mute.off": "Not muted",
   "settings.notify.mute.1h": "For 1 hour",
   "settings.notify.mute.8h": "For 8 hours",
@@ -1945,8 +1945,7 @@ export const en = {
   "agentFile.export.limit": "A file holds at most 40 agents.",
   "agentFile.export.submit": "Export…",
   "agentFile.exported": "Saved {count} agents to {path}",
-  "agentFile.exported.team":
-    "Saved {count} agents, {channels} channels and {skills} skills to {path}",
+  "agentFile.exported.team": "Saved {count} agents and {skills} skills to {path}",
   "agentFile.exported.handbook": "The file holds the handbook.",
   "agentFile.export.team.title": "Add to the file",
   "agentFile.export.team.channels": "Channels of these agents",
@@ -1972,12 +1971,12 @@ export const en = {
   "agentFile.import.stopped.channel":
     "The import stopped at the channel “{name}”. {made} agents and {channels} channels were made and stay. Reason: {reason}",
   "agentFile.import.stopped.skill":
-    "The import stopped at the skill “{name}”. {made} agents, {channels} channels and {skills} skills were made and stay. Reason: {reason}",
+    "The import stopped at the skill “{name}”. {made} agents and {skills} skills were made and stay. Reason: {reason}",
   "agentFile.import.stopped.handbook":
-    "The import stopped at the handbook. {made} agents, {channels} channels and {skills} skills were made and stay. Reason: {reason}",
+    "The import stopped at the handbook. {made} agents and {skills} skills were made and stay. Reason: {reason}",
   "agentFile.imported": "Imported {agents} agents, {routines} routines (paused).",
   "agentFile.imported.team":
-    "Imported {agents} agents, {routines} routines (paused), {channels} channels and {skills} skills (off).",
+    "Imported {agents} agents, {routines} routines (paused) and {skills} skills (off).",
   "agentFile.imported.handbook": "The handbook was replaced.",
   "importReview.agents.intro":
     "Tick the parts to import. ROBot makes new agents only. It does not change an agent that exists.",
@@ -2024,10 +2023,11 @@ export const en = {
   "importReview.notImported.channel": "Channel “{owner}”",
   "importReview.notImported.skill": "Skill “{owner}”",
   "importReview.reason.channel_no_member": "None of its members is ticked.",
+  "importReview.reason.channel_gone": "ROBot has no channels.",
   "importReview.reason.skill_no_agent": "None of the agents that may use it is ticked.",
   "importReview.reason.skills_full": "This server has 100 skills, the most it can hold.",
   "importReview.counts.team":
-    "ROBot will make {agents} agents, {routines} routines (paused), {channels} channels and {skills} skills (off).",
+    "ROBot will make {agents} agents, {routines} routines (paused) and {skills} skills (off).",
   "importReview.counts.handbook": "It will replace the handbook.",
   "importReview.counts.handbookOnly": "ROBot will replace the handbook.",
   "error.import_nothing_picked": "Nothing is ticked. Tick at least one part to import.",

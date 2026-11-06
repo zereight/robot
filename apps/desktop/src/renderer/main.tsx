@@ -3,14 +3,10 @@ import { render } from "solid-js/web"
 import { App } from "./App.tsx"
 import { AgentsProvider } from "./state/agents.tsx"
 import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
-import { ChannelsProvider } from "./state/channels.tsx"
 import { DevicesProvider } from "./state/devices.tsx"
-import { OrgChartProvider } from "./state/orgChart.tsx"
-import { OrgsProvider } from "./state/orgs.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
 import { startQuiet } from "./state/quiet.ts"
 import { TeamsProvider } from "./state/teams.tsx"
-import { TodayProvider } from "./state/today.tsx"
 import { loadUi, UiProvider } from "./state/ui.tsx"
 import { applyAppearance } from "./theme/apply.ts"
 
@@ -33,17 +29,9 @@ if (root) {
           <ProvidersProvider>
             <DevicesProvider>
               <AgentsProvider>
-                <ChannelsProvider>
-                  <OrgsProvider>
-                    <TodayProvider>
-                      <OrgChartProvider>
-                        <TeamsProvider>
-                          <App />
-                        </TeamsProvider>
-                      </OrgChartProvider>
-                    </TodayProvider>
-                  </OrgsProvider>
-                </ChannelsProvider>
+                <TeamsProvider>
+                  <App />
+                </TeamsProvider>
               </AgentsProvider>
             </DevicesProvider>
           </ProvidersProvider>

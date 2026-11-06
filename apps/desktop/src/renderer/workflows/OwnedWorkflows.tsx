@@ -3,19 +3,17 @@ import { For, Show } from "solid-js"
 import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
-import { useOwnedWorkflows } from "../workflows/useOwner.ts"
-import styles from "./orgs.module.css"
+import { useOwnedWorkflows } from "./useOwner.ts"
+import styles from "./workflows.module.css"
 
 /**
- * The row "Workflows" of the form of an organization and of the profile of an agent (spec 010,
- * "Owner and participants"): the workflows that the owner owns. A click shows the workflow on the
- * Workflows page, as a click on a workflow of the Today page does, and closes the box that holds the
- * row. An owner with no workflow has no row.
+ * The row "Workflows" of the profile of an agent (spec 002, spec 010, "Owner and participants"): the
+ * workflows that the agent owns. A click shows the workflow on the Workflows page and closes the box
+ * that holds the row. An agent with no workflow has no row.
  */
 export const OwnedWorkflows = (props: {
   owner: WorkflowOwner
-  /** The classes of the fieldset and its legend, so the row fits the box that holds it. */
-  fieldClass: string | undefined
+  /** The class of the legend, so the row fits the box that holds it. */
   legendClass: string | undefined
   testId: string
   itemTestId: string
@@ -26,14 +24,14 @@ export const OwnedWorkflows = (props: {
   const owned = useOwnedWorkflows(() => props.owner)
   return (
     <Show when={owned().length > 0}>
-      <fieldset class={props.fieldClass} data-testid={props.testId}>
+      <fieldset class={styles.ownedField} data-testid={props.testId}>
         <legend class={props.legendClass}>{t("workflows.owner.row")}</legend>
-        <div class={styles.profileRow}>
+        <div class={styles.ownedRow}>
           <For each={owned()}>
             {(w) => (
               <button
                 type="button"
-                class={styles.chip}
+                class={styles.ownedChip}
                 aria-label={t("workflows.owner.open", { name: w.name })}
                 onClick={() => {
                   setOpenTarget({ kind: "workflow", id: w.id })

@@ -466,3 +466,37 @@
   padding: 8px;
   max-height: 240px;
 }
+
+/* The row "Workflows" of the profile of an agent (spec 002): the workflows that the agent owns. */
+.ownedField {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.ownedRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ownedChip {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.ownedChip:hover {
+  background: var(--c-hover);
+}
+.ownedChip:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}

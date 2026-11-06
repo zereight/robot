@@ -36,7 +36,6 @@ import { ActionLogSection } from "./ActionLogSection.tsx"
 import { BrowserProfilesSection } from "./BrowserProfilesSection.tsx"
 import { DecisionSection } from "./DecisionSection.tsx"
 import { HandbookSection } from "./HandbookSection.tsx"
-import { OrganizationSection } from "./OrganizationSection.tsx"
 import { RulesSection } from "./RulesSection.tsx"
 import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
 import styles from "./settings.module.css"
@@ -48,7 +47,6 @@ export const sections = [
   "providers",
   "decision",
   "handbook",
-  "organization",
   "setup",
   "teams",
   "devices",
@@ -365,14 +363,6 @@ const Appearance = () => {
           onChange={(showToolSteps) => app.update({ showToolSteps })}
         />
       </Row>
-      <Row label={t("settings.showOrgPrefix")} hint={t("settings.showOrgPrefix.hint")}>
-        <Switch
-          label={t("settings.showOrgPrefix")}
-          testId="setting-show-org-prefix"
-          checked={app.settings.showOrgPrefix}
-          onChange={(showOrgPrefix) => app.update({ showOrgPrefix })}
-        />
-      </Row>
       <Row label={t("settings.reduceMotion")}>
         <Segmented
           label={t("settings.reduceMotion")}
@@ -594,9 +584,6 @@ export const SettingsPage = (props: {
           </Match>
           <Match when={section() === "handbook"}>
             <HandbookSection />
-          </Match>
-          <Match when={section() === "organization"}>
-            <OrganizationSection />
           </Match>
           <Match when={section() === "browser"}>
             <BrowserProfilesSection />

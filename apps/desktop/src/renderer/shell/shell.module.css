@@ -118,27 +118,6 @@
     color var(--motion-fast) var(--ease-out);
 }
 
-.pageButton {
-  position: relative;
-}
-/* The count of items that wait for the user, at the corner of the Today button. */
-.pageBadge {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--radius-m);
-  background: var(--c-focus);
-  color: var(--c-accent-text);
-  font-size: 0.7rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 16px;
-  text-align: center;
-  pointer-events: none;
-}
 .pageButton:hover {
   background: var(--c-hover);
   color: var(--c-text);

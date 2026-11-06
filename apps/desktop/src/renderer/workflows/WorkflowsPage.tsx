@@ -1,10 +1,4 @@
-import {
-  type MessageKey,
-  starterMenuOff,
-  type Workflow,
-  type WorkflowFilePreview,
-  type WorkflowOwner,
-} from "@robot/shared"
+import type { MessageKey, Workflow, WorkflowFilePreview, WorkflowOwner } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createResource, createSignal, For, on, onCleanup, Show } from "solid-js"
 import type { ErrorText } from "../lib/errors.ts"
@@ -14,12 +8,11 @@ import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
-import { Menu, type MenuItem } from "../ui/Menu.tsx"
+import { Menu } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ownerChoice, ownerFromChoice } from "./ownerChoice.ts"
 import { useOwnerNames } from "./useOwner.ts"
@@ -31,7 +24,6 @@ import {
   ImportWorkflowsDialog,
   WorkflowFileProblemDialog,
 } from "./WorkflowFileDialogs.tsx"
-import { WorkflowStarterDialog } from "./WorkflowStarterDialog.tsx"
 import styles from "./workflows.module.css"
 
 /** The filter "Owner" of the page: every workflow, the ones with no owner, or one owner. */
@@ -47,7 +39,6 @@ const WorkflowList = (props: {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const orgs = useOrgs()
   // A linked server that comes back online is asked again. Its workflows are not cached (012).
   const [workflows, { refetch }] = createResource(
     () => (ui.serverOffline() ? undefined : ui.server()?.id),
@@ -78,11 +69,9 @@ const WorkflowList = (props: {
     const choice = ownerFilter()
     if (choice === ALL || choice === NONE) return
     const owner = ownerFromChoice(choice)
-    const exists =
-      owner?.kind === "organization" ? !!orgs.byId(owner.id) : !!owner && !!agents.byId(owner.id)
-    if (!exists) setOwnerFilter(ALL)
+    if (owner?.kind !== "agent" || !agents.byId(owner.id)) setOwnerFilter(ALL)
   })
-  // The Today page asks for a workflow: its card lights up. A workflow that is gone is dropped.
+  // The profile of an agent asks for a workflow: its card lights up. A workflow that is gone is dropped.
   createEffect(() => {
     const target = openTarget()
     const list = workflows()
@@ -109,31 +98,8 @@ const WorkflowList = (props: {
   const [exportingCc, setExportingCc] = createSignal(false)
   const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
   const [fileProblem, setFileProblem] = createSignal<ErrorText>()
-  const [starting, setStarting] = createSignal(false)
   // The danger button of a card asks first (spec 000, "Danger buttons").
   const [deleting, setDeleting] = createSignal<string>()
-
-  /**
-   * "New from a starter" (spec 010, "Starters"). It is off, with the reason, when no agent exists
-   * and for a linked computer without the switch "Can create and change agents".
-   */
-  const starterItem = (): MenuItem => {
-    const off = starterMenuOff({ canChange: ui.canChange(), agentCount: agents.agents().length })
-    return {
-      label: t("workflowStarter.menu"),
-      onSelect: () => setStarting(true),
-      testId: "wf-menu-starter",
-      ...(off
-        ? {
-            disabled: true,
-            reason:
-              off === "no_switch"
-                ? t("workflowStarter.menu.noSwitch", { name: ui.server()?.name ?? "" })
-                : t("workflowStarter.menu.noAgent"),
-          }
-        : {}),
-    }
-  }
 
   /** Asks for a workflow file. A readable file opens the dialog that lists its workflows. */
   const startImport = async () => {
@@ -175,20 +141,6 @@ const WorkflowList = (props: {
             <option value={NONE} selected={ownerFilter() === NONE}>
               {t("workflows.owner.none")}
             </option>
-            <Show when={orgs.orgs().length > 0}>
-              <optgroup label={t("workflows.owner.organizations")}>
-                <For each={orgs.orgs()}>
-                  {(o) => {
-                    const value = ownerChoice({ kind: "organization", id: o.id })
-                    return (
-                      <option value={value} selected={ownerFilter() === value}>
-                        {o.name}
-                      </option>
-                    )
-                  }}
-                </For>
-              </optgroup>
-            </Show>
             <Show when={agents.agents().length > 0}>
               <optgroup label={t("workflows.owner.agents")}>
                 <For each={agents.agents()}>
@@ -219,7 +171,6 @@ const WorkflowList = (props: {
                     disabled: true,
                     testId: "wf-menu-open-on-server",
                   },
-                  starterItem(),
                 ]
               : [
                   {
@@ -237,7 +188,6 @@ const WorkflowList = (props: {
                     onSelect: () => void startImport(),
                     testId: "wf-menu-import-file",
                   },
-                  starterItem(),
                 ]
           }
         />
@@ -253,17 +203,6 @@ const WorkflowList = (props: {
       <Presence when={importPreview()}>
         {(preview) => (
           <ImportWorkflowsDialog preview={preview} onClose={() => setImportPreview(undefined)} />
-        )}
-      </Presence>
-      <Presence when={starting()}>
-        {() => (
-          <WorkflowStarterDialog
-            onClose={() => setStarting(false)}
-            onCreated={(workflow) => {
-              setStarting(false)
-              props.onOpen(workflow, { frame: true })
-            }}
-          />
         )}
       </Presence>
       <Presence when={fileProblem()}>

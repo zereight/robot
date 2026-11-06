@@ -1,9 +1,0 @@
-/* The picture of a channel is round and has the thin rim of an avatar, in both themes. */
-.picture {
-  display: block;
-  flex-shrink: 0;
-  border-radius: 50%;
-  object-fit: cover;
-  outline: 1.5px solid var(--c-avatar-rim);
-  outline-offset: -1.5px;
-}

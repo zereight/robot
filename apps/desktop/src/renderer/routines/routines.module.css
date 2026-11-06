@@ -229,22 +229,3 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-
-/* The name of a routine and the organization that it belongs to (spec 030), on one line: the name
-   keeps its room, and the chip of the organization is muted, as the role badge of a place is. */
-.cardTitle {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-sm);
-  min-width: 0;
-}
-
-.orgChip {
-  flex: none;
-  padding: 0 6px;
-  border-radius: var(--radius-s);
-  background: var(--c-selected);
-  color: var(--c-text-muted);
-  font-size: var(--text-xs);
-  line-height: 1.4;
-}

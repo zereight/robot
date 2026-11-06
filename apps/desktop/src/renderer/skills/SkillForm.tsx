@@ -1,8 +1,4 @@
 import {
-  type OrgToolChoice,
-  type OrgToolValue,
-  orgPickerEntries,
-  orgPickerValues,
   SKILL_DESCRIPTION_MAX,
   SKILL_INSTRUCTIONS_MAX,
   SKILL_NAME_MAX,
@@ -13,11 +9,8 @@ import { createSignal, For, onMount, Show } from "solid-js"
 import styles from "../agents/agents.module.css"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
-import { AgentName } from "../orgs/AgentName.tsx"
-import { OrgPickerRows } from "../orgs/OrgPickerRows.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -80,7 +73,6 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const orgs = useOrgs()
   const work = props.open.kind === "work" ? props.open.source : undefined
   const edited = props.open.kind === "edit" ? props.open.skill : undefined
   // A proposal of a retrospective fills the same fields, for one agent (spec 030).
@@ -96,11 +88,6 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const [chosen, setChosen] = createSignal<readonly string[]>(
     edited?.agentIds ??
       (props.open.kind === "proposal" && props.open.agentId ? [props.open.agentId] : []),
-  )
-  // The organizations of the list with their value "On" or "Off" (spec 017, 030). One that is gone
-  // is left out. An organization that is not in the map has "Inherit".
-  const [orgValues, setOrgValues] = createSignal<ReadonlyMap<string, OrgToolValue>>(
-    orgPickerValues(edited?.organizations ?? [], (id) => orgs.byId(id) !== undefined),
   )
   const [phase, setPhase] = createSignal<"writing" | "ready" | "failed">(work ? "writing" : "ready")
   const [failure, setFailure] = createSignal<ErrorText>()
@@ -125,7 +112,6 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
       setInstructions(result.draft.instructions)
       setAll(false)
       setChosen([result.agentId])
-      setOrgValues(new Map())
       setOutside(result.outside)
       setPhase("ready")
     } catch (e) {
@@ -146,13 +132,6 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const toggle = (id: string) =>
     setChosen(chosen().includes(id) ? chosen().filter((x) => x !== id) : [...chosen(), id])
 
-  const setOrg = (id: string, choice: OrgToolChoice) => {
-    const next = new Map(orgValues())
-    if (choice === "inherit") next.delete(id)
-    else next.set(id, choice)
-    setOrgValues(next)
-  }
-
   const save = async (event?: SubmitEvent) => {
     event?.preventDefault()
     const serverId = ui.server()?.id
@@ -165,13 +144,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
         description: description(),
         instructions: instructions(),
         agentIds: all() ? null : chosen(),
-        organizations: all()
-          ? []
-          : orgPickerEntries(
-              edited?.organizations ?? [],
-              orgValues(),
-              (id) => orgs.byId(id) !== undefined,
-            ),
+        organizations: [],
       }
       if (edited) await call("skills.update", { id: edited.id, ...fields })
       else await call("skills.create", { serverId, ...fields })
@@ -311,14 +284,11 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
                           data-testid="skill-agent"
                           data-agent={agent.name}
                         />
-                        <span>
-                          <AgentName id={agent.id} name={agent.name} />
-                        </span>
+                        <span>{agent.name}</span>
                       </label>
                     </li>
                   )}
                 </For>
-                <OrgPickerRows prefix="skill" values={orgValues()} onChange={setOrg} />
               </ul>
             </Show>
             {under("agents")}

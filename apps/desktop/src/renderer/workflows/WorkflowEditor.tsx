@@ -35,13 +35,10 @@ import { ChecklistCard, useChecklistRows } from "../imports/ImportChecklist.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { isForView } from "../lib/events.ts"
 import { call } from "../lib/rpc.ts"
-import { useShownText } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { ScheduleFields } from "../routines/ScheduleFields.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { quietOfTaskLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
@@ -61,16 +58,12 @@ const ZOOM_MAX = 2
 /** A plain copy of store data: a store proxy cannot cross the IPC boundary. */
 const plain = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
 
+/** The steps that the editor adds (spec 010). The step "post message" is gone. */
+const ADDABLE_STEPS = STEP_KINDS.filter((kind) => kind !== "post")
+
 const newId = () => crypto.randomUUID().slice(0, 8)
 
-const blank = (
-  kind: StepKind,
-  x: number,
-  y: number,
-  name: string,
-  agentId: string,
-  channelId: string,
-): Step => {
+const blank = (kind: StepKind, x: number, y: number, name: string, agentId: string): Step => {
   const base = { id: newId(), name, x, y }
   switch (kind) {
     case "agent":
@@ -79,8 +72,9 @@ const blank = (
       return { ...base, kind, contains: "" }
     case "approval":
       return { ...base, kind, message: "" }
+    // The step "post message" is gone (spec 010). The editor never adds one.
     case "post":
-      return { ...base, kind, channelId, text: "{{input}}" }
+      return { ...base, kind, channelId: "", text: "{{input}}" }
     case "notify":
       return { ...base, kind, title: "" }
   }
@@ -122,9 +116,6 @@ export const WorkflowEditor = (props: {
   const forView = (from: string | undefined) =>
     isForView(ui.linked() ? ui.server()?.id : undefined, from)
   const agents = useAgents()
-  const orgs = useOrgs()
-  const shownText = useShownText()
-  const channels = useChannels()
   const [saved, setSaved] = createSignal<Workflow | null>(props.workflow)
   const [name, setName] = createSignal(props.workflow?.name ?? "")
   // The owner decides which agents can work in a step (spec 010, "Owner and participants").
@@ -408,7 +399,6 @@ export const WorkflowEditor = (props: {
       Math.round((40 - v.y) / v.zoom + Math.floor(count / 3) * 110),
       t(`workflows.step.${kind}` as MessageKey),
       agents.agents()[0]?.id ?? "",
-      channels.channels()[0]?.id ?? "",
     )
     setGraph("steps", (steps) => [...steps, s])
     setSelected({ kind: "step", id: s.id })
@@ -566,7 +556,7 @@ export const WorkflowEditor = (props: {
           data-testid="wf-name"
         />
         <Show when={canEdit()}>
-          <For each={STEP_KINDS}>
+          <For each={ADDABLE_STEPS}>
             {(k) => (
               <Button disabled={readOnly()} onClick={() => addStep(k)} data-testid={`wf-add-${k}`}>
                 + {t(`workflows.step.${k}` as MessageKey)}
@@ -661,20 +651,6 @@ export const WorkflowEditor = (props: {
             <option value="" selected={owner() === null}>
               {t("workflows.owner.none")}
             </option>
-            <Show when={orgs.orgs().length > 0}>
-              <optgroup label={t("workflows.owner.organizations")}>
-                <For each={orgs.orgs()}>
-                  {(o) => {
-                    const value = ownerChoice({ kind: "organization", id: o.id })
-                    return (
-                      <option value={value} selected={ownerChoice(owner()) === value}>
-                        {o.name}
-                      </option>
-                    )
-                  }}
-                </For>
-              </optgroup>
-            </Show>
             <Show when={agents.agents().length > 0}>
               <optgroup label={t("workflows.owner.agents")}>
                 <For each={agents.agents()}>
@@ -682,7 +658,7 @@ export const WorkflowEditor = (props: {
                     const value = ownerChoice({ kind: "agent", id: a.id })
                     return (
                       <option value={value} selected={ownerChoice(owner()) === value}>
-                        {shownText(a.id, a.name)}
+                        {a.name}
                       </option>
                     )
                   }}
@@ -700,53 +676,18 @@ export const WorkflowEditor = (props: {
             onChange={(e) => {
               const kind = e.currentTarget.value as Trigger["kind"]
               setTrigger(
-                kind === "manual"
-                  ? { kind }
-                  : kind === "schedule"
-                    ? { kind, schedule: { kind: "daily", times: ["09:00"] } }
-                    : { kind, channelId: channels.channels()[0]?.id ?? "", contains: "" },
+                kind === "schedule"
+                  ? { kind, schedule: { kind: "daily", times: ["09:00"] } }
+                  : { kind: "manual" },
               )
             }}
             data-testid="wf-trigger-kind"
           >
-            <For each={["manual", "schedule", "channel"] as const}>
+            <For each={["manual", "schedule"] as const}>
               {(k) => <option value={k}>{t(`workflows.trigger.${k}` as MessageKey)}</option>}
             </For>
           </select>
         </label>
-        <Show
-          when={
-            trigger().kind === "channel"
-              ? (trigger() as Extract<Trigger, { kind: "channel" }>)
-              : undefined
-          }
-        >
-          {(tr) => (
-            <>
-              <select
-                class={styles.input}
-                disabled={readOnly()}
-                value={tr().channelId}
-                onChange={(e) => setTrigger({ ...tr(), channelId: e.currentTarget.value })}
-                aria-label={t("workflows.trigger.channel")}
-                data-testid="wf-trigger-channel"
-              >
-                <For each={channels.channels()}>
-                  {(c) => <option value={c.id}>{c.name}</option>}
-                </For>
-              </select>
-              <input
-                class={styles.input}
-                disabled={readOnly()}
-                value={tr().contains}
-                placeholder={t("workflows.trigger.contains")}
-                aria-label={t("workflows.trigger.contains")}
-                onInput={(e) => setTrigger({ ...tr(), contains: e.currentTarget.value })}
-                data-testid="wf-trigger-contains"
-              />
-            </>
-          )}
-        </Show>
         <Show when={trigger().kind === "schedule"}>
           <div class={styles.scheduleBox} data-testid="wf-trigger-schedule">
             <ScheduleFields
@@ -803,11 +744,12 @@ export const WorkflowEditor = (props: {
               (item) => {
                 if (item.kind === "stepConnect") {
                   setSelected({ kind: "step", id: item.stepId })
-                } else if (item.kind === "stepAgent" || item.kind === "stepPlace") {
+                } else if (item.kind === "stepPlace") {
                   setSelected({ kind: "step", id: item.stepId })
-                  const field = item.kind === "stepAgent" ? "wf-step-agent" : "wf-step-channel"
+                } else if (item.kind === "stepAgent") {
+                  setSelected({ kind: "step", id: item.stepId })
                   queueMicrotask(() =>
-                    document.querySelector<HTMLElement>(`[data-testid="${field}"]`)?.focus(),
+                    document.querySelector<HTMLElement>('[data-testid="wf-step-agent"]')?.focus(),
                   )
                 } else if (item.kind === "workflowOn") {
                   const id = saved()?.id
@@ -921,10 +863,6 @@ export const WorkflowEditor = (props: {
                           <Show when={s.kind === "agent" && s.agentId === ""}>
                             {" · "}
                             {t("workflows.step.pickAgent")}
-                          </Show>
-                          <Show when={s.kind === "post" && s.channelId === ""}>
-                            {" · "}
-                            {t("workflows.step.pickPlace")}
                           </Show>
                         </>
                       }
@@ -1132,13 +1070,13 @@ export const WorkflowEditor = (props: {
                             <For each={agents.agents().filter((x) => participants().has(x.id))}>
                               {(x) => (
                                 <option value={x.id} selected={x.id === a().agentId}>
-                                  {shownText(x.id, x.name)}
+                                  {x.name}
                                 </option>
                               )}
                             </For>
                             <Show when={outsider(a())}>
                               <option value={a().agentId} selected disabled>
-                                {shownText(a().agentId, agents.byId(a().agentId)?.name ?? "")}
+                                {agents.byId(a().agentId)?.name ?? ""}
                                 {" · "}
                                 {t("workflows.step.notParticipant")}
                               </option>
@@ -1332,50 +1270,6 @@ export const WorkflowEditor = (props: {
                           data-testid="wf-step-message"
                         />
                       </label>
-                    )}
-                  </Show>
-                  <Show
-                    when={
-                      s().kind === "post" ? (s() as Extract<Step, { kind: "post" }>) : undefined
-                    }
-                  >
-                    {(p) => (
-                      <>
-                        <label class={styles.field}>
-                          <span>{t("workflows.step.channel")}</span>
-                          <select
-                            class={styles.input}
-                            disabled={readOnly()}
-                            value={p().channelId}
-                            onChange={(e) =>
-                              patchStep(p().id, { channelId: e.currentTarget.value })
-                            }
-                            data-testid="wf-step-channel"
-                          >
-                            <option value="" selected={p().channelId === ""}>
-                              {t("workflows.step.pickPlace")}
-                            </option>
-                            <For each={channels.channels()}>
-                              {(c) => (
-                                <option value={c.id} selected={c.id === p().channelId}>
-                                  {c.name}
-                                </option>
-                              )}
-                            </For>
-                          </select>
-                        </label>
-                        <label class={styles.field}>
-                          <span>{t("workflows.step.text")}</span>
-                          <textarea
-                            class={styles.input}
-                            rows={4}
-                            disabled={readOnly()}
-                            value={p().text}
-                            onInput={(e) => patchStep(p().id, { text: e.currentTarget.value })}
-                            data-testid="wf-step-text"
-                          />
-                        </label>
-                      </>
                     )}
                   </Show>
                   <Show when={live()?.steps.find((x) => x.stepId === s().id)}>

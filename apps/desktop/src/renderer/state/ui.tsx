@@ -1,10 +1,8 @@
 import {
-  type AgentView,
   builtInSection,
   listPage,
   type MoveDirection,
   NARROW_WIDTH,
-  type OrgView,
   type Page,
   type PlaceKind,
   type PlaceRef,
@@ -40,8 +38,12 @@ export interface RevealTarget {
   readonly id: string
 }
 
+/** Pages that are gone (spec 001). A layout saved with one of them opens the chats. */
+const GONE_PAGES: readonly Page[] = ["today", "orgchart"]
+const shownPage = (page: Page): Page => (GONE_PAGES.includes(page) ? "chats" : page)
+
 const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
-  const [ui, setUi] = createStore<UiState>(initial)
+  const [ui, setUi] = createStore<UiState>({ ...initial, page: shownPage(initial.page) })
   // The linked servers come and go, and change state. A store keeps the rows (and their focus).
   const [servers, setServers] = createStore<Server[]>([...initialServers])
   const states = new Map<string, string | undefined>()
@@ -125,7 +127,7 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     if (!step) return
     update({
       serverId: step.serverId,
-      page: step.page,
+      page: shownPage(step.page),
       places: step.place ? { ...ui.places, [step.serverId]: step.place } : ui.places,
     })
   }
@@ -157,7 +159,7 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     localServer,
     linked: () => server()?.kind === "linked",
     /**
-     * True when the user can create and change agents and channels of the open server: always on
+     * True when the user can create and change agents of the open server: always on
      * this computer, and on a linked server only while it is online and lets this device (012).
      */
     canChange: () => server()?.kind !== "linked" || server()?.canChange === true,
@@ -181,7 +183,7 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       const id = serverId ?? server()?.id
       if (id) update({ serverId: id, places: { ...ui.places, [id]: ref }, page: "chats" })
     },
-    selectPage: (page: Page) => update({ page }),
+    selectPage: (page: Page) => update({ page: shownPage(page) }),
     revealTarget,
     /** Opens the page of one routine or one workflow (spec 014). */
     reveal: (target: RevealTarget) => {
@@ -196,15 +198,6 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
           : [...ui.collapsed, sectionId],
       }),
     toggleActivityPanel: () => update({ activityPanel: !ui.activityPanel }),
-    /** Picks the view of Agents. The view "By organization" has no new section, so its name box closes. */
-    setAgentView: (agentView: AgentView) => {
-      setNewSectionKind(undefined)
-      update({ agentView })
-    },
-    /** Picks the view of the org chart: the canvas, or the list (spec 029). */
-    setOrgView: (orgView: OrgView) => update({ orgView }),
-    /** Picks the organization of the Today page, or null for "All" (spec 021). */
-    setTodayOrg: (todayOrg: string | null) => update({ todayOrg }),
     newSectionKind,
     /** True when the section still exists in the list of its kind. */
     hasSection: (kind: PlaceKind, sectionId: string | null) =>
@@ -215,8 +208,6 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** Opens the name box of a new section in the list of a kind. It opens a closed list first. */
     startNewSection: (kind: PlaceKind) => {
       if (server()?.kind === "linked") return
-      // The sections of the view "By organization" come from the organizations (spec 001).
-      if (kind === "agent" && ui.agentView === "organization") return
       const builtIn = builtInSection(kind)
       if (ui.collapsed.includes(builtIn))
         update({ collapsed: ui.collapsed.filter((id) => id !== builtIn) })
@@ -263,8 +254,6 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** Changes the width of the workflow side column on screen only. Save it when the drag ends. */
     previewWorkflowSideWidth: (workflowSideWidth: number) => setUi({ workflowSideWidth }),
     saveWorkflowSideWidth: () => update({ workflowSideWidth: ui.workflowSideWidth }),
-    /** Keeps the starters that the user made (spec 031). They stay on this computer. */
-    saveStarters: (savedStarters: UiState["savedStarters"]) => update({ savedStarters }),
   }
 }
 

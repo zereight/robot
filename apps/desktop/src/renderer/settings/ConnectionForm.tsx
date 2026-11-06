@@ -11,10 +11,6 @@ import {
   checkConnectionName,
   commandLine,
   type MessageKey,
-  type OrgToolChoice,
-  type OrgToolValue,
-  orgPickerEntries,
-  orgPickerValues,
   type ToolConnection,
   type ToolConnectionInput,
   type ToolConnectionKind,
@@ -23,11 +19,8 @@ import { X } from "lucide-solid"
 import { createEffect, createSignal, For, Index, on, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
-import { AgentName } from "../orgs/AgentName.tsx"
-import { OrgPickerRows } from "../orgs/OrgPickerRows.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useOrgs } from "../state/orgs.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import styles from "./connections.module.css"
@@ -86,7 +79,6 @@ export const ConnectionFormDialog = (props: {
 }) => {
   const { t } = useApp()
   const agents = useAgents()
-  const orgs = useOrgs()
   const was = props.connection
   const fromView = (list: ToolConnection["env"]): Entry[] =>
     list.map((e) => ({
@@ -109,17 +101,6 @@ export const ConnectionFormDialog = (props: {
   const [chosen, setChosen] = createSignal<readonly string[]>(
     was && was.agents !== "all" ? was.agents : [],
   )
-  // The organizations of the list with their value "On" or "Off" (spec 018, 030). One that is gone
-  // is left out. An organization that is not in the map has "Inherit".
-  const [orgValues, setOrgValues] = createSignal<ReadonlyMap<string, OrgToolValue>>(
-    orgPickerValues(was?.organizations ?? [], (id) => orgs.byId(id) !== undefined),
-  )
-  const setOrg = (id: string, choice: OrgToolChoice) => {
-    const next = new Map(orgValues())
-    if (choice === "inherit") next.delete(id)
-    else next.set(id, choice)
-    setOrgValues(next)
-  }
   const [confirmed, setConfirmed] = createSignal(false)
   const [touched, setTouched] = createSignal<ReadonlySet<Field>>(new Set())
   const [problem, setProblem] = createSignal<{ field: Field | null; text: ErrorText }>()
@@ -154,13 +135,7 @@ export const ConnectionFormDialog = (props: {
     address: address(),
     headers: kind() === "web" ? entriesOf(headers()) : [],
     agents: all() ? "all" : chosen(),
-    organizations: all()
-      ? []
-      : orgPickerEntries(
-          was?.organizations ?? [],
-          orgValues(),
-          (id) => orgs.byId(id) !== undefined,
-        ),
+    organizations: [],
   })
 
   // A Test shows the form as it was. A change makes it old, so it goes.
@@ -217,8 +192,7 @@ export const ConnectionFormDialog = (props: {
           kind() === "program" ? "connection_env_value_missing" : "connection_header_value_missing",
         ),
       }
-    if (!all() && chosen().length + orgValues().size === 0)
-      return { field: "agents", text: text("connection_agents") }
+    if (!all() && chosen().length === 0) return { field: "agents", text: text("connection_agents") }
     return undefined
   }
 
@@ -506,14 +480,11 @@ export const ConnectionFormDialog = (props: {
                         data-testid="connection-agent"
                         data-agent={agent.name}
                       />
-                      <span>
-                        <AgentName id={agent.id} name={agent.name} />
-                      </span>
+                      <span>{agent.name}</span>
                     </label>
                   </li>
                 )}
               </For>
-              <OrgPickerRows prefix="connection" values={orgValues()} onChange={setOrg} />
             </ul>
           </Show>
           {under("agents")}

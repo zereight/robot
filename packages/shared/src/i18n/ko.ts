@@ -1564,7 +1564,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.notify.islandWidth.compact": "좁게",
   "settings.notify.islandWidth.wide": "넓게",
   "settings.notify.mutes": "알림 끄기",
-  "settings.notify.mutes.hint": "알림을 끈 서버나 채널은 알림을 보내지 않습니다.",
+  "settings.notify.mutes.hint": "알림을 끈 서버는 알림을 보내지 않습니다.",
   "settings.notify.mute.off": "켜짐",
   "settings.notify.mute.1h": "1시간 동안",
   "settings.notify.mute.8h": "8시간 동안",
@@ -1924,8 +1924,7 @@ export const ko: Record<MessageKey, string> = {
   "agentFile.export.limit": "파일 하나에는 에이전트를 최대 40개까지 담을 수 있어요.",
   "agentFile.export.submit": "내보내기…",
   "agentFile.exported": "에이전트 {count}개를 {path}에 저장했어요.",
-  "agentFile.exported.team":
-    "에이전트 {count}개, 채널 {channels}개, 스킬 {skills}개를 {path}에 저장했어요.",
+  "agentFile.exported.team": "에이전트 {count}개, 스킬 {skills}개를 {path}에 저장했어요.",
   "agentFile.exported.handbook": "파일에 핸드북이 들어 있어요.",
   "agentFile.export.team.title": "파일에 더 넣기",
   "agentFile.export.team.channels": "이 에이전트들의 채널",
@@ -1953,12 +1952,12 @@ export const ko: Record<MessageKey, string> = {
   "agentFile.import.stopped.channel":
     "채널 “{name}”에서 가져오기가 멈췄어요. 에이전트 {made}개와 채널 {channels}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
   "agentFile.import.stopped.skill":
-    "스킬 “{name}”에서 가져오기가 멈췄어요. 에이전트 {made}개, 채널 {channels}개, 스킬 {skills}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+    "스킬 “{name}”에서 가져오기가 멈췄어요. 에이전트 {made}개, 스킬 {skills}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
   "agentFile.import.stopped.handbook":
-    "핸드북에서 가져오기가 멈췄어요. 에이전트 {made}개, 채널 {channels}개, 스킬 {skills}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+    "핸드북에서 가져오기가 멈췄어요. 에이전트 {made}개, 스킬 {skills}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
   "agentFile.imported": "에이전트 {agents}개, 루틴 {routines}개(멈춤)를 가져왔어요.",
   "agentFile.imported.team":
-    "에이전트 {agents}개, 루틴 {routines}개(멈춤), 채널 {channels}개, 스킬 {skills}개(꺼짐)를 가져왔어요.",
+    "에이전트 {agents}개, 루틴 {routines}개(멈춤), 스킬 {skills}개(꺼짐)를 가져왔어요.",
   "agentFile.imported.handbook": "핸드북을 바꿨어요.",
   "importReview.agents.intro":
     "가져올 부분에 체크하세요. ROBot은 새 에이전트만 만들고, 이미 있는 에이전트는 바꾸지 않아요.",
@@ -2004,10 +2003,11 @@ export const ko: Record<MessageKey, string> = {
   "importReview.notImported.channel": "채널 “{owner}”",
   "importReview.notImported.skill": "스킬 “{owner}”",
   "importReview.reason.channel_no_member": "멤버가 아무도 체크되지 않았어요.",
+  "importReview.reason.channel_gone": "ROBot에는 채널이 없어요.",
   "importReview.reason.skill_no_agent": "쓸 수 있는 에이전트가 아무도 체크되지 않았어요.",
   "importReview.reason.skills_full": "이 서버에는 스킬이 이미 100개 있어서 더 담을 수 없어요.",
   "importReview.counts.team":
-    "에이전트 {agents}개, 루틴 {routines}개(멈춤), 채널 {channels}개, 스킬 {skills}개(꺼짐)를 만들어요.",
+    "에이전트 {agents}개, 루틴 {routines}개(멈춤), 스킬 {skills}개(꺼짐)를 만들어요.",
   "importReview.counts.handbook": "핸드북도 바꿔요.",
   "importReview.counts.handbookOnly": "핸드북을 바꿔요.",
   "error.import_nothing_picked": "체크한 항목이 없어요. 가져올 부분을 하나 이상 체크하세요.",
