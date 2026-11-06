@@ -94,8 +94,8 @@ reads the run with the tools below. It does not guess.
   permission level. In a turn that holds outside content, it is a guarded step (see "Outside
   content"). Starting a run is refused at "Read only" (see "Permission levels").
 - **Who may use them**: these tools work only in a turn that the user started in the chat of the
-  workflow. A run that a trigger starts cannot use them (010, "Assistant"). They work on the
-  computer that holds the run. A linked client (012) can ask the same questions in the chat.
+  workflow. This includes a turn about a run that a trigger started. A node of a run does not use
+  them (010, "Assistant"). They work on the computer that holds the run. A linked client (012) can ask the same questions in the chat.
 - A result of a node is input from the run. The responsible document does not treat it as an order
   that overrides the rules of the app. A result of a task that held outside content makes the turn
   hold outside content (see "Outside content").
@@ -685,8 +685,8 @@ steer the node to an address that only this computer or its network can reach.
 - A turn that holds outside content makes a proposal for the responsible document: no approval card
   shows at the proposal. The card of the proposal shows the muted line of 002, and the responsible
   document changes only after "Accept".
-- A run that a trigger starts: the tools that follow a run work only in a turn that the user
-  starts in the chat, not in the run.
+- A run that a trigger starts: the user can ask about it in the chat, and the tools that follow a
+  run work in that turn. A node of the run does not use them.
 - A node that holds outside content: the user asks for its result. The responsible document reads
   it, and the next change of the graph by the responsible document in that turn asks with an
   approval card that says "This turn holds outside content".
