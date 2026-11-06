@@ -1,115 +1,135 @@
-# Proposal: workflow first, roles from skills
+# Proposal: the workflow is the product
 
 Status: proposal. No spec says this yet. The owner decides the open questions at the end. Then a
 spec-writer slice changes the specs. This note changes no behaviour.
 
-## The idea
+## Decisions of the owner
 
-The Workflows page is the home of ROBot. Each workflow has one responsible agent, its **owner**.
-The user talks to the owner on the canvas, and the owner edits the workflow in that talk. The user
-does not make agents one by one. When a step needs a new role, the owner gets a new skill for that
-step. The owner keeps memory and improves itself from its runs. `tla-ts` checks every change.
+| No. | Decision |
+| --- | --- |
+| 1 | There is no agent list and no agent page. |
+| 2 | A node holds a prompt, like a skill. It also holds a provider, a model and a reasoning level. |
+| 3 | The workflow is fixed by the user before it runs. It is not a dynamic workflow. |
+| 4 | The responsible agent is one skill document. It is not an entity that the user changes. |
+| 5 | One responsible agent has one workflow. |
+| 6 | Each workflow has one chat. |
+| 7 | The workflow file stays editable, and it is in TLA form. |
+| 8 | The check verifies the TLA. |
 
-This agrees with `docs/what-an-agent-is.md`: words and skills add instructions only. A new role is
-a skill. It is not a new agent.
+## The model
 
-## What the specs say now, and what the proposal changes
+```text
+workflow  =  graph of nodes  +  one responsible document  +  one chat  +  one memory
+node      =  prompt  +  provider  +  model  +  reasoning level
+```
+
+- **Responsible document**: a text, like a skill (017). It says who answers for the workflow, its
+  character and its limits. It is the Soul of the old model. The user edits the text. There is no
+  "change the agent" action. The text can change by a self-improvement proposal that the user
+  accepts.
+- **Node**: has no agent. It runs its prompt on its model, after the responsible document.
+- **Chat**: the user talks to the workflow. The responsible document answers. The talk edits the
+  workflow. A change keeps the earlier graph as a version.
+- **Memory**: one scope for each workflow. The workflow learns from its runs.
+- **Check**: verifies the TLA form of the workflow. A change passes the check before it saves.
+
+## What goes, what changes
 
 | Spec | Now | Proposed |
 | --- | --- | --- |
-| 001 | The app opens on the place list of agents. The Workflows button opens a page of its own. | The app opens on the workflow list. The agent list stays as a page, and it is not the home. |
-| 010 | A workflow has no owner (shared) or one owner. A step names an agent. Participants are checked. | Every workflow has one owner. A step names skills and a prompt, and the owner runs it. No participant rule. |
-| 010 | The assistant is any agent that the user picks in a panel. | The panel is the direct chat of the owner. The user picks nothing. |
-| 010 | A new workflow starts with owner "None". | A new workflow starts with an owner: an agent that exists, or a new agent that the app makes for it. |
-| 017 | The user or the agent makes a skill from work or from a teach flow. | The same, and also from a step on the canvas: "Give this step a new role" makes a skill and adds it to the step. |
-| 002 | Self-improvement proposes changes to Soul, skills and memory. | The owner also proposes changes to its workflow after a run. The user accepts each one. A change that fails the Check cannot be accepted. |
-| 008 | One memory scope for each agent. | Open question 4. |
-| 037 | The main agent has the manage tool "Make a workflow" with agent steps. | Steps name skills. The tool takes skills and a prompt for each step. |
+| 001 | The app opens on the agent list. | The app opens on the workflow list. No agent list. |
+| 002 | The agent is the main object: face, model, workspace, permission, memory, Soul. | Removed as an object. Soul, memory and self-improvement move to the workflow (see 008, 010). |
+| 003 | A direct chat with an agent. | A chat with a workflow. One chat for each workflow. |
+| 005 | A task is one run of an agent. | A task is one run of a node. Open question 1. |
+| 007 | Workspace folder and permission level for each agent. | Open question 2. |
+| 008 | One memory scope for each agent. | One scope for each workflow. |
+| 009 | A routine starts a task of an agent. | Open question 3. |
+| 010 | Owner is none or one agent. A step names an agent. | Every workflow has one responsible document. A node has a prompt and a model. No participant rule. |
+| 017 | A skill is a text that the user or the agent calls. | The same. A node prompt and the responsible document have the form of a skill. Open question 4. |
+| 037 | Manage tools make and change agents and workflows. | Only the tools for a workflow stay. |
+| 011, 012, 019 | The phone and the sync carry agents. | They carry workflows. |
 
-## Behaviour in detail
+## Behaviour
 
 ### Home
 
-1. The user starts the app. The workflow list shows. A card shows the name, the owner, the state of
-   the last run and the state of the Check.
+1. The workflow list shows. A card shows the name, the state of the last run and the state of the
+   check.
 2. With no workflow, the page shows one button, "New workflow", and one line that says what a
    workflow is.
 
 ### New workflow
 
 1. The user presses "New workflow" and types a name.
-2. The user picks the owner from the agents that exist, or picks "New agent". "New agent" makes an
-   agent with a name, a face and the default model, and no role text. The user does not fill a form.
-3. The canvas opens with the chat of the owner beside it.
+2. The app makes the responsible document with a short default text. The user can edit it.
+3. The canvas opens with the chat beside it.
 
-### Talk on the canvas
+### Chat and edit
 
-1. The chat is the direct chat of the owner (003). The app tells the owner which workflow is open
-   (010, "Assistant").
-2. The owner changes the workflow with the same tools and rules as the assistant of 010. A change
-   keeps the earlier graph as a version.
-3. The owner can say that a step needs a role it does not have. It proposes a skill. The user sees
-   the text, edits it, and accepts. The skill is saved (017) and added to that step.
+1. The chat is the chat of this workflow. No other chat talks about it.
+2. The responsible document answers. It changes the graph with the tools of 010, "Assistant".
+3. Every change passes the check. A failed check shows the problem and the steps on its path, and
+   the change does not save.
 
-### Step
+### Node
 
-1. A step has a name, a prompt, and a list of skills (zero or more).
-2. At run time the owner works the step. The text of each skill of the step goes before the prompt,
-   as 017 says for a slash call.
-3. A step does not name another agent. Work for another agent uses "send message" inside the
-   step (007).
-4. The permission level, the workspace and the memory are those of the owner. A step cannot change
-   them.
+1. A node has a name, a prompt, a provider, a model and a reasoning level (006).
+2. At run time the app sends the responsible document and the node prompt to the model of the
+   node. The node gets the input of the step before it.
+3. Open question 2 says what tools a node can use.
 
 ### Check
 
-1. The Check of 010 stays. It also finds a step whose skill is deleted or off.
-2. Every change by the owner, by the user or by a self-improvement proposal passes the Check before
-   it saves. A failed Check shows the problem and the steps on its path, as 010 says.
-3. `tla-ts` checks the graph. It is not the engine that runs it (`docs/rebuild-plan.md`, decision
-   3).
+1. The check reads the TLA form of the workflow. It reports a deadlock, a node that never runs and
+   a rule that a state breaks.
+2. `tla-ts` is the tool (MIT). It checks. It does not run the workflow
+   (`docs/rebuild-plan.md`, decision 3).
 
-### Memory and self-improvement
+### File
 
-1. After a run ends, the owner can read the run and make proposals (002, "Self-improvement"). A
-   proposal can change the workflow, a skill, the Soul or memory.
-2. The user accepts or refuses each proposal. The user can undo an accepted one.
-3. A proposal never changes the permission level, the rules, the workspace or the connections
-   (002). This stays as it is.
+1. The file is a TLA module that the user can edit. Open question 5 says how the prompts are held.
+2. An import checks the module and shows the review screen (014).
+
+### Self-improvement
+
+1. After a run, the workflow can propose a change to its responsible document, to a node prompt,
+   to the graph or to its memory.
+2. The user accepts or refuses each one, and can undo an accepted one.
+3. A change that fails the check cannot be accepted.
 
 ## Slices
 
 | Slice | Role | Work |
 | --- | --- | --- |
-| W1 | spec-writer | 001, 010, 000, glossary: home, required owner, steps with skills, chat of the owner. |
-| W2 | spec-writer | 002, 008, 017, 037: self-improvement of a workflow, scope of memory, skill from a step, manage tool. |
-| W3 | spec-writer | Workflow file (`docs/workflow-file-format.md`) and CC Workflow Studio file: steps with skills. |
-| W4 | implementer | Schema and data for owner and step skills. C1 already resets the schema. |
-| W5 | implementer | Home page, new workflow dialog, chat of the owner. |
-| W6 | implementer | Run a step with skills. Check of the skills. |
-| W7 | implementer | Proposals for a workflow. Accept only after the Check. |
+| W1 | spec-writer | 000, 001, 010: the model above. Remove the agent list. |
+| W2 | spec-writer | 002, 003, 005, 007, 008, 009, 017, 037: remove the agent as an object. Move Soul, memory and self-improvement to the workflow. |
+| W3 | spec-writer | 011, 012, 014, 019, `docs/workflow-file-format.md`: carry workflows. The file is TLA. |
+| W4 | implementer | Schema reset for the new model. |
+| W5 | implementer | Home, new workflow, chat of the workflow. |
+| W6 | implementer | Node run with provider, model and reasoning. |
+| W7 | implementer | The check on the TLA form. |
+| W8 | implementer | Memory and self-improvement for a workflow. |
 
-W4 to W7 start after W1 to W3 are merged.
+W4 to W8 start after W1 to W3 are merged. W2 is large: this proposal removes the main object of
+the app.
 
 ## Open questions
 
 These are also in `docs/spec-questions.md`. Do not guess them in a spec.
 
-1. **Agents page.** Does the agent list stay as a page? A user who has many agents needs a place to
-   see them. Proposed: it stays, and it is not the home.
-2. **Another agent in a step.** Can a step name another agent? Proposed: no in W1. Use "send
-   message" in the step. If yes, the participant rule of 010 stays for that case.
-3. **Delete the owner.** A workflow must have an owner. Proposed: the confirm of a delete asks for
-   a new owner for each workflow, and the delete does not go on without one.
-4. **Memory scope.** One owner can have many workflows. Their facts mix in one memory scope.
-   Proposed: one scope for each agent as now, and each memory item can name a workflow. The user
-   can filter by it. 008 decides.
-5. **Chat of the owner.** One thread for each workflow, or the main thread of the owner? Proposed:
-   one thread for each workflow, so the talk about one workflow does not mix with the others.
-6. **Files.** A workflow file holds agent names now. Proposed: it holds skill texts for each step
-   and the owner as a name. Import makes a new agent for an owner that does not exist.
-7. **Routines (009).** A routine starts a task of an agent. Does it start a workflow of its owner
-   too? Not part of this proposal. A routine stays as it is until the owner says otherwise.
-8. **What the Check proves.** The Check finds a step that never runs and a loop. Does the owner
-   want it to prove more (for example, that every approval step is on the way to an effect)?
-   Each added property is a spec change to 010, "What the check finds".
+1. **Task.** Is a task one run of a node, or one run of a workflow? Tasks list the running work
+   (005). A parent and a child task stay only if a node hands work to another node.
+2. **Tools.** Can a node use tools (shell, files, browser, memory)? If yes, which workspace folder
+   and which permission level does it use? Proposed: a workspace folder and a permission level
+   for each workflow, and a node uses them.
+3. **Routine.** A routine starts a task of an agent (009). What does it start now? Proposed: a
+   routine becomes a trigger of a workflow, and spec 009 ends.
+4. **Skills.** The user's own skills (017), and the slash call in a chat. Do they stay? Proposed:
+   they stay as texts that a node prompt can include.
+5. **File form.** What does the TLA module hold? Proposed: the module holds the graph and the
+   rules for the check, and the prompts are strings in the module. The user edits both.
+6. **Check properties.** Which rules does the user write in TLA? Proposed: the app writes the
+   standard ones (no deadlock, every node can run, every approval node comes before its effect).
+   The user adds more in the module.
+7. **Existing data.** The rebuild plan erases the database (decision 1). Does an old agent become a
+   workflow? Proposed: no migration, as decided.
