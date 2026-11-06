@@ -2332,6 +2332,7 @@ export const ko: Record<MessageKey, string> = {
   "channels.part.blocked": "이 부분이 막혔어요.",
   "channels.part.failed": "이 부분이 실패했어요.",
   "tasks.doneTest": "완료 기준",
+  "tasks.awaitsAcceptance": "리드가 아직 이 결과를 수락하지 않았어요.",
   "tasks.verdict": "리드의 판정",
   "tasks.verdict.met": "충족",
   "tasks.verdict.not_met": "미충족",

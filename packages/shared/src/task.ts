@@ -342,6 +342,11 @@ export interface TaskDetail {
   /** The name of the agent that gave the task as a part of a plan (its lead). Null for any other. */
   readonly leadName: string | null
   /**
+   * True when the task is a finished order of a lead that the lead has not judged yet (spec 030,
+   * "Lead and members as agent and sub-agents").
+   */
+  readonly awaitsAcceptance: boolean
+  /**
    * The total of the task and the tasks below it, with one line for each agent. Null for a task
    * with no child task (spec 005, "Usage of a task").
    */

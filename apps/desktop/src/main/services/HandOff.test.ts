@@ -762,11 +762,14 @@ describe("the lead accepts the result of an order (spec 030)", () => {
     const order = (await s.received("D"))[0]
     expect(order?.state).toBe("done")
     expect(order?.verdict).toBeNull()
+    const detail = (id: string) => s.run(Tasks.use((x) => x.get(id)))
+    expect((await detail(order?.id ?? "")).awaitsAcceptance).toBe(true)
     const step = await s.call("P", "review_result", { from: "D", accepted: true })
     expect(step.state).toBe("done")
     const judged = (await s.received("D"))[0]
     expect(judged?.verdict).toBe("met")
     expect(judged?.judgedAt).not.toBeNull()
+    expect((await detail(judged?.id ?? "")).awaitsAcceptance).toBe(false)
     // The result is judged once: a second review has nothing to judge.
     const again = await s.call("P", "review_result", { from: "D", accepted: true })
     expect(again.state).toBe("failed")

@@ -353,6 +353,12 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 </>
               )}
             </Show>
+            {/* A finished order that the lead has not judged yet (spec 030). */}
+            <Show when={d().awaitsAcceptance}>
+              <p class={styles.meta} data-testid="task-awaits-acceptance">
+                {t("tasks.awaitsAcceptance")}
+              </p>
+            </Show>
             {/* The questions of a part, with who answered each one (spec 004, 005). */}
             <Show when={d().questions.length > 0}>
               <h3>{t("tasks.questions")}</h3>

@@ -2351,6 +2351,7 @@ export const en = {
   "channels.part.blocked": "This part is blocked.",
   "channels.part.failed": "This part failed.",
   "tasks.doneTest": "Done test",
+  "tasks.awaitsAcceptance": "The lead has not accepted this result yet.",
   "tasks.verdict": "Verdict of the lead",
   "tasks.verdict.met": "Met",
   "tasks.verdict.not_met": "Not met",
