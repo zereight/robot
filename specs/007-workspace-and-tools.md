@@ -425,7 +425,6 @@ text is in the task or in the turn.
   - a web page that it fetches, or a page in its browser,
   - the result of a tool of a connection (018),
   - the answer of a request with a saved secret (020),
-  - the change that starts a run through a watch trigger (010),
   - a message of an outside program (023),
   - a message from Teams (028),
   - the text that a test device shows or logs (032 to 034), such as a screen snapshot, a log line or
@@ -439,8 +438,8 @@ text is in the task or in the turn.
 - A task **holds outside content** from the first step that gives outside content to the node until
   the task ends. A turn of the chat holds it by the same rule. A task also holds outside content
   from its start when its input comes from a task that held it, because the outside text is still
-  in front of the node. A task that a watch trigger starts holds outside content from its start.
-  A message of an outside program or from Teams never joins a running turn (023, 028).
+  in front of the node. A message of an outside program or from Teams never joins a running turn
+  (023, 028).
 - A turn also holds outside content from its start when an earlier turn of the same chat held it,
   because the outside text is still in front of the responsible document. A compact (003) keeps
   the mark. A thread and a fork of the chat keep the mark of the chat.
@@ -467,7 +466,7 @@ text is in the task or in the turn.
   card at "Read only", "Ask for everything", "Ask for risky steps" and "Ask when unsure", also when
   an Allow rule matches it. The card has Allow once and Deny only. It has the line "This turn holds
   outside content" (or "This task holds outside content" for a task) and names the first source:
-  the host of the page, the connection and tool, the trigger, the outside program, or Teams.
+  the host of the page, the connection and tool, the outside program, or Teams.
 - At "Read only", a request for a new secret and a request with a saved secret that uses a method
   other than GET are refused, as other changes are (see "Permission levels"). A save to memory and
   adding feedback follow the rule above. The card for feedback shows the full text of the feedback.

@@ -160,7 +160,7 @@ plain words how a run goes. It also takes the feedback of the user while the run
   reason or a result. When it does not know a fact, it says so.
 - The answer names the run that it is about, with the time at which the run started. When the
   workflow has no run that works or waits, the answer says so and tells the state of the last run.
-  When the workflow never ran, the answer says so.
+  When the workflow never ran, the answer is "No run yet."
 - When more than one run of the workflow works or waits, the answer names each of them.
 - A question about a run starts no run and changes nothing. To start a run, the user asks for it
   (010, "Assistant").
@@ -204,7 +204,8 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   step, and it follows the permission level of the workflow as other guarded steps do (007,
   "Outside content"). Where it asks, an approval card shows the full text of the feedback, with
   Allow once and Deny. "Deny" adds nothing, and the responsible document says so. At "Full access"
-  no card shows, and the feedback is added.
+  no card shows, and the feedback is added. The exception is a turn that holds the program mark
+  (007, "Outside content"): there the card shows, also at "Full access".
 - **Self-improvement.** The responsible document can turn feedback into a proposal for the next
   runs: a change of the responsible document, of a node prompt, of the graph, or of the memory (002,
   "Self-improvement"). The proposal waits until the user accepts it. It changes nothing in the run
@@ -457,9 +458,9 @@ moves.
   workflow (010) or by an accepted proposal (002, "Self-improvement").
 - The conversation is stored locally as each part arrives, so a crash loses at most the part that
   was streaming.
-- After an app restart, a reply that was streaming is marked as stopped. The exception is a reply
-  whose node still waits for an approval or a question (see 005): it keeps its place and goes on
-  after the user answers.
+- After an app restart, a reply that was streaming is marked as stopped. This includes a turn of the
+  chat that waited for an approval or a question (007): it does not keep its place and does not go
+  on. The card goes away (005, 007).
 - When a restart cut off the last request of the user to this chat, and the user has not written
   since, a notice shows above the message box. It says that the restart stopped the request. Its
   "Continue" button sends a short new message that asks the responsible document to go on. It does
@@ -597,8 +598,8 @@ moves.
   of node 1 and of node 2, and says that node 3 has no result. A result with text that looks like a
   key shows `[redacted]`. A long result shows its first part and "Show all".
 - The workflow has no run that works. The user asks "How far is the run?": the answer says that no
-  run works and tells the state of the last run. For a workflow that never ran, the answer says that
-  it never ran.
+  run works and tells the state of the last run. For a workflow that never ran, the answer is "No run
+  yet."
 - A run works. The user asks "How far is the run?" and then the run goes on: the first answer stays
   as it was. Ask again: the answer shows the new state.
 - A run works, node 2 is done and the run has not reached node 3. The user replies to the result of
@@ -626,7 +627,7 @@ moves.
 - A turn holds outside content, and the workflow is at "Ask for risky steps". The user writes
   feedback: an approval card shows the text and "This turn holds outside content". "Allow once"
   adds the feedback. "Deny" adds nothing, and the responsible document says so. At "Full access",
-  the feedback is added with no card.
+  the feedback is added with no card, unless the turn holds the program mark: then the card shows.
 - The run has ended. The user writes feedback: the responsible document says that the run ended, and
   adds nothing.
 - A run that a schedule started works with no user at the screen. The user opens the chat and writes

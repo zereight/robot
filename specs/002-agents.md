@@ -96,10 +96,11 @@ rely on.
     (028) is never feedback (003).
   - In a turn that holds outside content, adding feedback is a guarded step (007, "Outside
     content"). An approval card shows the text of the feedback, and the feedback is added after the
-    user allows it. At "Full access" no card shows, as for other guarded steps (007).
+    user allows it. At "Full access" no card shows, as for other guarded steps, unless the turn holds
+    the program mark (007).
 - **Facts only**: the answers come from the facts of the run. The responsible document does not
-  invent a state or a result. When no run exists, it says so, and it can tell the state of the last
-  run.
+  invent a state or a result. When the workflow never ran, it says "No run yet." When no run works
+  or waits, it says so and tells the state of the last run.
 
 ## Self-improvement
 
@@ -302,8 +303,8 @@ This is the only flow for proposals: the memory proposals of 008 use it.
 
 ## States
 
-- **No run**: the responsible document answers a question about a run with "No run yet." and tells
-  the state of the last run, if one exists.
+- **No run**: when the workflow never ran, the responsible document answers a question about a run
+  with "No run yet." When no run works or waits, it says so and tells the state of the last run.
 - **Run works or waits**: the responsible document answers from the state of the run, and takes
   feedback.
 - **Run ended**: the responsible document answers from the state of the ended run. It takes no
