@@ -40,7 +40,7 @@ changes until the user allows it.
 Reads (access "Read, send work and manage", and the main agent):
 
 - **Read an agent**: for one agent that is not archived: the name, the role line, the
-  instructions, the face, the model account, the model, the effort, and the section. It gives
+  Soul, the face, the model account, the model, the effort, and the section. It gives
   nothing else of the agent.
 - **List routines**: for each routine: the number, the agent, the first 200 characters of the
   prompt, the trigger in words, the place, the state, and the next run.
@@ -51,14 +51,14 @@ Reads (access "Read, send work and manage", and the main agent):
 
 Changes (each makes a change request, except "Pause a routine"):
 
-- **Make an agent**: name, role line, instructions, face, model account, model, effort, section.
+- **Make an agent**: name, role line, Soul, face, model account, model, effort, section.
   The permission level, the workspace folder, the memory switch and every other field are the
   defaults of the form of a new agent (002). The tool cannot set them.
 - **Make a workflow**: a name and, optionally, a list of steps in order (010, "Assistant"). The
   app joins the steps in a line. The workflow has the trigger "manual" and no owner. The tool
   cannot set a trigger, an owner, a condition or a place.
 - **Change an agent**: for one agent that is not archived and is not the caller. The fields are
-  the name, the role line, the instructions, the face (shape and hue), the model account, the
+  the name, the role line, the Soul, the face (shape and hue), the model account, the
   model and the effort. A model named in loose words follows the rule of 002, "Changes from the
   chat".
 - **Archive an agent**: the user restores it as in 002.
@@ -92,7 +92,7 @@ Changes (each makes a change request, except "Pause a routine"):
   "Always allow". No rule of 007 covers a manage step, an Allow rule does not open it, and a Deny
   rule is not needed because "Deny" is always there.
 - **The card shows the whole change.** It shows the caller, the kind, and every new value in full,
-  also a long instruction or prompt, in a field that scrolls. For a change it shows the old value
+  also a long Soul or prompt, in a field that scrolls. For a change it shows the old value
   and the new value of each field that changes. It never cuts a value.
 - **No other fields.** No manage tool can change: a permission level, the rules (007), the
   workspace folder, computer use, the main agent switch, the memory switch, the connections and
@@ -114,7 +114,7 @@ Changes (each makes a change request, except "Pause a routine"):
 - **Logs.** The log of outside programs (023) holds the kind, the number and the result of each
   request, and no text of the change. The action log (007) has an entry for each manage step of
   the main agent: the kind, the target, and the result "Allowed", "Denied" or "Refused". It holds
-  no instruction text and no prompt.
+  no Soul text and no prompt.
 - **Profiles and sync.** A request belongs to one profile (022) and to the computer that runs it. A
   waiting request stays across a restart. An allowed change syncs as any edit of the user does
   (019). Requests do not sync, and an export (014) holds none.
@@ -148,7 +148,7 @@ Changes (each makes a change request, except "Pause a routine"):
 - An outside program with "Read and send work" calls "Make an agent": it gets "This access does
   not allow this tool." No request exists.
 - Set the access to "Read, send work and manage". "Make an agent" returns "Waits for the user" and a
-  request number. A card shows with the full instructions and the name of the program. No agent
+  request number. A card shows with the full Soul and the name of the program. No agent
   exists yet.
 - "Allow": the agent exists, its profile shows "Made by <program name>", and "Wait for a request"
   returns "Allowed" with the name of the agent.
@@ -170,6 +170,6 @@ Changes (each makes a change request, except "Pause a routine"):
 - The turn of the main agent holds outside content: the card shows "This turn holds outside
   content" with the source.
 - A linked device without "Can create and change agents" cannot allow a request. The phone can.
-- The action log holds the manage step with the result and holds no instruction text.
+- The action log holds the manage step with the result and holds no Soul text.
 - Export the data: the archive holds no request.
 - A second profile does not see the requests of the first.

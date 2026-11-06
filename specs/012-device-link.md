@@ -97,7 +97,7 @@ client shows it and sends commands.
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
-| See the task list and task details; stop a task | Browser "Take control"; memory proposals and memory history (008) |
+| See the task list and task details; stop a task | Browser "Take control"; memory proposals and memory history (008); the page "Self-improvement" with its proposals and change log (002) |
 | See the workflow list, open a canvas, see run history, run details and live run state; run and stop a workflow; answer an approval step of a run | The workflow assistant panel; export and import of workflow files; the workflows log (014) |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
@@ -120,8 +120,8 @@ agents of the server in the same screens as on the server (002, 008): the plus b
 section, the agent profile, the memory list.
 
 - **Fields a client can set:** name, face (shape and hue; no uploaded image), role line,
-  instructions, model, effort, backup model and the switch "Read the handbook". The section of an agent is not
-  offered. A client can also read and change the handbook (002), and turn the memory check of an
+  Soul, model, effort, backup model and the switch "Read the handbook". The section of an agent is
+  not offered. A client can also read and change the handbook (002), and turn the memory check of an
   agent on or off (008).
 - **Outside content:** a client shows the line "Holds outside content" in the header of a place
   (007). It cannot clear the mark.
@@ -307,7 +307,7 @@ accept connections, this is the same computer.
 - Pair MacBook 1 with MacBook 2 and leave the switch "Let MacBook 1 create and change agents"
   on. On MacBook 1, open the tile of MacBook 2 and create an agent "Writer" with a model. The
   agent shows on MacBook 2 with a new empty workspace folder, "Last changed by MacBook 1", and
-  the level "Ask for risky steps". Edit its instructions from MacBook 1: the change shows on
+  the level "Ask for risky steps". Edit its Soul from MacBook 1: the change shows on
   MacBook 2 at once and applies to the next turn.
 - On MacBook 1, set the level of that agent to "Ask for everything". Try to set it back: the
   client offers no looser level, and a request for one gets "Not allowed".
