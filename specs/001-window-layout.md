@@ -47,8 +47,8 @@ server, so a new user knows where to look. The app opens on the workflow list.
 ## States
 
 - No server connected: the rail shows only the add button; the main area explains how to start.
-- A linked server that is offline: its tile is muted, and the workflow list shows the cached
-  workflows (012).
+- A linked server that is offline: its tile is muted. The workflow list and the run view do not
+  show. A chat that the user opened shows its cached messages, marked "Offline" (012).
 - No workflow: the workflow list shows "New workflow" and one line that says what a workflow is.
 
 ## Rules

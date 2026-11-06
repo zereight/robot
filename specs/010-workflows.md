@@ -43,9 +43,6 @@ user can read, edit and check the whole workflow.
   describes the workflow (see "File" and "Check").
 - **Check**: verifies the TLA form of the workflow (see "Check").
 
-Points that the owner has not decided are not written in this spec. They are listed in
-docs/spec-questions.md, in the rows for 010.
-
 ## Flows
 
 1. New workflow: the user presses "New workflow" and types a name. The app makes the responsible
@@ -200,7 +197,7 @@ docs/spec-questions.md, in the rows for 010.
 ## File
 
 - The workflow file is a TLA module. The user can edit it.
-- The module holds the graph, the prompts as strings, and the rules of the check (decision 14). The
+- The module holds the graph, the prompts as strings, and the rules of the check. The
   app writes the standard rules. The user adds more. What else the module holds is not decided (see
   the questions for 010).
 - The file holds no run, no version, no chat, no key and no secret. Text in the file that looks like
@@ -240,14 +237,16 @@ docs/spec-questions.md, in the rows for 010.
   such as a phone, can start and stop a run on that computer. A linked client does not execute any
   node.
 - A linked client (012) sees the workflows of the server. It changes them only when the server allows
-  it (012). The chat and the file stay on the server.
+  it (012). The chat of a workflow runs on the server, and a linked client has that chat too: it
+  reads it, sends messages in it and gives feedback on a run in it (012). The file stays on the
+  server.
 
 ## Surfaces
 
 - **Ways in**: "New workflow" on the workflow list, the card of a workflow, "Run" in the workflow
   view, and the trigger on the canvas.
-- **Devices**: this computer shows and changes the workflow. A linked client (012) sees it and can
-  start a run. The phone has no workflow editor (011).
+- **Devices**: this computer shows and changes the workflow. A linked client (012) sees it, can
+  start a run, and uses its chat. The phone has no workflow editor (011).
 - **Runtimes**: each text node uses the provider and the model that it names (006). A decision node
   uses the model of 013. The check reads no model.
 - **Ways out**: the user can stop a run. A run that waits for the user ends with Stop too. The user
