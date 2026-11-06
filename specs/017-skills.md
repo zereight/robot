@@ -108,7 +108,7 @@ workflow, and the chat writes a draft skill from what the user did.
 
 - Self-improvement (002, 010) proposes changes to the responsible document, to a node prompt, to
   the graph and to the memory. It does not propose a new skill or a change to a skill in this
-  version. The earlier flow "Make a skill" from a task, an article or a memory item is not part of
+  version. The flow "Make a skill" from a task, an article or a memory item is not part of
   this version. Whether it returns is not decided (see the questions for 017).
 - A skill changes only when the user changes it (flows 1 to 5, "Teach a task").
 
@@ -150,8 +150,8 @@ workflow, and the chat writes a draft skill from what the user did.
   header), and the node prompt (flow 9). No new button.
 - **Devices**: the computer shows the cards. The phone and a linked computer show them as stored
   cards, read only.
-- **Runtimes**: every provider. The list is part of the turn, and the load is a tool of the app (as
-  the browser is in 026).
+- **Runtimes**: every provider. The list of skills is part of the turn, and the responsible document
+  loads a skill when the task needs it.
 - **Ways out**: turn a skill off (it leaves the list), or empty its description (slash only). No
   new switch.
 - **Seeing the state**: one card per loaded skill, readable after a restart as part of the stored

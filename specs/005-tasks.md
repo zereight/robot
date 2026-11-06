@@ -10,8 +10,8 @@ stopped or failed, and what it made.
 - **Task**: one execution of one node of a workflow (010). A run is made of tasks. A task has the
   node (its name and number), the run, the trigger that started the run (by hand, the chat, or a
   schedule; see 010, "Trigger"), the input of the node, its state, start and end time, and its
-  result or error. A node that is skipped makes no task (010, "Node input and output"). The
-  run view shows it as skipped.
+  result or error. A node that is skipped, or that the run has not reached, makes no task
+  (see "States and reasons").
 - **Run**: one execution of a workflow (010). The state of a run follows its tasks: it waits for
   the user while one of its tasks waits for the user. It stops when a node fails, unless the node
   has the mark "Continue on failure" (010). Stop ends it. The list of runs (010) shows the states.
@@ -21,7 +21,8 @@ stopped or failed, and what it made.
   tasks.
 - **States**: queued, running, waiting for the user, done, failed, blocked, or cancelled. A task
   goes queued → running → (waiting for the user ↔ running) → done, failed, blocked or cancelled.
-  "Blocked" is not in 000 (see the questions for 005).
+  "Blocked" is not in 000 (see the questions for 005). A node also shows as "skipped" or as "not
+  reached" (see "States and reasons"). Other specs and the chat use these words.
 - **Reason**: every state that is not done and not running has a reason in words. See "States and
   reasons".
 - **Result**: what a node made. A task keeps its result when it ends. A done task keeps the
@@ -40,7 +41,8 @@ stopped or failed, and what it made.
 - **Usage**: the tokens that the turns of the task used, as the provider reports them. See "Usage
   of a task".
 
-The chat of the workflow reports these states and reasons, and the results of ended tasks (003).
+The responsible document reports these states and reasons in the chat of the workflow, and the
+results of ended tasks (003).
 
 ## States and reasons
 
@@ -65,20 +67,24 @@ The chat of the workflow reports these states and reasons, and the results of en
   "Blocked:".
 - **Cancelled**: the user stopped the task, or stopped its run. The reason is "Stopped by you". A
   task that was queued when the user stopped its run shows "The run was stopped".
+- **Skipped**: no input passed to the node (010, "Node input and output"). A skipped node makes no
+  task. The run view shows the node as skipped.
+- **Not reached**: not a state of a task. The run has not reached the node yet, so the node has no
+  task. The run view and the chat show the node as not reached.
 
 ## Tasks page
 
-- A table of tasks, newest first: workflow name, node name, label, source, state, duration.
+- A table of tasks, newest first: workflow name, node name, source, state, duration.
 - The page holds two tabs at the top of its header line: "Tasks" and "Events" (038). The tab
   "Events" holds the list of the events of this computer. Nothing else on the page changes.
-- Filters: state, workflow, source. Search by label.
+- Filters: state, workflow, source. What the search matches is not decided (see the questions for
+  005).
 - The source of a task is the trigger of its run: "By hand", "From the chat", or "Schedule".
   Other triggers are not decided (see the questions for 010).
 - A row opens the task: its node, its input, its steps, its result, and its three times. It shows
   a list of moments too (see "Moments").
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), run next
-  (queued; see "Queue"), open the run, make a skill (done; see 017, "Make a skill from work").
-  "Make a skill" is on the computer only.
+  (queued; see "Queue"), and open the run.
 - A queued task shows its reason (see "States and reasons").
 
 ## Usage of a task
@@ -98,8 +104,7 @@ The usage page (006) shows usage. The user must see what one run used.
   then. A runtime that reports no usage adds nothing, and its line shows "—".
 - The numbers hold no message text. They sync with the task (019) and an export holds them (014).
   The phone and a linked device show them in the task view (011, 012).
-- What the usage page groups by, now that no agent exists, is not decided (see the questions for
-  005).
+- What the usage page groups by is not decided (see the questions for 005).
 
 ## Moments
 
@@ -358,13 +363,12 @@ stops the turn.
 
 ## Out of scope
 
-- Tasks of agents. The agent is not an object of ROBot now.
-- A parent task and a child task. A task has no child.
+- A parent task, a child task, and split work. A task has no child (see the questions for 005).
 
 ## Acceptance
 
-- A node fails: its task shows Failed with the text of the error. The chat of the workflow tells
-  the user the reason when asked (003).
+- A node fails: its task shows Failed with the text of the error. The responsible document tells
+  the user the reason in the chat when asked (003).
 - A workflow with a queued task and a running task: the queued task shows "Waits behind <node>".
 - Two runs of one workflow start: the second run waits until the first ends.
 - A run that a schedule started and a run that the user started by hand wait for one workflow. The

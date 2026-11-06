@@ -4,7 +4,7 @@
 
 The responsible document of a workflow, or a program outside ROBot, can make a new workflow with
 tools, as the user does in the app. Every change waits for the user. Nothing changes until the user
-allows it. The manage tools are tools for workflows only. They make no agent and no routine.
+allows it. The manage tools are tools for workflows only.
 
 ## Concepts
 
@@ -12,15 +12,14 @@ allows it. The manage tools are tools for workflows only. They make no agent and
   - the **responsible document** of a workflow (002, 010), in a turn of the chat that the user
     started (003), on every runtime (006);
   - an **outside program** (023) with the access "Read, send work and manage".
-
-  Which callers have the tools is not decided (see the questions for 037).
 - **Change request**: one call of a manage tool that changes data. It holds the whole change. It
   has a number, the caller, the time, and a state: "Waits for the user", "Allowed", "Denied",
   "Expired" or "Failed". It does nothing until the user allows it.
 - **Request card**: the card that shows a change request to the user, with "Allow" and "Deny".
 
-The tools to read and change the open workflow, to list workflows, and to run one are in 010,
-"Assistant". They are not manage tools.
+The tools of 010, "Assistant", change the open workflow and run one. They are not manage tools. The
+reads below ("List workflows" and "Read a workflow") are the reads that 010 gives to the responsible
+document.
 
 ## Flows
 
@@ -82,10 +81,11 @@ Change (it makes a change request):
   "Deny" is always there.
 - **The card shows the whole change.** It shows the caller, the kind, and every new value in full,
   also a long prompt, in a field that scrolls. It never cuts a value.
-- **No other fields.** No manage tool can change: a permission level, the rules (007), the folder
-  of a workflow, computer use, the memory of a workflow (008), connections and skills (017, 018),
-  saved secrets (020), sync, devices, the settings of the app, or the Teams link (028). No manage
-  tool deletes anything, or changes a workflow that exists (010).
+- **No other fields.** No manage tool can change: the text of the responsible document (002), a
+  permission level, the rules (007), the folder of a workflow, computer use, the memory of a
+  workflow (008), connections and skills (017, 018), saved secrets (020), sync, devices, the
+  settings of the app, or the Teams link (028). No manage tool deletes anything, or changes a
+  workflow that exists (010).
 - **Outside content.** A request that comes from a turn that holds outside content shows the line
   "This turn holds outside content" and names the first source (007). A request from an outside
   program names the program, and it holds the program mark (007, 023).
@@ -122,8 +122,7 @@ Change (it makes a change request):
 
 ## Out of scope
 
-- Agents and routines. The owner removed the agent as an object (000, 002). A routine is now a
-  trigger of a workflow (010).
+- A tool that makes a routine. A routine is a trigger of a workflow (010).
 - Delete of a workflow.
 - The fields in "Rules", "No other fields".
 - Changes to a workflow that exists. Their tools are in 010, "Assistant".

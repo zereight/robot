@@ -14,14 +14,14 @@ the run works.
   responsible document of the workflow answers in it (002). The word "chat" in this spec means this
   chat and, when the text says so, its threads.
 - **Turn**: one request of the user and the work of the responsible document that follows it,
-  until the reply ends. A turn of the chat is not a node (010). Whether it is a task is not
-  decided (see the questions for 003).
+  until the reply ends. A turn of the chat is not a node (010) and not a task (005).
 - **Run**: one execution of the workflow (010). A run can work while the chat is quiet. The user
   does not need to send a message to start it.
 - **Result**: what a node writes when it ends (010). A decision node gives the option that it took
   and the probability of each option.
-- **Feedback**: a message of the user in the chat that tells the workflow what is good or wrong in
-  the results of a run that works or waits (see "Progress, stops, results and feedback").
+- **Feedback**: a message of the user in the chat about the results of a run. It tells what is good
+  or wrong. It counts only while the run works or waits (see "Progress, stops, results and
+  feedback").
 
 ## Message rows
 
@@ -100,8 +100,9 @@ A long series of tool steps fills the chat. The user can fold it away.
    result of a node is the way to name that node in feedback (see "Progress, stops, results and
    feedback").
 6. Approve: when a node of a run asks for permission (see 007), an approval card shows in the chat
-   with Allow and Deny. The node waits until the user answers. A decision node that asks the user
-   to pick an option (010) shows its approval card here too.
+   with Allow and Deny. The node waits until the user answers. The run view shows the task as
+   waiting for the user (005). A decision node that asks the user to pick an option (010) shows its
+   approval card here too.
 7. Command picker: when the user types a slash as the first character of a message, a list opens
    above the box. It shows the commands first, then the skills that the user saved (see 017), then
    the skills that the runtime of the answering model reports, if it reports skills (see 006). A
@@ -136,24 +137,18 @@ plain words how a run goes. It also takes the feedback of the user while the run
 ### What the user can ask
 
 - **How far the run has gone.** The answer names the run and its state. It lists the nodes, with
-  their numbers and names (010), in the order of their numbers. Each node has one of these states:
-  - **Done**: the node ended and made a result.
-  - **Works now**: the node runs.
-  - **Waits**: the node waits for the user, or for a free slot (005).
-  - **Failed**: the node failed.
-  - **Skipped**: no input passed to the node (010).
-  - **Stopped**: the user stopped the run while the node worked or waited.
-  - **Did not start**: the run did not reach the node yet.
-- **Why the run stopped or waits.** The answer gives the reason in plain words. The reasons are:
-  - a node failed, with the reason of the failure (010);
-  - a node waits for an approval of the user (007), and the answer names the step and says that the
-    card is in the chat;
-  - a decision node waits for the user to pick an option, because no option reached the threshold,
-    the model gave no answer in 3 seconds, or the choice is off or has no key (010);
-  - a task waits for a free slot (005), and the answer says behind what it waits;
-  - the user stopped the run;
-  - the app stopped (010, "Rules"): the answer says "The app stopped";
-  - a scheduled run waits as a task that waits for the user (010, 005).
+  their numbers and names (010), in the order of their numbers. For each node it gives the state of
+  its task, with the words of 005 ("States and reasons"). A node that is skipped (010) shows as
+  skipped. A node that the run has not reached has no task, and the answer says "not reached".
+- **Why the run stopped or waits.** The answer gives the reason of the task in plain words, as 005
+  lists the reasons ("States and reasons"). It adds this:
+  - For a wait for an approval (007), the answer names the step and says that the card is in the
+    chat.
+  - For a wait for the pick of a decision node, the answer says why: no option reached the
+    threshold, the model gave no answer in 3 seconds, or the choice is off or has no key (010).
+  - For a wait for a free slot, the answer says behind what the task waits.
+  - After a restart, the answer says "The app stopped" (010, "Rules").
+  - A scheduled run waits as a task that waits for the user (010, 005).
 - **What the results are.** The answer gives the result of each node that has ended, with the
   number and the name of the node. For a decision node, it gives the option that won and the
   probability of each option. A result that is long shows its first part with "Show all", which
@@ -191,11 +186,12 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   that names no node is feedback on the run as a whole. When more than one run works or waits, the
   user names the run, or the responsible document asks which run it is.
 - **What the responsible document does.** It adds the feedback to the run. The chat shows one muted
-  line after the message: "Feedback added to the run". The line names the run and, when the
-  feedback names a node, the node.
+  line after the message: "Feedback added to the run". The line names the run and the nodes that
+  will get the feedback. When no node starts after the feedback, the line says that no node will
+  get it.
   - The feedback goes with the input of every text node of the run that starts after the feedback.
     The node reads it as a note of the user on the results. It is not a new prompt.
-  - A node that has ended does not run again. A node that works now keeps the input that it had.
+  - A node that has ended does not run again. A node that is running keeps the input that it had.
   - A decision node does not get the feedback. It takes its input as before (see the questions for
     003).
 - **What feedback never changes.** It does not change the graph, the node prompts, the responsible
@@ -203,15 +199,22 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   during a run (010).
 - **When it is not feedback.** A question, such as "How far is the run?", is not feedback. While a
   question card waits, a message is the answer to that card (see "Messages during a turn"), not
-  feedback. When the responsible document does not know if a message is feedback, it asks one
-  question and adds nothing until the user answers.
+  feedback. A message of an outside program (023) or from Teams (028) is never feedback. When the
+  responsible document does not know if a message is feedback, it asks one question and adds
+  nothing until the user answers.
+- **Outside content.** In a turn that holds outside content (007), adding feedback is a guarded
+  step. An approval card shows the full text of the feedback, with Allow once and Deny. "Deny" adds
+  nothing, and the responsible document says so.
 - **Self-improvement.** The responsible document can turn feedback into a proposal for the next
   runs: a change of the responsible document, of a node prompt, of the graph, or of the memory (002,
   "Self-improvement"). The proposal waits until the user accepts it. It changes nothing in the run
   that works. When no run works or waits, feedback is not added to a run. The responsible document
   says so and can make a proposal from it.
-- **After the run.** When the run ends, new feedback is not added to it. The chat tells the user
-  that the run ended.
+- **After the run.** When the run ends, new feedback is not added to it. The responsible document
+  says that the run ended.
+- **Stops and ends in the chat.** Whether the responsible document tells the user by itself when a
+  run stops, waits or ends is not decided (see the questions for 003). Now it answers when the user
+  asks.
 
 ### States
 
@@ -255,9 +258,6 @@ The user can change the course of a turn without stopping it.
     "Answered in the chat" and the work goes on with the message as its answer.
   - A message that was not read when the turn ends (for example after Stop) starts the next turn,
     as one message in the order that the user sent them.
-  - A follow-up with the action "steer" joins the turn by these rules (005). It does not answer a
-    question card. While a question card waits, it is read after the user answers the card, or
-    after Stop.
 - **Wait in a queue**: the message waits in a short queue above the message box. The user can
   remove or edit a queued message before it is sent. Each queued message has "Send now", which
   sends it into the current turn as with "Join the current turn".
@@ -350,9 +350,8 @@ the app can run it (see "Automatic compact").
 
 ## Threads
 
-The earlier text of this spec had threads and forks for the chat of an agent. The owner has not
-decided if the one chat of a workflow keeps them (see the questions for 003). This text keeps them
-until the owner decides.
+The rules below hold for the chat. Whether the one chat of a workflow keeps threads and forks is not
+decided (see the questions for 003).
 
 - **Thread**: a second conversation with the same workflow. The workflow keeps its responsible
   document, its memory and its folder; only the history is separate. The chat is the main thread.
@@ -440,8 +439,8 @@ moves.
   and the light is still. The line reads "Working…", or, in about half of the turns, a short
   playful phrase that the app picks at random for the turn and keeps until the turn ends. At least
   20 phrases exist in each language. The Korean phrases read as spoken Korean, not as a translation.
-  For a turn of a follow-up, the line says that the workflow looks again (005). The stop button
-  shows whenever this line shows. A run that works shows its own state in the workflow view (010).
+  The stop button shows whenever this line shows. A run that works shows its own state in the
+  workflow view (010).
 - Quiet: when the turn shows no sign of life for the quiet time, the working line reads "No answer
   from <name> for <time>" (see 005, "Quiet line"), with the name of the workflow. The stop button
   stays. The quiet line does not animate, and the light of its badge is still. The elapsed time of
@@ -451,9 +450,8 @@ moves.
   the turn went (see 005, "How far a turn went"). A turn that the app stopped because it was silent
   (see 005) fails in this way too.
 - Provider not connected: the message box is disabled with a button to connect it.
-- Busy provider, backup model and Keep going: a muted line tells that the model is busy and the
-  app tries again (006), that the backup model goes on (006), or that the responsible document was
-  asked to go on (005). None of these lines is an error row.
+- Busy provider and backup model: a muted line tells that the model is busy and the app tries
+  again (006), or that the backup model goes on (006). None of these lines is an error row.
 - Interrupted by a restart: see "Rules".
 - A run that works, waits, failed or ended: see "Progress, stops, results and feedback".
 
@@ -486,10 +484,9 @@ moves.
 
 ## Out of scope
 
-- A chat with an agent, and a chat that is not the chat of a workflow.
-- A mention of another agent in a message. The earlier text had it. The owner removed the agent
-  as an object.
-- A handover of a chat to another agent. The earlier text had it.
+- A chat that is not the chat of a workflow.
+- A mention of another workflow in a message, and a handover of a chat to another workflow, with its
+  brief (see the questions for 003).
 - Feedback that changes the graph or a prompt of the run that works.
 
 ## Acceptance
@@ -516,7 +513,8 @@ moves.
 - Restart the app while the responsible document works on a request: the chat shows the notice.
   Continue sends a short message and the notice leaves.
 - End the app at once after a send, and start it again: the request had not reached the model. The
-  notice says so and has "Send again". The button sends the same text, and the chat answers it.
+  notice says so and has "Send again". The button sends the same text, and the responsible
+  document answers it.
 - A chat of 200 messages opens at the latest message and stays there for the first 3 seconds.
 - Run "compact" in a chat of six turns: the model gets a summary and the newest 2 turns. The chat
   still shows all six turns, with the line "Compacted" between turn 4 and turn 5. Open the line: the
@@ -526,11 +524,12 @@ moves.
 - Automatic compact is on. A stand-in provider reports 90 percent use after a reply. The user sends
   a message: the line "Compacting…" shows, then the turn goes on. The ring is empty until the
   reply. Turn the setting off: the same message starts the turn at once.
-- The chat answers with Claude Code and has two turns. An hour after the last reply, the next
-  message compacts first. The program gets a summary and the newest 2 turns. Before that hour, the
+- The model that answers in the chat is Claude Code, and the chat has two turns. An hour after the
+  last reply, the next message compacts first. The program gets a summary and the newest 2 turns. Before that hour, the
   same chat does not compact. With the setting off, an hour later, the next message does not
   compact. With Codex, it does not compact after an hour.
-- The chat answers with an Anthropic account and has two turns, and the use of the context is low.
+- The model that answers in the chat is an Anthropic account, the chat has two turns, and the use of
+  the context is low.
   An hour after the last reply, the next message of the user compacts first. Before that hour, the
   same chat does not compact. A node of a run, an hour after the last reply of the chat, does not
   make the chat compact. With an OpenAI account, or a custom account, the chat does not compact
@@ -585,17 +584,17 @@ moves.
 - A reply that thinks before each of its four steps shows one thought line, and, with the switch
   off, one folded line with the count 4. Open the thought line: it lists the four thoughts in
   order.
-- A workflow has four nodes. Node 1 is done, node 2 works, node 3 and node 4 did not start. The
-  user asks "How far is the run?": the answer names the run and lists node 1 as done, node 2 as
-  works now, and nodes 3 and 4 as did not start.
+- A workflow has four nodes. Node 1 is done, node 2 is running, and the run has not reached node 3
+  and node 4. The user asks "How far is the run?": the answer names the run and lists node 1 as
+  done, node 2 as running, and nodes 3 and 4 as not reached.
 - Node 2 fails with a reason. The user asks "Why did it stop?": the answer names node 2 and gives
   its reason. A stand-in node asks for an approval: the user asks "Why does it wait?": the answer
-  says that node waits for an approval and that the card is in the chat.
+  says that the node is waiting for the user for an approval and that the card is in the chat.
 - A decision node has no option at the threshold. The user asks "Why does it wait?": the answer says
   that the decision node waits for the user to pick an option. The user picks one, and the answer to
   the same question now says that the run goes on.
 - A run waits behind a full slot. The user asks "Why does it wait?": the answer says that the node
-  waits for a free slot.
+  is queued and waits for a free slot.
 - Stop a run, then ask "What happened?": the answer says that the user stopped the run. Restart the
   app during a run and ask: the answer says "The app stopped".
 - Node 1 and node 2 ended. The user asks "What are the results so far?": the answer gives the result
@@ -606,23 +605,33 @@ moves.
   it never ran.
 - A run works. The user asks "How far is the run?" and then the run goes on: the first answer stays
   as it was. Ask again: the answer shows the new state.
-- A run works, node 2 is done and node 3 has not started. The user replies to the result of node 2
-  with "Too long. Keep it to five lines.": the chat shows "Feedback added to the run". Node 3 gets
-  the feedback with its input. Node 2 does not run again. The graph and the prompts do not change.
+- A run works, node 2 is done and the run has not reached node 3. The user replies to the result of
+  node 2 with "Too long. Keep it to five lines.": the chat shows "Feedback added to the run", with
+  the run and node 3. Node 3 gets the feedback with its input. Node 2 does not run again. The graph
+  and the prompts do not change.
 - Feedback while a node works: that node keeps its input, and the next node that starts gets the
   feedback.
-- Feedback while the run waits for an approval: the chat adds it to the run, and the card still
-  waits.
+- Feedback when no text node starts after it: the line says that no node will get it.
+- Feedback while the run waits for an approval: the responsible document adds it to the run, and the
+  card still waits.
 - A decision node starts after feedback: the request to the decision model does not hold the
   feedback.
-- The user writes "How far is the run?" during a run: the chat adds no feedback to the run.
+- The user writes "How far is the run?" during a run: the responsible document adds no feedback to
+  the run.
 - The user writes a message that may be feedback: the responsible document asks one question, and
-  the chat adds nothing until the user answers.
+  adds nothing until the user answers.
 - Two runs work. The user writes feedback that names no run: the responsible document asks which
   run.
-- No run works. The user writes feedback on the last run: the chat adds no feedback to a run. The
-  responsible document says so and can make a proposal. The user accepts it, and the next run uses
-  the change (002).
+- No run works. The user writes feedback on the last run: the responsible document adds no feedback
+  to a run. It says so and can make a proposal. The user accepts it, and the next run uses the
+  change (002).
+- A message from Teams or from an outside program says "Node 2 is too long." during a run: it is not
+  feedback, and the run does not change.
+- A turn holds outside content. The user writes feedback: an approval card shows the text and
+  "This turn holds outside content". "Allow once" adds the feedback. "Deny" adds nothing, and the
+  responsible document says so.
+- The run has ended. The user writes feedback: the responsible document says that the run ended, and
+  adds nothing.
 - A run that a schedule started works with no user at the screen. The user opens the chat and writes
   feedback: the run gets it.
 - On the phone (011), the user asks "How far is the run?": the answer shows. The user writes

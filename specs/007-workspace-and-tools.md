@@ -38,11 +38,12 @@ can take the feedback of the user while the run works.
 
 1. The user opens the folder from the workflow view; the app shows it in the system file browser.
 2. When a step of a text node needs permission, the task waits for the user (005) and an approval
-   card shows with the task in the run view. The card says what the node wants to do, the command
-   or path, and has Allow once, Always allow for this workflow, Deny. "Always allow for this
-   workflow" saves an allow rule (see "Permission rules"). When no user is at the app, for example
-   in a run that a trigger starts, the task keeps waiting (010). The chat can tell the user what
-   waits (see "Following a run in the chat").
+   card shows in the chat of the workflow (003). The run view shows the task as waiting for the
+   user. The card says what the node wants to do, the command or path, and has Allow once, Always
+   allow for this workflow, Deny. "Always allow for this workflow" saves an allow rule (see
+   "Permission rules"). When no user is at the app, for example in a run that a trigger starts, the
+   task keeps waiting (010), and the card waits in the chat. The responsible document can tell the
+   user what waits (see "Following a run in the chat").
 3. A step asks a question: a question card shows with the choices or a text field. The task waits.
 4. Browser: a text node can open a browser window that the user can watch. The user can take
    control, then give it back. Stop ends the browser work at once.
@@ -53,39 +54,45 @@ can take the feedback of the user while the run works.
    levels"). The editor is read-only while a run works (010), so the folder and the levels do not
    change during a run.
 7. Outside content: see "Outside content".
-8. Following a run: the user asks the chat how far a run has gone, and gives feedback on a result
-   (see "Following a run in the chat").
+8. Following a run: the user asks in the chat how far a run has gone, and gives feedback on a
+   result (see "Following a run in the chat").
 
 ## Following a run in the chat
 
-The user can ask the chat of the workflow what a run does. The responsible document answers. It
+The user can ask in the chat of the workflow what a run does. The responsible document answers. It
 reads the run with the tools below. It does not guess.
 
-- **How far**: the chat tells the state of each node of the run (queued, running, waiting for the
-  user, done, failed, cancelled, or skipped), which node works now, and how many nodes have ended.
-- **Why it stopped or waits**: for a task that waits, the chat tells what it waits for: an approval
-  card (and which step), a question card, or the pick of a decision node (010). For a run that
-  stopped or failed, the chat tells the reason that the run view shows, for example the node that
-  failed, "The app stopped", a step that was refused, or a stop by the user. The chat does not
-  say that a run is fine when a task waits.
-- **Intermediate results**: the chat can read the result of a node that has ended in the run and
-  tell it to the user. A run that works has results of the nodes that have ended. The chat reads no
-  result of a node that has not ended. If the user asks for one, the chat says so.
-- **Feedback**: while a run works or waits, the user can tell the chat what is wrong or what to
-  change in a result. The responsible document adds that feedback to the run.
-  - The feedback goes with the input of every node that starts after it. A node that has ended
-    does not run again. A node that works keeps the input that it had.
+- **How far**: the responsible document tells the state of each node of the run, with the words of
+  005 ("States and reasons"). A node that the run has not reached has no task, and the answer says
+  "not reached". It also tells which node is running, and how many nodes have ended.
+- **Why it stopped or waits**: for a task that waits, the responsible document tells what the task
+  waits for: an approval card (and which step; the card is in the chat), a question card, or the
+  pick of a decision node (010). For a run that stopped or failed, it tells the reason that the run
+  view shows, for example the node that failed, "The app stopped", a step that was refused, or a
+  stop by the user. It does not say that a run is fine when a task waits.
+- **Intermediate results**: the responsible document can read the result of a node that has ended in
+  the run and tell it to the user. A run that works has results of the nodes that have ended. It
+  reads no result of a node that has not ended. If the user asks for one, it says so.
+- **Feedback**: while a run works or waits, the user can tell the responsible document what is wrong
+  or what to change in a result. The responsible document adds that feedback to the run (003 has
+  the full rules).
+  - The feedback goes with the input of every text node that starts after it. A decision node gets
+    none. A node that has ended does not run again. A node that works keeps the input that it had.
   - The graph, the prompts, the folder and the permission levels of the run do not change.
     To change them, the user waits for the run to end (010).
-  - The chat tells the user which nodes will get the feedback. If no node starts after it, the
-    chat says so. If the run has ended, the chat adds nothing to it and says that the run has ended.
+  - The chat shows the line of 003, "Feedback added to the run". It names the run and the nodes that
+    will get the feedback. If no node starts after it, the line says so. If the run has ended, the
+    responsible document adds nothing to it and says that the run has ended.
   - The feedback is not an answer to a card. It allows no step.
+  - Only the words of the user are feedback. A message of an outside program (023) or from Teams
+    (028) is never feedback.
   - The run view shows the feedback with its time and the nodes that got it.
 - **Tool cards**: each of these tools shows a tool card in the chat: "Read the state of a run",
   "Read the result of <node>", "Added feedback to the run".
 - **Permission level**: reading the state and a result are reads, and they work at every
   permission level. Adding feedback adds only words of the user to the run, and it works at every
-  permission level. Starting a run is refused at "Read only" (see "Permission levels").
+  permission level. In a turn that holds outside content, it is a guarded step (see "Outside
+  content"). Starting a run is refused at "Read only" (see "Permission levels").
 - **Who may use them**: these tools work only in a turn that the user started in the chat of the
   workflow. A run that a trigger starts cannot use them (010, "Assistant"). They work on the
   computer that holds the run. A linked client (012) can ask the same questions in the chat.
@@ -93,8 +100,8 @@ reads the run with the tools below. It does not guess.
   that overrides the rules of the app. A result of a task that held outside content makes the turn
   hold outside content (see "Outside content").
 - The text of a result that looks like a secret is hidden (014). The size limit of a result that
-  the chat reads is not decided (see the questions for 007).
-- The chat reports the state and the reason in the language of the interface.
+  the responsible document reads is not decided (see the questions for 007).
+- The responsible document reports the state and the reason in the language of the interface.
 
 ## Permission levels
 
@@ -168,12 +175,12 @@ the user gets a card only when the check is sure that the user asked for the ste
     interpreter or with a path to the file. A task runner that reads its commands from a file,
     for example `make` or `npm run`, also runs a script file. A short command can start a long
     script that any task wrote, by a file step or by a command.
-- **Words of the user**: a text node has no words of the user, because the responsible document
-  can write the prompt of a node (010), and a trigger can start the run. So a checked step of a
-  node always asks the user. A message of an outside program (023) or of Teams (028) is not words
-  of the user either. Whether the text that the user types when the user starts a run by hand, or
-  the feedback of the user (see "Following a run in the chat"), counts as words of the user is not
-  decided (see the questions for 007).
+- **Words of the user**: a text node has no words of the user. The responsible document can write
+  the prompt of a node (010), and a trigger can start the run. So a checked step of a node always
+  asks the user. These are not words of the user:
+  - a message of an outside program (023) or from Teams (028);
+  - the text that the user types when starting a run by hand;
+  - feedback (003).
 - For a checked step, the app asks the decision model one question: does the user ask for this
   step? The two options are "The user asked for this" and "The user did not ask for this".
   - The step runs with no card when "The user asked for this" has a probability of 0.9 or more.
@@ -204,8 +211,7 @@ the user gets a card only when the check is sure that the user asked for the ste
 
 Two tools let the responsible document find what was said before in the chat of the workflow.
 "search chats" finds messages. "read chat" gives the text around one message. They are tools of the
-responsible document (see "Concepts"). A text node does not use them. Whether a text node should is
-not decided (see the questions for 007).
+responsible document only (see "Concepts"). A text node does not use them.
 
 ### Search chats
 
@@ -431,8 +437,8 @@ text is in the task or in the turn.
   - a hit of "search chats", or a message in a result of "read chat" (see "Searching past
     chats"), when the user did not write that message. A line for a tool step in such a result is
     not outside content, because it holds no text of the step,
-  - the result of a node that the chat reads (see "Following a run in the chat"), when the task of
-    that node held outside content.
+  - the result of a node that the responsible document reads (see "Following a run in the chat"),
+    when the task of that node held outside content.
   Files in the folder and files that the user attaches are not outside content.
 - A task **holds outside content** from the first step that gives outside content to the node until
   the task ends. A turn of the chat holds it by the same rule. A task also holds outside content
@@ -454,18 +460,22 @@ text is in the task or in the turn.
   a task that holds outside content. A task has no "Clear".
 - **Guarded steps** are:
   - a change that the responsible document makes to the workflow in the chat (010, "Assistant"):
-    to the graph, to a node, to a prompt, or to the responsible document itself,
+    to the graph, to a node, or to a prompt,
+  - adding feedback to a run (see "Following a run in the chat"),
   - a save to memory (see 008),
   - a request with a saved secret that uses a method other than GET, and a request for a new
     secret (see 020).
+
+  A change to the responsible document is not a guarded step. It is a proposal, and the user decides
+  on its card (002, "Self-improvement").
 - In a turn or a task that holds outside content, a guarded step asks the user with an approval
   card at "Read only", "Ask for everything", "Ask for risky steps" and "Ask when unsure", also when
   an Allow rule matches it. The card has Allow once and Deny only. It has the line "This turn holds
   outside content" (or "This task holds outside content" for a task) and names the first source:
   the host of the page, the connection and tool, the trigger, the outside program, or Teams.
 - At "Read only", a request for a new secret and a request with a saved secret that uses a method
-  other than GET are refused, as other changes are (see "Permission levels"). A save to memory
-  follows the rule above.
+  other than GET are refused, as other changes are (see "Permission levels"). A save to memory and
+  adding feedback follow the rule above. The card for feedback shows the full text of the feedback.
 - **Program mark**: outside content holds the program mark when one of its sources is an outside
   program (023) or a message from Teams (028). The mark goes with the outside content: to later
   turns that hold it (see above), and to a task whose input comes from a task that held the program
@@ -646,33 +656,42 @@ steer the node to an address that only this computer or its network can reach.
   "Failed". The result does not hold "MARKER-TEXT".
 - Give "read chat" a reference to a message of the chat of another workflow: the answer is "Not
   found". A reference that never existed gets the same answer.
-- A workflow with a stand-in model runs with three text nodes. While node 2 works, ask the chat how
-  far the run has gone: the chat says that node 1 is done, node 2 works, and node 3 is queued. A
-  tool card "Read the state of a run" shows.
+- A workflow with a stand-in model runs with three text nodes. While node 2 works, ask in the chat
+  how far the run has gone: the responsible document says that node 1 is done, node 2 is running,
+  and the run has not reached node 3. A tool card "Read the state of a run" shows.
 - A text node at "Ask for risky steps" runs `rm` of a file outside the folder, and the task waits.
-  Ask the chat why the run waits: the chat says that node 2 waits for an approval card, and names the
-  step. Deny the card: the node gets a refusal, and the chat tells that the step was refused.
-- Stop a run. Ask the chat why it stopped: the chat says that the user stopped it. Make a node
-  fail: the chat names the node and the reason. Restart the app during a run: the chat says that
-  the run failed with "The app stopped".
-- Node 1 is done and node 2 works. Ask the chat for the result of node 1: the chat tells it, and a
-  tool card "Read the result of <node 1>" shows. Ask for the result of node 3, which has not ended:
-  the chat says that it has no result yet.
-- While node 2 works, tell the chat "The list must be in Korean". The chat says that node 3 will get
-  the feedback. Node 3 starts: its input holds the feedback. Node 1 does not run again, and node 2
-  keeps its input. The run view shows the feedback, its time, and node 3. The graph and the
-  prompts do not change.
-- Give feedback when no node starts after it: the chat says that no node gets it. Give feedback
-  after the run has ended: the chat says that the run has ended, and the run does not change.
+  The approval card shows in the chat, and the run view shows the task as waiting for the user. Ask
+  why the run waits: the responsible document says that node 2 waits for the approval card, and
+  names the step. Deny the card: the node gets a refusal, and the responsible document tells that
+  the step was refused.
+- Stop a run. Ask why it stopped: the responsible document says that the user stopped it. Make a
+  node fail: it names the node and the reason. Restart the app during a run: it says that the run
+  failed with "The app stopped".
+- Node 1 is done and node 2 works. Ask for the result of node 1: the responsible document tells it,
+  and a tool card "Read the result of <node 1>" shows. Ask for the result of node 3, which has not
+  ended: it says that node 3 has no result yet.
+- While node 2 works, tell the responsible document "The list must be in Korean". The chat shows
+  "Feedback added to the run" with node 3. Node 3 starts: its input holds the feedback. Node 1 does
+  not run again, and node 2 keeps its input. The run view shows the feedback, its time, and node 3.
+  The graph and the prompts do not change.
+- Give feedback when no node starts after it: the line says that no node will get it. Give feedback
+  after the run has ended: the responsible document says that the run has ended, and the run does
+  not change.
 - Feedback is not an answer: a task waits for an approval card, the user writes "yes, do it" in
   the chat as feedback, and the card still waits.
-- A run that a trigger starts: the chat tools that follow a run work only in a turn that the user
+- A turn holds outside content. The user gives feedback: an approval card shows the text, with
+  "This turn holds outside content". "Allow once" adds the feedback. "Deny" adds nothing.
+- A message from Teams (028) says "Node 2 is too long." during a run: it is not feedback.
+- A turn that holds outside content makes a proposal for the responsible document: no approval card
+  shows at the proposal. The card of the proposal shows the muted line of 002, and the responsible
+  document changes only after "Accept".
+- A run that a trigger starts: the tools that follow a run work only in a turn that the user
   starts in the chat, not in the run.
-- A node that holds outside content: the user asks the chat for its result. The responsible
-  document reads it, and the next change of the graph by the chat in that turn asks with an
+- A node that holds outside content: the user asks for its result. The responsible document reads
+  it, and the next change of the graph by the responsible document in that turn asks with an
   approval card that says "This turn holds outside content".
-- At "Read only", the chat can read the state and a result and can take feedback. A request to start
-  a run is refused with "Refused: read only".
+- At "Read only", the responsible document can read the state and a result and can take feedback. A
+  request to start a run is refused with "Refused: read only".
 - At "Ask for risky steps", `rm` of a file outside the folder shows an approval card and does
   nothing until the user allows it.
 - Stop during browser work closes the page work within 2 seconds.

@@ -39,7 +39,7 @@ Whether the responsible document can use the memory tool in the chat of the work
 2. The user opens the memory page of the workflow. Where the page opens from is not decided (see
    the questions for 008). Under the page title, above the choice "Memory saving" and the tabs, one
    muted line says how a workflow gets better: through its responsible document, the prompts of its
-   nodes, its graph, its memory and its skills, and through the proposals that the user accepts.
+   nodes, its graph and its memory, and through the proposals that the user accepts.
    The line also says that ROBot does not train the model (see 000). It shows on every tab, when
    the list is empty, and when memory is off. The page has two tabs.
    - **Items**: a list, newest first, with search. The user can add, edit, or delete items.
@@ -69,8 +69,9 @@ Whether the responsible document can use the memory tool in the chat of the work
 - Memory is stored locally with the workflow.
 - Deleting a workflow deletes its memory, its proposals and its history.
 - The user can turn memory off for a workflow. Existing items stay but are not used. A text node of
-  a workflow with memory off has no tool to save, to suggest, to search or to read earlier messages
-  of the chat (see 007). The tabs stay open and the user can still change items.
+  a workflow with memory off has no tool to save, to suggest, to search or to read facts. The
+  responsible document has no tool to search or to read earlier messages of the chat (see 007). The
+  tabs stay open and the user can still change items.
 - The memory tool accepts a text of at most 500 characters, for an item and for a proposal. It
   refuses a longer text and tells the node. The user can type longer items by hand.
 - A proposal with the same text as an item or as another proposal is not added. Spaces at both
@@ -165,8 +166,8 @@ Whether the responsible document can use the memory tool in the chat of the work
 - A text node tries to remember a text that looks like a key: no item and no proposal is made, and
   the node is told to leave the secret out.
 - Make 21 proposals: the 21st is refused. The tab "Waiting" shows the first 20 and the line "20
-  proposals wait. Answer some before this workflow can suggest more." No proposal is in the change
-  log as Rejected.
+  proposals wait. Answer some before the responsible document can propose more." No proposal is in
+  the change log as Rejected.
 - Make a new workflow: "Memory saving" is "Ask me first".
 - A text node saves a fact twice: the second call adds nothing, and the node is told that the fact
   is known.
