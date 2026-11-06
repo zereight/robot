@@ -1761,7 +1761,7 @@ export const en = {
   "sync.dialog.thisComputer": "This computer",
   "sync.dialog.start": "Start sync",
   "sync.dialog.cancel": "Cancel",
-  "sync.counts": "Agents {agents} · Channels {channels} · Messages {messages}",
+  "sync.counts": "Agents {agents} · Messages {messages}",
   "sync.mode.merge": "Merge",
   "sync.mode.merge.hint": "Both computers keep their data and get the data of the other.",
   "sync.mode.take": "Use the data of {name} here",
@@ -1782,15 +1782,15 @@ export const en = {
   "sync.request.power":
     "{name} can change your agents, chats, memory, routines and workflows. You can stop at any time.",
   "sync.request.syncs":
-    "Syncs: agents, model accounts (name, vendor and address only), channels, messages, tasks, memory, routines, workflows and read state.",
+    "Syncs: agents, model accounts (name, vendor and address only), messages, tasks, memory, routines, workflows and read state.",
   "sync.request.notSyncs":
     "Does not sync: keys and tokens, permission levels and Always allow rules, workspace folders and files, browser sessions, settings, usage numbers, memory history and proposals, and linked devices.",
   "sync.request.arrive":
     "Agents that come from {name} start with Ask for everything and a new, empty workspace folder. Their model accounts show Not connected until you connect them here.",
   "sync.request.allow": "Allow",
   "sync.request.deny": "Deny",
-  "sync.guard.title": "Delete agents and channels?",
-  "sync.guard.body": "{name} wants to delete {count} agents and channels here.",
+  "sync.guard.title": "Delete agents?",
+  "sync.guard.body": "{name} wants to delete {count} agents here.",
   "sync.guard.files": "Workspace folders and files stay on this computer.",
   "sync.guard.keepHint": "Keep leaves them here, and they come back to {name}.",
   "sync.guard.delete": "Delete",

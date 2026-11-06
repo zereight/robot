@@ -15,7 +15,6 @@ import { TeamsMark } from "../settings/TeamsMark.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
 import { memoryTarget } from "../state/memoryLink.ts"
-import { profileTarget, setProfileTarget } from "../state/profileTarget.ts"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
@@ -120,12 +119,6 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
   // The line "Suggested for memory" in the chat opens the profile on the tab Proposals (spec 008).
   createEffect(() => {
     if (memoryTarget()?.agentId === props.agent.id) setOpen(true)
-  })
-  // A page that names this agent (the org chart, spec 029) asks for the profile once.
-  createEffect(() => {
-    if (profileTarget() !== props.agent.id) return
-    setProfileTarget(undefined)
-    setOpen(true)
   })
   const teach = useTeach()
   // "Hand over" is off with a reason in words (spec 003, "Hand over"). This computer only.

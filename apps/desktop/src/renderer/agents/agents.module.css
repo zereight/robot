@@ -536,19 +536,13 @@
   overflow-wrap: anywhere;
 }
 
-/* The text of an item, and under it the channel of a channel note. */
+/* The text of an item. */
 .memoryBody {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-/* The mark of a note whose agent is not a member of the channel. It is a state, so it is bolder. */
-.notMember {
-  color: var(--c-text);
-  font-weight: 500;
 }
 
 .proposal,

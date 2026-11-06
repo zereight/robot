@@ -609,7 +609,7 @@ export const RoutinesView = () => {
     (serverId) => call("routines.list", { serverId }),
     { initialValue: [] },
   )
-  // The Today page asks for a routine: its card lights up. A routine that is gone is dropped.
+  // A page asks for a routine: its card lights up. A routine that is gone is dropped.
   createEffect(() => {
     const target = openTarget()
     const list = routines()

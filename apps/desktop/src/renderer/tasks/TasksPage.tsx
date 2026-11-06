@@ -491,7 +491,7 @@ export const TasksPage = () => {
     setTab(next)
     void call("ui.update", { tasksTab: next }).catch(() => undefined)
   }
-  // The Today page asks for a task: its detail opens at once.
+  // A page asks for a task: its detail opens at once.
   createEffect(() => {
     if (openTarget()?.kind !== "task") return
     const target = takeTarget("task")

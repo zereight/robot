@@ -1,4 +1,4 @@
-import type { ChannelMessage, ChatMessage } from "@robot/shared"
+import type { ChatMessage } from "@robot/shared"
 import { createStore } from "solid-js/store"
 
 /** What a face does once: a reply ended, a reply failed, or the agent waits for the user. */
@@ -55,16 +55,10 @@ export const observe = (
     react(agentId, "done")
 }
 
-/** Listens to every chat and channel message of the app. Returns the function that stops it. */
+/** Listens to every chat message of the app. Returns the function that stops it. */
 export const watchReactions = (): (() => void) => {
   const offChat = window.robot.on("chat.message", (message: ChatMessage) => {
     if (message.author === "agent") observe(message, message.agentId)
   })
-  const offChannel = window.robot.on("channel.message", (message: ChannelMessage) => {
-    if (message.author === "agent" && message.agentId) observe(message, message.agentId)
-  })
-  return () => {
-    offChat()
-    offChannel()
-  }
+  return offChat
 }

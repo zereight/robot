@@ -324,7 +324,7 @@ export const WorkflowsPage = () => {
     frame?: boolean
     owner?: WorkflowOwner | null
   }>()
-  // The Today page asks for a workflow: leave the editor so the list can show the card.
+  // A page asks for a workflow: leave the editor so the list can show the card.
   createEffect(() => {
     if (openTarget()?.kind === "workflow") setOpen(undefined)
   })

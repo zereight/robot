@@ -1742,7 +1742,7 @@ export const ko: Record<MessageKey, string> = {
   "sync.dialog.thisComputer": "이 컴퓨터",
   "sync.dialog.start": "동기화 시작",
   "sync.dialog.cancel": "취소",
-  "sync.counts": "에이전트 {agents} · 채널 {channels} · 메시지 {messages}",
+  "sync.counts": "에이전트 {agents} · 메시지 {messages}",
   "sync.mode.merge": "합치기",
   "sync.mode.merge.hint": "두 컴퓨터가 가진 데이터를 그대로 두고, 서로의 데이터를 받아요.",
   "sync.mode.take": "{name}의 데이터를 여기에 사용",
@@ -1763,15 +1763,15 @@ export const ko: Record<MessageKey, string> = {
   "sync.request.power":
     "{name}이(가) 내 에이전트, 대화, 메모리, 루틴, 워크플로를 바꿀 수 있어요. 언제든 멈출 수 있어요.",
   "sync.request.syncs":
-    "동기화하는 것: 에이전트, 모델 계정(이름, 제공사, 주소만), 채널, 메시지, 작업, 메모리, 루틴, 워크플로, 읽음 상태.",
+    "동기화하는 것: 에이전트, 모델 계정(이름, 제공사, 주소만), 메시지, 작업, 메모리, 루틴, 워크플로, 읽음 상태.",
   "sync.request.notSyncs":
     "동기화하지 않는 것: 키와 토큰, 권한 단계와 항상 허용 규칙, 작업 폴더와 파일, 브라우저 세션, 설정, 사용량, 메모리 기록과 제안, 연결된 기기.",
   "sync.request.arrive":
     "{name}에서 온 에이전트는 권한 단계 모두 확인과 새 빈 작업 폴더로 시작해요. 모델 계정은 여기서 연결할 때까지 연결 안 됨으로 보여요.",
   "sync.request.allow": "허용",
   "sync.request.deny": "거부",
-  "sync.guard.title": "에이전트와 채널을 삭제할까요?",
-  "sync.guard.body": "{name}이(가) 여기서 에이전트와 채널 {count}개를 삭제하려고 해요.",
+  "sync.guard.title": "에이전트를 삭제할까요?",
+  "sync.guard.body": "{name}이(가) 여기서 에이전트 {count}개를 삭제하려고 해요.",
   "sync.guard.files": "작업 폴더와 파일은 이 컴퓨터에 그대로 남아요.",
   "sync.guard.keepHint": "유지하면 여기에 남고, {name}에도 다시 생겨요.",
   "sync.guard.delete": "삭제",

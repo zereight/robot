@@ -69,7 +69,7 @@ export const SyncRequestDialog = () => {
   )
 }
 
-/** "<name> wants to delete 8 agents and channels here." (spec 019, Delete). */
+/** "<name> wants to delete 8 agents here." (spec 019, Delete). */
 export const SyncGuardDialog = () => {
   const { t } = useApp()
   const devices = useDevices()

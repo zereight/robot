@@ -161,7 +161,7 @@
   font-weight: 500;
 }
 
-/* An item that the Today page asks for lights up for a moment. */
+/* An item that a page asks for lights up for a moment. */
 .item[data-flash="true"] {
   background: var(--c-selected);
 }

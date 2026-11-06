@@ -94,7 +94,7 @@
   overflow-y: auto;
 }
 
-/* The lists of channels and skills of a file: shorter than the list of agents. */
+/* The list of skills of a file: shorter than the list of agents. */
 .teamList {
   list-style: none;
   margin: 0;

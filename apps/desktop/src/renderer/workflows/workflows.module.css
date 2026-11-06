@@ -439,17 +439,9 @@
   display: block;
 }
 
-/* An item that the Today page asks for lights up for a moment. */
+/* An item that the profile of an agent asks for lights up for a moment. */
 .card[data-flash="true"] {
   background: var(--c-selected);
-}
-
-/* The starters of the dialog "New from a starter": one full row for each. A row looks like a
-   choice of the new agent form, and the list gives it the whole width. */
-.starterRows {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .diagram {
