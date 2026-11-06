@@ -62,7 +62,10 @@
   min-height: 0;
   overflow: hidden;
   background-color: var(--c-main);
-  background-image: radial-gradient(var(--c-border) 1px, transparent 1px);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--c-border) 55%, transparent) 1px,
+    transparent 1px
+  );
   background-size: 20px 20px;
   touch-action: none;
   cursor: grab;
@@ -108,18 +111,18 @@
 }
 
 .line[data-kind="structure"] {
-  stroke: color-mix(in srgb, var(--c-text-muted) 60%, transparent);
-  stroke-width: 1px;
+  stroke: var(--c-text-muted);
+  stroke-width: 1.5px;
 }
 
 .line[data-kind="lead"] {
-  stroke: var(--c-accent);
-  stroke-width: 1.75px;
+  stroke: var(--c-accent-ink);
+  stroke-width: 2.25px;
 }
 
 .line[data-kind="handoff"] {
   stroke: var(--c-text);
-  stroke-width: 1.75px;
+  stroke-width: 2.25px;
   stroke-dasharray: 6 4;
 }
 
@@ -135,7 +138,7 @@
 }
 
 .arrowLead {
-  fill: var(--c-accent);
+  fill: var(--c-accent-ink);
 }
 
 .arrowHandoff {
@@ -173,7 +176,7 @@
   min-width: 0;
   margin: 0;
   padding: 6px 10px;
-  border: 1px solid var(--c-border);
+  border: 1px solid color-mix(in srgb, var(--c-text-muted) 55%, var(--c-border));
   border-radius: var(--radius-m);
   background: var(--c-elevated);
   color: var(--c-text);
@@ -210,8 +213,8 @@ button.node:hover {
 }
 
 .node[data-kind="org"] {
-  background: var(--c-sidebar);
-  border-color: color-mix(in srgb, var(--c-text-muted) 40%, var(--c-border));
+  background: color-mix(in srgb, var(--c-accent) 22%, var(--c-sidebar));
+  border-color: color-mix(in srgb, var(--c-accent-ink) 70%, var(--c-border));
 }
 
 button.node[data-kind="org"]:hover {
