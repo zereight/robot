@@ -2,9 +2,9 @@
 
 ## Purpose
 
-An agent, or a program outside ROBot, can make and change agents, channels and routines with
-tools, as the user does in the app. Every change waits for the user. Nothing changes until the user
-allows it.
+An agent, or a program outside ROBot, can make and change agents, channels and routines, and make
+workflows, with tools, as the user does in the app. Every change waits for the user. Nothing
+changes until the user allows it.
 
 ## Concepts
 
@@ -56,6 +56,9 @@ Changes (each makes a change request, except "Pause a routine"):
 - **Make an agent**: name, role line, instructions, face, model account, model, effort, section.
   The permission level, the workspace folder, the memory switch and every other field are the
   defaults of the form of a new agent (002). The tool cannot set them.
+- **Make a workflow**: a name and, optionally, a list of steps in order (010, "Assistant"). The
+  app joins the steps in a line. The workflow has the trigger "manual" and no owner. The tool
+  cannot set a trigger, an owner, a condition or a place.
 - **Change an agent**: for one agent that is not archived and is not the caller. The fields are
   the name, the role line, the instructions, the face (shape and hue), the model account, the
   model and the effort. A model named in loose words follows the rule of 002, "Changes from the
@@ -119,7 +122,7 @@ member with "Read an agent" for the members of its channel.
   (008), the instructions of a channel, the settings "Review parts", "The lead answers questions"
   and "Own copies for parts" of a channel (004), an organization (030) with its members, lead,
   parent, access and token limit, the settings of the app, or the Teams link (028). No manage tool
-  deletes anything, makes a watch (009), or changes a workflow (010).
+  deletes anything, makes a watch (009), or changes a workflow that exists (010).
 - **The main agent changes itself with its own tool.** "Change an agent" refuses the caller, with
   the reason "Use the settings tool for yourself." (002).
 - **Outside content.** A request that comes from a turn that holds outside content shows the line
@@ -160,7 +163,7 @@ member with "Read an agent" for the members of its channel.
 
 - Delete of an agent, a channel or a routine.
 - The fields in "Rules", "No other fields".
-- Workflows. Their tools are in 010, "Assistant".
+- Changes to a workflow that exists. Their tools are in 010, "Assistant".
 - Organizations (030). A channel has no tools, parent or token limit of its own; they belong to
   organizations.
 - A watch routine.

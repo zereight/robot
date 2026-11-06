@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SettingsAccount } from "./agentSettings.ts"
 import { faceFromName } from "./agents.ts"
-import { describeAgent, MAKE_AGENT_ARGS, planMakeAgent } from "./manage.ts"
+import { describeAgent, MAKE_AGENT_ARGS, planMakeAgent, planMakeWorkflow } from "./manage.ts"
 
 const accounts: SettingsAccount[] = [
   {
@@ -132,5 +132,68 @@ describe("describeAgent (spec 037, Read an agent)", () => {
     )
     expect(text).toContain("- role: (none)")
     expect(text).toContain("- model: none")
+  })
+})
+
+describe("planMakeWorkflow (spec 037, Make a workflow)", () => {
+  const agents = [
+    { id: "a1", name: "Ada" },
+    { id: "a2", name: "Bo" },
+  ]
+  const plan = (args: Record<string, unknown>, taken: string[] = []) =>
+    planMakeWorkflow(args, agents, taken)
+  const request = (args: Record<string, unknown>, taken: string[] = []) => {
+    const result = plan(args, taken)
+    if (result.kind !== "request") throw new Error(`expected a request, got: ${result.reason}`)
+    return result
+  }
+  const reason = (args: Record<string, unknown>) => {
+    const result = plan(args)
+    if (result.kind !== "refused") throw new Error("expected a refusal")
+    return result.reason
+  }
+
+  test("steps are joined in a line, in the order given, and the card shows every one in full", () => {
+    const prompt = "Summarize the day. ".repeat(50)
+    const { create, detail } = request({
+      name: "Daily",
+      steps: [
+        { kind: "agent", agent: "ada", prompt },
+        { kind: "approval", message: "Send it?" },
+        { kind: "notify", title: "Done" },
+      ],
+    })
+    expect(create.name).toBe("Daily")
+    expect(create.steps.map((s) => s.kind)).toEqual(["agent", "approval", "notify"])
+    expect(create.steps[0]).toMatchObject({ agentId: "a1", prompt })
+    const ids = create.steps.map((s) => s.id)
+    expect(create.edges.map((e) => `${e.from}>${e.to}`)).toEqual([
+      `${ids[0]}>${ids[1]}`,
+      `${ids[1]}>${ids[2]}`,
+    ])
+    for (const part of ["Daily", "Ada", prompt, "Send it?", "Done"]) expect(detail).toContain(part)
+  })
+
+  test("a workflow with no steps is allowed", () => {
+    const { create } = request({ name: "Empty" })
+    expect(create.steps).toEqual([])
+    expect(create.edges).toEqual([])
+  })
+
+  test("a name in use gets a number, ignoring case", () => {
+    expect(request({ name: "Daily" }, ["daily"]).create.name).toBe("Daily 2")
+  })
+
+  test("a call that fails a check makes no request and says why", () => {
+    expect(reason({})).toContain("name")
+    expect(reason({ name: "x".repeat(61) })).toContain("60")
+    expect(reason({ name: "A", steps: [{ kind: "agent", agent: "Zed", prompt: "p" }] })).toContain(
+      "Zed",
+    )
+    expect(reason({ name: "A", steps: [{ kind: "condition" }] })).toContain("condition")
+    expect(reason({ name: "A", steps: Array(31).fill({ kind: "notify", title: "t" }) })).toContain(
+      "30",
+    )
+    expect(reason({ name: "A", owner: "x" })).toContain("owner")
   })
 })

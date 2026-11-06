@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   type ChatMessage,
+  HAND_OFF_HINT,
   HAND_OFF_LIST_EMPTY,
   HAND_OFF_LIST_RULE,
   MAIN_AGENT_HAND_OFF_RULE,
@@ -302,7 +303,7 @@ describe('rule "Along the organizations"', () => {
     const before = (await s.tasks()).length
     const step = await s.call("A", "send_message", { to: "P", text: "SECRET-TEXT-123" })
     expect(step.state).toBe("failed")
-    expect(step.output).toBe("P is not on your path. Send it to D.")
+    expect(step.output).toBe(`P is not on your path. Send it to D.\n${HAND_OFF_HINT}`)
     expect(step.reason).toEqual({ code: "hand_off_path", detail: "P", next: "D" })
     // Only the task of the chat of A exists: no task for P, and none for D.
     expect((await s.tasks()).length).toBe(before + 1)
@@ -318,7 +319,7 @@ describe('rule "Along the organizations"', () => {
     const s = await setup()
     await s.rule("organizations")
     const step = await s.call("X", "send_message", { to: "A", text: "hi" })
-    expect(step.output).toBe("A is not on your path. Send it to M.")
+    expect(step.output).toBe(`A is not on your path. Send it to M.\n${HAND_OFF_HINT}`)
     expect(step.reason).toEqual({ code: "hand_off_path", detail: "A", next: "M" })
 
     const none = await setup({ main: false })
@@ -326,7 +327,7 @@ describe('rule "Along the organizations"', () => {
     const refused = await none.call("X", "send_message", { to: "A", text: "hi" })
     expect(refused.state).toBe("failed")
     expect(refused.output).toBe(
-      "A is not on your path, and no agent can pass it on. Tell the user.",
+      `A is not on your path, and no agent can pass it on. Tell the user.\n${HAND_OFF_HINT}`,
     )
     expect(refused.reason).toEqual({ code: "hand_off_none", detail: "A" })
     expect(await none.received("A")).toHaveLength(0)
@@ -445,7 +446,7 @@ describe('rule "Along the organizations"', () => {
     expect(s.logLines().filter((l) => l.event === "hand_off_refused")).toHaveLength(0)
     // A send of X to A is refused under the rule: a reply is not a send.
     const step = await s.call("X", "send_message", { to: "A", text: "again" })
-    expect(step.output).toBe("A is not on your path. Send it to M.")
+    expect(step.output).toBe(`A is not on your path. Send it to M.\n${HAND_OFF_HINT}`)
   })
 
   test("the rule does not touch the work of the user: a direct chat, a mention, @all and a routine", async () => {
@@ -507,7 +508,7 @@ describe("a channel gives no right to send, and the range of an organization doe
     await s.channel("Chat", ["A", "X"], null)
     const step = await s.call("A", "send_message", { to: "X", text: "hi" })
     expect(step.state).toBe("failed")
-    expect(step.output).toBe("X is not on your path. Send it to M.")
+    expect(step.output).toBe(`X is not on your path. Send it to M.\n${HAND_OFF_HINT}`)
     expect(await s.received("X")).toHaveLength(0)
   })
 
@@ -530,7 +531,7 @@ describe("a channel gives no right to send, and the range of an organization doe
     const forP = (await s.received("P")).length
     const toP = await s.call("A", "send_message", { to: "P", text: "3" })
     expect(toP.state).toBe("failed")
-    expect(toP.output).toBe("P is not on your path. Send it to D.")
+    expect(toP.output).toBe(`P is not on your path. Send it to D.\n${HAND_OFF_HINT}`)
     expect(await s.received("P")).toHaveLength(forP)
     // "list agents" names the organization that holds the range.
     const listed = await s.call("A", "list_agents", {})
@@ -548,7 +549,7 @@ describe("a channel gives no right to send, and the range of an organization doe
     expect(await s.received("X")).toHaveLength(1)
     const refused = await s.call("A", "send_message", { to: "X", text: "2" })
     expect(refused.state).toBe("failed")
-    expect(refused.output).toBe("X is not on your path. Send it to M.")
+    expect(refused.output).toBe(`X is not on your path. Send it to M.\n${HAND_OFF_HINT}`)
   })
 
   test("'Own organization' adds no right, and a change of the range counts from the next send", async () => {
@@ -600,7 +601,10 @@ describe("an agent on a vendor runtime (the tools that the program calls through
     expect(bridge.tools.map((t) => t.name)).toContain("send_message")
     expect(bridge.tools.map((t) => t.name)).toContain("list_agents")
     const refused = await bridge.call("send_message", { to: "P", text: "hi" }, signal)
-    expect(refused).toEqual({ output: "P is not on your path. Send it to D.", failed: true })
+    expect(refused).toEqual({
+      output: `P is not on your path. Send it to D.\n${HAND_OFF_HINT}`,
+      failed: true,
+    })
     expect(await s.received("P")).toHaveLength(0)
     const listed = await bridge.call("list_agents", {}, signal)
     expect(listed.output).toContain(HAND_OFF_LIST_RULE)

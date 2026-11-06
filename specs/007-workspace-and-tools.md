@@ -10,7 +10,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
   (`~/ROBot Agents/<agent name>`). The user can point an agent at another folder, such as an
   existing project. When two agents use one folder, the rules of 025 apply.
 - **Tools**: read and write files, run shell commands, search, fetch web pages, drive a browser
-  window, ask the user a question, message other agents, read and run workflows (see 010), search
+  window, ask the user a question, message other agents, read, make and run workflows (see 010, 037), search
   and read past chats (see "Searching past chats"), use the computer (see "Computer use"), use
   the tools of the connections that the user added (see 018), read and change its own settings
   (see 002, "Changes from the chat"), ask for and use saved secrets (see 020), ask to look at one

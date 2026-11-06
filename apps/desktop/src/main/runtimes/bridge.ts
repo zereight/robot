@@ -62,6 +62,7 @@ export const BRIDGE_TOOL_NAMES = [
 export const MANAGE_TOOL_NAMES = [
   "read_agent",
   "make_agent",
+  "make_workflow",
   "make_team_member",
   "change_team_member",
 ] as const

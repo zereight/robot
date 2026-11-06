@@ -524,7 +524,10 @@ export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
   ]
   if (run.effort) args.push("--effort", run.effort)
   if (run.system.trim()) args.push("--append-system-prompt", run.system)
-  if (run.useTools) args.push("--disallowedTools", "AskUserQuestion")
+  // The app asks the user itself. A workflow is a ROBot workflow (spec 010), so the workflow feature
+  // of the program is off: with it on, a request for a workflow makes the program's own. The tool
+  // name "Workflow" is the one of claude 2.1.318. A rename in a later version needs a new name here.
+  if (run.useTools) args.push("--disallowedTools", "AskUserQuestion,Workflow")
   else args.push("--tools", "")
   // "Read only": the program starts with the tools that read and fetch, and no tool that writes a
   // file or runs a command. The program itself has nothing to do the work with (spec 007).

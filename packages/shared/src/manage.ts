@@ -6,9 +6,11 @@ import {
   type SettingsAccount,
   type SettingsCurrent,
 } from "./agentSettings.ts"
-import { type AgentModel, type Face, faceFromName } from "./agents.ts"
+import { type AgentModel, type Face, faceFromName, nameKey } from "./agents.ts"
 import { NEW_AGENT_EFFORT, settledEffort } from "./providers.ts"
 import { defaultSettings } from "./settings.ts"
+import { starterWorkflowName } from "./workflowStarters.ts"
+import { type Edge, type Step, WORKFLOW_NAME_MAX, WORKFLOW_STEPS_MAX } from "./workflows.ts"
 
 /**
  * The manage tools (spec 037): a caller makes and changes agents, channels and routines, and the
@@ -148,4 +150,119 @@ export const planMakeAgent = (
     model: { ...picked, effort },
   }
   return { kind: "request", create, detail: describeMakeAgent(create, accounts) }
+}
+
+/** The step kinds that "Make a workflow" takes (spec 037). The user adds the others on the canvas. */
+export const MAKE_WORKFLOW_KINDS = ["agent", "approval", "notify"] as const
+
+/** A new workflow as a request holds it. The rest is the default of the dialog of a new workflow. */
+export interface MakeWorkflowRequest {
+  readonly name: string
+  readonly steps: readonly Step[]
+  readonly edges: readonly Edge[]
+}
+
+export type MakeWorkflowPlan =
+  | { readonly kind: "refused"; readonly reason: string }
+  | { readonly kind: "request"; readonly create: MakeWorkflowRequest; readonly detail: string }
+
+const STEP_GAP = 280
+
+const str = (value: unknown) => (typeof value === "string" ? value : "")
+
+/** The whole new workflow in words. The card shows it, so the user reads every value. */
+export const describeMakeWorkflow = (
+  create: MakeWorkflowRequest,
+  agents: readonly { readonly id: string; readonly name: string }[],
+): string =>
+  [
+    `Make the workflow "${create.name}" with the trigger "manual".`,
+    ...(create.steps.length === 0 ? ["No steps."] : ["Steps, in a line:"]),
+    ...create.steps.flatMap((step, i) => {
+      const head = `${i + 1}. ${step.name}`
+      if (step.kind === "agent")
+        return [
+          `${head} (agent step, agent: ${agents.find((a) => a.id === step.agentId)?.name ?? "none"})`,
+          step.prompt,
+        ]
+      if (step.kind === "approval") return [`${head} (wait for approval)`, step.message]
+      return [`${head} (notify)`, `Title: ${step.kind === "notify" ? step.title : ""}`]
+    }),
+  ].join("\n")
+
+/**
+ * Plans a call of "Make a workflow" (spec 037, 010). It checks the call as the editor does and joins
+ * the steps in a line. `agents` are the agents that are not archived. `taken` are the names of the
+ * workflows of the server; a name in use gets a number, as for a starter. A call that fails a check
+ * makes no request.
+ */
+export const planMakeWorkflow = (
+  args: Readonly<Record<string, unknown>>,
+  agents: readonly { readonly id: string; readonly name: string }[],
+  taken: Iterable<string>,
+): MakeWorkflowPlan => {
+  const refuse = (reason: string): MakeWorkflowPlan => ({
+    kind: "refused",
+    reason: `Nothing made. ${reason}`,
+  })
+  const extra = Object.keys(args).filter((key) => key !== "name" && key !== "steps")
+  if (extra.length > 0)
+    return refuse(
+      `A new workflow has no field ${extra.join(", ")}. It takes: name, steps. The trigger is "manual" and there is no owner. The user sets the rest on the canvas.`,
+    )
+  const name = str(args.name).trim()
+  if (!name) return refuse("Give a name for the new workflow.")
+  if ([...name].length > WORKFLOW_NAME_MAX)
+    return refuse(`The name can have ${WORKFLOW_NAME_MAX} characters at most.`)
+  const given = args.steps === undefined || args.steps === null ? [] : args.steps
+  if (!Array.isArray(given)) return refuse("Steps must be a list.")
+  if (given.length > WORKFLOW_STEPS_MAX)
+    return refuse(`A workflow can have ${WORKFLOW_STEPS_MAX} steps at most.`)
+
+  const steps: Step[] = []
+  for (const [i, raw] of given.entries()) {
+    const item = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+    const at = { id: `s${i + 1}`, x: 40 + i * STEP_GAP, y: 60 }
+    const label = str(item.name).trim()
+    if (item.kind === "agent") {
+      const wanted = nameKey(str(item.agent))
+      const agent = agents.find((a) => nameKey(a.name) === wanted)
+      if (!agent)
+        return refuse(
+          `Step ${i + 1} names the agent "${str(item.agent)}". There is no such agent. The agents: ${agents.map((a) => a.name).join(", ") || "none"}.`,
+        )
+      steps.push({
+        ...at,
+        kind: "agent",
+        name: label || agent.name,
+        agentId: agent.id,
+        prompt: str(item.prompt),
+        continueOnFailure: false,
+      })
+    } else if (item.kind === "approval") {
+      steps.push({
+        ...at,
+        kind: "approval",
+        name: label || "Approval",
+        message: str(item.message),
+      })
+    } else if (item.kind === "notify") {
+      steps.push({ ...at, kind: "notify", name: label || "Notify", title: str(item.title) })
+    } else {
+      return refuse(
+        `Step ${i + 1} has the kind "${str(item.kind)}". A step is one of: ${MAKE_WORKFLOW_KINDS.join(", ")}. The user adds a condition or a place on the canvas.`,
+      )
+    }
+  }
+  const edges: Edge[] = steps.slice(1).map((step, i) => ({
+    id: `e${i + 1}`,
+    from: steps[i]?.id ?? "",
+    to: step.id,
+  }))
+  const create: MakeWorkflowRequest = {
+    name: starterWorkflowName(name, taken),
+    steps,
+    edges,
+  }
+  return { kind: "request", create, detail: describeMakeWorkflow(create, agents) }
 }
