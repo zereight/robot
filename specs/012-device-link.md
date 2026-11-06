@@ -5,7 +5,7 @@
 The user links their own devices: phones and computers. A linked device opens a computer's
 server, for example a phone, MacBook 1 and MacBook 2 that all work with each other's workflows.
 Devices connect to each other directly: on one network, or through a VPN that the user sets up
-(for example Tailscale). No ROBot service sits between them, and conversation content never goes
+(for example Tailscale). No ROBot service sits between them, and chat content never goes
 through, and is never stored on, a third-party server.
 
 ## Concepts
@@ -45,7 +45,7 @@ client shows it and sends commands.
    "Can create and change workflows" for that other direction is off at first. The user turns it on
    in Settings → Devices on the joining computer.
 4. The server shows "Allow <device name>?" with the device kind, Allow and Deny. The text says
-   that the device can direct the workflows of this computer, including steps that change files and
+   that the device can direct the workflows of this computer, including nodes that change files and
    run commands. For a two-way link, the text also says that this computer can open the other
    one. The dialog has a switch, "Let <device name> create and change workflows". It is on by
    default for a computer and off by default for a phone, because the phone app has no canvas
@@ -122,26 +122,34 @@ workflows of the server in the same screens as on the server (010, 008).
   threshold of a decision node), its connections, its trigger, and the text of its responsible
   document. A client can also read and change the memory of a workflow (008).
 - **Memory:** a client does the same four things as the memory page of a workflow on the server
-  (008): list and search, add, edit and delete items. It has no switch for memory on or off.
+  (008): list and search, add, edit and delete items. It has no switch for memory on or off. Whether
+  a client can turn the memory check (008) on or off is open (see the questions for 012).
+- **Outside content:** whether a client shows the mark "Holds outside content" (007) for the chat
+  of a workflow, and whether it can clear it, is open (see the questions for 012). 019 still syncs
+  the mark.
+- **Names:** whether the name of a workflow must be unique on a server, and what a client sees for
+  a name that is taken, are open (see the questions for 019).
 - **Model:** the client picks from the model accounts that are connected on the server. It cannot
   add, change or disconnect an account, and it never sees a key.
 - **Workspace:** the server makes a new, empty workspace folder in its default folder (013) for
   each workflow that a client creates or duplicates. A client cannot choose or change a folder.
   The workflow on a client says "Workspace: on <server name>" and shows no path.
 - **Permission level:** a workflow that a client creates starts at the level that the server uses
-  for new workflows ("Ask for risky steps"). A client can set a stricter level for the workflow or
-  for a node. From the loosest to the strictest, the levels are "Full access", "Ask when unsure",
-  "Ask for risky steps", "Ask for everything" and "Read only" (007). A client cannot set a looser
-  level, and it cannot add an "Always allow" rule.
+  for new workflows ("Ask for risky steps"). Open: the owner has not confirmed that a client may
+  set a stricter level for a workflow or for a node. Decision 18 says only the user changes the
+  levels (see the questions for 012). A client cannot set a looser level, and it cannot add an
+  "Always allow" rule. From the loosest to the strictest, the levels are "Full access", "Ask when
+  unsure", "Ask for risky steps", "Ask for everything" and "Read only" (007).
 - **Running workflows:** a client cannot edit a workflow while it runs (010). It stops the run
   first.
-- **The chat:** the chat of a workflow changes the graph for a client in the same way as for the
-  user at the server (010, "Assistant"). The change counts as a change by the client: it needs
-  the switch, and it follows all the rules of this section.
-- **Record:** the workflow, on the server and on clients, shows "Last changed by <device name>"
-  with the time, when a client made the last change. A later change in the window of the server
-  removes the line. A change that arrives by sync (019) leaves it as it is. A change shows on the
-  server and on all clients at once.
+- **The chat:** open (see the questions for 012). The chat of a workflow may change the graph for
+  a client that has the switch, in the same way as for the user at the server (010, "Assistant").
+  The earlier spec kept the assistant panel on the server only. If the chat does change the graph,
+  the change counts as a change by the client: it needs the switch, and it follows all the rules
+  of this section.
+- **Record:** after a change by a client, the workflow shows "Last changed by <device name>" with
+  the time. A later change on the server removes the line. A change that arrives by sync (019)
+  leaves it. A change shows on the server and on all clients at once.
 - **No switch:** a client without the switch sees the workflow as read-only, and the buttons that
   change it are not shown. A try to change anything gets the error "Not allowed", with the line
   "<server name> does not let this device change workflows. Turn it on in Settings → Devices on
@@ -179,8 +187,9 @@ A client opens the workflow list of the server (001, 010) in the same screens as
 - **Sync:** a workflow that runs on another computer through sync (019) shows the same "Runs on
   <name>" line on the client. Run is off for it on the client, as on the server. A client does
   not offer "Run on this computer"; the user chooses it on the server.
-- **Offline:** while the server is offline, the page shows "<server name> is offline." It shows
-  no cached run view and no cached workflow.
+- **Offline:** while the server is offline, the page shows "<server name> is offline." The cache
+  holds messages only (see "Rules"). The workflow list, the run view and the nodes do not show from
+  the cache. The chat that the user opened shows its cached messages, marked "Offline".
 
 ## Profiles
 
@@ -218,14 +227,15 @@ means a profile on a computer.
 ## Messages
 
 - A client asks for: server summary, workflows (with the state of the last run and of the check),
-  a page of messages, send message (this covers a question about a run and feedback on its
-  results), stop, edit, retry, mark a chat as read, approve, answer question, pick an option of a
-  decision node, upload attachment, download attachment, task list, task details, stop a task,
-  workflow list, one workflow, run history, run details (with the results of the nodes), create,
-  update, delete and turn on or off a workflow, run a workflow and stop a run.
+  a page of messages, send message, stop, edit, retry, mark a chat as read, approve, answer
+  question, pick an option of a decision node, upload attachment, download attachment, task list,
+  task details, stop a task, workflow list, one workflow, run history, run details (with the
+  results of the nodes), create, update, delete and turn on or off a workflow, run a workflow and
+  stop a run.
 - The aim of the phone app (011) is that the phone can do whatever the user can do in the chat of
-  a workflow on the computer. Start and fork a thread, compact a conversation and "Run next" are
-  on no client in this version (003, 005), and each of them needs its own slice.
+  a workflow on the computer. Start and fork a thread, compact a chat and "Run next" are on no
+  client in this version (003, 005), and each of them needs its own slice. Whether threads and
+  forks exist for the chat of a workflow is open (see the questions for 000 and 003 in W1).
 - The rules of "Create and change workflows" and "Workflows" apply to every client, the phone too:
   running and stopping a workflow, asking about a run and giving feedback need only the right to
   send messages, and a change to a workflow needs the switch "Can create and change workflows".
@@ -250,7 +260,7 @@ Each server tile on a client shows one state:
 | Connecting | A small progress mark on the tile. |
 | Online | The tile as normal. |
 | Reconnecting | A muted tile and the line "Reconnecting". The app retries with backoff, at most 30 seconds between tries. |
-| Offline | A muted tile with an offline mark. The workflow list and the last messages show from the cache, marked "Offline". The message box is off and says "<server name> is offline." |
+| Offline | A muted tile with an offline mark. The last messages of the chats that the user opened show from the cache, marked "Offline". The workflow list and the run view do not show. The message box is off and says "<server name> is offline." |
 | Not allowed | The server removed this device. The tile shows "Pair again". The cache is deleted, and the workflow list and the open chat of that server are cleared. A strip above the view, and the line in the message box, say "<server name> removed this device." |
 | Update the app | One side has another protocol version. The text says which side must update. |
 
@@ -309,8 +319,8 @@ accept connections, this is the same computer.
   and a model. The workflow shows on MacBook 2 with a new empty workspace folder, "Last changed
   by MacBook 1", and the level "Ask for risky steps". Edit its responsible document from
   MacBook 1: the change shows on MacBook 2 at once and applies to the next run.
-- On MacBook 1, set the level of that workflow to "Ask for everything". Try to set it back: the
-  client offers no looser level, and a request for one gets "Not allowed".
+- On MacBook 1, try to set a level that is looser than the level of the workflow: the client
+  offers none, and a request for one gets "Not allowed".
 - Turn the switch off on MacBook 2 while MacBook 1 is connected: the next change from MacBook 1
   fails with the line that names MacBook 2, and the buttons and fields on MacBook 1 turn
   read-only. Ask the chat of a workflow from MacBook 1 to add a node: the chat says that the

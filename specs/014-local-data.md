@@ -19,10 +19,10 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
   messages for offline reading. The cache is deleted when the link ends and is never exported.
   The state of a sync (019) is not exported either. Backups that sync makes are in a "backups"
-  folder in the data folder. The one exception is the articles and sources of knowledge (016):
-  they are files in the workspace folder of a workflow. An export copies sources as they are, so the app
-  refuses to add a source that holds a stored key (016).
-- The app never sends conversation content, files, or commands anywhere except the model provider
+  folder in the data folder. Open: where the articles and sources of knowledge (016) live for a
+  workflow is not decided, and 016 is in no slice (see the questions for 014). Until then, this
+  spec says nothing about them.
+- The app never sends chat content, files, or commands anywhere except the model provider
   a node uses, the pages a node visits, and the devices that the user linked (012). Traffic
   to a linked device is end-to-end encrypted. There is one more exception, and it is off by
   default: the decision model that the user sets up (see 013). When the user sets it up:
@@ -36,8 +36,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   - A local server on this computer is the only choice that sends nothing off the computer.
   - There is one more exception: a connection that the user adds on purpose (see 018). The app
     sends data to it only when a text node calls one of its tools. The data is what the node wrote
-    in that call, and it can hold content from the conversation. The app sends no other
-    conversation text to it. A connection of the kind
+    in that call, and it can hold content from the chat. The app sends no other chat text to
+    it. A connection of the kind
     "program on this computer" starts a program on this computer. That program can use the network
     by itself, and the app cannot see this.
 - An outside program that the user adds on purpose (023) gets what its tools give: lists, messages,
@@ -55,8 +55,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   per profile, in the data folder of the profile, and is not in an export. The export holds the
   switch "Test devices" only.
 - Voice (027) keeps no sound. Recognition runs on the device. A trigger of a workflow that listens
-  for a call (not decided, see the questions for 010) listens on this computer only. Its secret is
-  in the keychain, and the file of a workflow and an export hold none.
+  for a call is not decided (see the questions for 010). If it exists, where it listens and where
+  its secret is kept are open (see the questions for 014).
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up, to a page that a node visits, or to a download that the user starts (see the
   download exception below).
@@ -87,16 +87,16 @@ The user owns their data. It lives on their computer, it is easy to back up, and
     that the app dropped or refused (see 007).
   - Workflows: retries, final failures of the model calls of text nodes and decision nodes (see
     010).
-  - Outside programs: one line for each call (see 023): the time, the entry, the tool, the place
+  - Outside programs: one line for each call (see 023): the time, the entry, the tool, the chat
     or task, and the result. It keeps 90 days.
-  - Teams link: one line for each event (see 028): the time, the event, the reason and the place.
+  - Teams link: one line for each event (see 028): the time, the event, the reason and the chat.
     It holds no message text and no name of a sender. It keeps 90 days.
 - A log line never holds a secret, a key, the text of a message, or a search text (see 001).
 
 ## Export and backup
 
-- Export: one archive for one profile (022), with the database, attachments, the knowledge files
-  of workflows, and a readme of the format. Secrets are not included. The Teams link and its sign-in (028) are
+- Export: one archive for one profile (022), with the database, attachments, and a readme of the
+  format. Whether it holds the knowledge files (016) is open (see the questions for 014). Secrets are not included. The Teams link and its sign-in (028) are
   not included, and an import brings none back. The archive holds the rules, the action log, the
   skills and
   the connections without their secret values.
@@ -117,9 +117,11 @@ An import of a workflow file (010, `docs/workflow-file-format.md`) shows a revie
 makes anything. The user sees each part that the file holds and picks what to keep. The check
 (010) has read the file before the screen shows (see the questions for 014).
 
-- The screen lists each workflow of the file with a tick box. Under each workflow are its trigger,
-  the number of its nodes, the number of its decision nodes, and the rules that the file holds
-  beyond the standard rules of the app (010, "Check"), each with a tick box.
+- The screen lists each workflow of the file with a tick box. Under each workflow are its trigger
+  and the number of its nodes. What else the screen lists for a workflow is open: the number of
+  its decision nodes, and a tick box for each rule that the file holds beyond the standard rules
+  of the app (010, "Check"). Which parts have their own tick box is open too (see the questions
+  for 014).
 - Ticks at the start:
   - Workflows are ticked. An imported workflow is off, so it starts nothing (010, "File").
   - A part whose text had a secret that the app hid (see "Secrets in text" in
@@ -128,8 +130,8 @@ makes anything. The user sees each part that the file holds and picks what to ke
   the new workflow.
 - The screen has a part "Not imported". It lists what the file holds that ROBot does not make,
   each with the reason, for example a field that this version does not know.
-- The screen shows the counts that it will make, for example "2 workflows (off), 3 rules". The
-  import button is off when nothing is ticked.
+- The screen shows the counts that it will make, for example "2 workflows (off)". The import
+  button is off when nothing is ticked.
 - After the import, the chat of each new workflow shows one message from the app, not from the
   responsible document: a checklist of what still needs the user. For example "Turn on" for the
   workflow, which is off, or "Set up the decision model" (013) for a workflow with a decision node

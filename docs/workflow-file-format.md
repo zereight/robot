@@ -20,7 +20,7 @@ new files. The code slice that changes the app to the module removes that part w
 - The file holds the module of at least one workflow, and at most 20 workflows. Whether one file
   holds one workflow or several is not decided (see "Open points").
 - The file is at most 10 MB (10 485 760 bytes). ROBot refuses a larger file before it reads it.
-- The user can read the file and change it in a text editor.
+- The file is text that the user can read.
 - The file name, and the way to get a file out of the app, are not decided (see "Open points").
 
 ## What the file holds
@@ -60,8 +60,6 @@ The file holds none of these (010, "File").
 - The app writes the standard rules. The user adds more (decision 15, 010).
 - The user adds rules in the module. A rule that the user adds is run by the check on every change
   (010, "Check"). The check reports a state that breaks it, with the path to the state.
-- A rule that the check cannot read is a fault in the module. ROBot refuses the module and names
-  the place.
 
 ## Secrets in text
 
@@ -84,13 +82,12 @@ review screen with the mark "A secret was removed" (014).
 
 ## How the user changes the file
 
-- The user can change the module in a text editor.
-- An import of a module that the user changed goes through the same steps as any import (see "How
-  ROBot imports a file"). It makes a new workflow. It never changes a workflow that exists (010,
-  "File").
-- A change that fails the check does not save (010, "Check"). The panel shows the first problem,
+- Where the user changes the module, and what the app does with the changes when it writes the
+  module again, are not decided (see "Open points"). The rules below hold in each case.
+- An import of a module that the user changed works as any import (see "How ROBot imports a
+  file"). It makes a new workflow. It never changes a workflow that exists (010, "File").
+- A change that fails the check does not save (010, "Check"). The user sees the first problem,
   with the shortest path to it.
-- Where the user changes the module inside the app is not decided (see "Open points").
 
 ## How ROBot imports a file
 
@@ -108,7 +105,7 @@ review screen with the mark "A secret was removed" (014).
 6. **Every imported workflow is off.** Its schedule does not fire until the user turns it on.
 7. A new workflow gets an empty folder in the default workspace folder (013) and the default
    permission level, "Ask for risky steps" (010, "Folder and permission level").
-8. If a step fails after some workflows are made, those workflows stay. ROBot shows the name of the
+8. If the import fails after some workflows are made, those workflows stay. ROBot shows the name of the
    workflow where it stopped, and the reason.
 9. After the import, the chat of each new workflow shows a checklist of what still needs the user
    (014).
@@ -119,7 +116,7 @@ The message names the workflow and the place of the fault.
 
 | Cause | Note |
 | --- | --- |
-| The text is not a module that ROBot can read, or a rule in it is not in a form that the check can read. | |
+| The text is not a module that ROBot can read. | |
 | The file is larger than 10 MB. | ROBot refuses it before it reads it. |
 | The file holds more than 20 workflows. | |
 | Two workflows have the same name. | ROBot ignores case when it compares. |
@@ -151,9 +148,9 @@ not guess them.
 
 ## Earlier format: JSON, version 1
 
-This document tells how to write and read a workflow file. A tool can use it to make workflow
-files for ROBot without the code of the app. The behaviour of export and import is in
-[specs/010-workflows.md](../specs/010-workflows.md), section "Workflow file".
+This part is only the earlier format of the code. It is not the file that ROBot makes after the
+code slice. That file is the TLA module (see [specs/010-workflows.md](../specs/010-workflows.md),
+section "File", and the first part of this document). Do not use this part for new files.
 
 Format name: **`robot-workflows`**. Format version: **1**.
 

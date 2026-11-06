@@ -25,7 +25,7 @@ service holds it.
 | --- | --- |
 | Workflows | The whole definition (010): the name, the trigger, the graph, the nodes with their prompts, providers, models and reasoning levels, the question, options and threshold of each decision node, the responsible document, and the rules that the user added to the TLA module. Also the earlier versions of the workflow, the run history with the results of the nodes, and the "Runs on" computer. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Messages | The chat of each workflow, with tool cards. |
+| Messages | The chat of each workflow, with tool cards. Whether threads, forks and the rows "Compacted" exist for the chat of a workflow, and whether they sync, is open (see the questions for 019). |
 | Tasks | State (also blocked), reason and result, how far a failed turn went, and the usage of the task (005). They show on the tasks page with the name of the origin. |
 | Memory | The items of each workflow. |
 | Read state | The last message that the user read in each chat. |
@@ -46,7 +46,7 @@ service holds it.
 | Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
 | Proposals and the change log of self-improvement (010) | A proposal waits for the user of one computer, like a memory proposal. The change log tells what the user answered on one computer. An applied change follows the rule of its target: a change to a workflow and a memory item sync. |
 | Usage numbers | They count what ran on this computer. |
-| Knowledge: articles, sources and the change list (016) | They are files in the workspace folder of a workflow. A synced workflow starts with no knowledge on the other computer. |
+| Knowledge: articles, sources and the change list (016) | Open: where knowledge lives for a workflow is not decided, and 016 is in no slice (see the questions for 019). Until then, it does not sync. |
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
 | The secret of a trigger of a workflow (010) | It is in the keychain of one computer, like a saved secret. |
 | Saved logins (020) | Their values are in the keychain of one computer, like saved secrets. |
@@ -73,7 +73,7 @@ service holds it.
 3. The other computer shows "Sync with <name>?" with the choice, the "Syncs" and "Does not sync"
    lists in short, and how many items it will drop. The text says that <name> can change and
    delete its workflows, chats and memory, and can answer the
-   approval requests of its tasks, including steps that change files and run commands (as a
+   approval requests of its tasks, including nodes that change files and run commands (as a
    linked device can, 012). The text also says that the user can stop at any time. The
    buttons are Allow and Deny.
 4. On Allow, each computer first saves a backup of its data (a ROBot export, 014) in a
@@ -101,8 +101,8 @@ off. "Stop syncing" returns the switch to the value that it had before sync bega
   does (012). If the origin is offline, the card shows "<name> is offline."
 - A message that came from the other computer never starts a task or a run here.
 - The user can ask the chat of a workflow about a run, and give feedback on its results, from the
-  computer where the workflow does not run. The chat answers from the run history that synced.
-  The feedback goes to the computer where the workflow runs, as an answer to an approval card
+  computer where the workflow does not run. Which computer makes the answer of the chat is open
+  (see the questions for 019). The feedback goes to the computer where the workflow runs, as an answer to an approval card
   does. If that computer is offline, the chat shows "<name> is offline." and keeps the feedback
   as a message (see the questions for 019).
 - Retry on a task from the other computer makes a new task that runs here. The retry note (005)
@@ -164,9 +164,11 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   stays. The other text is saved as a new memory item of the same workflow.
 - Messages are made on one computer only, so they do not clash. Messages show in the order of
   their send time. Messages from one computer keep their order.
-- **Names**: the name of a workflow stays unique on its server, and the rule ignores case (010,
-  "File"). When two different workflows with one name meet in a merge, the one that comes in gets
-  the name of its origin computer in brackets, for example "Writer (MacBook 2)".
+- **Names**: open: the owner has not decided that the name of a workflow is unique on its server
+  (see the questions for 019). 010 says only that an import gives a taken name a number ("File").
+  If names are unique, ignoring case, two different workflows with one name that meet in a merge
+  get the name of the origin computer in brackets for the one that comes in, for example "Writer
+  (MacBook 2)".
   Model accounts with the same name, vendor and address are one account.
 - **Delete**: deleting a workflow deletes it on the other computer too, with its runs. The delete
   dialog says so. Sync never deletes files: the workspace folder of a workflow that sync removes
@@ -175,7 +177,7 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   and Keep. Keep leaves them here, and they come back to the other computer.
 - **One run**: a workflow runs on one computer only ("Workflows" above). A try to start a run on
   the other computer is refused with "Runs on <name>".
-- Unread counts follow the read state: reading a place on one computer clears its count on the
+- Unread counts follow the read state: reading a chat on one computer clears its count on the
   other. Data that arrives by sync makes no system notification. An approval or a question of a
   task on the other computer does (015).
 - **New kinds of data**: data that a spec adds to the app does not sync unless this spec lists it
@@ -209,13 +211,13 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   After the copy, MacBook 2 shows the same workflows, messages and memory. Its model
   accounts show "Not connected". Its workflows use "Ask for everything". A backup folder exists on
   both computers.
-- Both computers have a workflow named "Writer". Merge. Both computers show "Writer" and "Writer
-  (MacBook 2)" with the right history, and the two lists are equal.
+- Both computers have a workflow named "Writer". Merge. Both computers show the same two
+  workflows with the right history, and the two lists are equal. (If names are unique, the second
+  one shows as "Writer (MacBook 2)". This is open, see "Names".)
 - Rename a workflow on MacBook 1. MacBook 2 shows the new name within 5 seconds, and the change
   list shows it.
-- Send a message in the chat of a workflow from MacBook 2. The reply is made on MacBook 2 and
-  streams on both computers, and MacBook 1 starts no task. The message on MacBook 1 shows "from
-  MacBook 2".
+- Send a message in the chat of a workflow from MacBook 2. The message on MacBook 1 shows "from
+  MacBook 2", and MacBook 1 starts no task and no run for it.
 - Quit the app on MacBook 2. On MacBook 1 add a memory item and send a message. Start the app on
   MacBook 2: both arrive with no new pairing.
 - Edit one memory item on both computers while MacBook 2 is off. After the next sync both show
@@ -223,8 +225,8 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - A task on MacBook 1 waits for an approval. Answer it on MacBook 2. The task goes on.
 - A workflow from MacBook 1 does not run on MacBook 2 at its time. "Run on this computer" on
   MacBook 2 moves it, and MacBook 1 shows "Runs on MacBook 2".
-- A workflow runs on MacBook 1. On MacBook 2 ask its chat "How far are you?": the answer comes
-  from the run history that synced and names the node that works. Send feedback on a result: it
+- A workflow runs on MacBook 1. On MacBook 2 ask its chat "How far are you?": the answer names
+  the node that works. Send feedback on a result: it
   reaches MacBook 1. With MacBook 1 off, the chat of MacBook 2 shows "MacBook 1 is offline."
 - Delete a workflow on MacBook 1. It is gone on MacBook 2, and its workspace folder is still on
   the disk. Delete 8 workflows at once: MacBook 2 asks before it deletes them.

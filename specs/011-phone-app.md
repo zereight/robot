@@ -3,8 +3,8 @@
 ## Purpose
 
 The user follows and directs workflows from an iPhone or Android phone while away from the
-computer. The user can start a run, see how far it has gone, ask the workflow about it, and give
-feedback, from the phone.
+computer. The user can start a run, see how far it has gone, ask the chat of the workflow about
+it, and give feedback, from the phone.
 
 ## Concepts
 
@@ -33,11 +33,9 @@ feedback, from the phone.
      line at the top of the view. The view has "Run" and "Stop". The phone has no canvas editor.
    - **Chat**: the one chat of the workflow (010). It shows message rows as on desktop, Markdown,
      tool cards (tap for details), the message box with attach (photos, files), stop, and reply.
-     When the switch "Show tool steps" in Settings is off, each run of plain tool steps shows as
-     one muted line with the count, and a tap opens it to read the cards. A step that runs joins
-     its run, so the line keeps its place while the turn goes on. A step that waits, failed, was
-     refused, or carries a note shows as its own card (003, "Folded tool steps").
-4. **Ask and give feedback**: in the chat, the user can ask the workflow how far a run has gone,
+     The switch "Show tool steps" in Settings folds plain tool steps as on the computer (003,
+     "Folded tool steps").
+4. **Ask and give feedback**: in the chat of the workflow, the user can ask how far a run has gone,
    why it stopped or waits, and what the results so far are. The responsible document answers
    (010). While a run goes, the user can send feedback on the results so far. It is a message in
    the chat, like any other. It works as on the computer (010). It needs only the right to send
@@ -49,9 +47,9 @@ feedback, from the phone.
    list.
 7. **Change a workflow**: the user changes a workflow on the phone only through the chat. The
    responsible document changes the graph (010). This needs the switch "Can create and change
-   workflows" of that computer (012). Without the switch the chat tells the user that the change
-   is not allowed. The canvas, the file of a workflow and its check settings are on the computer
-   only in this version.
+   workflows" of that computer (012). Whether the chat of a client may change the graph is open
+   (see the questions for 012). Without the switch the chat tells the user that the change is not
+   allowed. The canvas and the file of a workflow are on the computer only in this version.
 8. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
    switch "Show tool steps", on at first.
 
@@ -83,7 +81,7 @@ camera.
 
 | Version | Content |
 | --- | --- |
-| Phone 1 | First start, pairing, Servers, Workflows, the run view, the chat of a workflow (read, streamed replies, send, stop, reply, attach photos and files, open files), ask and give feedback, approval and question cards, Needs you, offline cache, notifications while the app is open, Settings. |
+| Phone 1 | First start, pairing, Servers, Workflows, the run view, the chat of a workflow (read, streamed replies, send, stop, reply, attach photos and files, open files), ask and give feedback, approval and question cards, Needs you, offline cache of messages, notifications while the app is open, Settings. |
 | Phone 2 | The list in "Same as the computer". |
 | Phone 3 | The list in "More on the phone", and voice (027). |
 
@@ -133,14 +131,15 @@ It has no Compact control, no fork and no "Run next" (003, 005). It does not mak
 - The protocol version of the phone and the computer must be the same (012). If not, the server
   shows "Update the app" and says which side must update.
 - The phone keeps a cache of recent messages for each server so the last view opens offline,
-  marked "Offline". The run view does not show from the cache. Unpairing a server deletes its cache.
+  marked "Offline". The cache holds messages only. The workflow list, the run view and the nodes do
+  not show from the cache (012, "Offline"). Unpairing a server deletes its cache.
 - Notifications: a reply in the chat of a workflow, an approval request (this includes the pick
   of a decision node), a failed task. Each
   kind can be turned off.
   They show while the app runs and is linked to the server. A closed app gets none (012). On
   iPhone this means in practice while the app is open or was open a moment ago. The settings
   screen says this in one line, so the user does not expect a notice from a closed app.
-- An answer from a notification needs the app: a tap opens the card in the conversation.
+- An answer from a notification needs the app: a tap opens the card in the chat.
 - The settings of the phone stay on the phone.
 
 ## Out of scope
@@ -156,7 +155,8 @@ It has no Compact control, no fork and no "Run next" (003, 005). It does not mak
 - Start the app with no paired server: the Servers screen says that a Mac with ROBot is needed,
   and offers Add server.
 - Pair with two computers: both show on the Servers screen, and each opens its own workflows.
-- With the computer off, the phone shows the cached chat with the offline mark.
+- With the computer off, the phone shows the cached chat with the offline mark, and no workflow
+  list and no run view.
 - Scan the QR code of a computer: the computer asks "Allow <phone name>?" with the kind phone.
   Allow: the server opens on the phone with no typing.
 - Deny the camera: "Type it instead" pairs with the address and the code.
