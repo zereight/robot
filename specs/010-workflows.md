@@ -29,8 +29,9 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   lists (006), or it can follow the effort of its agent (the default).
 - **Version**: the graph as it was before a change that the assistant saved (see "Assistant").
 - **Run**: one execution, with the state and result of each step.
-- **Starter**: a ready graph for one job. The user adds it from the menu of the Workflows page (see
-  "Starters").
+- **Check**: the app tries every way that a run of the workflow can go, and reports a way that
+  goes wrong, for example a step that never runs. It reads the steps and the connections only
+  (see "Check").
 
 ## Flows
 
@@ -49,9 +50,9 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
    name. The app writes one file. Import workflows: the user picks such a file. The app shows the
    review screen (see 014, "Review before an import"), with the agent names that it cannot find,
    and asks to confirm.
-7. Start from a starter: from the menu of the Workflows page, the user picks "New from a starter",
-   picks a starter and an agent, and presses Create. The app makes a new workflow (see
-   "Starters").
+7. Check: the user presses "Check" on the canvas. The app shows "Passed", or the problem and the
+   steps on its path. Before the first run after a change, the app checks the workflow by itself
+   (see "Check").
 8. Move a workflow to or from CC Workflow Studio: the user imports its file with "Import
    workflows", or exports one workflow with "Export for CC Workflow Studio" (see "CC Workflow Studio
    files").
@@ -105,8 +106,8 @@ workflow with no owner is shared, and it works as in all other parts of this spe
   and its text. An agent step names its agent by the name of the agent, and it holds its prompt,
   its effort and its "Continue on failure" mark.
 - The trigger in the file is manual or a schedule.
-- The file holds no run, no version, no chat, no key and no secret. Text in the file that looks
-  like a secret is hidden, as in an export (see 014).
+- The file holds no run, no version, no chat, no key, no secret and no result of a check. Text in
+  the file that looks like a secret is hidden, as in an export (see 014).
 - The file holds at most 20 workflows and is at most 10 MB. A file with two workflows of one name
   is refused.
 - Import makes new workflows only. It never changes a workflow that exists. A name that is taken
@@ -183,7 +184,8 @@ in silence.
   step that is not written, the trigger when it is not "manual", the count of notes, the count of
   steps that lost an agent, an effort or the mark "Continue on failure", and each cut text. If
   nothing is lost, the app shows no list.
-- The file holds no run, no version, no chat, no key, no secret, no agent and no id of ROBot.
+- The file holds no run, no version, no chat, no key, no secret, no agent, no id of ROBot and no
+  result of a check.
 - The import of the file that the app wrote makes a workflow with the same agent steps and
   conditions, the same connections between them and the same prompts. A condition in the mode
   "contains text" comes back in the mode "Ask a model". Each agent step comes back with no agent,
@@ -209,82 +211,158 @@ clipboard. The control works while the workflow is read-only.
 - The phone has no workflow editor, so it has no diagram control in this version. A linked client
   that opens the editor has the control.
 
-## Starters
+## Check
 
-A **workflow starter** is a ready graph for one job. It is like an agent starter (see 002), but it
-makes a workflow. This version has one starter: **TLA+ check**.
+The check tries every way that a run of the workflow can go, by the rules of a run (see "Rules"),
+and reports a way that goes wrong. It works as the public program TLC does for a TLA+ model, but
+the app makes the model from the graph itself. It needs no agent, no model, no Java and no other
+program. It starts no task and calls no model. It runs on this computer and sends nothing out.
 
-TLA+ is a public language that describes how a system behaves. TLC is a public program that tries
-every order of the steps of a TLA+ model and reports a state that breaks a rule. The starter lets
-an agent write a model of a spec, run TLC on it, and explain what TLC finds.
+### What the check reads
 
-### Way in
+- The steps, their kinds, the connections and their branches.
+- For a condition: its mode, and if its text is empty.
+- For an agent step and a model step: if the prompt holds `{{input}}`.
+- For an agent step: the mark "Continue on failure".
 
-- The menu of the Workflows page has the choice "New from a starter". It opens a dialog that lists
-  the starters. Each row shows the name, one line that says what the workflow does, and a muted
-  line that says what it needs.
-- The dialog has the field "Agent". It lists the agents that are not archived. The default is the
-  main agent (see 002), or, when there is none, the first agent of the list. Every agent step of
-  the new workflow uses this agent.
-- The choice is off, with the reason, when no agent exists ("Make an agent first."), and for a
-  linked client that has no switch "Can create and change agents" (see 012).
-- Create makes one workflow in the open profile (see 022). Its name is the name of the starter, in
-  the language of the interface at that moment. A name that is taken gets a number, as for an
-  import. The trigger is "manual". The app opens the canvas of the new workflow.
-- The workflow is an ordinary workflow from then on. The user can edit, run, export, sync and
-  delete it. The user cannot make or edit starters in this version. The assistant of the Workflows
-  page has no tool for starters.
+It does not read the agent of a step, the trigger, the notes or the places on the canvas.
 
-### The graph of TLA+ check
+### How the check sees a run
 
-| Node | Kind | Name | What it does |
-| --- | --- | --- | --- |
-| 1 | Agent step | Write model | Asks the user, with the tool "ask the user" (see 007), which spec to check: a path in the workspace, or pasted text. Reads the spec. Writes a TLA+ model and its settings file in a folder of the workspace, from the text of the spec only. The model must check at least one property. A choice that the spec does not make is an assumption, written as a comment in the model. The reply lists the properties and the assumptions. If the step cannot write the model, its reply ends with a "Blocked:" line (see 005). |
-| 2 | Agent step | Run TLC | Runs TLC on the model with a shell command. Copies the last 30 lines of the TLC output without change. The last line of the reply is `TLC_RESULT: PASS` when TLC says that it found no error, and `TLC_RESULT: FAIL` when TLC reports an error. If Java or the TLA+ tools program is missing, or if TLC cannot read the model after one fix, the reply ends with a "Blocked:" line. The step downloads nothing. |
-| 3 | Condition | TLC passed? | Mode "contains text", with the text `TLC_RESULT: PASS`. Branch "yes" goes to node 4. Branch "no" goes to node 5. |
-| 4 | Notify | No error found | The title is "TLA+ check: no error found". |
-| 5 | Agent step | Explain the finding | Explains the output of node 2 in at most 12 lines: the steps of the trace in order, the rule of the spec that each step comes from, and the assumptions that the trace needs. Says if the trace follows from the text of the spec alone. Writes the result as a question to the author of the spec, not as a defect. |
-| 6 | Notify | Possible gap | The title is "TLA+ check: possible gap". The run view holds the whole explanation. |
+- A condition can take the branch "yes" or the branch "no". The check does not read the input. A
+  condition in the mode "contains text" with an empty text always takes "yes", because every
+  input contains an empty text. A condition in the mode "Ask a model" can also fail.
+- An agent step and a model step can be done or fail.
+- A wait for approval can be approved or rejected. "Reject" fails the step, so the run stops.
+- A notify step is always done.
+- Steps that run at the same time can end in any order.
 
-The connections are 1 to 2, 2 to 3, 3 to 4 (yes), 3 to 5 (no), and 5 to 6.
+### What the check finds
 
-The canvas also holds one yellow note. The note says that the workflow needs Java 17 or later and
-the TLA+ tools program (the file `tla2tools.jar`) in the folder `tools` of the workspace of the
-agent, that the workflow downloads nothing, and that a pass says only that the model has no error.
+| Item | A problem is |
+| --- | --- |
+| Every run ends | A loop: a connection path that comes back to a step. Or a step that waits for an input that never ends. A workflow has no loop step and no loop limit in this version, so every loop is a problem. |
+| Each wait has a way out | A wait for approval with no way out. "Reject" is a way out, and every wait for approval has it in this version, so this item always passes now. A run that waits also ends with Stop, and at a restart of the app (see "Rules"). |
+| Each step and each branch can run | A step that is skipped in every run. A branch of a condition with no step is not a problem: a run that takes it ends there, as a filter does. |
+| No step reads a result that was not made | A path on which a step gets no result from the steps before it, and the step uses one. A step uses a result when it is a condition, or an agent step or model step whose prompt holds `{{input}}`. It gets none when it has no input, or when each input that passes on is a failed agent step with "Continue on failure". A wait for approval, a notify step and a condition pass their input on without a change, so an empty result goes through them. |
 
-### Rules of the starter
+### States
 
-- The agent steps run shell commands and write files under the permission level of the agent (see
-  007). At "Read only", a shell command and a file write are refused. The steps tell the agent to
-  end its reply with a "Blocked:" line when a step is refused, so the step ends as Blocked.
-- An agent on a vendor runtime (see 006) uses the tools of that runtime. If it cannot run a shell
-  command, node 2 ends as Blocked.
-- The lines `TLC_RESULT:` and `Blocked:` are the same in English and Korean, because the app reads
-  them. All other texts of the starter (names, prompts, titles and the note) have an English and a
-  Korean version, and follow the language of the interface when the user presses Create.
-- No text of the starter says that a spec is proven, verified or correct. A pass says "no error
-  found", and it speaks about the model, not about the spec.
-- The spec text and the model go to the model provider of the agent, as in any agent step (see 000
-  and 014). TLC runs on this computer. The starter sends nothing else out.
-- The graph follows the rules of the graph and of the file format. The file that the app writes
-  for this workflow imports with nothing in "Not imported".
+The control "Check" is in the editor, beside "Diagram". A press checks the graph that is open,
+including a change that is not saved. The control shows the state of the check of that graph. It
+works while the workflow is read-only.
+
+| State | What the user sees |
+| --- | --- |
+| Not checked | A muted "Not checked" ("검사 안 함"). This is the state after a change of the graph, after an import, and for a new workflow. |
+| Checking | A spinner and "Checking…" ("검사 중…"). The user can edit the graph. A change stops the check, and the state goes back to "Not checked". |
+| Passed | "Passed" (통과) and the line "No problem found in the steps and connections." ("단계와 연결에서 문제를 찾지 못했어요.") |
+| Problem found | "Problem found" ("문제 발견"), the message of the problem and the path (see "Result"). |
+| Could not check | "Could not check" ("검사할 수 없음") and the message of the limit (see "Limits of the check"). |
+
+A change of the graph is a change of a step, of a connection, of a branch, or of a field that the
+check reads. A change of a note, of a name, of a place on the canvas or of the agent of a step is
+not a change of the graph for the check.
+
+### Result
+
+- **Passed**: a panel lists the four items, each with "Passed" ("통과"), and the text of "What the check
+  cannot prove". The items are: "Every run ends" ("모든 실행이 끝남"), "Each wait has a way out"
+  ("모든 대기에 빠져나갈 길이 있음"), "Each step can run" ("모든 단계가 실행될 수 있음") and "No step reads a
+  result that was not made" ("만들어지지 않은 결과를 읽는 단계 없음").
+- **Problem found**: the panel shows one problem: the first problem in the order of the table
+  above, with the shortest path to it. It shows the message and the path. The path is a numbered
+  list. Each line is one step of the path, in order, with what happens at it. The canvas marks each
+  step of the path with its line number. It marks the step of the problem with the danger colour
+  and an icon, so the mark does not use colour alone. A click on a line selects its step. After a
+  fix, the user checks again to find the next problem.
+- The marks go away when the user closes the panel or changes the graph.
+- The texts follow the language of the interface. The words `yes`, `no` and `{{input}}` stay
+  English, because they are the branch values and the template of the file.
+
+Messages (`<n>` and `<m>` are node numbers, `<name>` is the name of a step):
+
+| Problem | English | Korean |
+| --- | --- | --- |
+| Loop | Steps `<list>` make a loop. A run can never leave it. | `<list>`단계가 반복 고리를 만들어요. 실행이 이 고리를 벗어날 수 없어요. |
+| Waits forever | Step `<n>` "`<name>`" waits for step `<m>`, and step `<m>` never ends on this path. | `<n>`단계 "`<name>`"이(가) `<m>`단계를 기다리지만, 이 경로에서 `<m>`단계가 끝나지 않아요. |
+| Never runs | Step `<n>` "`<name>`" never runs. On every path, step `<m>` "`<name>`" takes the branch `<yes or no>`. | `<n>`단계 "`<name>`"은(는) 실행되지 않아요. 모든 경로에서 `<m>`단계 "`<name>`"이(가) `<yes or no>` 분기로 가요. |
+| No result | Step `<n>` "`<name>`" uses the result of the steps before it, but on this path it gets none. | `<n>`단계 "`<name>`"은(는) 이전 단계의 결과를 쓰지만, 이 경로에서는 받는 결과가 없어요. |
+
+Lines of the path:
+
+| What happens | English | Korean |
+| --- | --- | --- |
+| The run starts the step | Step `<n>` "`<name>`" starts. | `<n>`단계 "`<name>`" 시작 |
+| The step is done | Step `<n>` "`<name>`" is done. | `<n>`단계 "`<name>`" 완료 |
+| The step fails | Step `<n>` "`<name>`" fails. | `<n>`단계 "`<name>`" 실패 |
+| The step fails, and the run goes on | Step `<n>` "`<name>`" fails, and the run goes on. | `<n>`단계 "`<name>`" 실패, 실행 계속 |
+| A condition takes a branch | Step `<n>` "`<name>`" takes the branch `<yes or no>`. | `<n>`단계 "`<name>`" `<yes or no>` 분기로 이동 |
+| A wait for approval | Step `<n>` "`<name>`" waits for approval. | `<n>`단계 "`<name>`" 승인 대기 |
+| The step is skipped | Step `<n>` "`<name>`" is skipped. | `<n>`단계 "`<name>`" 건너뜀 |
+
+### Check before a run
+
+- Each workflow has the switch "Check before a run". It is on for a new workflow and for an
+  imported workflow. It is in the editor, beside the trigger.
+- When a run is about to start, the switch is on, and the saved graph is "Not checked", the app
+  checks the saved graph first. This holds for every way that a run starts: Run in the editor, a
+  schedule, a web hook, and the tool of the assistant.
+- "Passed" or "Could not check": the run starts.
+- "Problem found" in the item "No step reads a result that was not made": the run starts. The editor
+  shows the problem. A step with an empty input is the choice of the user.
+- Any other "Problem found": the run does not run a step. It fails at once with the reason "The check found
+  a problem. Open the workflow to see it." ("검사에서 문제를 찾았어요. 워크플로우를 열어 확인하세요.") The editor shows the problem.
+- The app keeps the result for the saved graph. The next run of the same graph uses that result
+  and does not check again. So a workflow with "Problem found" fails each run until the user
+  changes the graph or turns the switch off.
+- A web hook still answers 202 at once (see "Web hook"). The check is part of the run.
+- With the switch off, the app does not check before a run. The user can still press "Check".
+
+### Limits of the check
+
+- The check stops when it has looked at 1,000,000 states of a run, or after 60 seconds. The state
+  is then "Could not check".
+- Message, English: "This workflow has too many ways to run. The check stops at 1,000,000 states
+  or after 60 seconds. Split the workflow, or let fewer steps run at the same time."
+- Message, Korean: "이 워크플로우는 실행 경로가 너무 많아요. 검사는 상태 1,000,000개 또는 60초에서
+  멈춰요. 워크플로우를 나누거나 동시에 실행되는 단계를 줄이세요."
+- A workflow with no steps passes.
+
+### What the check cannot prove
+
+The check reads the shape of the graph. It does not read what an agent does inside a step. So it
+cannot say:
+
+- what a step writes, or if a result is good,
+- which branch a condition takes for a given input,
+- if an agent asks the user a question and waits (see 005), or how long a step takes,
+- if a provider, a tool or a web hook works.
+
+No text of the check says that a workflow is proven, verified, correct or safe. A pass says "No
+problem found in the steps and connections." The panel of a pass also shows this line:
+
+- English: "The check reads the steps and connections. It does not read what an agent does inside
+  a step."
+- Korean: "검사는 단계와 연결만 읽어요. 에이전트가 단계 안에서 하는 일은 읽지 않아요."
 
 ### Surfaces
 
-- **Ways in**: the menu of the Workflows page only. Not in this version: the search field, a key,
-  a setting, a command of the message box.
-- **Devices**: a linked computer (see 012) has the same dialog, and it needs the switch "Can
-  create and change agents". The phone (see 011) cannot add a starter in this version. It shows
-  and runs the new workflow like any workflow. A second profile has its own list, and the new
-  workflow goes to the open profile only.
-- **Runtimes**: see "Rules of the starter".
-- **Ways out**: the user deletes the workflow, as any workflow. Creating one changes nothing else,
-  so no confirm is needed.
-- **Seeing the state**: the list and the run view of any workflow. A question at node 1 shows as a
-  question of a task (see 005). A Blocked step shows its reason.
-- **Data**: the new workflow syncs (see 019), exports (see 014) and goes into a workflow file like
-  any workflow. It runs on this computer.
-- **Words**: "Starter" is in the glossary.
+- **Ways in**: the control "Check" in the editor, and the switch "Check before a run". Not in this
+  version: the search field, a key, a command of the message box, a tool of the assistant.
+- **Devices**: a linked client (012) that opens the editor has the control and sees the result. The
+  server does the check. The client changes the switch only with the switch "Can create and change
+  agents". The phone has no editor, so it has no control. It shows the reason of a run that the
+  check stopped. A second profile (022) checks its own workflows.
+- **Runtimes**: nothing changes. The check reads no agent.
+- **Ways out**: close the panel. Turn the switch off. A check that runs stops at a change of the
+  graph.
+- **Seeing the state**: the control in the editor, and the reason of a run in the run list. The
+  result of the saved graph stays after a restart.
+- **Data**: the result of a check stays on this computer. It does not sync (019), and a workflow
+  file and a CC Workflow Studio file do not hold it. The switch syncs with the workflow and is in
+  the export of the data (014). A workflow file does not hold the switch.
+- **Words**: "Check" is in the glossary.
 
 ## Web hook
 
@@ -369,8 +447,8 @@ a new issue. ROBot runs no service on the internet for this (000).
   card (037). It takes a name and, optionally, a list of steps that the app joins in a line, in
   that order. A step is an agent step (an agent and a prompt), a wait for approval (a message), or
   a notify step (a title). The workflow has the trigger "manual", no owner, and the other starting
-  values of the dialog of a new workflow. If the name is in use, the app adds a number, as for a
-  starter. If a workflow takes the name between the card and the Allow, the number is added then.
+  values of the dialog of a new workflow. If the name is in use, the app adds a number, as for an
+  import. If a workflow takes the name between the card and the Allow, the number is added then.
   A step that names an agent that does not exist or is archived, an unknown kind, or more than the
   limit of steps fails the check at once and makes no request. The user adds conditions and
   triggers on the canvas.
@@ -401,7 +479,10 @@ a new issue. ROBot runs no service on the internet for this (000).
 
 - The delete of a workflow, from its card, is a danger button that asks first. Its question names
   the workflow and says that its runs go with it (000, "Danger buttons").
-- A step starts when all its inputs are done.
+- A step waits until each of its inputs has ended. Then it runs when at least one input passes on:
+  a step that is done, an agent step that failed and has the mark "Continue on failure", or a
+  condition that took the branch of the connection. Its input is the results of those steps. When
+  no input passes on, the step is skipped. A step with no input runs when the run starts.
 - A failed step stops the run unless the step is marked "Continue on failure". An agent step
   whose task ends as Blocked (see 005) is a failed step, with the reason of the block.
 - A workflow cannot be edited while it runs; the editor shows it read-only until the run ends.
@@ -482,25 +563,39 @@ a new issue. ROBot runs no service on the internet for this (000).
   one retry line.
 - An agent step with effort "low" runs with low effort. The next chat turn of that agent uses
   the effort that the agent had before.
-- Pick "New from a starter", pick "TLA+ check" and the agent "Reviewer", and press Create: one new
-  workflow named "TLA+ check" exists, with the trigger "manual", six steps with the nodes, kinds
-  and connections of "The graph of TLA+ check", and one note. Every agent step names "Reviewer".
-  Do it again: the second workflow has the same name with a number.
-- Export the new workflow, and import the file into an empty app that has an agent with the same
-  name: the review screen lists nothing under "Not imported", and the workflow has the same steps.
-- Run it with a stand-in agent. Node 1 asks which spec. The reply of node 2 ends with `TLC_RESULT:
-  PASS`: node 4 shows its notification, and nodes 5 and 6 do not run.
-- Run it again. The reply of node 2 ends with `TLC_RESULT: FAIL`: node 5 runs, node 6 shows its
-  notification, and node 4 does not run. The run view holds the whole explanation.
-- Run it again. The reply of node 2 ends with "Blocked: Java is missing": the run fails at node 2
-  with the reason, and nodes 3 to 6 do not run.
-- Set the agent to "Read only" and run it: the shell command of node 2 shows "Refused: read only".
-- Set the language to Korean and press Create: the name, the step names, the titles and the note
-  are Korean. The lines `TLC_RESULT:` and `Blocked:` stay English.
-- With no agent, "New from a starter" is off and says "Make an agent first." On a linked client
-  with the switch off, it is off and says why.
-- Search all texts of the starter, in English and Korean, for "proven", "verified" and "correct"
-  and for their Korean words ("증명", "검증됨", "정확"): none appear.
+- A workflow with the agent step "Draft", the condition "Polite?" and a notify step on each branch:
+  press "Check". The state goes from "Checking…" to "Passed", and the panel lists the four items.
+  No agent and no provider is used, and no task starts.
+- Set the condition "Polite?" to the mode "contains text" with an empty text: "Check" shows
+  "Problem found". The message says that the step on the branch `no` never runs. The path has the
+  steps 1 and 2, and the canvas marks them with 1 and 2 and marks the step of the problem.
+- Remove the connection of the branch `no`: "Check" shows "Passed". A run that takes the branch `no` ends there.
+- An agent step with "Continue on failure", and after it an agent step whose prompt holds `{{input}}`:
+  "Check" finds "No result". The path ends with "Step 1 "Draft" fails, and the run goes on." and
+  the second agent step. With a notify step after the first step, "Check" shows "Passed".
+- An agent step with "Continue on failure", then a wait for approval, then an agent step whose prompt
+  holds `{{input}}`: "Check" finds "No result".
+- An agent step with no input whose prompt holds `{{input}}`: "Check" finds "No result".
+- Set the language to Korean: the state, the message and the lines of the path are Korean. `yes`
+  and `no` stay English.
+- Change a step after a pass: the state is "Not checked". Move a step or edit a note: the state
+  stays "Passed".
+- With the switch "Check before a run" on, make the graph of the "Never runs" case above (the
+  condition with an empty text) and press Run: the run fails at once with "The check found a problem. Open the workflow to see it.",
+  and no step runs. Run it again: the app does not check again, and the run fails with the same
+  reason. Turn the switch off and run: the run starts.
+- With the switch on, run the graph of the "No result" case: the run starts, and the editor shows the
+  problem.
+- A schedule fires for a workflow that is "Not checked" and has no problem: the app checks, and the
+  run starts. The next run does not check again.
+- A workflow of 30 agent steps with no connections, so that all 30 run at the same time: "Check"
+  ends as "Could not check" with the message of the limit. With the switch on, a run of it starts.
+- Export a checked workflow to a workflow file and to a CC Workflow Studio file: neither file holds
+  the result. Import the file: the workflow is "Not checked" and the switch is on.
+- Search all texts of the check, in English and Korean, for "proven", "verified", "correct" and
+  "safe", and for "증명", "검증됨", "정확", "안전": none appear.
+- A linked client that opens the editor presses "Check" and sees the result. Without the switch
+  "Can create and change agents", the switch "Check before a run" is read-only.
 - Send a call with the secret as a bearer token to the preset "Any service" with the filter
   "contains text" `deploy`: a body without the text gets 202 and starts nothing, and a body with it
   starts a run. A body of 25,000 characters reaches the first step cut to 20,000. A GitHub issue

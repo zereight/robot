@@ -13,8 +13,8 @@ Format name: **`robot-workflows`**. Format version: **1**.
 - The file is at most 10 MB (10 485 760 bytes). ROBot refuses a larger file before it reads it.
 - The file holds 1 to 20 workflows.
 - For each workflow, the file holds: name, trigger, steps, connections, and notes.
-- The file never holds a run, a version, a chat, a key, a secret, a channel, or an id. See "What
-  the file does not hold".
+- The file never holds a run, a version, a chat, a key, a secret, a channel, an id, or a check. See
+  "What the file does not hold".
 
 ## Fields
 
@@ -189,6 +189,8 @@ The file has no field for these. If a tool writes one, ROBot ignores it.
 - **A model for a condition.** ROBot chooses it.
 - **On or off.** Every imported workflow is off.
 - **Keys and secrets.**
+- **The check.** The file holds no result of a check and no switch "Check before a run" (spec 010,
+  "Check"). An imported workflow is "Not checked", and its switch is on.
 
 ## Secrets in text
 

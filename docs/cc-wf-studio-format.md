@@ -23,6 +23,8 @@ section "CC Workflow Studio files".
   [workflow-file-format.md](workflow-file-format.md)). A file that has neither the bare form nor
   the wrapped form is refused.
 - The file holds one workflow.
+- The file holds no result of a check (spec 010, "Check"). ROBot writes none and reads none. An
+  imported workflow is "Not checked", and its switch "Check before a run" is on.
 
 ## Fields that ROBot reads
 

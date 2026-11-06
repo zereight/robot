@@ -34,6 +34,8 @@ Agents do repeat work on a schedule without the user starting it.
 6. Check where this goes: the form of a trigger has the button "Check where this goes". It makes
    one test event that starts nothing, and the tab "Events" (038) shows its result. See 038,
    "Check where this goes".
+7. Check: the user presses "Check" in the detail of a routine. The app shows "Passed", or the
+   problem and the routines on its path (see "Check").
 
 ## Watch
 
@@ -71,6 +73,125 @@ Agents do repeat work on a schedule without the user starting it.
   the same way as a short schedule. The note does not stop the save.
 - When a check is due while the last run of the same routine still goes, the check waits until
   the run ends.
+
+## Check
+
+The check of a routine tries every way that the routines can start runs in the next 7 days, by the
+rules of this spec and of the queue (005), and reports a way that goes wrong. It works as the check
+of a workflow does (010, "Check"): it needs no agent, no model, no Java and no other program,
+starts no task, and sends nothing out.
+
+In this section, "check" means this check. The check of a watch (see "Watch") is a different thing.
+
+### What the check reads
+
+- The routine that the user checks, also when it is paused, and each other routine of the profile
+  that is not paused.
+- The trigger of each routine: the times of a schedule in the next 7 days from the time of the
+  check, in the user's time zone, or the path or the kind of a watch.
+- The agent of each routine, its workspace folder (007) and its permission level.
+- The settings "Agents working at once" (005, 013) and the silent limit (005, 013).
+
+It does not read the prompt, and it does not run a watch.
+
+### How the check sees a run
+
+- A schedule starts a run at each of its times. A watch can start a run at each of its checks.
+  The time of a check of a watch is not fixed, so the check counts a watch as due at any minute.
+- The check does not read how long a run takes. It counts only runs that are due in the same minute.
+- The runs of one agent wait for each other in the queue of the agent (005). A run of a routine
+  that is still going, or still queued, when the next run of the same routine is due, makes that
+  run Skipped (see "Rules").
+- A run whose agent can change files (its permission level is not "Read only") can change any file
+  in the workspace folder of its agent. A change of a watched file or folder can start the watch
+  routine.
+
+### What the check finds
+
+| Item | A problem is |
+| --- | --- |
+| Runs do not overlap | Two schedules of one agent that are due in the same minute. One run then waits for the other, and it can be Skipped. A watch is not part of this item, because the time of its checks is not fixed. |
+| Every run ends | The silent limit is "Never". Then a run that shows no sign of life never ends, and each later run of the routine is Skipped. A run that waits for the user is not a problem: the user answers it or stops it. |
+| No loop of routines | A watch routine that watches a file or a folder that a run of the same routine can change. Or two or more watch routines in a ring, in which a run of each one can change what the next one watches. |
+| Runs at once stay in the limit | A minute in which more routines of different agents can be due than "Agents working at once" allows. The other runs then wait for a free slot, and they can be Skipped. |
+
+### States and result
+
+- The detail of a routine has the control "Check". It shows the states of a workflow check: "Not
+  checked", "Checking…", "Passed", "Problem found" and "Could not check" (010, "Check").
+- **Passed**: the line "No problem found in the triggers of the routines.", the four items with
+  "Passed" ("통과"), and the text of "What the check cannot prove". The Korean of the line is "루틴의 트리거에서 문제를 찾지 못했어요." The items are: "Runs do not overlap" ("실행이 겹치지 않음"), "Every run ends" ("모든 실행이 끝남"), "No loop of routines" ("루틴 반복 고리 없음") and "Runs at once stay in the limit" ("동시 실행이 한도 안에 있음").
+- **Problem found**: one problem: the first in the order of the table above, with the shortest
+  path to it. The detail shows the message and the path. The path is a numbered list. Each line
+  has a time and one routine, with what happens. The routines list marks each routine of the path
+  with a mark, and the routine of the problem with the danger colour and an icon. The marks go
+  away at the next check, or when the result is "Not checked".
+- The result shows the time of the check, because the next 7 days move on.
+- The app checks the routine by itself after the user saves its form, and after Resume. A result
+  never stops a save, a resume or a run.
+- A change of any routine, of the workspace folder or the permission level of the agent of a
+  routine, of "Agents working at once" or of the silent limit sets the result of each routine to
+  "Not checked".
+- The texts follow the language of the interface.
+
+Messages (`<A>` and `<B>` are names of routines, `<agent>` is the name of an agent, `<time>` is a
+day and a time, or "any check" for a watch):
+
+| Problem | English | Korean |
+| --- | --- | --- |
+| Overlap | "`<A>`" and "`<B>`" can start runs of `<agent>` at the same time (`<time>`). One run waits for the other. | "`<A>`"와(과) "`<B>`"가 같은 시간(`<time>`)에 `<agent>`의 실행을 시작할 수 있어요. 한 실행은 다른 실행을 기다려요. |
+| Never ends | The silent limit is "Never". A run of "`<A>`" that shows no sign of life never ends, and each later run is Skipped. | 응답 없는 작업을 멈추는 시간이 "안 함"이에요. 응답이 없는 "`<A>`" 실행은 끝나지 않고, 이후 실행은 모두 건너뛰어요. |
+| Loop | "`<A>`" can change `<path>`, which "`<B>`" watches. The routines `<list>` can start each other with no end. | "`<A>`"이(가) "`<B>`"가 지켜보는 `<path>`을(를) 바꿀 수 있어요. 루틴 `<list>`이(가) 끝없이 서로를 시작할 수 있어요. |
+| Too many at once | At `<time>`, `<N>` routines can start runs, and only `<M>` agents work at once. `<N − M>` runs wait for a free slot. | `<time>`에 루틴 `<N>`개가 실행을 시작할 수 있지만, 동시에 일하는 에이전트는 `<M>`개예요. 실행 `<N − M>`개가 빈자리를 기다려요. |
+
+Lines of the path:
+
+| What happens | English | Korean |
+| --- | --- | --- |
+| A run starts | `<time>`: "`<A>`" starts a run of `<agent>`. | `<time>`: "`<A>`"이(가) `<agent>` 실행 시작 |
+| A run waits | `<time>`: a run of "`<A>`" waits for `<agent>`. | `<time>`: "`<A>`" 실행이 `<agent>`을(를) 기다림 |
+| A run waits for a slot | `<time>`: a run of "`<A>`" waits for a free slot. | `<time>`: "`<A>`" 실행이 빈자리를 기다림 |
+| A run is Skipped | `<time>`: a run of "`<A>`" is Skipped. | `<time>`: "`<A>`" 실행 건너뜀 |
+| A run changes a watched path | "`<A>`" changes `<path>`. | "`<A>`"이(가) `<path>` 변경 |
+| A watch starts a run | "`<B>`" sees the change and starts a run. | "`<B>`"이(가) 변경을 보고 실행 시작 |
+
+### Limits of the check
+
+- The check stops when it has looked at 1,000,000 states, or after 60 seconds. The state is then
+  "Could not check".
+- Message, English: "These routines have too many ways to run. The check stops at 1,000,000
+  states or after 60 seconds."
+- Message, Korean: "루틴의 실행 경로가 너무 많아요. 검사는 상태 1,000,000개 또는 60초에서
+  멈춰요."
+
+### What the check cannot prove
+
+The check reads the triggers and the settings. It does not read what an agent does in a run. So it
+cannot say how long a run takes, if a run changes a file, if a command or a tool of a watch gives
+a new result, or if an agent changes files outside its workspace folder. A watch on a command or
+a tool is not part of a loop for the check.
+
+No text of the check says that a routine is proven, verified, correct or safe. A pass also shows
+this line:
+
+- English: "The check reads the triggers and the settings. It does not read what an agent does in
+  a run."
+- Korean: "검사는 트리거와 설정만 읽어요. 에이전트가 실행 중에 하는 일은 읽지 않아요."
+
+### Surfaces
+
+- **Ways in**: the control "Check" in the detail of a routine, and the check after a save and
+  after Resume. Not in this version: the search field, a key, a command of the message box, a
+  manage tool (037).
+- **Devices**: a linked computer has no routines page (012), and the phone has none (011). So
+  neither has the check. A second profile (022) checks its own routines.
+- **Runtimes**: nothing changes. The check reads no agent turn.
+- **Ways out**: the check changes nothing, so it needs no undo. The marks go at the next check.
+- **Seeing the state**: the control in the detail of a routine, and the marks in the routines
+  list. The result stays after a restart.
+- **Data**: the result stays on this computer. It does not sync (019), and an agent file (002) does
+  not hold it.
+- **Words**: "Check" is in the glossary.
 
 ## Limits and safeguards
 
@@ -160,3 +281,18 @@ Agents do repeat work on a schedule without the user starting it.
   the routine.
 - An agent on a stand-in runtime that reports no usage: the token limit field is off in the
   routine form, with the muted line "<program> does not report tokens."
+- Two routines of the agent Ada, one daily at 09:00 and one weekly on Monday at 09:00: "Check"
+  shows "Problem found" with the message "Overlap" and the time Monday 09:00. Both routines have a
+  mark in the routines list. No agent and no provider is used, and no task starts.
+- Move one routine to 10:00: "Check" shows "Passed".
+- A watch routine of Ada on a folder inside the workspace folder of Ada, with Ada at "Ask for risky steps":
+  "Check" finds "Loop". Set Ada to "Read only": the loop is gone.
+- Set the silent limit to "Never": "Check" finds "Never ends". Set it back: the problem is gone.
+- Set "Agents working at once" to 1, with two routines of two agents at 09:00: "Check" finds "Too
+  many at once" at 09:00.
+- Save the form of a routine: the app checks it by itself, and the save works also when it finds a
+  problem.
+- Change "Agents working at once" after a pass: the result is "Not checked".
+- Set the language to Korean: the state, the message and the lines of the path are Korean.
+- Search all texts of the check, in English and Korean, for "proven", "verified", "correct" and
+  "safe", and for "증명", "검증됨", "정확", "안전": none appear.

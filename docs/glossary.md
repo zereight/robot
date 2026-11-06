@@ -98,7 +98,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Shared workflow | A workflow with no owner. Every agent can work in it (010). | 공용 워크플로우 (proposed) | public workflow, global workflow |
 | Participant | An agent that may be the agent of an agent step of a workflow with an owner (010). | 참석자 (proposed) | member, guest |
 | Not a participant | The reason on a step and on a failed run when the agent of the step is no participant (010). | 참석자 아님 (proposed) | no access, forbidden |
-| Starter | A ready setup for one job. It fills the new agent form (002) or makes a workflow (010). | — (proposed: 스타터) | template, preset |
+| Starter | A ready setup for one job. It fills the new agent form (002). Workflows have no starters. | — (proposed: 스타터) | template, preset |
+| Check | The app tries every way that a workflow (010) or the routines (009) can run, and reports a way that goes wrong, with the path to it. It reads the shape only, not what an agent does. States: Not checked (검사 안 함), Checking… (검사 중…), Passed (통과), Problem found (문제 발견), Could not check (검사할 수 없음). The switch "Check before a run" is 실행 전에 검사. | 검사 (proposed) | verify, validate, prove, test, lint, "TLA+ check", "TLC" (in interface text); "Check where this goes" (038) and the check of a watch (009, 확인) are other things |
 | CC Workflow Studio file | A JSON file of the public tool CC Workflow Studio. ROBot imports it as a workflow and writes a workflow to it (010). The name of the tool stays in English. | CC Workflow Studio 파일 (proposed) | workflow file (that name is the ROBot file), project file |
 | Not exported | The list after an export to CC Workflow Studio: what the file does not hold (010). The list "Not imported" is its pair (014). | 내보내지 않는 항목 (proposed) | skipped, ignored |
 | Needs you | Items that wait for the user (011). | 내 확인이 필요해요 | inbox |
@@ -178,6 +179,10 @@ A new word goes here in the same pull request as the spec that brings it.
   Korean. A spec author decides which word changes.
 - The catalogue writes both "워크플로" (for example the page title) and "워크플로우" (for example
   the tab and the list). One spelling should stay.
+- "검사" (Check) is also part of "검사 방식", the label of the mode of a condition (010). A spec
+  author decides if that label changes.
+- "Check" (검사) of a routine and the check of a watch (확인, 009) have one English word. The
+  Korean words differ. A spec author decides if the English of one changes.
 - "Profile" (프로필) names the profile tab of an agent (002) and a profile of 022. One of the two
   needs another word, in English and in Korean.
 - "작업 기록" (Action log) stands next to "작업" (Task) and "최근 작업" (Recent work), so a user can
