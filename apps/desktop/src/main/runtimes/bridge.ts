@@ -44,7 +44,13 @@ export const READ_SKILL_TOOL_NAME = "read_skill"
  * The tools to work with other agents (spec 007, "Working with other agents"). The app checks
  * each send, so the hand-off rule of spec 030 holds for a vendor program as for an API agent.
  */
-export const AGENT_TOOL_NAMES = ["list_agents", "send_message", "review_result"] as const
+export const AGENT_TOOL_NAMES = [
+  "list_agents",
+  "send_message",
+  "review_result",
+  "steer_order",
+  "cancel_order",
+] as const
 
 /** The tools that the app gives to every runtime, in the order of their definitions. */
 export const BRIDGE_TOOL_NAMES = [

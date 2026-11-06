@@ -252,6 +252,7 @@ const setup = async (options: { main?: boolean } = {}) => {
     range,
     extra,
     send,
+    messages,
     call,
     tasks,
     quiet,
@@ -800,5 +801,65 @@ describe("the lead accepts the result of an order (spec 030)", () => {
       expect(step.state).toBe("failed")
     }
     expect((await s.received("D"))[0]?.verdict).toBeNull()
+  })
+})
+
+describe("the lead steers or cancels a running order (spec 030)", () => {
+  const textOf = (m: ChatMessage) => m.parts.map((p) => (p.kind === "text" ? p.text : "")).join("")
+  /** P orders D with a slow turn, and the task of D runs. */
+  const running = async () => {
+    const s = await setup()
+    await s.send(
+      "P",
+      `CALLS ${JSON.stringify([{ name: "send_message", args: { to: "D", text: "SLOW push the fix" } }])}`,
+    )
+    await until(async () => (await s.received("D")).some((x) => x.state === "running"))
+    const order = (await s.received("D"))[0]
+    return { s, id: order?.id ?? "" }
+  }
+  const fire = (s: Awaited<ReturnType<typeof setup>>, tool: string, args: unknown) =>
+    s.send("P", `CALLS ${JSON.stringify([{ name: tool, args }])}`)
+
+  test("a steer reaches the turn of the member as an order of the lead", async () => {
+    const { s } = await running()
+    await fire(s, "steer_order", { to: "D", text: "Use the branch fix-2." })
+    await s.quiet()
+    const joined = (await s.messages("D"))
+      .map(textOf)
+      .find((t) => t.includes("Use the branch fix-2."))
+    expect(joined).toContain(LEAD_ORDER_WORDS)
+    expect((await s.received("D"))[0]?.state).toBe("done")
+  })
+
+  test("a cancel ends the task and the lead gets no reply", async () => {
+    const { s } = await running()
+    await fire(s, "cancel_order", { to: "D" })
+    await until(async () => (await s.received("D")).every((x) => x.state === "cancelled"))
+    await s.quiet()
+    const back = (await s.messages("P"))
+      .map(textOf)
+      .filter((t) => t.startsWith("Reply from the agent D"))
+    expect(back).toHaveLength(0)
+  })
+
+  test("only the lead who gave the order steers or cancels it", async () => {
+    const { s, id } = await running()
+    for (const tool of ["steer_order", "cancel_order"]) {
+      await s.send("A", `CALLS ${JSON.stringify([{ name: tool, args: { to: "D", text: "x" } }])}`)
+    }
+    await s.quiet()
+    const steps = (await s.messages("A"))
+      .filter((m) => m.author === "agent")
+      .flatMap((m) => m.parts)
+      .filter((p): p is ToolPart => p.kind === "tool")
+    expect(steps.map((p) => p.state)).toEqual(["failed", "failed"])
+    expect((await s.received("D")).find((x) => x.id === id)?.state).toBe("done")
+  })
+
+  test("a task that is not running cannot be steered", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    expect((await s.call("P", "steer_order", { to: "D", text: "More." })).state).toBe("failed")
   })
 })

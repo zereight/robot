@@ -3463,6 +3463,31 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       // The tool "send message" of any agent delivers its text through the chat of the receiver.
       tools.setMessenger({
+        steer: async (taskId, text) => {
+          const found = turnOfTask(taskId)
+          const task = db.get<{ source_id: string | null; agent_id: string }>(
+            "SELECT source_id, agent_id FROM task WHERE id = ?",
+            taskId,
+          )
+          if (!found || !task) return false
+          await Effect.runPromise(
+            join(
+              found.place,
+              found.turn,
+              {
+                text: agentMessage(task.source_id, task.agent_id, text),
+                replyTo: null,
+                files: [],
+                skill: null,
+              },
+              null,
+            ),
+          )
+          return true
+        },
+        cancel: async (taskId) => {
+          await Effect.runPromise(tasks.stop(taskId))
+        },
         send: async (from, toAgentId, text) => {
           const sender = agentRow(from.agentId)
           const exit = await Effect.runPromiseExit(
@@ -3501,6 +3526,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           )
         },
       })
+
+      /** The turn that runs a task of an agent order now, or undefined. */
+      const turnOfTask = (taskId: string) => {
+        const task = db.get<{ agent_id: string; state: string }>(
+          "SELECT agent_id, state FROM task WHERE id = ?",
+          taskId,
+        )
+        if (!task || task.state !== "running") return undefined
+        const place = mainOf(task.agent_id)
+        const turn = live.get(keyOf(place))
+        return turn && !turn.fromTeams ? { place, turn } : undefined
+      }
 
       // The turns of tasks that waited through a restart start again. Each keeps the place of its
       // agent, so a message that comes now waits in the queue behind it.

@@ -249,6 +249,13 @@ export interface Messenger {
     toAgentId: string,
     text: string,
   ): Promise<void>
+  /**
+   * Sends a text of a lead into the running turn of a task of a member. Gives false when the turn
+   * does not run now (spec 030, "Lead and members as agent and sub-agents").
+   */
+  steer(taskId: string, text: string): Promise<boolean>
+  /** Cancels a task of a member. The lead gets no reply from it (spec 005). */
+  cancel(taskId: string): Promise<void>
 }
 
 /**
@@ -571,6 +578,24 @@ const DEFS: Record<string, ToolDef> = {
       },
       ["from", "accepted"],
     ),
+  },
+  steer_order: {
+    name: "steer_order",
+    description:
+      "Send a new instruction to the work that a member of your organization does now for an order of yours. The member reads it at its next step. Use it to change the course of the work. It fails when the work does not run.",
+    schema: object(
+      {
+        to: str("The name of the member."),
+        text: str("The new instruction, with all that it needs."),
+      },
+      ["to", "text"],
+    ),
+  },
+  cancel_order: {
+    name: "cancel_order",
+    description:
+      "Cancel the work that a member of your organization does now, or has queued, for an order of yours. You get no reply from it.",
+    schema: object({ to: str("The name of the member.") }, ["to"]),
   },
   save_memory: {
     name: "save_memory",
@@ -2599,6 +2624,61 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /**
+       * The lead changes the work of an order that it gave: a new instruction for the running
+       * turn, or a cancel (spec 030). Only the lead who gave the order can do it.
+       */
+      const changeOrder = async (
+        ctx: ToolContext,
+        args: Record<string, unknown>,
+        change: "steer" | "cancel",
+      ): Promise<ToolOutcome> => {
+        const name = text(args, "to").trim()
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        const member = db.get<{ id: string }>(
+          "SELECT id FROM agent WHERE server_id = ? AND name_key = ?",
+          server?.server_id ?? "",
+          name.toLocaleLowerCase(),
+        )
+        const task = member
+          ? db.get<{ id: string; state: string }>(
+              `SELECT id, state FROM task
+               WHERE agent_id = ? AND source = 'agent' AND source_id = ?
+                 AND state IN ('queued', 'running', 'waiting') AND origin IS NULL
+               ORDER BY created_at DESC LIMIT 1`,
+              member.id,
+              ctx.agentId,
+            )
+          : undefined
+        if (
+          !member ||
+          !task ||
+          !isLeadOrder(organization.model(server?.server_id ?? ""), ctx.agentId, member.id)
+        )
+          return { output: `${name} has no work of yours that runs now.`, failed: true }
+        if (!messenger)
+          return { output: "Messages to other agents are not available.", failed: true }
+        if (change === "cancel") {
+          await messenger.cancel(task.id)
+          return {
+            output: `You cancelled the work of ${name}. You get no reply from it.`,
+            failed: false,
+          }
+        }
+        const instruction = text(args, "text").trim()
+        if (!instruction) return { output: "Give the new instruction.", failed: true }
+        const steered = await messenger.steer(task.id, instruction)
+        return steered
+          ? { output: `${name} reads your instruction at its next step.`, failed: false }
+          : {
+              output: `The work of ${name} does not run now. Cancel it and send a new order.`,
+              failed: true,
+            }
+      }
+
       const sendMessage = async (
         ctx: ToolContext,
         call: ToolCall,
@@ -2871,6 +2951,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await sendMessage(ctx, call, args)
           case "review_result":
             return reviewResult(ctx, args)
+          case "steer_order":
+            return await changeOrder(ctx, args, "steer")
+          case "cancel_order":
+            return await changeOrder(ctx, args, "cancel")
           case "ask_user": {
             const question = text(args, "question")
             const choices = Array.isArray(args.choices)
