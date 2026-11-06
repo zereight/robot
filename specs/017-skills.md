@@ -4,7 +4,9 @@
 
 The user saves a set of instructions once and calls it with a slash in any chat, so the user does
 not type the same long request again. The agent can also pick a skill by itself: it reads the names
-and short notes of its skills, and loads the full text of one only when the task needs it.
+and short notes of its skills, and loads the full text of one only when the task needs it. An
+agent can also propose a new skill or a change to a skill that is for it only. The user accepts
+each proposal first (002, "Self-improvement").
 
 ## Concepts
 
@@ -98,6 +100,8 @@ agent, and the agent writes a draft skill from what the user did.
 ## Make a skill from work
 
 The user can turn work that went well into a skill, and does not write the instructions by hand.
+The draft is a proposal of a new skill (002, "Self-improvement"). The card, the states, the change
+log and Undo are in that section.
 
 ### Sources
 
@@ -107,10 +111,11 @@ The user can turn work that went well into a skill, and does not write the instr
 
 ### Flow
 
-1. The user picks "Make a skill". The form of flow 1 opens, with the muted line "Writing a draft…".
-   The app asks the model account of the agent for a draft, in one request, as "Teach a task"
-   does. The agent is the agent of the task, of the article or of the item. "Cancel" closes the
-   form, and the app drops the answer.
+1. The user picks "Make a skill". The page "Self-improvement" of the agent opens with a card that
+   shows the muted line "Writing a draft…". The app asks the model account of the agent for a
+   draft, in one request, as "Teach a task" does. The agent is the agent of the task, of the
+   article or of the item. "Cancel" closes the card, and the app drops the answer. No proposal is
+   made.
 2. What the request holds:
    - For a task: the prompt of the task, the messages of the user that joined its turns, its final
      reply, and its steps as lines of kind and target (a command, a path or a host, each cut at 200
@@ -121,21 +126,36 @@ The user can turn work that went well into a skill, and does not write the instr
    - The request is at most 20000 characters. Text that looks like a secret (014) is hidden. The
      request asks for a name, a description that tells when to use the skill, and instructions in
      plain words: the steps, what to check at the end, and when to ask the user first.
-3. The form fills with the draft. The user can edit every field. The field "Agents" holds the agent
-   of the source only, and the user can change it. When the name is taken, the app adds a number to
-   the name of the draft.
-4. Save: as flow 1. The same limits, checks and warning about secrets apply. The skill is on.
-5. When a turn of the task held outside content (007), the form shows a muted line: "This work read
-   outside content. Read the instructions before you save." A skill is a lasting order, so the
-   user reads it first. Nothing is saved before the user presses Save.
-6. When the request fails, the form shows the reason and the button "Try again". Nothing is saved.
+3. The draft is a proposal of the kind "New skill", with the source "Make a skill", and it waits.
+   The card shows the draft. When the name is taken, the app adds a number to the name of the
+   draft.
+4. "Accept" saves the skill as flow 1, for the agent of the source only, and on. "Edit and accept"
+   opens the form of flow 1 with the draft. There the user can edit every field, also the field
+   "Agents". "Reject" saves nothing. The same limits, checks and warning about secrets apply.
+5. When a turn of the task held outside content (007), the card shows the muted line of 002: "This
+   work read outside content. Read the change before you accept." A skill is a lasting order, so
+   the user reads it first. Nothing is saved before the user accepts.
+6. When the request fails, the card shows the reason and the button "Try again". No proposal is
+   made, and nothing is saved.
 
 - "Make a skill" needs a connected model account. Without one, the form shows the same line as
   "Teach a task" does.
-- The request makes no task and no message.
+- The request makes no task and no message. The limits of how often a proposal can come (002) do
+  not apply, because the user starts it.
 - A skill made this way has no link to its source. A later change or delete of the source does not
   change the skill.
 - "Make a skill" is on the computer only. A linked device (012) and the phone (011) do not show it.
+
+## Skills that the agent proposes
+
+- In a turn, an agent can propose a new skill for itself, or a change to the description or the
+  instructions of a skill that is for it only. The proposal follows 002, "Self-improvement": the
+  card, the limits, the states and Undo.
+- The agent cannot propose a skill for other agents or for all agents, a change of the list of
+  agents of a skill, a change of a skill for all agents, a delete, or a change of the switch.
+- An accepted new skill is for this agent only and is on, as a skill from "Make a skill" is. It
+  counts in the limit of 100. With 100 skills, the accept fails with the reason (002).
+- With the switch "Self-improvement" off (002), the agent cannot propose a skill.
 
 ## States
 
@@ -179,7 +199,8 @@ The user can turn work that went well into a skill, and does not write the instr
 
 ## Surfaces
 
-- **Ways in**: automatic, plus the slash (flows 6-7). No new button.
+- **Ways in**: automatic, plus the slash (flows 6-7). No new button. A proposal of a skill comes
+  from the agent or from "Make a skill" (002, "Self-improvement").
 - **Devices**: the computer shows the cards. The phone and a linked computer show them as stored
   cards, read only.
 - **Runtimes**: every agent. The list is part of the turn, and the load is a tool of the app (as
@@ -211,16 +232,22 @@ The user can turn work that went well into a skill, and does not write the instr
 - Make a skill with the name of an existing skill in other case: the form refuses it.
 - With 100 skills, the form for one more refuses to save.
 - With a stand-in model: a task in the state done has a prompt, two steps and a reply. Press "Make a
-  skill" in the task view: the form opens, then fills with the draft of the stand-in. The request
-  to the stand-in holds the prompt, the two steps and the reply, and holds no output of a tool.
-  Save: the skill shows in the list of skills, for the agent of the task only, and it is on. In the
-  chat of that agent, `/` lists it.
-- A task whose turn held outside content: the form shows "This work read outside content. Read the
-  instructions before you save."
-- "Make a skill" on an article and on a memory item: the form fills in the same way.
-- The stand-in fails: the form shows the reason and "Try again", and no skill is made. Press
-  "Cancel" while the draft is written: the form closes and no skill is made.
-- With 100 skills, "Make a skill" opens the form, and Save refuses.
+  skill" in the task view: a card opens, then shows the draft of the stand-in as a proposal that
+  waits. The request to the stand-in holds the prompt, the two steps and the reply, and holds no
+  output of a tool. Press "Accept": the skill shows in the list of skills, for the agent of the task
+  only, and it is on. In the chat of that agent, `/` lists it. The change log has a row Applied.
+- Press "Edit and accept" on such a card: the form of a new skill opens with the draft, and Save
+  makes the skill with the edited fields.
+- A task whose turn held outside content: the card shows "This work read outside content. Read the
+  change before you accept."
+- "Make a skill" on an article and on a memory item: the card fills in the same way.
+- The stand-in fails: the card shows the reason and "Try again", and no proposal and no skill is
+  made. Press "Cancel" while the draft is written: the card closes and no proposal is made.
+- With 100 skills, "Make a skill" makes the proposal, and "Accept" fails with the reason.
+- Press "Make a skill" four times in one day: four proposals wait, because the limit of how often
+  counts only the proposals that the agent starts.
+- A stand-in model proposes a change to a skill for all agents: the tool refuses it, and the skill
+  does not change.
 - On a linked device and on the phone, no "Make a skill" shows.
 - Export, then import into an empty app: the skills are back.
 - Teach a task with a fake model on a local test page: open the page, click a button, type

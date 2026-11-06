@@ -9,12 +9,12 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | --- | --- | --- |
 | 000 | [Product](000-product.md) | Draft |
 | 001 | [Window layout: server rail, agent list with user sections, direct chat, activity panel](001-window-layout.md) | Draft |
-| 002 | [Agents: create, starters, face, name, role, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
+| 002 | [Agents: create, starters, face, name, role, Soul, self-improvement, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
 | 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context, mentions](003-direct-chat.md) | Draft |
 | 005 | [Tasks: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |
 | 007 | [Agent workspace and tools: files, shell, browser, approvals, permission rules, action log, other agents, computer use](007-workspace-and-tools.md) | Draft |
-| 008 | [Memory: what an agent keeps between chats, and how the user edits it](008-memory.md) | Draft |
+| 008 | [Memory: what an agent keeps between chats, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 009 | [Routines: scheduled jobs, calendar, missed runs, limits and pause on repeated failure, and the check of overlaps, loops and runs at once](009-routines.md) | Draft |
 | 010 | [Workflows: a graph of steps and triggers, with an assistant, workflow files, CC Workflow Studio files and a check of every way a run can go](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
@@ -23,7 +23,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
-| 017 | [Skills: saved instructions that the user calls with a slash](017-skills.md) | Draft |
+| 017 | [Skills: saved instructions that the user calls with a slash, or that the agent loads or proposes](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |

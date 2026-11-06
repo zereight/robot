@@ -13,7 +13,9 @@ keep, and can undo a change.
 - **Memory saving**: a choice for each agent. It sits on the memory page of the agent, above the
   tabs. "Save at once" is the default: the agent saves a fact as a memory item. "Ask me first":
   the agent can only suggest a fact, and the user decides.
-- **Proposal**: a fact that an agent suggests and the user has not accepted. A proposal is not
+- **Proposal**: a fact that an agent suggests and the user has not accepted. It is a proposal of
+  the kind "Memory item" of self-improvement (002, "Self-improvement"). That section holds the
+  card, the states, the change log and the limits that all proposals share. A proposal is not
   memory. The agent does not read it.
 - **History**: the list of changes to the memory of one agent.
 - **Memory check**: a choice for each agent, off by default. When it is on, the app gives the
@@ -25,19 +27,18 @@ keep, and can undo a change.
    - With "Save at once", it saves a memory item. The chat shows a muted "Saved to memory" line
      with an undo control. The control does the same as "Undo" in the history (see 4).
    - With "Ask me first", it makes a proposal. The chat shows a muted "Suggested for memory"
-     line with a link that opens the tab Proposals.
+     line with the link "Review", which opens the card (002, "Self-improvement").
 2. The user opens the memory page of the agent. Under the page title, above the choice "Memory
-   saving" and the tabs, one muted line says how an agent gets better: through its instructions,
-   memory and knowledge, and through skills that the user saves. The line also says that ROBot
-   does not train the model (see 000). It shows on every tab, when the list is empty, and when
-   memory is off. The page has three tabs.
+   saving" and the tabs, one muted line says how an agent gets better: through its Soul, memory,
+   knowledge and skills, and through the proposals that the user accepts. The line also says that
+   ROBot does not train the model (see 000). It shows on every tab, when the list is empty, and
+   when memory is off. The page has two tabs.
    - **Items**: a list, newest first, with search. The user can add, edit, or delete items.
-   - **Proposals**: the proposals, oldest first. The tab shows when the choice is "Ask me first"
-     or when a proposal waits.
    - **History**: the changes, newest first.
-3. A proposal row shows the text, the time, and the chat where it came from. It has three
-   buttons: "Save", "Edit and save", and "Dismiss". Save and Edit and save make a memory item.
-   Dismiss removes the proposal and makes no item.
+   When a proposal of a memory item waits, the page shows the link "Proposals (N)" above the tabs.
+   It opens the tab "Waiting" of the page "Self-improvement" (002).
+3. The user answers a proposal on its card (002, "Self-improvement"): "Accept", "Edit and accept",
+   or "Reject". Accept and Edit and accept make a memory item. Reject makes no item.
 4. A history row shows the time, who made the change (the user, the agent, a proposal that the
    user accepted, or an undo), and the kind (added, edited, deleted) with the text. An edit shows
    the text before and after. A row has the button "Undo".
@@ -52,9 +53,9 @@ keep, and can undo a change.
 6. Memory check: the choice "Memory check" is on the memory page, under "Memory saving". Its text
    says that each check is a turn of the model and uses the account of the agent. "Check now" runs
    a check at once with the turns since the last check. It is off when there are none.
-7. Make a skill: the menu of a row in the tab Items has "Make a skill". It opens the form of a new
-   skill with a draft that the model of the agent writes from the text of the item (see 017,
-   "Make a skill from work"). It is on the computer only.
+7. Make a skill: the menu of a row in the tab Items has "Make a skill". The model of the agent
+   writes a draft skill from the text of the item, and the draft is a proposal of a new skill (see
+   017, "Make a skill from work"). It is on the computer only.
 
 ## Rules
 
@@ -67,17 +68,19 @@ keep, and can undo a change.
   refuses a longer text and tells the agent. The user can type longer items by hand.
 - A proposal with the same text as an item or as another proposal is not added. Spaces at both
   ends and the case of letters do not matter. The tool tells the agent that the fact is known.
-- An agent has at most 20 proposals. A new proposal replaces the oldest one when 20 wait. A
-  proposal that nobody answers ends after 30 days.
+- How many proposals wait, and when they expire, is in 002, "Self-improvement", "Limits". The
+  limit is for all kinds of proposals of the agent together.
+- "Save at once" is the choice of the user for new memory items of this agent. It does not cover a
+  Soul change or a skill (002). With "Save at once", an item is saved with no card, and Undo stays.
 - A change of the choice leaves the proposals as they are. After the change to "Save at once",
-  the proposals stay in the tab until the user answers them.
+  the proposals wait until the user answers them.
 - The memory tool refuses a text that looks like a secret (see 014). It does not save it and does
   not suggest it, and it tells the agent to leave the secret out. The user can type such a text
   by hand.
 - A save in a turn that holds outside content asks first (see 007, "Outside content"). So a
   web page cannot put a lasting order into the memory of an agent. This holds for "Save at
-  once". A proposal is not memory, so a proposal in such a turn needs no card. The user still
-  decides in the tab Proposals.
+  once". A proposal is not memory, so a proposal in such a turn needs no approval card. The user
+  still decides on the card of the proposal, which says that the work read outside content (002).
 - Each change to an item makes a history row. A change that arrives by sync (019) makes none.
   Such a change can turn an Undo off, because the item is not as that row left it.
 - History keeps 90 days and at most 1000 rows for each agent. The oldest rows go first. Removing
@@ -103,8 +106,9 @@ keep, and can undo a change.
   It reads no tool output, no web page and no file.
 - In the check, the agent has one tool: suggest a fact. It can make at most 5 proposals. It makes
   proposals also when the choice "Memory saving" is "Save at once", so the user decides each one.
-  The proposal rules above hold: 500 characters, no duplicates, no secrets, at most 20 that wait.
-  The tab Proposals shows "From a memory check" as the source.
+  The proposal rules above and in 002 hold: 500 characters, no duplicates, no secrets, at most 20
+  that wait. The card shows "From a memory check" as the source. A check makes no Soul change and
+  no skill.
 - The check uses the model and effort of the agent. It needs the tool "suggest a fact" of the app.
   An agent on a vendor runtime (006) that cannot call the tools of the app cannot use the check:
   the choice is off for that agent, with the muted line "<program> cannot use the memory check."
@@ -125,22 +129,27 @@ keep, and can undo a change.
 - Tell an agent a preference, open a new chat: it uses the preference. Delete the item: it does
   not.
 - Set "Ask me first". Tell the agent a preference. The tab Items has no new item, and the tab
-  Proposals has one. Press "Save": the item shows in Items, and History has a row "added" by a
-  proposal that the user accepted. A new chat uses the preference.
-- Dismiss a proposal: it leaves the tab, and no item and no history row is made.
+  "Waiting" of "Self-improvement" has one card. Press "Accept": the item shows in Items, History
+  has a row "added" by a proposal that the user accepted, and the change log has a row Applied. A
+  new chat uses the preference.
+- Reject a proposal: it leaves the tab "Waiting", the change log has a row Rejected, and no item
+  and no history row is made.
+- Accept a proposal, then press "Undo" in the change log: the item is gone, and History has a row
+  for the undo. The Undo of the row "added" in History is then off.
 - Edit an item twice. Undo of the first edit is off and shows the reason. Undo the second edit,
   then the first: the item has the text that it had before the first edit. Undo the last undo:
   the item has the text of the first edit again.
 - Delete an item, then press Undo on its row: the item is back with its text.
 - Ask the agent to remember a text that looks like a key: no item and no proposal is made, and
   the agent says that it left the secret out.
-- Make 21 proposals: the tab shows 20, and the oldest one is gone.
+- Make 21 proposals: the tab "Waiting" shows 20, and the oldest one is in the change log as
+  Rejected with "Replaced by a newer proposal".
 - Ask the agent to save a fact twice: the second call adds nothing, and the agent is told that the
   fact is known.
 - Turn memory off: the agent has no memory tools. The items stay in the tab.
 - Open the same agent on a linked device: the line "Saved to memory" has no undo control.
 - Turn "Memory check" on with "Save at once". After 10 done turns, a task "memory check" runs when
-  the agent is free. A stand-in model suggests 2 facts: the tab Proposals shows 2 proposals "From a
+  the agent is free. A stand-in model suggests 2 facts: the tab "Waiting" shows 2 proposals "From a
   memory check", and no item is made. A failed turn does not count toward the 10.
 - With "Memory check" on and 3 done turns since the last check, press "Check now": a check runs at
   once. With no turn since the last check, "Check now" is off.
