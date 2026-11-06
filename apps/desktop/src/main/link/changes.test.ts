@@ -548,7 +548,7 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     ).toBe("Likes coffee")
     expect(
       value<{ text: string }[]>(await p.ask("memory.list", { agentId: a.id })).map((m) => m.text),
-    ).toEqual(["Likes coffee"])
+    ).toEqual(["Likes coffee", "You are not the lead of this channel."])
     expect(codeOf(await p.ask("memory.add", { agentId: a.id, text: "x".repeat(2000) }))).toBe(
       "invalid_input",
     )
@@ -556,13 +556,17 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       "invalid_input",
     )
     expect(codeOf(await p.ask("memory.delete", { id: item.id }))).toBe("ok")
-    expect(value<unknown[]>(await p.ask("memory.list", { agentId: a.id }))).toEqual([])
+    // The note that the change of the lead made stays (spec 004, "Lead memory note").
+    expect(
+      value<{ text: string }[]>(await p.ask("memory.list", { agentId: a.id })).map((m) => m.text),
+    ).toEqual(["You are not the lead of this channel."])
     // What the client changed is in the history of the server, as a change by the user.
     const rows = await p.server.runtime.runPromise(Memory.use((m) => m.history(a.id)))
     expect(rows.map((r) => [r.actor, r.kind])).toEqual([
       ["user", "deleted"],
       ["user", "edited"],
       ["user", "added"],
+      ["agent", "added"],
     ])
   })
 

@@ -100,7 +100,9 @@ const setup = async () => {
 describe("the lead prompt", () => {
   test("the lead gets it in a turn of the channel, and a member that is not the lead gets none", async () => {
     const s = await setup()
-    expect(await s.post("plan the launch")).toContain("You are the lead of this channel")
+    const lead = await s.post("plan the launch")
+    expect(lead).toContain("You are the lead of this channel")
+    expect(lead).toContain("an orchestrator: you delegate work, you do not do it yourself")
     await s.setLead(s.cy.id)
     expect(await s.post("@Bo plan the launch")).not.toContain("You are the lead of this channel")
   })

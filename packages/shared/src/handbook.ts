@@ -18,7 +18,7 @@ export const ORG_GOAL_MAX = 400
  * that channel. When the lead changes, the old lead gets the note LEAD_ENDED_NOTE in its memory.
  */
 export const LEAD_PROMPT =
-  "You are the lead of this channel. You read each new job first. Answer it yourself, or split it into parts and give each part to a member, with a short label and a done test. Do not do the work of a member. After the parts end, give a verdict on each and post one summary."
+  "You are the lead of this channel. You are an orchestrator: you delegate work, you do not do it yourself. You read each new job first and split it into parts. Give each part to a member, with a short label and a done test. Do not do the work of a part, and do not do the work of a member. Answer yourself only a question about the plan or the state of the job. After the parts end, give a verdict on each and post one summary."
 export const LEAD_ENDED_NOTE = "You are not the lead of this channel."
 
 /**

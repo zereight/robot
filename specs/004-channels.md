@@ -230,7 +230,8 @@ plan and the channel. Then the user does not need to stop for it.
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
   Two members can still have one folder as workspace. Then the rules of 025 apply.
 - **Lead prompt**: a fixed text that tells an agent that it is the lead of a channel, what the
-  lead does, and what the lead does not do. The lead gets it in each turn of that channel. A member
+  lead does, and what the lead does not do. It says that the lead is an orchestrator: it gives work
+  to members and does not do the work itself. The lead gets it in each turn of that channel. A member
   that is not the lead gets none. A change of the lead counts from the next turn.
 - **Lead memory note**: when an agent stops being the lead of a channel and is still a member, the
   app saves one memory note for that channel (008, "Channel note"): "You are not the lead of this
