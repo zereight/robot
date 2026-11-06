@@ -24,6 +24,7 @@ spec-writer slice changes the specs. This note changes no behaviour.
 | 15 | The app writes the standard rules (no deadlock, every node can run, every approval node comes before its effect). The user adds more in the module. |
 | 16 | No migration of old data. |
 | 17 | A text node can use tools: shell, files, browser and memory (007, 008). A decision node uses none. |
+| 18 | A workflow has one workspace folder and one permission level (007). A new workflow gets an empty folder in the default workspace folder (013) and the default level of a new agent. A node can pick a stricter level than the workflow, never a looser one. Only the user changes the folder and the levels. A node and a self-improvement proposal cannot. Reason: the check needs the level of each node before the run. |
 
 ## The model
 
@@ -90,8 +91,7 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 1. A node has a name, a prompt, a provider, a model and a reasoning level (006).
 2. At run time the app sends the responsible document and the node prompt to the model of the
    node. The node gets the input of the step before it.
-3. A text node can use the tools of 007 in the folder and at the level of the workflow (open
-   question 1).
+3. A text node can use the tools of 007 in the folder and at the level of the workflow (decision 18).
 
 ### Decision node
 
@@ -144,12 +144,7 @@ the app.
 
 ## Open questions
 
-These are also in `docs/spec-questions.md`. Do not guess them in a spec.
-
-1. **Folder and level.** A node uses tools (decision 17). Which workspace folder and which
-   permission level does it use? Proposed: one folder and one level for each workflow, set by the
-   user, with the same levels as 007. A node cannot change them. A proposal of self-improvement
-   cannot change them (002 rule, kept). W1 and W2 wait for this answer.
+None. All questions have an answer from the owner. W1 to W3 can start.
 
 ## Notes
 

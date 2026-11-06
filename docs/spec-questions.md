@@ -695,7 +695,7 @@ implementer made to continue. A spec author answers by changing the spec.
 | 022 | The dot in the profile menu meant "Needs you" of Today, which is deleted (R1). What does it mean now? | A task of the profile waits for the user (005). |
 | 038 | The word "place" now means a routine, a workflow, or the direct chat of an agent (R1). Does a message of an outside program go only to the direct chat of an agent? | Yes (023). |
 | 005, 010 | Is a task one run of a node, or one run of a workflow, when the agent is removed (`docs/proposal-workflow-first.md`)? | Decided by the owner. |
-| 007, 010 | A text node uses tools (decided by the owner). Which workspace folder and permission level does it use? | Open. Needs the owner. Proposed: one folder and one level for each workflow, set by the user. |
+| 007, 010 | A text node uses tools. Which workspace folder and permission level does it use? | Decided by the owner (the proposal): one folder and one level for each workflow; a node may pick a stricter level only; only the user changes them. |
 | 009 | A routine starts a task of an agent. What does it start when there is no agent? | Decided by the owner (the proposal): a routine becomes a trigger of a workflow. |
 | 017 | Do the user's own skills and the slash call stay? | Decided by the owner (the proposal): they stay as texts that a node prompt can include. |
 | 010, 014 | What does the TLA module hold: the graph, the prompts, the rules? | Decided by the owner (the proposal): graph, prompts as strings, and the rules of the check. |
