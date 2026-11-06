@@ -9,6 +9,7 @@ import {
   isDecision,
   isEndedAs,
   isFinal,
+  isLeadOrder,
   isRuntimeKind,
   isTaskProgress,
   isTeamsJobKind,
@@ -59,6 +60,7 @@ import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { loadHandOffModel } from "./handOff.ts"
 import { Notifier } from "./Notifier.ts"
 import { orgLimitStop } from "./orgLimitData.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -1266,6 +1268,20 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         return found ? messageText({ parts: JSON.parse(found.parts) }).slice(0, RESULT_MAX) : ""
       }
 
+      /** A finished order of a lead that the lead has not judged yet (spec 030). */
+      const awaitsAcceptance = (task: Task) => {
+        if (task.source !== "agent" || !task.sourceId || task.state !== "done" || task.verdict)
+          return false
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          task.agentId,
+        )
+        return (
+          server !== undefined &&
+          isLeadOrder(loadHandOffModel(db, server.server_id, null), task.sourceId, task.agentId)
+        )
+      }
+
       /** The agent that gave the task as a part of its plan: the agent of the parent task. */
       const leadNameOf = (task: Task) =>
         task.parentId && task.source === "channel"
@@ -1637,6 +1653,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               result: resultOf(task),
               joined: joinedOf(task),
               leadName: leadNameOf(task),
+              awaitsAcceptance: awaitsAcceptance(task),
               tree,
               questions: questionsOfTask(task),
             })

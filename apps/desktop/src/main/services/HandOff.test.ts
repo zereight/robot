@@ -252,6 +252,7 @@ const setup = async (options: { main?: boolean } = {}) => {
     range,
     extra,
     send,
+    messages,
     call,
     tasks,
     quiet,
@@ -701,6 +702,15 @@ describe("an order of a lead (spec 007)", () => {
     })
   }
 
+  test("the lead D of a lower organization gives its member A an order, after P gave one to D", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.call("D", "send_message", { to: "A", text: "Write the test." })
+    const body = await lastFromAgent(s, "A")
+    expect(body).toContain(LEAD_ORDER_WORDS)
+    expect(body).toContain("Write the test.")
+  })
+
   test("a member who sends to its lead gives input from a colleague, no order", async () => {
     const s = await setup()
     const step = await s.call("D", "send_message", { to: "P", text: "Please push." })
@@ -751,5 +761,138 @@ describe("an order of a lead (spec 007)", () => {
     } finally {
       useClockForTests(undefined)
     }
+  })
+})
+
+describe("the lead accepts the result of an order (spec 030)", () => {
+  test("the result waits until the lead accepts it, and the lead accepts it with review_result", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    const order = (await s.received("D"))[0]
+    expect(order?.state).toBe("done")
+    expect(order?.verdict).toBeNull()
+    const detail = (id: string) => s.run(Tasks.use((x) => x.get(id)))
+    expect((await detail(order?.id ?? "")).awaitsAcceptance).toBe(true)
+    const step = await s.call("P", "review_result", { from: "D", accepted: true })
+    expect(step.state).toBe("done")
+    const judged = (await s.received("D"))[0]
+    expect(judged?.verdict).toBe("met")
+    expect(judged?.judgedAt).not.toBeNull()
+    expect((await detail(judged?.id ?? "")).awaitsAcceptance).toBe(false)
+    // The result is judged once: a second review has nothing to judge.
+    const again = await s.call("P", "review_result", { from: "D", accepted: true })
+    expect(again.state).toBe("failed")
+  })
+
+  test("a lead that does not accept gives a reason, and the verdict is not met", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    const step = await s.call("P", "review_result", {
+      from: "D",
+      accepted: false,
+      reason: "The test is missing.",
+    })
+    expect(step.state).toBe("done")
+    const judged = (await s.received("D"))[0]
+    expect(judged?.verdict).toBe("not_met")
+    expect(judged?.verdictReason).toBe("The test is missing.")
+  })
+
+  test("only the lead who gave the order reviews it", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    // A is a colleague of D, and X is in no organization: neither gave the order.
+    for (const who of ["A", "X"]) {
+      const step = await s.call(who, "review_result", { from: "D", accepted: true })
+      expect(step.state).toBe("failed")
+    }
+    expect((await s.received("D"))[0]?.verdict).toBeNull()
+  })
+})
+
+describe("the lead steers or cancels a running order (spec 030)", () => {
+  const textOf = (m: ChatMessage) => m.parts.map((p) => (p.kind === "text" ? p.text : "")).join("")
+  /** P orders D with a slow turn, and the task of D runs. */
+  const running = async () => {
+    const s = await setup()
+    await s.send(
+      "P",
+      `CALLS ${JSON.stringify([{ name: "send_message", args: { to: "D", text: "SLOW push the fix" } }])}`,
+    )
+    await until(async () => (await s.received("D")).some((x) => x.state === "running"))
+    const order = (await s.received("D"))[0]
+    return { s, id: order?.id ?? "" }
+  }
+  const fire = (s: Awaited<ReturnType<typeof setup>>, tool: string, args: unknown) =>
+    s.send("P", `CALLS ${JSON.stringify([{ name: tool, args }])}`)
+
+  test("a steer reaches the turn of the member as an order of the lead", async () => {
+    const { s } = await running()
+    await fire(s, "steer_order", { to: "D", text: "Use the branch fix-2." })
+    await s.quiet()
+    const joined = (await s.messages("D"))
+      .map(textOf)
+      .find((t) => t.includes("Use the branch fix-2."))
+    expect(joined).toContain(LEAD_ORDER_WORDS)
+    expect((await s.received("D"))[0]?.state).toBe("done")
+  })
+
+  test("a cancel ends the task and the lead gets no reply", async () => {
+    const { s } = await running()
+    await fire(s, "cancel_order", { to: "D" })
+    await until(async () => (await s.received("D")).every((x) => x.state === "cancelled"))
+    await s.quiet()
+    const back = (await s.messages("P"))
+      .map(textOf)
+      .filter((t) => t.startsWith("Reply from the agent D"))
+    expect(back).toHaveLength(0)
+  })
+
+  test("only the lead who gave the order steers or cancels it", async () => {
+    const { s, id } = await running()
+    for (const tool of ["steer_order", "cancel_order"]) {
+      await s.send("A", `CALLS ${JSON.stringify([{ name: tool, args: { to: "D", text: "x" } }])}`)
+    }
+    await s.quiet()
+    const steps = (await s.messages("A"))
+      .filter((m) => m.author === "agent")
+      .flatMap((m) => m.parts)
+      .filter((p): p is ToolPart => p.kind === "tool")
+    expect(steps.map((p) => p.state)).toEqual(["failed", "failed"])
+    expect((await s.received("D")).find((x) => x.id === id)?.state).toBe("done")
+  })
+
+  test("a task that is not running cannot be steered", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    expect((await s.call("P", "steer_order", { to: "D", text: "More." })).state).toBe("failed")
+  })
+})
+
+describe("the accepted results a lead reads (spec 030)", () => {
+  test("a lead reads the results it accepted in later turns, and only those", async () => {
+    const s = await setup()
+    await s.call("P", "send_message", { to: "D", text: "Push the fix." })
+    await s.quiet()
+    // Not accepted yet: the lead reads no list.
+    systems.length = 0
+    await s.send("P", "hello")
+    await s.quiet()
+    expect(systems.some((x) => x.includes("that you accepted"))).toBe(false)
+    await s.call("P", "review_result", { from: "D", accepted: true })
+    systems.length = 0
+    await s.send("P", "hello again")
+    await s.quiet()
+    const lead = systems.find((x) => x.includes("that you accepted")) ?? ""
+    expect(lead).toContain("- D: ok")
+    // The member does not read the list of its lead.
+    systems.length = 0
+    await s.send("D", "hello")
+    await s.quiet()
+    expect(systems.some((x) => x.includes("that you accepted"))).toBe(false)
   })
 })

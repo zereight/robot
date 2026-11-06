@@ -17,6 +17,7 @@ import {
   checkRequestAddress,
   classifyHostWriting,
   cleanFollowUpReason,
+  cleanReason,
   commandChangesControl,
   commandReads,
   commandTarget,
@@ -36,6 +37,7 @@ import {
   holdSensitive,
   hostOf,
   insideWorkspace,
+  isLeadOrder,
   isPlainField,
   isSecretName,
   isSecretValue,
@@ -247,6 +249,13 @@ export interface Messenger {
     toAgentId: string,
     text: string,
   ): Promise<void>
+  /**
+   * Sends a text of a lead into the running turn of a task of a member. Gives false when the turn
+   * does not run now (spec 030, "Lead and members as agent and sub-agents").
+   */
+  steer(taskId: string, text: string): Promise<boolean>
+  /** Cancels a task of a member. The lead gets no reply from it (spec 005). */
+  cancel(taskId: string): Promise<void>
 }
 
 /**
@@ -551,11 +560,42 @@ const DEFS: Record<string, ToolDef> = {
   send_message: {
     name: "send_message",
     description:
-      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send.",
+      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send. When you are the lead of the receiver, write the text as a brief: the aim, the limit of the work, what a done result is, and when to stop and ask.",
     schema: object(
       { to: str("The name of the agent."), text: str("The message, with all that it needs.") },
       ["to", "text"],
     ),
+  },
+  review_result: {
+    name: "review_result",
+    description:
+      "Judge the result of an order that you gave to a member of your organization. Give the name of the member. Set accepted to true when the result is what you asked for. Set accepted to false and give a reason when it is not; then send a new order for what to change. You can judge the latest result of that member once.",
+    schema: object(
+      {
+        from: str("The name of the member that did the work."),
+        accepted: { type: "boolean", description: "True when you accept the result." },
+        reason: str("Why you do not accept it, in one line. Leave it out when you accept."),
+      },
+      ["from", "accepted"],
+    ),
+  },
+  steer_order: {
+    name: "steer_order",
+    description:
+      "Send a new instruction to the work that a member of your organization does now for an order of yours. The member reads it at its next step. Use it to change the course of the work. It fails when the work does not run.",
+    schema: object(
+      {
+        to: str("The name of the member."),
+        text: str("The new instruction, with all that it needs."),
+      },
+      ["to", "text"],
+    ),
+  },
+  cancel_order: {
+    name: "cancel_order",
+    description:
+      "Cancel the work that a member of your organization does now, or has queued, for an order of yours. You get no reply from it.",
+    schema: object({ to: str("The name of the member.") }, ["to"]),
   },
   save_memory: {
     name: "save_memory",
@@ -2538,6 +2578,107 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return { output: lines.join("\n") || "There are no other agents.", failed: false }
       }
 
+      /**
+       * The lead judges the latest finished result of an order that it gave (spec 030, "Lead and
+       * members as agent and sub-agents"). The verdict is the field of the task (spec 005). Only
+       * the sender of the order can judge it, and only once.
+       */
+      const reviewResult = (ctx: ToolContext, args: Record<string, unknown>): ToolOutcome => {
+        const name = text(args, "from").trim()
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        const member = db.get<{ id: string }>(
+          "SELECT id FROM agent WHERE server_id = ? AND name_key = ?",
+          server?.server_id ?? "",
+          name.toLocaleLowerCase(),
+        )
+        if (!member) return { output: "No agent has this name. Use list_agents.", failed: true }
+        const model = organization.model(server?.server_id ?? "")
+        const task = db.get<{ id: string }>(
+          `SELECT id FROM task
+           WHERE agent_id = ? AND source = 'agent' AND source_id = ? AND state = 'done'
+             AND verdict IS NULL AND origin IS NULL
+           ORDER BY created_at DESC LIMIT 1`,
+          member.id,
+          ctx.agentId,
+        )
+        if (!task || !isLeadOrder(model, ctx.agentId, member.id))
+          return { output: `${name} has no finished result of yours to judge.`, failed: true }
+        const accepted = args.accepted === true
+        const reason = accepted ? null : cleanReason(args.reason)
+        db.run(
+          "UPDATE task SET verdict = ?, verdict_reason = ?, judged_at = ? WHERE id = ?",
+          accepted ? "met" : "not_met",
+          reason,
+          Date.now(),
+          task.id,
+        )
+        bus.emit("tasks.changed", { serverId: server?.server_id ?? "" })
+        return {
+          output: accepted
+            ? `You accepted the result of ${name}.`
+            : `You did not accept the result of ${name}. Send a new order for what to change.`,
+          failed: false,
+        }
+      }
+
+      /**
+       * The lead changes the work of an order that it gave: a new instruction for the running
+       * turn, or a cancel (spec 030). Only the lead who gave the order can do it.
+       */
+      const changeOrder = async (
+        ctx: ToolContext,
+        args: Record<string, unknown>,
+        change: "steer" | "cancel",
+      ): Promise<ToolOutcome> => {
+        const name = text(args, "to").trim()
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        const member = db.get<{ id: string }>(
+          "SELECT id FROM agent WHERE server_id = ? AND name_key = ?",
+          server?.server_id ?? "",
+          name.toLocaleLowerCase(),
+        )
+        const task = member
+          ? db.get<{ id: string; state: string }>(
+              `SELECT id, state FROM task
+               WHERE agent_id = ? AND source = 'agent' AND source_id = ?
+                 AND state IN ('queued', 'running', 'waiting') AND origin IS NULL
+               ORDER BY created_at DESC LIMIT 1`,
+              member.id,
+              ctx.agentId,
+            )
+          : undefined
+        if (
+          !member ||
+          !task ||
+          !isLeadOrder(organization.model(server?.server_id ?? ""), ctx.agentId, member.id)
+        )
+          return { output: `${name} has no work of yours that runs now.`, failed: true }
+        if (!messenger)
+          return { output: "Messages to other agents are not available.", failed: true }
+        if (change === "cancel") {
+          await messenger.cancel(task.id)
+          return {
+            output: `You cancelled the work of ${name}. You get no reply from it.`,
+            failed: false,
+          }
+        }
+        const instruction = text(args, "text").trim()
+        if (!instruction) return { output: "Give the new instruction.", failed: true }
+        const steered = await messenger.steer(task.id, instruction)
+        return steered
+          ? { output: `${name} reads your instruction at its next step.`, failed: false }
+          : {
+              output: `The work of ${name} does not run now. Cancel it and send a new order.`,
+              failed: true,
+            }
+      }
+
       const sendMessage = async (
         ctx: ToolContext,
         call: ToolCall,
@@ -2808,6 +2949,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return listAgents(ctx)
           case "send_message":
             return await sendMessage(ctx, call, args)
+          case "review_result":
+            return reviewResult(ctx, args)
+          case "steer_order":
+            return await changeOrder(ctx, args, "steer")
+          case "cancel_order":
+            return await changeOrder(ctx, args, "cancel")
           case "ask_user": {
             const question = text(args, "question")
             const choices = Array.isArray(args.choices)

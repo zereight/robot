@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs"
 import { basename, dirname, extname, join, sep } from "node:path"
 import {
+  ACCEPTED_RESULTS_MAX,
+  type AcceptedResult,
   type AgentMessageKind,
   type AgentModel,
   ATTACH_BYTES,
   ATTACH_MAX,
+  acceptedResultsLead,
   askAllowsAlways,
   askKind,
   askStep,
@@ -1621,6 +1624,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               CHAIN_LIMIT_RULE,
               // The main agent is told what the hand-off rule means for it (spec 030).
               organization.told(agentId),
+              // A lead reads the results that it accepted, so it does not order them again (spec 030).
+              acceptedResultsLead(acceptedOf(agentId)),
               connected?.rule() ?? "",
               // A task of a routine, a workflow or another agent can say that it was blocked.
               toldAboutBlocked(task) ? BLOCKED_RULE : "",
@@ -3463,6 +3468,31 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       // The tool "send message" of any agent delivers its text through the chat of the receiver.
       tools.setMessenger({
+        steer: async (taskId, text) => {
+          const found = turnOfTask(taskId)
+          const task = db.get<{ source_id: string | null; agent_id: string }>(
+            "SELECT source_id, agent_id FROM task WHERE id = ?",
+            taskId,
+          )
+          if (!found || !task) return false
+          await Effect.runPromise(
+            join(
+              found.place,
+              found.turn,
+              {
+                text: agentMessage(task.source_id, task.agent_id, text),
+                replyTo: null,
+                files: [],
+                skill: null,
+              },
+              null,
+            ),
+          )
+          return true
+        },
+        cancel: async (taskId) => {
+          await Effect.runPromise(tasks.stop(taskId))
+        },
         send: async (from, toAgentId, text) => {
           const sender = agentRow(from.agentId)
           const exit = await Effect.runPromiseExit(
@@ -3501,6 +3531,36 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           )
         },
       })
+
+      /** The results that this lead accepted, newest first (spec 030). */
+      const acceptedOf = (leadId: string): AcceptedResult[] =>
+        db
+          .all<{ name: string; parts: string | null }>(
+            `SELECT a.name AS name, m.parts AS parts
+             FROM task t
+             JOIN agent a ON a.id = t.agent_id
+             LEFT JOIN message m ON m.id = t.message_id
+             WHERE t.source = 'agent' AND t.source_id = ? AND t.verdict = 'met' AND t.origin IS NULL
+             ORDER BY t.judged_at DESC LIMIT ?`,
+            leadId,
+            ACCEPTED_RESULTS_MAX,
+          )
+          .map((r) => ({
+            member: r.name,
+            line: r.parts ? messageText({ parts: JSON.parse(r.parts) as MessagePart[] }) : "",
+          }))
+
+      /** The turn that runs a task of an agent order now, or undefined. */
+      const turnOfTask = (taskId: string) => {
+        const task = db.get<{ agent_id: string; state: string }>(
+          "SELECT agent_id, state FROM task WHERE id = ?",
+          taskId,
+        )
+        if (task?.state !== "running") return undefined
+        const place = mainOf(task.agent_id)
+        const turn = live.get(keyOf(place))
+        return turn && !turn.fromTeams ? { place, turn } : undefined
+      }
 
       // The turns of tasks that waited through a restart start again. Each keeps the place of its
       // agent, so a message that comes now waits in the queue behind it.

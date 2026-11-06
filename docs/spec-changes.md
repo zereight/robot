@@ -416,3 +416,11 @@ S133 needs the permission rules and approval cards of S30 and the main agent of 
 | Spec | Before | Now |
 | --- | --- | --- |
 | 003 | The header of the chat of a lead shows no organization. | A chip shows the organization and its member count. It opens a read-only list of the members, with a link to the org chart. |
+
+## Lead and members as agent and sub-agents
+
+| Spec | Before | Now |
+| --- | --- | --- |
+| 030 | An order of a lead is a message. The receiver does the work in its own chat. | An order of a lead is a task of the member, with the lead as asker and a brief. A stuck member asks its lead first. The lead accepts the result or orders a change, can steer a running task, and can cancel it. |
+| 030 | A lead has no list of the results it accepted. | The lead reads a list of its accepted results (at most 20). It can ask a second member to check a result before it accepts. |
+

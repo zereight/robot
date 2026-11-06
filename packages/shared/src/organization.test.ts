@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  acceptedResultsLead,
   allowedSends,
   checkHandOff,
   firstOnPath,
@@ -616,5 +617,35 @@ describe("order of a lead (spec 007)", () => {
   test("the words tell the receiver to do the work and name the rules that still hold", () => {
     expect(LEAD_ORDER_WORDS).toContain("order of your lead")
     expect(LEAD_ORDER_WORDS).toContain("Do the work")
+  })
+
+  test("the words tell a stuck receiver to ask its lead first, not the user (spec 030)", () => {
+    expect(LEAD_ORDER_WORDS).toContain("ask your lead")
+    expect(LEAD_ORDER_WORDS).toContain("Do not ask the user first")
+  })
+})
+
+describe("the accepted results a lead reads (spec 030)", () => {
+  test("no result gives no text", () => {
+    expect(acceptedResultsLead([])).toBe("")
+  })
+
+  test("it lists the member and one line for each result, and tells the lead not to order the same work again", () => {
+    const text = acceptedResultsLead([
+      { member: "Jo", line: "Pushed the fix." },
+      { member: "Kai", line: "Wrote the test." },
+    ])
+    expect(text).toContain("- Jo: Pushed the fix.")
+    expect(text).toContain("- Kai: Wrote the test.")
+    expect(text.indexOf("Jo")).toBeLessThan(text.indexOf("Kai"))
+    expect(text).toContain("unless you say why")
+  })
+
+  test("it keeps the first 20 results and cuts a line to one short line", () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({ member: `M${i}`, line: "x" }))
+    expect(acceptedResultsLead(many).split("\n- ").length - 1).toBe(20)
+    const long = acceptedResultsLead([{ member: "Jo", line: `first\n${"y".repeat(500)}` }])
+    expect(long).toContain("- Jo: first")
+    expect(long).not.toContain("yyyy")
   })
 })
