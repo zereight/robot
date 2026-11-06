@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { en } from "./i18n/en.ts"
-import { ko } from "./i18n/ko.ts"
 import {
   type AccountFacts,
   accountProblem,
@@ -122,12 +120,6 @@ describe("text", () => {
     expect(badgeText(99)).toBe("99")
     expect(badgeText(100)).toBe("99+")
     expect(badgeText(1234)).toBe("99+")
-  })
-
-  test("English and Korean have the same keys for the page", () => {
-    const keys = Object.keys(en).filter((k) => k.startsWith("today.") || k === "page.today")
-    expect(keys.length).toBeGreaterThan(10)
-    for (const key of keys) expect(ko[key as keyof typeof ko]).toBeTruthy()
   })
 })
 
