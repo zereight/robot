@@ -95,6 +95,8 @@ export const en = {
 
   "places.label": "Places",
   "places.search": "Search",
+  "nav.back": "Back",
+  "nav.forward": "Forward",
   "places.search.clear": "Clear search",
   "places.section.channels": "Channels",
   "places.section.agents": "Agents",

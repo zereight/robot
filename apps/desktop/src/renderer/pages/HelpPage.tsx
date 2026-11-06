@@ -11,6 +11,10 @@ export const HelpPage = () => {
       <dl class={styles.shortcuts}>
         <dt>{mod} K</dt>
         <dd>{t("help.shortcut.search")}</dd>
+        <dt>{mod} [</dt>
+        <dd>{t("nav.back")}</dd>
+        <dt>{mod} ]</dt>
+        <dd>{t("nav.forward")}</dd>
         <dt>↑ ↓</dt>
         <dd>{t("help.shortcut.move")}</dd>
         <dt>Enter</dt>
