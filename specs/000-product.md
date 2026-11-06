@@ -27,7 +27,8 @@ workflow. The interface follows the layout of a chat server, with servers on the
 - **Chat**: the conversation of the user with a workflow. Each workflow has one chat. The
   responsible document answers in it (see 010).
 - **Task**: one execution of one node. A task has the states queued, running, waiting for the user,
-  done, failed, or cancelled (see 005).
+  done, failed, blocked or cancelled. A node that no input reaches is skipped and has no task (see
+  005).
 - **Trigger**: what starts a run of a workflow. The user can start a run by hand. A schedule is a
   trigger too (see 010).
 - Each workflow has a "Check" (see 010). It verifies the form of the workflow before the change
@@ -80,13 +81,13 @@ workflow. The interface follows the layout of a chat server, with servers on the
   app makes for test devices is a download that the user starts (032, 014).
 - Secrets never appear in logs, exports or diagnostics.
 - ROBot does not train or change a model. A workflow gets better at its work only through things
-  that the user can see and edit: its responsible document, the prompts of its nodes, its graph,
-  its memory (008, changed in slice W2) and its skills (017, changed in slice W2). Self-improvement
-  (010) only proposes changes to these
-  things, and a change applies only when the user accepts it. Interface text and documents do not
+  that the user can see and edit: its responsible document, the prompts of its nodes, its graph
+  and its memory (008). Skills (017) change only when the user changes them.
+  Self-improvement (010) only proposes changes to these four things, and a change applies only
+  when the user accepts it. Interface text and documents do not
   say that a model learns, trains or evolves. The rule covers text that the user reads. It does
   not cover the instructions that the app sends to a model. The memory page of a workflow shows one
-  muted line with this fact (see 008, changed in slice W2).
+  muted line with this fact (see 008).
 - The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
   settings. The look follows `DESIGN.md`: three lights carry meaning and nothing else does. The
@@ -109,7 +110,7 @@ workflow. The interface follows the layout of a chat server, with servers on the
   a device, and a source of knowledge. The question is one line that names what goes away. Its
   button is a danger button, and the other button keeps the data. Two cases do not ask. A delete
   that an Undo row follows at once (008, 016) shows in the colour of danger only. So does a node
-  that the user can simply make again, as a rule (007, changed in slice W2).
+  that the user can simply make again, as a rule (007).
 - Light is the one exception to the flat style. It shows who or what is here, and nothing else:
   the app mark glows, and a task that works shows the mint glow. Light is not used to decorate a
   surface, a button or a text. Light that does not belong to the app mark, to a working task or to
