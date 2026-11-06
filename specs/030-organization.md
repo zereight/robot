@@ -494,10 +494,9 @@ This holds only for an order of a lead (007), so a message between colleagues do
   work, with the member and one line for each, and it does not order the same work again unless
   it says why. The list holds at most 20 results, the newest first. A result that the lead did
   not accept is not on the list.
-- **One writer for one workspace**: while a task of a member runs and writes in a workspace, the
-  lead does not give an order to another member that writes in the same workspace. The second
-  order waits until the first task ends. Members with different workspaces run at the same time.
-  A task that only reads does not wait.
+- **One workspace for many members**: orders do not wait for each other. Members that share a
+  folder are guarded by file claims and the shared folder note (025). A refused step does not end
+  the task: the member works on other files, asks the holder, or ends the task as Blocked.
 - **Lower leads**: the lead of a sub-organization is a member of the organization above it. It
   takes an order as a member and gives orders as a lead. An order goes down the tree only, so a
   chain of orders of leads is at most as long as the tree is (3 levels, see "Organization
@@ -635,8 +634,8 @@ The first start of this version changes the data of each profile once.
 - Mia accepts the result of Jo, and later starts the same work again. Mia reads Jo's accepted
   result in the list and does not order it again. A result that Mia did not accept is not in the
   list.
-- Jo and Kai share one workspace, and both get an order that writes. Kai's task waits until Jo's
-  task ends. "Jo" and "Lee" have different workspaces: both run at the same time.
+- Jo and Kai share one folder, and both get an order that writes. Both tasks run. When Kai
+  writes a file that Jo holds, the step is refused as 025 says, and Kai's task goes on.
 
 - Make organizations "Product", "Docs" and "Site" with the form. Set the parent of "Docs" to
   "Product" and of "Site" to "Docs". The parent field of "Product" shows "Docs" and "Site" muted
