@@ -8,6 +8,7 @@ import {
   DOCUMENT_VERSIONS_MAX,
   type DocumentSource,
   type DocumentVersion,
+  graphProblems,
   isLooser,
   NODES_MAX,
   nameKey,
@@ -227,17 +228,26 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const nodeCount = (id: string) =>
         db.get<{ n: number }>("SELECT COUNT(*) AS n FROM workflow_node WHERE workflow_id = ?", id)
           ?.n ?? 0
-      const toWorkflow = (r: WorkflowRow): Workflow => ({
-        id: r.id,
-        serverId: r.server_id,
-        name: r.name,
-        folder: r.folder,
-        permission: r.permission,
-        selfImprovement: r.self_improvement === 1,
-        nodeCount: nodeCount(r.id),
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      })
+      const toWorkflow = (r: WorkflowRow): Workflow => {
+        const last = db.get<{ state: string; started_at: number }>(
+          "SELECT state, started_at FROM run WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
+          r.id,
+        )
+        return {
+          id: r.id,
+          serverId: r.server_id,
+          name: r.name,
+          folder: r.folder,
+          permission: r.permission,
+          selfImprovement: r.self_improvement === 1,
+          nodeCount: nodeCount(r.id),
+          running: checkIdle(r.id) !== null,
+          lastRun: last ? { state: last.state, startedAt: last.started_at } : null,
+          problems: graphProblems(readGraph(db, r.id)).length,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        }
+      }
       const detail = (r: WorkflowRow): WorkflowDetail => ({
         ...toWorkflow(r),
         document: r.document,

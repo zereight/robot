@@ -27,6 +27,25 @@ export type DocumentSource = (typeof DOCUMENT_SOURCES)[number]
 export const VERSION_SOURCES = ["editor", "chat", "proposal", "restore"] as const
 export type VersionSource = (typeof VERSION_SOURCES)[number]
 
+/** The state of a run follows its tasks, with the words of the states of a task (spec 005). */
+export const RUN_STATES = [
+  "queued",
+  "running",
+  "waiting",
+  "done",
+  "failed",
+  "blocked",
+  "cancelled",
+] as const
+export type RunState = (typeof RUN_STATES)[number]
+
+/** The state of the last run of a workflow, for the card of the list (spec 001). */
+export interface LastRun {
+  /** A state that this app does not know (a later version wrote it) is kept as it is. */
+  readonly state: string
+  readonly startedAt: number
+}
+
 export interface Workflow {
   readonly id: string
   readonly serverId: string
@@ -35,6 +54,12 @@ export interface Workflow {
   readonly permission: PermissionLevel
   readonly selfImprovement: boolean
   readonly nodeCount: number
+  /** True while a run works or waits. The editor is read-only then (spec 010, "Rules"). */
+  readonly running: boolean
+  /** The last run, or null when the workflow never ran. */
+  readonly lastRun: LastRun | null
+  /** The number of structural problems of the graph (see `graphProblems`). */
+  readonly problems: number
   readonly createdAt: number
   readonly updatedAt: number
 }
@@ -100,3 +125,31 @@ export const WorkflowCreate = Schema.Struct({
   document: Schema.optionalKey(Schema.String),
 })
 export type WorkflowCreate = typeof WorkflowCreate.Type
+
+/** A structural problem of a graph: a fault of its shape that the editor can show (spec 010). */
+export type GraphProblem =
+  | { readonly code: "decision_options"; readonly nodeId: string }
+  | { readonly code: "option_unconnected"; readonly nodeId: string; readonly optionId: string }
+  | { readonly code: "nodes_full" }
+
+/**
+ * The faults of the shape of a graph that the rules of the graph name (spec 010, "File"): a
+ * decision node with fewer than two options, an option with no connection, and more than 30 nodes.
+ * A connection to a node that does not exist, and a connection of a node to itself, cannot exist
+ * in the database. The check on the TLA form (a node that no run can reach, a deadlock) is not
+ * here: it comes with the check of the workflow.
+ */
+export const graphProblems = (graph: WorkflowGraph): readonly GraphProblem[] => {
+  const problems: GraphProblem[] = []
+  if (graph.nodes.length > NODES_MAX) problems.push({ code: "nodes_full" })
+  const wired = new Set(graph.connections.map((c) => c.optionId).filter((id) => id !== null))
+  for (const node of graph.nodes) {
+    if (node.kind !== "decision") continue
+    if (node.options.length < OPTIONS_MIN)
+      problems.push({ code: "decision_options", nodeId: node.id })
+    for (const option of node.options)
+      if (!wired.has(option.id))
+        problems.push({ code: "option_unconnected", nodeId: node.id, optionId: option.id })
+  }
+  return problems
+}

@@ -18,7 +18,7 @@ test("workflows: make one, open it, keep it after a restart, delete it", async (
   await expect(page.getByTestId("workflow-view")).toBeVisible()
   await expect(page.getByTestId("workflow-header")).toContainText("Weekly report")
   // A new workflow has a short default responsible document in the language of the window (010).
-  await expect(page.getByTestId("workflow-document")).toContainText("You answer for this workflow")
+  await expect(page.getByTestId("document-text")).toHaveValue(/You answer for this workflow/)
   await shot(page, "w4-02-open")
 
   await page.getByTestId("workflow-back").click()
@@ -38,7 +38,7 @@ test("workflows: make one, open it, keep it after a restart, delete it", async (
 
   ;({ app, page } = await launch(userData, env))
   await expect(page.getByTestId("workflow-row")).toHaveCount(1)
-  await page.getByTestId("workflow-row").click()
+  await page.getByTestId("workflow-open").click()
   await page.getByTestId("workflow-delete").click()
   await shot(page, "w4-05-delete-ask")
   await page.getByTestId("workflow-delete-confirm").click()
@@ -51,6 +51,6 @@ test("workflows: the default document follows the language of the window", async
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("주간 보고")
   await page.getByTestId("new-workflow-create").click()
-  await expect(page.getByTestId("workflow-document")).toContainText("이 워크플로우를 책임집니다")
+  await expect(page.getByTestId("document-text")).toHaveValue(/이 워크플로우를 책임집니다/)
   await app.close()
 })

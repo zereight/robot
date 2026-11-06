@@ -375,6 +375,55 @@ describe("the graph (spec 010)", () => {
   })
 })
 
+describe("the facts of a card of the list (spec 001)", () => {
+  test("a new workflow has no run, no problem, and does not run", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const [card] = await t.w((x) => x.list(t.server.id))
+    expect(card?.id).toBe(flow.id)
+    expect(card?.lastRun).toBeNull()
+    expect(card?.running).toBe(false)
+    expect(card?.problems).toBe(0)
+  })
+
+  test("the last run and the running mark follow the runs", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r1', ?, 'failed', 'hand', 100, 200)",
+      flow.id,
+    )
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r2', ?, 'running', 'chat', 300)",
+      flow.id,
+    )
+    const [card] = await t.w((x) => x.list(t.server.id))
+    expect(card?.lastRun).toEqual({ state: "running", startedAt: 300 })
+    expect(card?.running).toBe(true)
+    await t.sql("UPDATE run SET state = 'done', finished_at = 400 WHERE id = 'r2'")
+    const [after] = await t.w((x) => x.list(t.server.id))
+    expect(after?.lastRun).toEqual({ state: "done", startedAt: 300 })
+    expect(after?.running).toBe(false)
+  })
+
+  test("a decision option with no connection counts as a problem of the graph", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const d = await t.w((x) =>
+      x.addNode(flow.id, {
+        kind: "decision",
+        name: "Ok?",
+        question: "Fine?",
+        options: ["Yes", "No"],
+      }),
+    )
+    const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
+    expect((await t.w((x) => x.list(t.server.id)))[0]?.problems).toBe(2)
+    await t.w((x) => x.connect(flow.id, d.id, next.id, d.options[0]?.id ?? null))
+    expect((await t.w((x) => x.list(t.server.id)))[0]?.problems).toBe(1)
+  })
+})
+
 describe("a delete (spec 010)", () => {
   test("it removes the graph, history, chat, runs, memory, rules and secrets of the workflow only", async () => {
     const t = await setup()
