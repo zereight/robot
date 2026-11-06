@@ -145,7 +145,7 @@ export const ko: Record<MessageKey, string> = {
   "panel.empty": "진행 중인 작업이 없어요.",
 
   "main.noPlace.title": "장소를 선택하세요",
-  "main.noPlace.body": "목록에서 에이전트나 채널을 골라 주세요.",
+  "main.noPlace.body": "목록에서 에이전트를 골라 주세요.",
   "main.noServer.title": "아직 서버가 없어요",
   "main.noServer.body": "서버는 에이전트를 실행하는 컴퓨터예요. 서버를 추가해서 시작하세요.",
 
@@ -2361,7 +2361,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.section.teams": "Teams",
   "teams.title": "Teams 연동",
   "teams.intro":
-    "Microsoft Teams 채팅으로 에이전트 한 명이나 채널 하나와 대화해요. 앱은 직접 로그인한 Teams 페이지에서 그 채팅을 읽고, 답을 같은 채팅에 써요.",
+    "Microsoft Teams 채팅으로 에이전트 한 명과 대화해요. 앱은 직접 로그인한 Teams 페이지에서 그 채팅을 읽고, 답을 같은 채팅에 써요.",
   "teams.facts.title": "설정하기 전에",
   "teams.fact.service":
     "대화 내용은 Microsoft의 서비스를 거쳐요. 내 메시지와 에이전트의 답이 모두 지나가요.",
@@ -2461,8 +2461,8 @@ export const ko: Record<MessageKey, string> = {
     "앱이 쓰는 모든 메시지의 맨 앞에 붙는 글이에요. 이 글로 시작하는 메시지는 앱이 읽지 않아요.",
   "teams.locked": "바꾸려면 연동을 끄세요.",
   "teams.problem.noSignIn": "먼저 Teams에 로그인하세요.",
-  "teams.problem.noTarget": "에이전트나 채널을 고르세요.",
-  "teams.problem.targetMissing": "이 에이전트나 채널을 쓸 수 없어요.",
+  "teams.problem.noTarget": "에이전트를 고르세요.",
+  "teams.problem.targetMissing": "이 에이전트를 쓸 수 없어요.",
   "teams.problem.titleEmpty": "채팅 제목을 입력하세요.",
   "teams.problem.titleLong": "채팅 제목은 100자까지예요.",
   "teams.problem.allowEmpty": "허용된 보낸 사람을 한 명 이상 추가하세요.",
@@ -2505,7 +2505,7 @@ export const ko: Record<MessageKey, string> = {
     "이 브라우저 프로필은 Teams 연동이 써요. 바꾸거나 에이전트에게 줄 수 없어요.",
   "error.teams_not_set_up": "먼저 “설정 시작”을 누르세요.",
   "error.teams_locked": "바꾸려면 Teams 연동을 끄세요.",
-  "error.teams_target_not_found": "이 에이전트나 채널을 쓸 수 없어요.",
+  "error.teams_target_not_found": "이 에이전트를 쓸 수 없어요.",
   "error.teams_page_closed": "먼저 Teams 페이지를 보고 채팅을 여세요.",
   "error.teams_signed_out": "Teams 페이지에 로그인 화면이 보여요. 먼저 로그인하세요.",
   "error.teams_offline": "Teams에 연결할 수 없어요.",

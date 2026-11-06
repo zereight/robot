@@ -144,7 +144,7 @@ export const en = {
   "panel.empty": "Nothing is running.",
 
   "main.noPlace.title": "Pick a place",
-  "main.noPlace.body": "Choose an agent or a channel from the list.",
+  "main.noPlace.body": "Choose an agent from the list.",
   "main.noServer.title": "No server yet",
   "main.noServer.body": "A server is a computer that runs your agents. Add one to start.",
 
@@ -2385,7 +2385,7 @@ export const en = {
   "settings.section.teams": "Teams",
   "teams.title": "Teams link",
   "teams.intro":
-    "Talk to one agent, or to one channel, from a Microsoft Teams chat. The app reads that chat in a Teams page where you signed in by hand, and it writes the answers in the same chat.",
+    "Talk to one agent from a Microsoft Teams chat. The app reads that chat in a Teams page where you signed in by hand, and it writes the answers in the same chat.",
   "teams.facts.title": "Before you set up",
   "teams.fact.service":
     "The text of the conversation passes through the service of Microsoft: your messages and the answers of the agent.",
@@ -2483,8 +2483,8 @@ export const en = {
     "The text at the start of every message that the app writes. The app never reads a message that starts with it.",
   "teams.locked": "Turn the link off to change this.",
   "teams.problem.noSignIn": "Sign in to Teams first.",
-  "teams.problem.noTarget": "Pick an agent or a channel.",
-  "teams.problem.targetMissing": "This agent or channel is not available.",
+  "teams.problem.noTarget": "Pick an agent.",
+  "teams.problem.targetMissing": "This agent is not available.",
   "teams.problem.titleEmpty": "Enter the chat title.",
   "teams.problem.titleLong": "The chat title has at most 100 characters.",
   "teams.problem.allowEmpty": "Add at least one allowed sender.",
@@ -2527,7 +2527,7 @@ export const en = {
     "The Teams link uses this browser profile. It cannot be changed or given to an agent.",
   "error.teams_not_set_up": "Press “Set up” first.",
   "error.teams_locked": "Turn the Teams link off to change this.",
-  "error.teams_target_not_found": "This agent or channel is not available.",
+  "error.teams_target_not_found": "This agent is not available.",
   "error.teams_page_closed": "Show the Teams page and open the chat first.",
   "error.teams_signed_out": "The Teams page shows a sign-in form. Sign in first.",
   "error.teams_offline": "Teams cannot be reached.",
