@@ -16,6 +16,13 @@ spec-writer slice changes the specs. This note changes no behaviour.
 | 7 | The workflow file stays editable, and it is in TLA form. |
 | 8 | The check verifies the TLA. |
 | 9 | A node can use a decision model (013), for example Jev. |
+| 10 | A decision node that has no winner asks the user. A scheduled run with no user waits as a task that waits for the user (005). |
+| 11 | A task is one run of a node. |
+| 12 | A routine becomes a trigger of a workflow. Spec 009 ends. |
+| 13 | The user's own skills and the slash call stay, as texts that a node prompt can include. |
+| 14 | The TLA module holds the graph, the prompts as strings, and the rules of the check. |
+| 15 | The app writes the standard rules (no deadlock, every node can run, every approval node comes before its effect). The user adds more in the module. |
+| 16 | No migration of old data. |
 
 ## The model
 
@@ -46,12 +53,12 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 | 001 | The app opens on the agent list. | The app opens on the workflow list. No agent list. |
 | 002 | The agent is the main object: face, model, workspace, permission, memory, Soul. | Removed as an object. Soul, memory and self-improvement move to the workflow (see 008, 010). |
 | 003 | A direct chat with an agent. | A chat with a workflow. One chat for each workflow. |
-| 005 | A task is one run of an agent. | A task is one run of a node. Open question 1. |
-| 007 | Workspace folder and permission level for each agent. | Open question 2. |
+| 005 | A task is one run of an agent. | A task is one run of a node (decision 11). |
+| 007 | Workspace folder and permission level for each agent. | Open question 1. |
 | 008 | One memory scope for each agent. | One scope for each workflow. |
-| 009 | A routine starts a task of an agent. | Open question 3. |
+| 009 | A routine starts a task of an agent. | Ends. A trigger of a workflow takes its place (decision 12). |
 | 010 | Owner is none or one agent. A step names an agent. | Every workflow has one responsible document. A node has a prompt and a model. No participant rule. |
-| 017 | A skill is a text that the user or the agent calls. | The same. A node prompt and the responsible document have the form of a skill. Open question 4. |
+| 017 | A skill is a text that the user or the agent calls. | The same. A node prompt and the responsible document have the form of a skill (decision 13). |
 | 037 | Manage tools make and change agents and workflows. | Only the tools for a workflow stay. |
 | 011, 012, 019 | The phone and the sync carry agents. | They carry workflows. |
 
@@ -82,7 +89,7 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 1. A node has a name, a prompt, a provider, a model and a reasoning level (006).
 2. At run time the app sends the responsible document and the node prompt to the model of the
    node. The node gets the input of the step before it.
-3. Open question 2 says what tools a node can use.
+3. Open question 1 says what tools a node can use.
 
 ### Decision node
 
@@ -94,7 +101,7 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 4. The run view shows the probability of each option.
 5. When no option reaches the threshold, when the model gives no answer in 3 seconds, or when the
    choice is off or has no key, the node asks the user to pick the option, with the approval card
-   (the same rule as 007, "Ask when unsure"). Open question 8 says if this is right.
+   (the same rule as 007, "Ask when unsure"). Decision 10 says what the node does.
 6. The words of the input go to the service of the choice. The settings text of 013 says so.
 7. The check (below) sees a decision node as a branch with one state for each option.
 
@@ -107,7 +114,7 @@ node      =  prompt  +  provider  +  model  +  reasoning level
 
 ### File
 
-1. The file is a TLA module that the user can edit. Open question 5 says how the prompts are held.
+1. The file is a TLA module that the user can edit. Decision 14 says what the module holds.
 2. An import checks the module and shows the review screen (014).
 
 ### Self-improvement
@@ -137,24 +144,14 @@ the app.
 
 These are also in `docs/spec-questions.md`. Do not guess them in a spec.
 
-1. **Task.** Is a task one run of a node, or one run of a workflow? Tasks list the running work
-   (005). A parent and a child task stay only if a node hands work to another node.
-2. **Tools.** Can a node use tools (shell, files, browser, memory)? If yes, which workspace folder
+1. **Tools.** Can a node use tools (shell, files, browser, memory)? If yes, which workspace folder
    and which permission level does it use? Proposed: a workspace folder and a permission level
-   for each workflow, and a node uses them.
-3. **Routine.** A routine starts a task of an agent (009). What does it start now? Proposed: a
-   routine becomes a trigger of a workflow, and spec 009 ends.
-4. **Skills.** The user's own skills (017), and the slash call in a chat. Do they stay? Proposed:
-   they stay as texts that a node prompt can include.
-5. **File form.** What does the TLA module hold? Proposed: the module holds the graph and the
-   rules for the check, and the prompts are strings in the module. The user edits both.
-6. **Check properties.** Which rules does the user write in TLA? Proposed: the app writes the
-   standard ones (no deadlock, every node can run, every approval node comes before its effect).
-   The user adds more in the module.
-7. **Existing data.** The rebuild plan erases the database (decision 1). Does an old agent become a
-   workflow? Proposed: no migration, as decided.
-8. **Decision node.** When no option wins, does the run ask the user (proposed), take a default
-   option that the user names, or fail? A workflow that runs by a schedule has no user at hand.
-9. **Name of the model.** The owner wrote "jev omini". The repository holds Jev and Clef (013) and
-   a "Gemini CLI" preset (006). Is "omini" Clef, or Gemini as a decision model? The proposal covers
-   the decision models of 013 only.
+   for each workflow, and a node uses them. The owner has not answered this yet. W1 and W2 wait
+   for it.
+
+## Notes
+
+- **Name of the decision model.** The owner wrote "Jev Omni" and said the name is a typo. The
+  repository holds Jev and Clef (013). The OpenRouter model list holds `typesafe/jev-router` and
+  no model with the name Omni (checked once, not a proof that it does not exist). The proposal
+  does not name a model. A decision node uses the model name that the user saves in settings (013).
