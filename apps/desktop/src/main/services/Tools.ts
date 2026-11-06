@@ -29,7 +29,7 @@ import {
   HAND_OFF_LIST_EMPTY,
   HAND_OFF_LIST_RULE,
   handOffLink,
-  handOffRefusalText,
+  handOffRefusalOutput,
   holdOutside,
   holdProgram,
   holdSensitive,
@@ -2291,7 +2291,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               to: receiver,
             })
             return {
-              output: handOffRefusalText(receiver, refusal.next?.name ?? null),
+              output: handOffRefusalOutput(receiver, refusal.next?.name ?? null),
               failed: true,
             }
           }

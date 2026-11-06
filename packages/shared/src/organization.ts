@@ -344,6 +344,14 @@ export const handOffRefusalText = (receiver: string, next: string | null) =>
     ? `${receiver} is not on your path, and no agent can pass it on. Tell the user.`
     : `${receiver} is not on your path. Send it to ${next}.`
 
+/** The second line of a refused send: where the user can change the rule (spec 030, "The hint"). */
+export const HAND_OFF_HINT =
+  "The user can change this in Settings, Hand-off rules, or put both agents in one organization."
+
+/** What the sender reads in the step of a refused send: the reason and the hint (spec 030). */
+export const handOffRefusalOutput = (receiver: string, next: string | null) =>
+  `${handOffRefusalText(receiver, next)}\n${HAND_OFF_HINT}`
+
 /** The first line of the answer of "list agents" while the rule is on (spec 030). */
 export const HAND_OFF_LIST_RULE =
   "The hand-off rule is on: you can send a message only to the agents on this list. Work for other agents goes through the agents on this list."

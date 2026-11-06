@@ -448,6 +448,12 @@ const ToolCard = (props: {
               </span>
             )}
           </Show>
+          {/* A refused hand-off says where the user changes the rule; a linked computer cannot (spec 030). */}
+          <Show when={props.part.reason?.code.startsWith("hand_off") && !ui.linked()}>
+            <Button data-testid="hand-off-open" onClick={() => ui.openSettings("organization")}>
+              {t("error.hand_off.open")}
+            </Button>
+          </Show>
           <Show when={props.from}>
             {(from) => (
               <span class={styles.fromDevice} data-testid="tool-origin">

@@ -3032,6 +3032,7 @@ export const ko: Record<MessageKey, string> = {
   "error.hand_off_path": "{detail}은(는) 보낼 수 있는 경로에 없어요. {next}에게 보내세요.",
   "error.hand_off_none":
     "{detail}은(는) 보낼 수 있는 경로에 없고, 대신 전달해 줄 에이전트도 없어요. 사용자에게 알리세요.",
+  "error.hand_off.open": "전달 규칙 열기",
   "orgchart.edit.retro": "돌아보기…",
   "retro.title": "{organization} 돌아보기",
   "retro.writing": "최근 7일의 작업을 돌아보는 중…",
