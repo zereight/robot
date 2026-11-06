@@ -75,11 +75,6 @@
     "license": "ISC"
   },
   {
-    "name": "abort-controller",
-    "version": "3.0.0",
-    "license": "MIT"
-  },
-  {
     "name": "ansi-styles",
     "version": "5.2.0",
     "license": "MIT"
@@ -90,18 +85,8 @@
     "license": "MIT"
   },
   {
-    "name": "event-target-shim",
-    "version": "5.0.1",
-    "license": "MIT"
-  },
-  {
     "name": "expo",
     "version": "58.0.22",
-    "license": "MIT"
-  },
-  {
-    "name": "expo-application",
-    "version": "58.1.2",
     "license": "MIT"
   },
   {
@@ -115,11 +100,6 @@
     "license": "MIT"
   },
   {
-    "name": "expo-clipboard",
-    "version": "58.0.4",
-    "license": "MIT"
-  },
-  {
     "name": "expo-constants",
     "version": "58.0.14",
     "license": "MIT"
@@ -130,11 +110,6 @@
     "license": "MIT"
   },
   {
-    "name": "expo-document-picker",
-    "version": "58.0.4",
-    "license": "MIT"
-  },
-  {
     "name": "expo-file-system",
     "version": "58.0.13",
     "license": "MIT"
@@ -142,11 +117,6 @@
   {
     "name": "expo-glass-effect",
     "version": "58.0.5",
-    "license": "MIT"
-  },
-  {
-    "name": "expo-image-picker",
-    "version": "58.0.10",
     "license": "MIT"
   },
   {
@@ -165,11 +135,6 @@
     "license": "MIT"
   },
   {
-    "name": "expo-notifications",
-    "version": "58.1.7",
-    "license": "MIT"
-  },
-  {
     "name": "expo-router",
     "version": "58.0.29",
     "license": "MIT"
@@ -177,11 +142,6 @@
   {
     "name": "expo-secure-store",
     "version": "58.0.2",
-    "license": "MIT"
-  },
-  {
-    "name": "expo-sharing",
-    "version": "58.0.21",
     "license": "MIT"
   },
   {
@@ -197,11 +157,6 @@
   {
     "name": "invariant",
     "version": "2.2.4",
-    "license": "MIT"
-  },
-  {
-    "name": "marked",
-    "version": "18.1.2",
     "license": "MIT"
   },
   {
@@ -267,11 +222,6 @@
   {
     "name": "react-native-screens",
     "version": "4.30.1",
-    "license": "MIT"
-  },
-  {
-    "name": "react-native-svg",
-    "version": "15.16.0",
     "license": "MIT"
   },
   {

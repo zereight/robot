@@ -19,7 +19,6 @@
     "@robot/link",
     "@robot/shared",
     "effect",
-    "fflate",
     "lucide-solid",
     "marked",
     "multicast-dns",
@@ -30,7 +29,6 @@
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@robot/link": "workspace:*",
-    "@robot/phone": "workspace:*",
     "@robot/shared": "workspace:*",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "24",
@@ -39,7 +37,6 @@
     "electron": "^45.2.1",
     "electron-builder": "26.18.0",
     "electron-vite": "^6.0.0",
-    "fflate": "^0.8.3",
     "lucide-solid": "^1.66.0",
     "marked": "^18.1.2",
     "multicast-dns": "^7.2.5",
@@ -50,7 +47,7 @@
     "ws": "^8.22.1"
   },
   "productName": "ROBot",
-  "description": "A desktop app where you work with AI agents.",
+  "description": "A desktop app where you build and run workflows of AI models.",
   "author": "zereight",
   "license": "MIT",
   "homepage": "https://github.com/zereight/robot"

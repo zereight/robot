@@ -1,5 +1,3 @@
-import type { AgentModel } from "./agents.ts"
-
 // The backup model (spec 006, "Backup model"). An agent can name a second account, model and
 // effort. When a turn of the agent fails with a limit reason, the main model is held until the
 // reset time and the backup takes the turns.
@@ -42,6 +40,13 @@ export const HOLD_UNKNOWN_MS = 15 * 60_000
 export const holdEnd = (now: number, resetsAt?: number | null): number =>
   resetsAt !== undefined && resetsAt !== null && resetsAt > now ? resetsAt : now + HOLD_UNKNOWN_MS
 
+/** An account, a model and a reasoning level (spec 006). */
+export interface ModelPick {
+  readonly accountId: string
+  readonly model: string
+  readonly effort: string | null
+}
+
 /**
  * The hold of the main model of an agent, as a window or a linked device shows it (spec 006,
  * 012). It is a state of one computer: it does not sync (spec 019).
@@ -50,7 +55,7 @@ export interface ModelHold {
   /** When the hold ends, in ms since the epoch. */
   readonly until: number
   /** The backup model that takes the turns while the hold lasts. */
-  readonly model: AgentModel
+  readonly model: ModelPick
 }
 
 /** True while the hold lasts at `now`. */
@@ -58,7 +63,7 @@ export const holdLasts = (hold: Pick<ModelHold, "until"> | null | undefined, now
   hold !== null && hold !== undefined && hold.until > now
 
 /** The same account, model and effort. The form refuses this as a backup (spec 006). */
-export const sameModelChoice = (a: AgentModel | null, b: AgentModel | null): boolean =>
+export const sameModelChoice = (a: ModelPick | null, b: ModelPick | null): boolean =>
   a !== null &&
   b !== null &&
   a.accountId === b.accountId &&

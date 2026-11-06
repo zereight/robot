@@ -1,4 +1,4 @@
-import { type ServerView, serverUnread } from "@robot/phone"
+import type { ServerView } from "@robot/phone"
 import { Redirect, router, Stack } from "expo-router"
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { useApp, useHubState } from "../src/state/context.tsx"
@@ -6,7 +6,7 @@ import { radius, space, text } from "../src/theme/palette.ts"
 import { Body, Button, HeaderButton, Notice, Screen, Title } from "../src/ui/kit.tsx"
 import { stateText, stateTone } from "../src/ui/states.ts"
 
-/** Servers (spec 011): each paired computer, its connection state and its unread count. */
+/** Servers (spec 011): each paired computer and its connection state. */
 export default function Servers() {
   const { t } = useApp()
   const state = useHubState()
@@ -54,7 +54,6 @@ export default function Servers() {
 
 const ServerRow = ({ view }: { readonly view: ServerView }) => {
   const { t, palette } = useApp()
-  const unread = serverUnread(view.data.places)
   const tone = stateTone(view.state)
   const dot =
     tone === "good"
@@ -84,16 +83,6 @@ const ServerRow = ({ view }: { readonly view: ServerView }) => {
         <Text style={[styles.name, { color: palette.text }]} numberOfLines={1}>
           {view.link.name}
         </Text>
-        {unread > 0 ? (
-          <View style={[styles.badge, { backgroundColor: palette.accent }]}>
-            <Text
-              style={[styles.badgeText, { color: palette.accentText }]}
-              accessibilityLabel={t("servers.unread", { count: unread })}
-            >
-              {unread > 99 ? "99+" : unread}
-            </Text>
-          </View>
-        ) : null}
       </View>
       <Text style={[styles.state, { color: tone === "bad" ? palette.danger : palette.textMuted }]}>
         {line}
@@ -117,13 +106,4 @@ const styles = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5 },
   name: { flex: 1, fontSize: text.l, fontWeight: "600" },
   state: { fontSize: text.s },
-  badge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: radius.round,
-    paddingHorizontal: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: { fontSize: text.xs, fontWeight: "700" },
 })

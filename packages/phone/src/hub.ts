@@ -1,15 +1,11 @@
 import {
   type AsyncSecretStore,
-  b64,
   Connection,
   codeToWAsync,
   DECISION_MS,
   DEVICE_NAME_MAX,
-  type DownloadChunk,
   deviceIdOf,
-  FILE_CHUNK,
   fromB64,
-  fromBase64,
   type Identity,
   isPairCode,
   LINK_PROTOCOL,
@@ -25,24 +21,10 @@ import {
   type RandomBytes,
   type SocketOpener,
   systemRandom,
-  toBase64,
   toPairDevice,
-  UPLOAD_PREFIX,
-  type UploadAck,
   type WireDevice,
   type WireNotice,
 } from "@robot/link"
-import type {
-  Agent,
-  ChatHistory,
-  ChatMessage,
-  PlaceSection,
-  QueuedMessage,
-  QueueHold,
-  QuietState,
-  QuietTurn,
-} from "@robot/shared"
-import { newest, removeMessage, upsertMessage } from "./places.ts"
 import { type PhoneStorage, readJson } from "./storage.ts"
 
 /** A computer that this phone is paired with (spec 011, "Paired server"). */
@@ -61,56 +43,15 @@ export interface PairedServer {
   readonly removed: boolean
 }
 
-/** A place on the phone is the direct chat of an agent (spec 011). */
-export type PlaceKind = "agent"
-export interface PlaceRef {
-  readonly kind: PlaceKind
-  readonly id: string
-}
-
-export interface ChatView {
-  readonly messages: readonly ChatMessage[]
-  readonly queue: readonly QueuedMessage[]
-  readonly hold: QueueHold | null
-}
-
-/** What the phone knows of one server: live while it is online, from the cache when it is not. */
-export interface ServerData {
-  readonly places: readonly PlaceSection[] | null
-  readonly agents: readonly Agent[] | null
-  /** The chats that were opened, by agent. */
-  readonly chats: Readonly<Record<string, ChatView>>
-  /** Approvals and questions that wait (the "Needs you" list of spec 011). Never from the cache. */
-  readonly attention: readonly WireNotice[]
-  /**
-   * The turns that are quiet now (spec 005, "Quiet line"; 011). The seconds count on from
-   * `receivedAt`. Never from the cache, and never written to it: a server that is not online
-   * has none.
-   */
-  readonly quiet: {
-    readonly turns: readonly QuietTurn[]
-    /** When the phone got the state, in ms. */
-    readonly receivedAt: number
-  }
-}
-
 export interface ServerView {
   readonly link: PairedServer
   readonly state: LinkState
   readonly updateSide: "this" | "server" | null
-  readonly data: ServerData
 }
 
 export interface HubState {
   readonly deviceName: string | null
   readonly servers: readonly ServerView[]
-}
-
-/** A file that the user picked, read in pieces, so a large file does not fill the memory. */
-export interface UploadSource {
-  readonly name: string
-  readonly size: number
-  read(offset: number, length: number): Promise<Uint8Array>
 }
 
 export interface PairInput {
@@ -138,25 +79,9 @@ export interface HubOptions {
   readonly deriveW?: (code: string) => bigint | Promise<bigint>
 }
 
-/** The limits of files in one message (spec 003). The tests check that they match the server. */
-export const ATTACH_MAX = 10
-export const ATTACH_BYTES = 20 * 1024 * 1024
-
 const SERVERS_FILE = "servers.json"
 const DEVICE_FILE = "device.json"
 const cacheDir = (linkId: string) => `cache/${linkId}`
-const SAVE_MS = 400
-const EMPTY: ServerData = {
-  places: null,
-  agents: null,
-  chats: {},
-  attention: [],
-  quiet: { turns: [], receivedAt: 0 },
-}
-
-/** The ids of a server come from the computer. They must not leave the folder of its cache. */
-const safeName = (id: string) => id.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100)
-
 /** A pairing that runs. `cancel` ends it; the promise then rejects with the code "cancelled". */
 export interface PairRun {
   readonly done: Promise<PairedServer>
@@ -177,13 +102,7 @@ export class PhoneHub {
   readonly #connections = new Map<string, Connection>()
   readonly #listeners = new Set<() => void>()
   readonly #noticeListeners = new Set<(linkId: string, notice: WireNotice) => void>()
-  readonly #saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  readonly #pendingSaves = new Map<string, () => string>()
-  readonly #refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   #state: HubState
-  /** The place that shows on the screen now, per server, so new messages are read at once. */
-  readonly #focus = new Map<string, PlaceRef>()
-  #active = true
 
   private constructor(
     options: HubOptions,
@@ -211,7 +130,6 @@ export class PhoneHub {
         link,
         state: link.removed ? "not_allowed" : "connecting",
         updateSide: null,
-        data: link.removed ? EMPTY : await hub.#readCache(link.id),
       })
     }
     hub.#publish()
@@ -260,10 +178,6 @@ export class PhoneHub {
     if (!view) return
     this.#views.set(linkId, change(view))
     this.#publish()
-  }
-
-  #setData(linkId: string, change: (data: ServerData) => ServerData) {
-    this.#update(linkId, (v) => ({ ...v, data: change(v.data) }))
   }
 
   // ------------------------------------------------------------------ the device name
@@ -415,7 +329,7 @@ export class PhoneHub {
     const saved = this.#links.find((l) => l.id === link.id) as PairedServer
     this.#connections.get(link.id)?.stop()
     this.#connections.delete(link.id)
-    this.#views.set(link.id, { link: saved, state: "connecting", updateSide: null, data: EMPTY })
+    this.#views.set(link.id, { link: saved, state: "connecting", updateSide: null })
     this.#publish()
     this.#connect(saved)
     return saved
@@ -429,8 +343,6 @@ export class PhoneHub {
   async unpair(linkId: string) {
     this.#connections.get(linkId)?.stop()
     this.#connections.delete(linkId)
-    this.#focus.delete(linkId)
-    this.#dropSaves(linkId)
     this.#links = this.#links.filter((l) => l.id !== linkId)
     this.#views.delete(linkId)
     await this.#saveLinks()
@@ -461,18 +373,7 @@ export class PhoneHub {
       ...(this.#options.pingMs ? { pingMs: this.#options.pingMs } : {}),
       ...(this.#options.random ? { random: this.#options.random } : {}),
       hooks: {
-        onState: (state, side) => {
-          // A server that is not online shows no quiet line: the pushes are not seen (spec 005).
-          this.#update(link.id, (v) => ({
-            ...v,
-            state,
-            updateSide: side,
-            data:
-              state === "online" || v.data.quiet.turns.length === 0
-                ? v.data
-                : { ...v.data, quiet: EMPTY.quiet },
-          }))
-        },
+        onState: (state, side) => this.#update(link.id, (v) => ({ ...v, state, updateSide: side })),
         onEvent: (event, payload) => this.#onEvent(link.id, event, payload),
         onOnline: (info) => void this.#online(link.id, info),
         onRevoked: () => void this.#revoked(link.id),
@@ -499,20 +400,16 @@ export class PhoneHub {
         await this.#saveLinks()
       }
     }
-    // What happened while the server was away is not known: read it all again (spec 011).
-    await this.refresh(linkId)
   }
 
   async #revoked(linkId: string) {
-    // "Not allowed": the cache goes, and the place list and the conversation are cleared.
-    this.#dropSaves(linkId)
-    this.#focus.delete(linkId)
+    // "Not allowed": the old cache of this server goes.
     this.#connections.get(linkId)?.stop()
     this.#connections.delete(linkId)
     this.#links = this.#links.map((l) => (l.id === linkId ? { ...l, removed: true } : l))
     const link = this.#links.find((l) => l.id === linkId)
     if (link) {
-      this.#views.set(linkId, { link, state: "not_allowed", updateSide: null, data: EMPTY })
+      this.#views.set(linkId, { link, state: "not_allowed", updateSide: null })
     }
     this.#publish()
     await this.#saveLinks()
@@ -526,30 +423,16 @@ export class PhoneHub {
 
   /**
    * The app came back to the screen (spec 011, "Background"). The system may have cut the
-   * sockets: each connection checks at once, reconnects if needed, and reads what it missed.
+   * sockets: each connection checks at once and reconnects if needed.
    */
   async resume() {
-    this.#active = true
-    await Promise.all(
-      [...this.#connections.entries()].map(async ([linkId, connection]) => {
-        const alive = await connection.check(3_000)
-        // A connection that was cut reads again when it is online (see #online).
-        if (alive) await this.refresh(linkId)
-      }),
-    )
-  }
-
-  /** The app left the screen. Nothing is marked as read until it comes back. */
-  pause() {
-    this.#active = false
+    await Promise.all([...this.#connections.values()].map((connection) => connection.check(3_000)))
   }
 
   /** Stops all connections. The tests call it at the end. */
   close() {
     for (const c of this.#connections.values()) c.stop()
     this.#connections.clear()
-    for (const timer of this.#saveTimers.values()) clearTimeout(timer)
-    for (const timer of this.#refreshTimers.values()) clearTimeout(timer)
   }
 
   // ------------------------------------------------------------------ requests
@@ -563,365 +446,10 @@ export class PhoneHub {
     return (await connection.request(method, input, ms)) as T
   }
 
-  /** Reads the places, the agents, what waits, and the open place again. */
-  async refresh(linkId: string) {
-    const view = this.#views.get(linkId)
-    if (view?.state !== "online") return
-    const serverId = view.link.serverId
-    const read = <T>(method: string, input: unknown) =>
-      this.request<T>(linkId, method, input).catch(() => undefined)
-    const [places, agents, attention, quiet] = await Promise.all([
-      read<PlaceSection[]>("places.list", { serverId }),
-      read<Agent[]>("agents.list", { serverId, archived: false }),
-      read<WireNotice[]>("attention.list", undefined),
-      read<QuietState>("quiet.list", undefined),
-    ])
-    const at = this.#options.now?.() ?? Date.now()
-    this.#setData(linkId, (d) => ({
-      ...d,
-      places: places ?? d.places,
-      agents: agents ?? d.agents,
-      attention: attention ?? d.attention,
-      quiet: quiet && Array.isArray(quiet.turns) ? { turns: quiet.turns, receivedAt: at } : d.quiet,
-    }))
-    if (places) this.#save(linkId, "places", () => JSON.stringify(places))
-    if (agents) this.#save(linkId, "agents", () => JSON.stringify(agents))
-    const focus = this.#focus.get(linkId)
-    if (focus) await this.#loadPlace(linkId, focus)
-  }
-
-  /** Reads one list again, a moment later, so a burst of events makes one request. */
-  #refreshSoon(linkId: string, what: "places" | "agents" | "attention") {
-    const key = `${linkId}\u0000${what}`
-    if (this.#refreshTimers.has(key)) return
-    this.#refreshTimers.set(
-      key,
-      setTimeout(() => {
-        this.#refreshTimers.delete(key)
-        void this.#refreshOne(linkId, what)
-      }, 150),
-    )
-  }
-
-  async #refreshOne(linkId: string, what: "places" | "agents" | "attention") {
-    const view = this.#views.get(linkId)
-    if (view?.state !== "online") return
-    const serverId = view.link.serverId
-    try {
-      if (what === "places") {
-        const places = await this.request<PlaceSection[]>(linkId, "places.list", { serverId })
-        this.#setData(linkId, (d) => ({ ...d, places }))
-        this.#save(linkId, "places", () => JSON.stringify(places))
-      } else if (what === "agents") {
-        const agents = await this.request<Agent[]>(linkId, "agents.list", {
-          serverId,
-          archived: false,
-        })
-        this.#setData(linkId, (d) => ({ ...d, agents }))
-        this.#save(linkId, "agents", () => JSON.stringify(agents))
-      } else {
-        const attention = await this.request<WireNotice[]>(linkId, "attention.list")
-        this.#setData(linkId, (d) => ({ ...d, attention }))
-      }
-    } catch {
-      // The next event or the next connection reads it again.
-    }
-  }
-
-  #onEvent(linkId: string, event: string, payload: unknown) {
-    const p = (payload ?? {}) as Record<string, unknown>
-    if (event === "chat.message") {
-      const message = payload as ChatMessage
-      this.#setData(linkId, (d) => {
-        const chat = d.chats[message.agentId]
-        if (!chat) return d
-        return {
-          ...d,
-          chats: {
-            ...d.chats,
-            [message.agentId]: { ...chat, messages: upsertMessage(chat.messages, message) },
-          },
-        }
-      })
-      this.#saveChat(linkId, message.agentId)
-      this.#readIfFocused(linkId, { kind: "agent", id: message.agentId })
-      if (message.parts.some((part) => part.kind === "tool")) this.#refreshSoon(linkId, "attention")
-    } else if (event === "chat.removed") {
-      const agentId = String(p.agentId)
-      this.#setData(linkId, (d) => {
-        const chat = d.chats[agentId]
-        if (!chat) return d
-        const messages = removeMessage(chat.messages, String(p.messageId))
-        return { ...d, chats: { ...d.chats, [agentId]: { ...chat, messages } } }
-      })
-      this.#saveChat(linkId, agentId)
-    } else if (event === "chat.queue") {
-      const agentId = String(p.agentId)
-      this.#setData(linkId, (d) => {
-        const chat = d.chats[agentId]
-        if (!chat) return d
-        const queue = (p.queue as QueuedMessage[] | undefined) ?? []
-        const hold = (p.hold as QueueHold | null | undefined) ?? null
-        return { ...d, chats: { ...d.chats, [agentId]: { ...chat, queue, hold } } }
-      })
-      this.#saveChat(linkId, agentId)
-    } else if (event === "quiet.changed") {
-      // The start and the end of a quiet turn, with the seconds at the push (spec 005, 012).
-      const turns = (payload as QuietState | undefined)?.turns
-      const at = this.#options.now?.() ?? Date.now()
-      this.#setData(linkId, (d) => ({
-        ...d,
-        quiet: Array.isArray(turns) ? { turns, receivedAt: at } : d.quiet,
-      }))
-    } else if (event === "places.changed") {
-      this.#refreshSoon(linkId, "places")
-    } else if (event === "agents.changed") {
-      this.#refreshSoon(linkId, "agents")
-    } else if (event === "tasks.changed") {
-      this.#refreshSoon(linkId, "attention")
-    } else if (event === "notice") {
-      const notice = payload as WireNotice
-      if (notice.kind === "approval" || notice.kind === "question") {
-        this.#refreshSoon(linkId, "attention")
-      }
-      for (const listener of this.#noticeListeners) listener(linkId, notice)
-    }
-  }
-
-  // ------------------------------------------------------------------ places
-
-  /**
-   * The user opened a place. It loads its messages (from the cache while the server is offline)
-   * and marks it as read on the server.
-   */
-  async openPlace(linkId: string, place: PlaceRef) {
-    this.#focus.set(linkId, place)
-    const view = this.#views.get(linkId)
-    if (!view) return
-    if (view.state !== "online") {
-      await this.#loadCachedPlace(linkId, place)
-      return
-    }
-    await this.#loadPlace(linkId, place)
-  }
-
-  /** The user left the place. */
-  closePlace(linkId: string, place: PlaceRef) {
-    const focus = this.#focus.get(linkId)
-    if (focus?.kind === place.kind && focus.id === place.id) this.#focus.delete(linkId)
-  }
-
-  async #loadCachedPlace(linkId: string, place: PlaceRef) {
-    if (this.#views.get(linkId)?.data.chats[place.id]) return
-    const chat = await readJson<ChatView | null>(
-      this.#options.storage,
-      `${cacheDir(linkId)}/chat-${safeName(place.id)}.json`,
-      null,
-    )
-    if (chat) this.#setData(linkId, (d) => ({ ...d, chats: { ...d.chats, [place.id]: chat } }))
-  }
-  async #loadPlace(linkId: string, place: PlaceRef) {
-    try {
-      const history = await this.request<ChatHistory>(linkId, "chat.history", {
-        agentId: place.id,
-      })
-      const chat: ChatView = {
-        messages: history.messages,
-        queue: history.queue,
-        hold: history.hold,
-      }
-      this.#setData(linkId, (d) => ({ ...d, chats: { ...d.chats, [place.id]: chat } }))
-      this.#saveChat(linkId, place.id)
-      await this.markRead(linkId, place)
-    } catch {
-      // The connection broke: what the cache holds still shows.
-      await this.#loadCachedPlace(linkId, place)
-    }
-  }
-
-  /** Clears the unread count of a place on the server, and so on every device (spec 012). */
-  async markRead(linkId: string, place: PlaceRef) {
-    await this.request(linkId, "chat.markRead", { agentId: place.id }).catch(() => undefined)
-  }
-
-  #readTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-  #readIfFocused(linkId: string, place: PlaceRef) {
-    const focus = this.#focus.get(linkId)
-    if (!this.#active || focus?.kind !== place.kind || focus.id !== place.id) return
-    const key = `${linkId}\u0000${place.kind}:${place.id}`
-    if (this.#readTimers.has(key)) return
-    this.#readTimers.set(
-      key,
-      setTimeout(() => {
-        this.#readTimers.delete(key)
-        void this.markRead(linkId, place)
-      }, 500),
-    )
-  }
-
-  // ------------------------------------------------------------------ actions in a place
-
-  /**
-   * Sends a message to an agent. The files go first, in pieces, through the upload of the link;
-   * the message names them by the tokens that the server gave (spec 012).
-   */
-  async send(
-    linkId: string,
-    input: {
-      readonly agentId: string
-      readonly text: string
-      readonly replyTo: string | null
-      readonly files?: readonly UploadSource[]
-    },
-    onProgress?: (sent: number, total: number) => void,
-  ): Promise<{ queued: boolean }> {
-    const files = input.files ?? []
-    if (files.length > ATTACH_MAX) throw new LinkError("too_many_files")
-    for (const f of files) if (f.size > ATTACH_BYTES) throw new LinkError("file_too_large", f.name)
-    const total = files.reduce((sum, f) => sum + f.size, 0)
-    let sent = 0
-    const tokens: string[] = []
-    for (const file of files) {
-      const uploadId = b64(this.#random(16))
-      let offset = 0
-      let token: string | null = null
-      for (;;) {
-        const length = Math.min(FILE_CHUNK, file.size - offset)
-        const bytes = length > 0 ? await file.read(offset, length) : new Uint8Array(0)
-        if (bytes.length !== length) throw new LinkError("file_unreadable", file.name)
-        const done = offset + length >= file.size
-        const ack = await this.request<UploadAck>(linkId, "attachment.upload", {
-          uploadId,
-          name: file.name,
-          offset,
-          data: toBase64(bytes),
-          done,
-        })
-        offset += length
-        sent += length
-        onProgress?.(sent, total)
-        token = ack.token
-        if (done) break
-      }
-      if (!token?.startsWith(UPLOAD_PREFIX)) throw new LinkError("internal")
-      tokens.push(token)
-    }
-    return this.request<{ queued: boolean }>(linkId, "chat.send", {
-      agentId: input.agentId,
-      text: input.text,
-      replyTo: input.replyTo,
-      ...(tokens.length > 0 ? { files: tokens } : {}),
-    })
-  }
-
-  stop(linkId: string, place: PlaceRef) {
-    return this.request(linkId, "chat.stop", { agentId: place.id })
-  }
-
-  /** Tries a failed reply again. The answer can be the retry note of spec 005. */
-  retryReply(linkId: string, agentId: string, messageId: string, confirmed = false) {
-    return this.request(linkId, "chat.retry", {
-      agentId,
-      messageId,
-      ...(confirmed ? { confirmed: true } : {}),
-    })
-  }
-
-  /**
-   * Answers an approval card ("allow" or "deny") or a question card (the text). A client has no
-   * "Always allow" (spec 012), so the phone never sends it.
-   */
-  async respond(linkId: string, agentId: string, callId: string, answer: string) {
-    if (answer === "always") throw new LinkError("not_allowed")
-    await this.request(linkId, "tools.respond", { agentId, callId, answer })
-    this.#setData(linkId, (d) => ({
-      ...d,
-      attention: d.attention.filter((n) => !(n.callId === callId && n.agentId === agentId)),
-    }))
-    this.#refreshSoon(linkId, "attention")
-  }
-
-  /** Reads a file of a message from the server, piece by piece. `write` gets each piece. */
-  async download(
-    linkId: string,
-    file: { readonly agentId: string; readonly path: string },
-    write: (bytes: Uint8Array, offset: number, size: number) => Promise<void> | void,
-  ) {
-    let offset = 0
-    for (;;) {
-      const chunk = await this.request<DownloadChunk>(linkId, "attachment.download", {
-        agentId: file.agentId,
-        path: file.path,
-        offset,
-      })
-      const bytes = fromBase64(chunk.data)
-      await write(bytes, offset, chunk.size)
-      offset += bytes.length
-      if (chunk.done || bytes.length === 0) return chunk.size
-    }
-  }
-
-  // ------------------------------------------------------------------ the cache
-
-  async #readCache(linkId: string): Promise<ServerData> {
-    const dir = cacheDir(linkId)
-    const storage = this.#options.storage
-    const [places, agents] = await Promise.all([
-      readJson<PlaceSection[] | null>(storage, `${dir}/places.json`, null),
-      readJson<Agent[] | null>(storage, `${dir}/agents.json`, null),
-    ])
-    return { ...EMPTY, places, agents }
-  }
-
-  #saveChat(linkId: string, agentId: string) {
-    this.#save(linkId, `chat-${safeName(agentId)}`, () => {
-      const chat = this.#views.get(linkId)?.data.chats[agentId]
-      return JSON.stringify(chat ? { ...chat, messages: newest(chat.messages) } : null)
-    })
-  }
-
-  /** Writes a file of the cache a moment later, so a streamed reply writes once in a while. */
-  #save(linkId: string, name: string, text: () => string) {
-    const path = `${cacheDir(linkId)}/${name}.json`
-    this.#pendingSaves.set(path, text)
-    if (this.#saveTimers.has(path)) return
-    this.#saveTimers.set(
-      path,
-      setTimeout(() => {
-        this.#saveTimers.delete(path)
-        const make = this.#pendingSaves.get(path)
-        this.#pendingSaves.delete(path)
-        if (!make || !this.#views.has(linkId)) return
-        if (this.#views.get(linkId)?.state === "not_allowed") return
-        void this.#options.storage.write(path, make()).catch(() => undefined)
-      }, SAVE_MS),
-    )
-  }
-
-  /** Writes every waiting file of the cache now, for example before the app goes away. */
-  async flush() {
-    const todo = [...this.#pendingSaves.entries()]
-    this.#pendingSaves.clear()
-    for (const timer of this.#saveTimers.values()) clearTimeout(timer)
-    this.#saveTimers.clear()
-    await Promise.all(
-      todo.map(([path, make]) => this.#options.storage.write(path, make()).catch(() => undefined)),
-    )
-  }
-
-  #dropSaves(linkId: string) {
-    const prefix = `${cacheDir(linkId)}/`
-    for (const [path, timer] of this.#saveTimers) {
-      if (!path.startsWith(prefix)) continue
-      clearTimeout(timer)
-      this.#saveTimers.delete(path)
-      this.#pendingSaves.delete(path)
-    }
-  }
-
-  #random(length: number) {
-    return (this.#options.random ?? systemRandom)(length)
+  #onEvent(_linkId: string, event: string, payload: unknown) {
+    if (event !== "notice") return
+    const notice = payload as WireNotice
+    for (const listener of this.#noticeListeners) listener(_linkId, notice)
   }
 
   #now() {

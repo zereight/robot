@@ -1,383 +1,430 @@
-import { afterAll, describe, expect, test } from "bun:test"
-import type { Edge, Step, Trigger } from "@robot/shared"
-import { Agents } from "./Agents.ts"
-import { Providers } from "./Providers.ts"
+import { describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
+import { catalogues, DOCUMENT_MAX, DOCUMENT_VERSIONS_MAX, NODES_MAX } from "@robot/shared"
+import { Effect, Exit } from "effect"
+import { ActionLog } from "./ActionLog.ts"
+import { Database } from "./Database.ts"
+import { Rules } from "./Rules.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { testRuntime } from "./testing.ts"
-import { Workflows } from "./Workflows.ts"
-
-/** The last message of each request that the model got. */
-const asked: string[] = []
-
-const server = Bun.serve({
-  port: 0,
-  hostname: "127.0.0.1",
-  async fetch(req) {
-    const url = new URL(req.url)
-    if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { content: string }[] }
-    const last = body.messages.at(-1)?.content ?? ""
-    asked.push(last)
-    if (last.includes("FAIL")) return Response.json({ error: { message: "boom" } }, { status: 500 })
-    // A reply that ends with a Blocked line (spec 005).
-    if (last.includes("BLOCKME"))
-      return new Response(
-        `data: ${JSON.stringify({ choices: [{ delta: { content: "I looked.\nBlocked: no access to the folder" } }] })}\n\ndata: [DONE]\n\n`,
-        { headers: { "content-type": "text/event-stream" } },
-      )
-    const chunk = `data: ${JSON.stringify({ choices: [{ delta: { content: `Done(${last.split("\n")[0]})` } }] })}\n\ndata: [DONE]\n\n`
-    return new Response(chunk, { headers: { "content-type": "text/event-stream" } })
-  },
-})
-afterAll(() => server.stop())
-
-const until = async (check: () => Promise<boolean> | boolean, ms = 6000) => {
-  const end = Date.now() + ms
-  while (Date.now() < end) {
-    if (await check()) return
-    await Bun.sleep(15)
-  }
-  throw new Error("timed out")
-}
+import { effectivePermission, Workflows, workflowFolderName } from "./Workflows.ts"
 
 const setup = async () => {
   const t = testRuntime()
   const run = t.runtime.runPromise
-  const account = await run(
-    Providers.use((p) =>
-      p.connect({
-        kind: "custom",
-        name: "M",
-        baseUrl: `http://127.0.0.1:${server.port}/v1`,
-        apiKey: "sk-workflow-test-key",
-      }),
-    ),
-  )
-  const local = await run(Servers.use((s) => s.local))
-  const agent = (name: string) =>
-    run(
-      Agents.use((a) =>
-        a.create({
-          serverId: local.id,
-          name,
-          role: "",
-          instructions: "Work.",
-          model: { accountId: account.id, model: "mock", effort: null },
-        }),
-      ),
+  const server = await run(Servers.use((s) => s.local))
+  const w = <A>(f: (x: Workflows["Service"]) => Effect.Effect<A, import("./errors.ts").AppError>) =>
+    run(Workflows.use(f))
+  const create = (name: string, document?: string) =>
+    w((x) =>
+      x.create({ serverId: server.id, name, ...(document === undefined ? {} : { document }) }),
     )
-  const [ada, bo] = await Promise.all([agent("Ada"), agent("Bo")])
-  const agentStep = (
-    id: string,
-    agentId: string,
-    prompt: string,
-    continueOnFailure = false,
-  ): Step => ({
-    id,
-    kind: "agent",
-    name: id,
-    x: 0,
-    y: 0,
-    agentId,
-    prompt,
-    continueOnFailure,
-  })
-  /** A step that ends the flow with a notice; the title is the text. */
-  const post = (id: string, text: string): Step => ({
-    id,
-    kind: "notify",
-    name: id,
-    x: 0,
-    y: 0,
-    title: text,
-  })
-  const edge = (from: string, to: string, branch?: "yes" | "no"): Edge => ({
-    id: `${from}-${to}`,
-    from,
-    to,
-    ...(branch ? { branch } : {}),
-  })
-  const create = (steps: Step[], edges: Edge[], trigger: Trigger = { kind: "manual" }) =>
-    run(Workflows.use((w) => w.create({ serverId: local.id, name: "Flow", trigger, steps, edges })))
-  const start = (id: string, text?: string) => run(Workflows.use((w) => w.run(id, text)))
-  const finished = async (runId: string) => {
-    await until(
-      async () => (await run(Workflows.use((w) => w.runDetail(runId)))).run.state !== "running",
-    )
-    return run(Workflows.use((w) => w.runDetail(runId)))
+  const code = async <A>(
+    f: (x: Workflows["Service"]) => Effect.Effect<A, import("./errors.ts").AppError>,
+  ) => {
+    const exit = await t.runtime.runPromiseExit(Workflows.use(f))
+    if (Exit.isSuccess(exit)) return "ok"
+    return exit.cause.reasons
+      .map((r) => ("error" in r ? (r.error as { code: string }).code : ""))
+      .join()
   }
-  return { run, local, ada, bo, agentStep, post, edge, create, start, finished }
+  const sql = (statement: string, ...params: (string | number | null)[]) =>
+    run(Database.use((d) => Effect.sync(() => d.run(statement, ...params))))
+  const rows = <T>(statement: string, ...params: (string | number | null)[]) =>
+    run(Database.use((d) => Effect.sync(() => d.all<T>(statement, ...params))))
+  return { ...t, run, server, w, create, code, sql, rows }
 }
 
-const states = (d: { steps: readonly { stepId: string; state: string }[] }) =>
-  Object.fromEntries(d.steps.map((s) => [s.stepId, s.state]))
-
-describe("workflows", () => {
-  test("a two-step flow passes the first result to the second and ends with a notice", async () => {
-    const s = await setup()
-    const wf = await s.create(
-      [
-        s.agentStep("a", s.ada.id, "Write a haiku"),
-        s.agentStep("b", s.bo.id, "Translate this: {{input}}"),
-        s.post("p", "Final: {{input}}"),
-      ],
-      [s.edge("a", "b"), s.edge("b", "p")],
-    )
-    const detail = await s.finished((await s.start(wf.id)).id)
-    expect(detail.run.state).toBe("done")
-    expect(states(detail)).toEqual({ a: "done", b: "done", p: "done" })
-    const a = detail.steps.find((x) => x.stepId === "a")
-    const b = detail.steps.find((x) => x.stepId === "b")
-    expect(a?.result).toContain("Write a haiku")
-    expect(b?.input).toBe(a?.result ?? "?")
-    expect(detail.steps.find((x) => x.stepId === "p")?.result).toBe(b?.result ?? "?")
-    expect(a?.taskId).toBeTruthy()
+describe("a new workflow (spec 010)", () => {
+  test("it has the trimmed name, a document, a folder on disk and the default permission level", async () => {
+    const t = await setup()
+    const flow = await t.create("  Weekly report ", "Send the report.")
+    expect(flow.name).toBe("Weekly report")
+    expect(flow.permission).toBe("ask_risky")
+    expect(flow.nodeCount).toBe(0)
+    expect(existsSync(flow.folder)).toBe(true)
+    expect(flow.folder).toContain(workflowFolderName("Weekly report", flow.id))
+    const detail = await t.w((x) => x.get(flow.id))
+    expect(detail.document).toBe("Send the report.")
+    expect(detail.graph).toEqual({ nodes: [], connections: [] })
   })
 
-  test("a condition takes one branch and skips the other", async () => {
-    const s = await setup()
-    const wf = await s.create(
-      [
-        s.agentStep("a", s.ada.id, "Say haiku"),
-        { id: "c", kind: "condition", name: "c", x: 0, y: 0, contains: "haiku" },
-        s.post("yes", "YES"),
-        s.post("no", "NO"),
-      ],
-      [s.edge("a", "c"), s.edge("c", "yes", "yes"), s.edge("c", "no", "no")],
+  test("with no text, the document has the short default text in the language of the interface", async () => {
+    const t = await setup()
+    const en = await t.create("English")
+    expect(en.id).toBeTruthy()
+    expect((await t.w((x) => x.get(en.id))).document).toBe(
+      catalogues.en["workflows.document.default"],
     )
-    const detail = await s.finished((await s.start(wf.id)).id)
-    expect(states(detail)).toEqual({ a: "done", c: "done", yes: "done", no: "skipped" })
-    expect(detail.run.state).toBe("done")
+    await t.run(SettingsStore.use((s) => s.update({ language: "ko" })))
+    const ko = await t.create("한국어")
+    const text = (await t.w((x) => x.get(ko.id))).document
+    expect(text).toBe(catalogues.ko["workflows.document.default"])
+    expect(text).not.toBe(catalogues.en["workflows.document.default"])
+    expect(text.length).toBeGreaterThan(0)
+    expect(text.length).toBeLessThan(500)
   })
 
-  test("a failed step stops the run; with continue on failure the flow goes on", async () => {
-    const s = await setup()
-    const stop = await s.create(
-      [s.agentStep("a", s.ada.id, "FAIL now"), s.post("p", "after")],
-      [s.edge("a", "p")],
-    )
-    const failed = await s.finished((await s.start(stop.id)).id)
-    expect(failed.run.state).toBe("failed")
-    expect(states(failed)).toEqual({ a: "failed", p: "skipped" })
-
-    const goOn = await s.create(
-      [s.agentStep("a", s.ada.id, "FAIL now", true), s.post("p", "after")],
-      [s.edge("a", "p")],
-    )
-    const ok = await s.finished((await s.start(goOn.id)).id)
-    expect(states(ok)).toEqual({ a: "failed", p: "done" })
-    expect(ok.run.state).toBe("done")
+  test("a text that the caller gives replaces the default, also an empty one", async () => {
+    const t = await setup()
+    const empty = await t.create("Empty", "")
+    expect((await t.w((x) => x.get(empty.id))).document).toBe("")
   })
 
-  test("an approval step waits; approve goes on, reject fails; the editor is locked while it waits", async () => {
-    const s = await setup()
-    const wf = await s.create(
-      [
-        { id: "g", kind: "approval", name: "g", x: 0, y: 0, message: "Go?" },
-        s.post("p", "approved"),
-      ],
-      [s.edge("g", "p")],
+  test("a name is not empty and is unique on the server, ignoring case", async () => {
+    const t = await setup()
+    await t.create("Report")
+    expect(await t.code((x) => x.create({ serverId: t.server.id, name: "  " }))).toBe(
+      "workflow_name_empty",
     )
-    const first = await s.start(wf.id)
-    await until(
-      async () => states(await s.run(Workflows.use((w) => w.runDetail(first.id)))).g === "waiting",
+    expect(await t.code((x) => x.create({ serverId: t.server.id, name: "REPORT" }))).toBe(
+      "workflow_name_taken",
     )
-    const locked = await s.run(Workflows.use((w) => w.update(wf.id, { name: "New" }))).then(
-      () => "ok",
-      (e) => e,
-    )
-    expect(locked).toMatchObject({ code: "workflow_running" })
-    expect((await s.run(Workflows.use((w) => w.list(s.local.id))))[0]?.running).toBe(true)
-    await s.run(Workflows.use((w) => w.approve(first.id, "g", true)))
-    expect((await s.finished(first.id)).run.state).toBe("done")
-
-    const second = await s.start(wf.id)
-    await until(
-      async () => states(await s.run(Workflows.use((w) => w.runDetail(second.id)))).g === "waiting",
-    )
-    await s.run(Workflows.use((w) => w.approve(second.id, "g", false)))
-    const rejected = await s.finished(second.id)
-    expect(rejected.run.state).toBe("failed")
-    expect(states(rejected)).toEqual({ g: "failed", p: "skipped" })
-    // The editor opens again after the run.
-    const renamed = await s.run(Workflows.use((w) => w.update(wf.id, { name: "New" })))
-    expect(renamed.name).toBe("New")
   })
 
-  test("stop cancels a waiting run", async () => {
-    const s = await setup()
-    const wf = await s.create(
-      [{ id: "g", kind: "approval", name: "g", x: 0, y: 0, message: "" }, s.post("p", "x")],
-      [s.edge("g", "p")],
-    )
-    const r = await s.start(wf.id)
-    await until(
-      async () => states(await s.run(Workflows.use((w) => w.runDetail(r.id)))).g === "waiting",
-    )
-    await s.run(Workflows.use((w) => w.stop(r.id)))
-    const detail = await s.finished(r.id)
-    expect(detail.run.state).toBe("cancelled")
-    expect(states(detail)).toEqual({ g: "failed", p: "skipped" })
+  test("a rename keeps the name rule, and the same name in another case is allowed", async () => {
+    const t = await setup()
+    const a = await t.create("Report")
+    await t.create("Other")
+    expect(await t.code((x) => x.rename(a.id, "other"))).toBe("workflow_name_taken")
+    expect((await t.w((x) => x.rename(a.id, "REPORT"))).name).toBe("REPORT")
   })
 
-  test("a schedule trigger fires on the tick", async () => {
-    const s = await setup()
-    const wf = await s.create([s.agentStep("a", s.ada.id, "Tick")], [], {
-      kind: "schedule",
-      schedule: { kind: "every", minutes: 5, from: Date.now() },
-    })
-    await s.run(Workflows.use((w) => w.tick(Date.now() + 5 * 60_000 + 1000)))
-    await until(async () => (await s.run(Workflows.use((w) => w.runs(wf.id)))).length === 1)
-    const [run] = await s.run(Workflows.use((w) => w.runs(wf.id)))
-    expect(run?.trigger).toBe("schedule")
-  })
-
-  test("a cycle, a bad edge, or a missing agent is refused", async () => {
-    const s = await setup()
-    const cycle = await s
-      .create([s.post("a", "x"), s.post("b", "y")], [s.edge("a", "b"), s.edge("b", "a")])
-      .then(
-        () => "ok",
-        (e) => e,
-      )
-    expect(cycle).toMatchObject({ code: "graph_cycle" })
-    const missing = await s.create([s.agentStep("a", "nope", "x")], []).then(
-      () => "ok",
-      (e) => e,
-    )
-    expect(missing).toMatchObject({ code: "agent_not_found" })
-    const empty = await s.create([], [])
-    const refused = await s.start(empty.id).then(
-      () => "ok",
-      (e) => e,
-    )
-    expect(refused).toMatchObject({ code: "graph_no_steps" })
-  })
-  test("an agent step whose task ends as Blocked is a failed step, with the reason (spec 005, 010)", async () => {
-    const s = await setup()
-    const wf = await s.create(
-      [
-        s.agentStep("a", s.ada.id, "BLOCKME in the folder"),
-        s.agentStep("b", s.bo.id, "Never runs"),
-      ],
-      [s.edge("a", "b")],
-    )
-    const detail = await s.finished((await s.start(wf.id)).id)
-    expect(detail.run.state).toBe("failed")
-    expect(states(detail)).toEqual({ a: "failed", b: "skipped" })
-    expect(detail.steps.find((x) => x.stepId === "a")?.error).toBe("no access to the folder")
-  })
-
-  test("a blocked step with Continue on failure lets the next step run", async () => {
-    const s = await setup()
-    const wf = await s.create(
-      [
-        s.agentStep("a", s.ada.id, "BLOCKME in the folder", true),
-        s.agentStep("b", s.bo.id, "Go on"),
-      ],
-      [s.edge("a", "b")],
-    )
-    const detail = await s.finished((await s.start(wf.id)).id)
-    expect(states(detail)).toEqual({ a: "failed", b: "done" })
+  test("a change tells the screens", async () => {
+    const t = await setup()
+    await t.create("Report")
+    expect(t.events.some((e) => e.event === "workflows.changed")).toBe(true)
   })
 })
 
-// The owner of a workflow and the agents that may work in it (spec 010, "Owner and participants").
-describe("the owner of a workflow", () => {
-  const owned = async () => {
-    const s = await setup()
-    const cy = await s.run(
-      Agents.use((a) =>
-        a.create({
-          serverId: s.local.id,
-          name: "Cy",
-          role: "",
-          instructions: "Work.",
-          model: s.ada.model,
-        }),
-      ),
+describe("the responsible document (spec 002)", () => {
+  test("a save keeps the old text as a version; the same text makes none", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "one")
+    await t.w((x) => x.saveDocument(flow.id, "two"))
+    await t.w((x) => x.saveDocument(flow.id, "two"))
+    const history = await t.w((x) => x.documentHistory(flow.id))
+    expect(history.map((v) => v.text)).toEqual(["one"])
+    expect((await t.w((x) => x.get(flow.id))).document).toBe("two")
+  })
+
+  test("the history keeps the 50 newest versions", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "v0")
+    for (let i = 1; i <= DOCUMENT_VERSIONS_MAX + 5; i++)
+      await t.w((x) => x.saveDocument(flow.id, `v${i}`))
+    const history = await t.w((x) => x.documentHistory(flow.id))
+    expect(history).toHaveLength(DOCUMENT_VERSIONS_MAX)
+    expect(history[0]?.text).toBe(`v${DOCUMENT_VERSIONS_MAX + 4}`)
+  })
+
+  test("a restore makes a new version and keeps the others", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "one")
+    await t.w((x) => x.saveDocument(flow.id, "two"))
+    const [first] = await t.w((x) => x.documentHistory(flow.id))
+    const restored = await t.w((x) => x.restoreDocument(flow.id, (first as { id: string }).id))
+    expect(restored.document).toBe("one")
+    const history = await t.w((x) => x.documentHistory(flow.id))
+    expect(history.map((v) => v.text)).toEqual(["two", "one"])
+    expect(history[0]?.source).toBe("restore")
+    expect(await t.code((x) => x.restoreDocument(flow.id, "nope"))).toBe("version_not_found")
+  })
+
+  test("text over 20000 characters or with a secret is refused, and nothing changes", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "keep")
+    expect(await t.code((x) => x.saveDocument(flow.id, "x".repeat(DOCUMENT_MAX + 1)))).toBe(
+      "document_too_long",
     )
-    const makeOwned = (
-      steps: Step[],
-      owner: { kind: "agent"; id: string } | null,
-      edges: Edge[] = [],
-    ) =>
-      s.run(
-        Workflows.use((w) =>
-          w.create({
-            serverId: s.local.id,
-            name: "Weekly",
-            trigger: { kind: "manual" },
-            steps,
-            edges,
-            owner,
-          }),
+    expect(
+      await t.code((x) =>
+        x.saveDocument(flow.id, "use sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"),
+      ),
+    ).toBe("document_secret")
+    expect((await t.w((x) => x.get(flow.id))).document).toBe("keep")
+    expect(await t.w((x) => x.documentHistory(flow.id))).toEqual([])
+  })
+
+  test("the editor is read-only while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "one")
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'working', 'hand', ?)",
+      flow.id,
+      Date.now(),
+    )
+    expect(await t.code((x) => x.saveDocument(flow.id, "two"))).toBe("workflow_running")
+  })
+})
+
+describe("the graph (spec 010)", () => {
+  test("a node gets the next number; a removed node renumbers the rest and drops its connections", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
+    const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Write" }))
+    const c = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Send" }))
+    expect([a.number, b.number, c.number]).toEqual([1, 2, 3])
+    await t.w((x) => x.connect(flow.id, a.id, b.id))
+    await t.w((x) => x.connect(flow.id, b.id, c.id))
+    await t.w((x) => x.removeNode(b.id))
+    const graph = await t.w((x) => x.graph(flow.id))
+    expect(graph.nodes.map((n) => [n.name, n.number])).toEqual([
+      ["Read", 1],
+      ["Send", 2],
+    ])
+    expect(graph.connections).toEqual([])
+  })
+
+  test("a workflow holds at most 30 nodes", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    for (let i = 0; i < NODES_MAX; i++)
+      await t.w((x) => x.addNode(flow.id, { kind: "text", name: `N${i}` }))
+    expect(await t.code((x) => x.addNode(flow.id, { kind: "text", name: "More" }))).toBe(
+      "workflow_nodes_full",
+    )
+  })
+
+  test("a node permission level may only be stricter than the workflow level", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setPermission(flow.id, "ask_risky"))
+    expect(
+      await t.code((x) => x.addNode(flow.id, { kind: "text", name: "A", permission: "full" })),
+    ).toBe("node_permission_looser")
+    const strict = await t.w((x) =>
+      x.addNode(flow.id, { kind: "text", name: "B", permission: "ask_all" }),
+    )
+    expect(strict.permission).toBe("ask_all")
+    expect(await t.code((x) => x.updateNode(strict.id, { permission: "full" }))).toBe(
+      "node_permission_looser",
+    )
+    expect(effectivePermission("ask_risky", null)).toBe("ask_risky")
+    expect(effectivePermission("ask_risky", "read_only")).toBe("read_only")
+    expect(effectivePermission("ask_all", "full")).toBe("ask_all")
+  })
+
+  test("a decision node has at least two options, a threshold of 0.9 by default, and each option leads on", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    expect(
+      await t.code((x) => x.addNode(flow.id, { kind: "decision", name: "Ok?", options: ["Yes"] })),
+    ).toBe("decision_options")
+    const d = await t.w((x) =>
+      x.addNode(flow.id, {
+        kind: "decision",
+        name: "Ok?",
+        question: "Is it fine?",
+        options: ["Yes", "No"],
+      }),
+    )
+    expect(d.threshold).toBe(0.9)
+    expect(d.options.map((o) => o.label)).toEqual(["Yes", "No"])
+    const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
+    // A decision node connects through one of its options only.
+    expect(await t.code((x) => x.connect(flow.id, d.id, next.id))).toBe("connection_option_missing")
+    const link = await t.w((x) => x.connect(flow.id, d.id, next.id, d.options[0]?.id ?? null))
+    expect(link.optionId).toBe(d.options[0]?.id ?? null)
+    expect(await t.code((x) => x.connect(flow.id, next.id, next.id))).toBe("connection_to_self")
+    expect(await t.code((x) => x.connect(flow.id, next.id, d.id, d.options[0]?.id ?? null))).toBe(
+      "connection_option_unexpected",
+    )
+  })
+
+  test("a line is not made twice, and an option has one outgoing connection", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "B" }))
+    const c = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "C" }))
+    await t.w((x) => x.connect(flow.id, a.id, b.id))
+    expect(await t.code((x) => x.connect(flow.id, a.id, b.id))).toBe("connection_exists")
+    const d = await t.w((x) =>
+      x.addNode(flow.id, {
+        kind: "decision",
+        name: "Ok?",
+        question: "Fine?",
+        options: ["Yes", "No"],
+      }),
+    )
+    const yes = d.options[0]?.id ?? null
+    const no = d.options[1]?.id ?? null
+    await t.w((x) => x.connect(flow.id, d.id, b.id, yes))
+    // The same option cannot lead to a second node, and the other option stays free.
+    expect(await t.code((x) => x.connect(flow.id, d.id, c.id, yes))).toBe("connection_exists")
+    expect(await t.code((x) => x.connect(flow.id, d.id, c.id, no))).toBe("ok")
+    expect((await t.w((x) => x.graph(flow.id))).connections).toHaveLength(3)
+  })
+
+  test("a restore keeps the node of the tasks of a node that comes back", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
+    const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Write" }))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r1', ?, 'done', 'hand', 1, 2)",
+      flow.id,
+    )
+    for (const [id, node, name, number] of [
+      ["t1", a.id, "Read", 1],
+      ["t2", b.id, "Write", 2],
+    ] as const)
+      await t.sql(
+        "INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, created_at) VALUES (?, 'r1', ?, ?, ?, ?, 'done', 1)",
+        id,
+        flow.id,
+        node,
+        name,
+        number,
+      )
+    // The version from before node B was added holds node A only.
+    const versions = await t.w((x) => x.versions(flow.id))
+    const beforeB = versions[0] as { id: string }
+    await t.w((x) => x.restoreVersion(flow.id, beforeB.id))
+    const tasks = await t.rows<{ id: string; node_id: string | null }>(
+      "SELECT id, node_id FROM task ORDER BY id",
+    )
+    // Node A is back with its id, so its task still points to it. Node B is gone.
+    expect(tasks).toEqual([
+      { id: "t1", node_id: a.id },
+      { id: "t2", node_id: null },
+    ])
+  })
+
+  test("a level that is not a permission level is refused by the database", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const node = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    await expect(
+      t.sql("UPDATE workflow SET permission = 'everything' WHERE id = ?", flow.id),
+    ).rejects.toThrow()
+    await expect(
+      t.sql("UPDATE workflow_node SET permission = 'everything' WHERE id = ?", node.id),
+    ).rejects.toThrow()
+    await t.sql("UPDATE workflow_node SET permission = 'read_only' WHERE id = ?", node.id)
+    await t.sql("UPDATE workflow_node SET permission = NULL WHERE id = ?", node.id)
+  })
+
+  test("a step in the action log names the node of its task as it was then", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const node = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r1', ?, 'done', 'hand', 1, 2)",
+      flow.id,
+    )
+    await t.sql(
+      "INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, created_at) VALUES ('t1', 'r1', ?, ?, 'Read', 1, 'done', 1)",
+      flow.id,
+      node.id,
+    )
+    const step = (taskId: string | null) =>
+      t.run(
+        ActionLog.use((l) =>
+          Effect.sync(() =>
+            l.add({
+              workflowId: flow.id,
+              kind: "shell",
+              target: "ls",
+              decidedBy: "user",
+              result: "ran",
+              taskId,
+              outside: null,
+            }),
+          ),
         ),
       )
-    return { ...s, cy, makeOwned }
-  }
-
-  test("a workflow keeps its owner, and no owner is the default", async () => {
-    const s = await owned()
-    const shared = await s.create([s.post("a", "x")], [])
-    expect(shared.owner).toBeNull()
-    const wf = await s.makeOwned([s.post("a", "x")], { kind: "agent", id: s.cy.id })
-    expect(wf.owner).toEqual({ kind: "agent", id: s.cy.id })
-    const listed = await s.run(Workflows.use((w) => w.list(s.local.id)))
-    expect(listed.find((x) => x.id === wf.id)?.owner).toEqual({ kind: "agent", id: s.cy.id })
-    const moved = await s.run(
-      Workflows.use((w) => w.update(wf.id, { owner: { kind: "agent", id: s.ada.id } })),
-    )
-    expect(moved.owner).toEqual({ kind: "agent", id: s.ada.id })
-    const cleared = await s.run(Workflows.use((w) => w.update(wf.id, { owner: null })))
-    expect(cleared.owner).toBeNull()
+    const withTask = await step("t1")
+    expect([withTask.nodeName, withTask.nodeNumber]).toEqual(["Read", 1])
+    await t.w((x) => x.updateNode(node.id, { name: "Renamed" }))
+    const listed = await t.run(ActionLog.use((l) => l.list({ workflowId: flow.id })))
+    expect(listed[0]?.nodeName).toBe("Read")
+    const without = await step(null)
+    expect([without.nodeName, without.nodeNumber]).toEqual([null, null])
   })
 
-  test("an owner that does not exist is refused", async () => {
-    const s = await owned()
-    const refused = await s.makeOwned([s.post("a", "x")], { kind: "agent", id: "nope" }).then(
-      () => "ok",
-      (e) => e,
-    )
-    expect(refused).toMatchObject({ code: "owner_not_found" })
+  test("each edit keeps the graph as a version, and a restore keeps the graph it replaces", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
+    await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Write" }))
+    const versions = await t.w((x) => x.versions(flow.id))
+    expect(versions).toHaveLength(2)
+    // The oldest version is the empty graph that came before the first node.
+    const oldest = versions.at(-1)
+    const restored = await t.w((x) => x.restoreVersion(flow.id, (oldest as { id: string }).id))
+    expect(restored.nodes).toEqual([])
+    expect((await t.w((x) => x.versions(flow.id))).length).toBe(3)
+    expect(a.id).toBeTruthy()
   })
 
-  test("a step with Continue on failure goes on after a step that is not a participant", async () => {
-    const s = await owned()
-    const wf = await s.makeOwned(
-      [s.agentStep("a", s.ada.id, "x", true), s.agentStep("b", s.cy.id, "y")],
-      { kind: "agent", id: s.cy.id },
-      [s.edge("a", "b")],
+  test("the graph is read-only while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'working', 'hand', ?)",
+      flow.id,
+      Date.now(),
     )
-    const detail = await s.finished((await s.start(wf.id)).id)
-    expect(states(detail)).toEqual({ a: "failed", b: "done" })
+    expect(await t.code((x) => x.addNode(flow.id, { kind: "text", name: "A" }))).toBe(
+      "workflow_running",
+    )
   })
+})
 
-  test("a workflow of an agent takes that agent only", async () => {
-    const s = await owned()
-    const wf = await s.makeOwned(
-      [s.agentStep("own", s.ada.id, "Own"), s.agentStep("other", s.cy.id, "Other", true)],
-      { kind: "agent", id: s.ada.id },
-    )
-    const detail = await s.finished((await s.start(wf.id)).id)
-    expect(states(detail)).toEqual({ own: "done", other: "failed" })
-    expect(detail.steps.find((x) => x.stepId === "other")?.error).toBe("not_participant")
-  })
-
-  test("the owner cannot change while the workflow runs", async () => {
-    const s = await owned()
-    const wf = await s.create(
-      [{ id: "ok", kind: "approval", name: "ok", x: 0, y: 0, message: "" }],
-      [],
-    )
-    const run = await s.start(wf.id)
-    const refused = await s
-      .run(Workflows.use((w) => w.update(wf.id, { owner: { kind: "agent", id: s.ada.id } })))
-      .then(
-        () => "ok",
-        (e) => e,
+describe("a delete (spec 010)", () => {
+  test("it removes the graph, history, chat, runs, memory, rules and secrets of the workflow only", async () => {
+    const t = await setup()
+    const gone = await t.create("Gone", "text")
+    const stay = await t.create("Stay", "text")
+    for (const flow of [gone, stay]) {
+      await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+      await t.w((x) => x.saveDocument(flow.id, "changed"))
+      await t.sql(
+        "INSERT INTO chat_thread (id, workflow_id, title, created_at) VALUES (?, ?, 'T', 1)",
+        `t-${flow.id}`,
+        flow.id,
       )
-    expect(refused).toMatchObject({ code: "workflow_running" })
-    await s.run(Workflows.use((w) => w.stop(run.id)))
+      await t.run(
+        Rules.use((r) =>
+          r.add({ workflowId: flow.id, kind: "shell", text: "ls", decision: "allow" }),
+        ),
+      )
+      await t.run(
+        ActionLog.use((l) =>
+          Effect.sync(() =>
+            l.add({
+              workflowId: flow.id,
+              kind: "shell",
+              target: "ls",
+              decidedBy: "user",
+              result: "ran",
+              taskId: null,
+              outside: null,
+            }),
+          ),
+        ),
+      )
+    }
+    await t.w((x) => x.remove(gone.id))
+    const count = async (table: string, id: string) =>
+      (
+        await t.rows<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table} WHERE workflow_id = ?`, id)
+      )[0]?.n
+    for (const table of [
+      "workflow_node",
+      "workflow_version",
+      "document_version",
+      "chat_thread",
+      "permission_rule",
+    ]) {
+      expect([table, await count(table, gone.id)]).toEqual([table, 0])
+      expect(((await count(table, stay.id)) ?? 0) > 0).toBe(true)
+    }
+    expect(await t.code((x) => x.get(gone.id))).toBe("workflow_not_found")
+    expect((await t.w((x) => x.list(t.server.id))).map((f) => f.name)).toEqual(["Stay"])
   })
 })

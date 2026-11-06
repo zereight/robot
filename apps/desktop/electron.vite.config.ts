@@ -6,21 +6,12 @@ import solid from "vite-plugin-solid"
 export default defineConfig({
   main: {
     build: { externalizeDeps: true },
-    resolve: {
-      // The Node build of fflate declares its own `require`, which clashes in the bundle.
-      // The plain build has no Node parts and works the same here.
-      alias: { fflate: resolve(import.meta.dirname, "node_modules/fflate/esm/browser.js") },
-    },
   },
   preload: {
     build: {
       externalizeDeps: true,
       rollupOptions: {
-        // The window of the app, and the recorder of "Teach a task" in the pages of agents.
-        input: {
-          index: resolve(import.meta.dirname, "src/preload/index.ts"),
-          teach: resolve(import.meta.dirname, "src/preload/teach.ts"),
-        },
+        input: { index: resolve(import.meta.dirname, "src/preload/index.ts") },
         output: { format: "cjs", entryFileNames: "[name].cjs" },
       },
     },
@@ -31,7 +22,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(import.meta.dirname, "src/renderer/index.html"),
-          island: resolve(import.meta.dirname, "src/renderer/island.html"),
         },
       },
     },

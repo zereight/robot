@@ -1,22 +1,17 @@
 import { createSignal, Match, Show, Switch as SwitchCase } from "solid-js"
-import { AgentForm } from "../agents/AgentForm.tsx"
-import { createAgent } from "../agents/createAgent.ts"
-import { markBorn } from "../agents/reactions.ts"
 import { ConnectForm } from "../providers/ProvidersSection.tsx"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
-import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import styles from "./firstrun.module.css"
 
-const STEPS = 3
+const STEPS = 2
 
-/** The guide for a first start: look, one model account, one agent. Every step can be skipped. */
+/** The guide for a first start: look and one model account. Every step can be skipped. */
 export const FirstRunDialog = () => {
   const app = useApp()
   const { t } = app
-  const ui = useUi()
   const providers = useProviders()
   const [step, setStep] = createSignal(1)
   // The new step comes in from the side that the user moves toward.
@@ -80,41 +75,20 @@ export const FirstRunDialog = () => {
           >
             <h3>{t("firstRun.account.title")}</h3>
             <p>{t("firstRun.account.body")}</p>
-            <Show when={connected()} fallback={<ConnectForm onDone={next} />} keyed>
+            <Show when={connected()} fallback={<ConnectForm onDone={() => void finish()} />} keyed>
               {(account) => (
                 <>
                   <p class={styles.ok} data-testid="first-run-connected">
                     {t("firstRun.account.connected", { name: account.name })}
                   </p>
                   <div class={styles.actions}>
-                    <Button variant="primary" onClick={next} data-testid="first-run-next">
-                      {t("firstRun.next")}
+                    <Button variant="primary" onClick={finish} data-testid="first-run-done">
+                      {t("firstRun.done")}
                     </Button>
                   </div>
                 </>
               )}
             </Show>
-          </section>
-        </Match>
-        <Match when={step() === 3}>
-          <section
-            class={styles.section}
-            data-direction={direction()}
-            data-testid="first-run-agent"
-          >
-            <h3>{t("firstRun.agent.title")}</h3>
-            <p>{t("firstRun.agent.body")}</p>
-            <AgentForm
-              onCancel={finish}
-              onSubmit={async (values) => {
-                const serverId = ui.server()?.id
-                if (!serverId) return
-                const agent = await createAgent(serverId, values)
-                markBorn(agent.id)
-                await finish()
-                ui.selectPlace({ kind: "agent", id: agent.id })
-              }}
-            />
           </section>
         </Match>
       </SwitchCase>

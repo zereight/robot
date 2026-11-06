@@ -39,7 +39,7 @@ export const isRuleDecision = (v: unknown): v is RuleDecision => v === "allow" |
 export interface PermissionRule {
   readonly id: string
   /** The agent the rule is for, or `null` for all agents. */
-  readonly agentId: string | null
+  readonly workflowId: string | null
   readonly kind: RuleKind | null
   readonly text: string
   readonly detail: string | null
@@ -63,7 +63,7 @@ export interface RuleRef {
 /** A rule that the user adds or edits in the rules list. */
 export interface RuleInput {
   /** The agent the rule is for, or `null` for all agents. */
-  readonly agentId: string | null
+  readonly workflowId: string | null
   readonly kind: RuleKind
   readonly text: string
   /** The tool or the method. `null` is any tool or any method. Left out for other kinds. */
@@ -181,7 +181,13 @@ export const checkRuleInput = (input: RuleInput, home = ""): RuleCheck => {
   if ([...text].length > RULE_TEXT_MAX) return { ok: false, code: "rule_text_invalid" }
   return {
     ok: true,
-    value: { agentId: input.agentId, kind: input.kind, text, detail, decision: input.decision },
+    value: {
+      workflowId: input.workflowId,
+      kind: input.kind,
+      text,
+      detail,
+      decision: input.decision,
+    },
   }
 }
 
@@ -190,7 +196,7 @@ export const checkRuleInput = (input: RuleInput, home = ""): RuleCheck => {
  * decision. Names of connections and of secrets and hosts do not depend on the case of letters.
  */
 export const ruleSameKey = (rule: {
-  agentId: string | null
+  workflowId: string | null
   kind: RuleKind
   text: string
   detail: string | null
@@ -198,7 +204,7 @@ export const ruleSameKey = (rule: {
 }): string => {
   const folded = rule.kind === "connection" || rule.kind === "secret"
   return [
-    rule.agentId ?? "*",
+    rule.workflowId ?? "*",
     rule.kind,
     folded ? secretNameKey(rule.text) : rule.kind === "web" ? normalizeHost(rule.text) : rule.text,
     rule.detail ?? "*",
@@ -320,14 +326,14 @@ const refOf = (rule: PermissionRule, kind: RuleKind): RuleRef => ({
  */
 export const ruleVerdict = (
   rules: readonly PermissionRule[],
-  agentId: string,
+  workflowId: string,
   step: RuleStep,
   env: MatchEnv,
 ): RuleVerdict => {
   let allow: RuleRef | null = null
   let unreadable: RuleRef | null = null
   for (const rule of rules) {
-    if (rule.agentId !== null && rule.agentId !== agentId) continue
+    if (rule.workflowId !== null && rule.workflowId !== workflowId) continue
     if (!rule.readable) {
       if (isRuleKind(rule.kind) && ruleMatches(rule as RuleBody, step, env) && !unreadable)
         unreadable = refOf(rule, rule.kind)
@@ -376,8 +382,8 @@ export const ruleOutcome = (input: {
  * fit: the text is longer than the limit. The rule is not wider than the step: the same command
  * text, the same path, the same host, the same tool.
  */
-export const ruleInputOfStep = (agentId: string, step: RuleStep): RuleInput | null => {
-  const base = { agentId, decision: "allow" } as const
+export const ruleInputOfStep = (workflowId: string, step: RuleStep): RuleInput | null => {
+  const base = { workflowId, decision: "allow" } as const
   let input: RuleInput
   switch (step.kind) {
     case "file":

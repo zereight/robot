@@ -139,3 +139,85 @@
   color: var(--c-text-muted);
   font-size: var(--text-xs);
 }
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(520px, 80vw);
+  /* No scroll here. The dialog around the form scrolls, so there is one scroll bar only. */
+}
+
+.title {
+  font-size: var(--text-l);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.label {
+  font-size: var(--text-s);
+  font-weight: 500;
+}
+
+.hint,
+.counter {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.input,
+.textarea {
+  border: 1px solid var(--c-border);
+  background: var(--c-main);
+  color: var(--c-text);
+  border-radius: var(--radius-m);
+  padding: 7px 10px;
+  user-select: text;
+}
+
+.input {
+  flex: 1;
+  min-height: 36px;
+}
+
+.input:focus-visible,
+.textarea:focus-visible {
+  border-color: var(--c-focus);
+}
+
+/* The reason under a field that blocks Save. */
+.fieldError {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.error {
+  color: var(--c-danger);
+  font-size: var(--text-s);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.instructions {
+  min-height: 160px;
+}

@@ -1,15 +1,14 @@
 import { hostname } from "node:os"
 import { join, resolve } from "node:path"
-import { EVENT_CHANNEL } from "@robot/shared"
+import { EVENT_CHANNEL, resolveLocale, translate } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, dialog } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
 import { importLoginPath } from "./runtimes/login-path.ts"
-import { Database } from "./services/Database.ts"
+import { Database, fileState } from "./services/Database.ts"
 import { Host } from "./services/Host.ts"
-import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -128,18 +127,30 @@ app.whenReady().then(async () => {
   // Electron icon, so show the app mark instead.
   else if (!app.isPackaged && process.platform === "darwin")
     app.dock?.setIcon(join(app.getAppPath(), "resources/icon.png"))
+  // Data from a newer version is never opened and never erased. The app tells the user and quits.
+  const databaseFile = join(app.getPath("userData"), "robot.db")
+  if (fileState(databaseFile) === "newer") {
+    const locale = resolveLocale("system", process.env.ROBOT_SYSTEM_LOCALE ?? app.getLocale())
+    dialog.showErrorBox(
+      translate(locale, "error.database_newer.title"),
+      translate(locale, "error.database_newer"),
+    )
+    app.exit(1)
+    return
+  }
   const runtime = makeRuntime()
   // Keep native menus and dialogs in the chosen theme.
   await runtime.runPromise(
     Effect.gen(function* () {
       const settings = yield* SettingsStore.use((s) => s.get)
       yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
-      // The first start guide is for new users. A data folder that already holds an agent or an
+      // The first start guide is for new users. A data folder that already holds a workflow or an
       // account, or a test run that asks to skip it, counts as done.
       if (!settings.firstRunDone) {
         const db = yield* Database
         const used =
-          db.get("SELECT 1 FROM agent LIMIT 1") || db.get("SELECT 1 FROM provider_account LIMIT 1")
+          db.get("SELECT 1 FROM workflow LIMIT 1") ||
+          db.get("SELECT 1 FROM provider_account LIMIT 1")
         if (used || process.env.ROBOT_SKIP_FIRST_RUN)
           yield* SettingsStore.use((s) => s.update({ firstRunDone: true }))
       }
@@ -148,7 +159,6 @@ app.whenReady().then(async () => {
   await loginPath
   registerRpc(runtime)
   createWindow()
-  await runtime.runPromise(Notifier.use((n) => Effect.sync(() => n.refresh())))
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

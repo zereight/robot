@@ -3,41 +3,21 @@ import {
   SKILL_INSTRUCTIONS_MAX,
   SKILL_NAME_MAX,
   type Skill,
-  type SkillSourceRef,
 } from "@robot/shared"
-import { createSignal, For, onMount, Show } from "solid-js"
-import styles from "../agents/agents.module.css"
+import { createSignal, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
-import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button, Segmented } from "../ui/controls.tsx"
+import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { showToast } from "../ui/toast.ts"
-import skillStyles from "./skills.module.css"
+import styles from "./skills.module.css"
 
-/**
- * What the form opens with: a blank form, a draft that the model writes from some work, or a skill
- * that exists, to edit.
- */
+/** What the form opens with: a blank form, or a skill that exists, to edit. */
 export type SkillFormOpen =
   | { readonly kind: "blank" }
-  | { readonly kind: "work"; readonly source: SkillSourceRef }
   | { readonly kind: "edit"; readonly skill: Skill }
-  /**
-   * A proposal of a retrospective (spec 030, "Retrospective"): the form opens filled in, for one
-   * agent, and nothing is saved until the user saves it.
-   */
-  | {
-      readonly kind: "proposal"
-      readonly proposal: {
-        readonly name: string
-        readonly description: string
-        readonly instructions: string
-      }
-      readonly agentId: string | undefined
-    }
 
 const [formOpen, setFormOpen] = createSignal<SkillFormOpen>()
 
@@ -47,95 +27,33 @@ export const skillForm = formOpen
 export const openSkillForm = () => setFormOpen({ kind: "blank" })
 /** Opens the form of a skill that exists (spec 017, flow 2). */
 export const editSkill = (skill: Skill) => setFormOpen({ kind: "edit", skill })
-/** Opens the form of a new skill and fills it with a draft from a task, an article or an item. */
-export const makeSkillFromWork = (source: SkillSourceRef) => setFormOpen({ kind: "work", source })
-/**
- * Opens the form of a new skill filled in by a proposal of a retrospective (spec 030). Nothing is
- * saved until the user saves it.
- */
-export const openSkillProposal = (
-  proposal: { name: string; description: string; instructions: string },
-  agentId: string | undefined,
-) => setFormOpen({ kind: "proposal", proposal, agentId })
 export const closeSkillForm = () => setFormOpen(undefined)
 
-const FIELDS = ["name", "description", "instructions", "agents"] as const
+const FIELDS = ["name", "description", "instructions"] as const
 type Field = (typeof FIELDS)[number]
 
 const lengthOf = (text: string) => [...text.trim()].length
 
 /**
- * The form of a skill (spec 017, flows 1 and 2): name, description, instructions and the agents
- * that may use it. It opens blank, or with the fields of a skill to edit. When it opens from some
- * work, it first shows "Writing a draft…", then the draft.
+ * The form of a skill (spec 017, flows 1 and 2): name, description and instructions. A skill is
+ * for the whole server. It opens blank, or with the fields of a skill to edit.
  */
 export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
-  const agents = useAgents()
-  const work = props.open.kind === "work" ? props.open.source : undefined
   const edited = props.open.kind === "edit" ? props.open.skill : undefined
-  // A proposal of a retrospective fills the same fields, for one agent (spec 030).
-  const proposal = props.open.kind === "proposal" ? props.open.proposal : undefined
-  const [name, setName] = createSignal(edited?.name ?? proposal?.name ?? "")
-  const [description, setDescription] = createSignal(
-    edited?.description ?? proposal?.description ?? "",
-  )
-  const [instructions, setInstructions] = createSignal(
-    edited?.instructions ?? proposal?.instructions ?? "",
-  )
-  const [all, setAll] = createSignal(edited ? edited.agentIds === null : proposal === undefined)
-  const [chosen, setChosen] = createSignal<readonly string[]>(
-    edited?.agentIds ??
-      (props.open.kind === "proposal" && props.open.agentId ? [props.open.agentId] : []),
-  )
-  const [phase, setPhase] = createSignal<"writing" | "ready" | "failed">(work ? "writing" : "ready")
-  const [failure, setFailure] = createSignal<ErrorText>()
-  const [outside, setOutside] = createSignal(false)
+  const [name, setName] = createSignal(edited?.name ?? "")
+  const [description, setDescription] = createSignal(edited?.description ?? "")
+  const [instructions, setInstructions] = createSignal(edited?.instructions ?? "")
   const [problem, setProblem] = createSignal<{ field: Field | null; text: ErrorText }>()
   const [busy, setBusy] = createSignal(false)
-  let requestId = ""
-  let closed = false
 
-  /** Asks for the draft. The answer of a request that the user closed is dropped. */
-  const write = async () => {
-    if (!work) return
-    const mine = crypto.randomUUID()
-    requestId = mine
-    setPhase("writing")
-    setFailure(undefined)
-    try {
-      const result = await call("skills.draft", { requestId: mine, source: work })
-      if (closed || requestId !== mine) return
-      setName(result.draft.name)
-      setDescription(result.draft.description)
-      setInstructions(result.draft.instructions)
-      setAll(false)
-      setChosen([result.agentId])
-      setOutside(result.outside)
-      setPhase("ready")
-    } catch (e) {
-      if (closed || requestId !== mine) return
-      setFailure(describeError(e))
-      setPhase("failed")
-    }
-  }
-  onMount(() => void write())
-
-  const close = () => {
-    // Cancel while the draft is written: the app drops the answer, and nothing is saved.
-    if (phase() === "writing" && requestId) void call("skills.draftCancel", { requestId })
-    closed = true
-    props.onClose()
-  }
-
-  const toggle = (id: string) =>
-    setChosen(chosen().includes(id) ? chosen().filter((x) => x !== id) : [...chosen(), id])
+  const close = () => props.onClose()
 
   const save = async (event?: SubmitEvent) => {
     event?.preventDefault()
     const serverId = ui.server()?.id
-    if (phase() !== "ready" || busy() || !serverId) return
+    if (busy() || !serverId) return
     setBusy(true)
     setProblem(undefined)
     try {
@@ -143,13 +61,10 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
         name: name(),
         description: description(),
         instructions: instructions(),
-        agentIds: all() ? null : chosen(),
-        organizations: [],
       }
       if (edited) await call("skills.update", { id: edited.id, ...fields })
       else await call("skills.create", { serverId, ...fields })
       showToast("success", "skills.saved", { name: name().trim().replace(/^\/+/, "") })
-      closed = true
       props.onClose()
     } catch (e) {
       const detail = e instanceof RpcFailure ? e.error.message : ""
@@ -170,37 +85,13 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
     </Show>
   )
 
-  const locked = () => phase() !== "ready"
-  const title = () =>
-    edited ? t("skills.form.edit") : work ? t("skills.make") : t("skills.form.title")
+  const title = () => (edited ? t("skills.form.edit") : t("skills.form.title"))
 
   return (
     <Dialog label={title()} onClose={close} testId="skill-form-dialog">
-      <form class={styles.form} onSubmit={save} data-testid="skill-form" data-phase={phase()}>
+      <form class={styles.form} onSubmit={save} data-testid="skill-form">
         <h2 class={styles.title}>{title()}</h2>
-        <Show when={phase() === "writing"}>
-          <p class={styles.hint} role="status" data-testid="skill-writing">
-            {t("skills.make.writing")}
-          </p>
-        </Show>
-        <Show when={phase() === "failed" ? failure() : undefined}>
-          {(reason) => (
-            <div class={skillStyles.failed}>
-              <p class={styles.error} role="alert" data-testid="skill-failed">
-                {t("skills.make.failed", { reason: t(reason().key, { detail: "" }) })}
-              </p>
-              <Button onClick={() => void write()} data-testid="skill-retry">
-                {t("skills.make.retry")}
-              </Button>
-            </div>
-          )}
-        </Show>
-        <Show when={phase() === "ready" && outside()}>
-          <p class={styles.hint} data-testid="skill-outside">
-            {t("skills.make.outside")}
-          </p>
-        </Show>
-        <fieldset class={skillStyles.fields} disabled={locked()}>
+        <fieldset class={styles.fields}>
           <label class={styles.field}>
             <span class={styles.fieldTop}>
               <span class={styles.label}>{t("skills.form.name")}</span>
@@ -248,7 +139,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
               </span>
             </span>
             <textarea
-              class={`${styles.textarea} ${styles.draftInstructions}`}
+              class={`${styles.textarea} ${styles.instructions}`}
               value={instructions()}
               aria-invalid={problem()?.field === "instructions"}
               onInput={(e) => setInstructions(e.currentTarget.value)}
@@ -259,40 +150,6 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
               {t("skills.form.privacy")}
             </span>
           </label>
-          <div class={styles.field} data-testid="skill-agents">
-            <span class={styles.label}>{t("skills.form.agents")}</span>
-            <Segmented
-              label={t("skills.form.agents")}
-              testId="skill-agents-mode"
-              value={all() ? "all" : "some"}
-              onChange={(value) => setAll(value === "all")}
-              options={[
-                { value: "all", label: t("skills.form.agents.all") },
-                { value: "some", label: t("skills.form.agents.some") },
-              ]}
-            />
-            <Show when={!all()}>
-              <ul class={skillStyles.agentList} data-testid="skill-agent-list">
-                <For each={agents.agents()}>
-                  {(agent) => (
-                    <li>
-                      <label class={skillStyles.agentRow}>
-                        <input
-                          type="checkbox"
-                          checked={chosen().includes(agent.id)}
-                          onChange={() => toggle(agent.id)}
-                          data-testid="skill-agent"
-                          data-agent={agent.name}
-                        />
-                        <span>{agent.name}</span>
-                      </label>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
-            {under("agents")}
-          </div>
         </fieldset>
         <Show when={problem()?.field === null ? problem() : undefined}>
           {(p) => (
@@ -305,12 +162,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
           <Button onClick={close} data-testid="skill-cancel">
             {t("skills.form.cancel")}
           </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={locked() || busy()}
-            data-testid="skill-save"
-          >
+          <Button type="submit" variant="primary" disabled={busy()} data-testid="skill-save">
             {t("skills.form.save")}
           </Button>
         </div>

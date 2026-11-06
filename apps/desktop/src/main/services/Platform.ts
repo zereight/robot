@@ -1,6 +1,4 @@
-import type { IslandShape, IslandWidth, TeachEvent } from "@robot/shared"
 import { Context } from "effect"
-import type { TeamsSurface } from "../teams/surface.ts"
 import type { Resolver } from "../web/fetch.ts"
 
 /**
@@ -16,8 +14,7 @@ export interface PageBounds {
 }
 
 /**
- * The browser page of one agent. It shows inside the app window, in the place that the chat
- * screen gives it. Cookies and logins stay on this computer, with the browser profile of the agent
+ * The browser page of one agent. It shows inside the app window. Cookies and logins stay on this computer, with the browser profile of the agent
  * or with the agent when it has none.
  */
 /** One control of the page that the agent can use: a numbered line of the read list. */
@@ -98,12 +95,6 @@ export interface BrowserPage {
   close(): void
   /** Calls back when the page is closed, by the agent, by Stop or by the user. */
   onClosed(listener: () => void): void
-  /**
-   * Starts the recorder of "Teach a task" (spec 017), or stops it with `undefined`. While it runs,
-   * the listener gets each page that opens and each step of the user. It goes on when the page
-   * is closed and opened again.
-   */
-  record(listener: ((event: TeachEvent) => void) | undefined): void
 }
 
 /** Things that need the operating system. The real one uses Electron; tests use a fake. */
@@ -128,10 +119,6 @@ export interface PlatformService {
   pickSavePath(defaultName: string): Promise<string | undefined>
   /** An archive to open, or undefined when cancelled. */
   pickArchive(): Promise<string | undefined>
-  /** Where to save an agent file, or undefined when cancelled. */
-  pickAgentFileSave(defaultName: string): Promise<string | undefined>
-  /** An agent file to open, or undefined when cancelled. */
-  pickAgentFile(): Promise<string | undefined>
   /** Where to save a workflow file, or undefined when cancelled. */
   pickWorkflowFileSave(defaultName: string): Promise<string | undefined>
   /** A workflow file to open, or undefined when cancelled. */
@@ -163,32 +150,16 @@ export interface PlatformService {
   notify(notice: { title: string; body: string }, onClick: () => void): void
   /** Brings the main window to the front. */
   showWindow(): void
-  /** The shape of the status island on macOS. Other systems ignore it. */
-  setIslandShape(shape: IslandShape): void
-  /** The width choice of the island bar (spec 015). Other systems ignore it. */
-  setIslandWidth(width: IslandWidth): void
-  /** The island window takes the size of its content, in px. It stays at the top centre. */
-  fitIsland(size: { width: number; height: number; animate?: boolean | undefined }): void
-  /** The browser page of an agent. The same agent always gets the same page object. */
-  browser(agentId: string): BrowserPage
+  /** The browser page of a workflow. The same workflow always gets the same page object. */
+  browser(workflowId: string): BrowserPage
   /**
    * Sets the browser profile whose saved data the browser of an agent uses, or `undefined` for the
    * own data of the agent. A page that is open for the agent closes when this changes the data it
    * uses. It does not open a page.
    */
-  setBrowserProfile(agentId: string, profileId: string | undefined): void
+  setBrowserProfile(workflowId: string, profileId: string | undefined): void
   /** Deletes the saved data of a browser profile: cookies, sign-ins and the rest. */
   clearBrowserProfile(profileId: string): Promise<void>
-  /**
-   * The Teams page of the Teams link (spec 028). It is hidden until the user shows it. The same
-   * call always gives the same surface.
-   */
-  teams(): TeamsSurface
-  /**
-   * Sets the browser profile that holds the sign-in of the Teams page, or `undefined` for none. An
-   * open Teams page closes when this changes the data it uses.
-   */
-  setTeamsProfile(profileId: string | undefined): void
   /**
    * The diagnostic report of the whole app: the app screen, the Teams page and the browser pages
    * (sizes, places, counts of clicks), the processes, and the tail of each log. It holds no

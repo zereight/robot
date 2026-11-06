@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
-  CHASE_INTERVALS,
   defaultSettings,
-  isAgentsAtOnce,
   resolveLocale,
   Settings,
   SettingsPatch,
@@ -30,14 +28,6 @@ describe("settings", () => {
     expect(Schema.is(SettingsPatch)({ silentLimit: "never" })).toBe(false)
   })
 
-  test("the chase interval is 15 minutes at first, and takes only the listed choices (spec 013)", () => {
-    expect(defaultSettings.chaseInterval).toBe(15)
-    expect([...CHASE_INTERVALS].sort((a, b) => a - b)).toEqual([0, 5, 10, 15, 30, 60])
-    for (const chaseInterval of CHASE_INTERVALS)
-      expect(Schema.is(SettingsPatch)({ chaseInterval })).toBe(true)
-    expect(Schema.is(SettingsPatch)({ chaseInterval: 7 })).toBe(false)
-  })
-
   test("the step limit is a whole number from 20 to 2000, 300 by default (spec 013)", () => {
     expect(defaultSettings.stepLimit).toBe(300)
     const ok = (value: unknown) => Schema.is(SettingsPatch)({ stepLimit: value })
@@ -54,29 +44,5 @@ describe("settings", () => {
     expect(resolveLocale("system", "en-US")).toBe("en")
     expect(resolveLocale("system", "fr")).toBe("en")
     expect(resolveLocale("ko", "en-US")).toBe("ko")
-  })
-
-  test("tool steps show at first, and the switch takes true or false", () => {
-    expect(defaultSettings.showToolSteps).toBe(true)
-    expect(Schema.is(SettingsPatch)({ showToolSteps: false })).toBe(true)
-    expect(Schema.is(SettingsPatch)({ showToolSteps: "no" })).toBe(false)
-  })
-
-  test("the organization prefix shows at first, and the switch takes true or false (spec 036)", () => {
-    expect(defaultSettings.showOrgPrefix).toBe(true)
-    expect(Schema.is(SettingsPatch)({ showOrgPrefix: false })).toBe(true)
-    expect(Schema.is(SettingsPatch)({ showOrgPrefix: "no" })).toBe(false)
-  })
-
-  test("agents working at once: a whole number from 1 to 8, 4 at first", () => {
-    expect(defaultSettings.agentsAtOnce).toBe(4)
-    for (const agentsAtOnce of [1, 8]) {
-      expect(isAgentsAtOnce(agentsAtOnce)).toBe(true)
-      expect(Schema.is(SettingsPatch)({ agentsAtOnce })).toBe(true)
-    }
-    for (const agentsAtOnce of [0, 9, 2.5]) {
-      expect(isAgentsAtOnce(agentsAtOnce)).toBe(false)
-      expect(Schema.is(SettingsPatch)({ agentsAtOnce })).toBe(false)
-    }
   })
 })

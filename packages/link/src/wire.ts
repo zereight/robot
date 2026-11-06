@@ -197,6 +197,7 @@ export const CLIENT_METHODS = [
   // Change the handbook (spec 002, 012): save a text, or restore a version.
   "handbook.save",
   "handbook.restore",
+  // The list of models is a constant read. It changes nothing and needs only the link (spec 012).
   "models.available",
   "workflows.create",
   "workflows.update",
@@ -215,38 +216,11 @@ export const CLIENT_METHODS = [
 export type ClientMethod = (typeof CLIENT_METHODS)[number]
 
 /**
- * The requests that a server answers only when the switch "Can create and change agents" is on
- * for the device that asks. Anything that is not here and not in `CLIENT_METHODS` is refused.
+ * The requests that a server answers only when the switch "Can create and change workflows" is on
+ * for the device that asks (spec 010, 012). The server reads the switch at each request. Anything
+ * that is not here and not in `CLIENT_METHODS` is refused.
  */
-export const CHANGE_METHODS = [
-  "agents.create",
-  "agents.update",
-  "agents.duplicate",
-  "agents.archive",
-  // "Use the main model now": ends the hold of the main model (spec 006, 012).
-  "agents.useMain",
-  "channels.create",
-  "channels.update",
-  // The picture of a channel (spec 004, 012): a client sends a square PNG of at most 256 px.
-  "channels.setPicture",
-  "organizations.create",
-  "organizations.update",
-  "organizations.delete",
-  "memory.list",
-  "memory.scopes",
-  "memory.move",
-  "memory.add",
-  "memory.update",
-  "memory.delete",
-  "memory.check.set",
-  // Change the handbook (spec 002, 012): save a text, or restore a version.
-  "handbook.save",
-  "handbook.restore",
-  "models.available",
-  "workflows.create",
-  "workflows.update",
-  "workflows.delete",
-] as const
+export const CHANGE_METHODS = ["workflows.create", "workflows.update", "workflows.delete"] as const
 export type ChangeMethod = (typeof CHANGE_METHODS)[number]
 export const isChangeMethod = (method: string): method is ChangeMethod =>
   (CHANGE_METHODS as readonly string[]).includes(method)
