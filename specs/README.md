@@ -92,6 +92,7 @@ not apply now.
 | M39 | 038, and the changes to 001, 005, 009, 010, 023 and 028 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S139: the tab "Events" and "Check where this goes" |
 | M40 | The changes to 014, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S140 to S143: org chart arrange, outlines, details and step |
 | M41 | The changes to 002, 010 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S144 to S146: the owner of a workflow and the participants of its agent steps, the workflows of organizations and agents, and the button "New agent" in the form of an organization |
+| W1 | The changes to 000, 001 and 010. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W1". | Slice W1: the workflow is the product. It is a graph of nodes with a responsible document, one chat and one memory, and a TLA file that the check reads. |
 | W2 | The changes to 002, 003, 005, 007, 008, 017 and 037, and the end of 009. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W2". | Slice W2: the agent is no longer an object. The responsible document, the chat, the memory and self-improvement belong to the workflow. Spec 009 is deleted (decision 12). |
 
 ## Surfaces check
