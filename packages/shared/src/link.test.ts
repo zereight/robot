@@ -133,46 +133,20 @@ describe("client requests", () => {
     expect(CLIENT_METHODS).toContain("tools.respond")
   })
 
-  test("the requests that make and change agents are listed, and each needs the switch", () => {
-    expect([...CHANGE_METHODS].sort() as string[]).toEqual(
-      [
-        "agents.archive",
-        "agents.create",
-        "agents.duplicate",
-        "agents.update",
-        "agents.useMain",
-        "channels.create",
-        "channels.setPicture",
-        "channels.update",
-        "handbook.restore",
-        "handbook.save",
-        "memory.add",
-        "memory.check.set",
-        "memory.delete",
-        "memory.list",
-        "memory.move",
-        "memory.scopes",
-        "memory.update",
-        "models.available",
-        "organizations.create",
-        "organizations.delete",
-        "organizations.update",
-        "workflows.create",
-        "workflows.update",
-        "workflows.delete",
-      ].sort(),
-    )
+  test("the requests that change workflows are listed, and each needs the switch", () => {
+    expect([...CHANGE_METHODS].sort() as string[]).toEqual([
+      "workflows.create",
+      "workflows.delete",
+      "workflows.update",
+    ])
     for (const method of CHANGE_METHODS) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(true)
     }
-    // Reading and sending do not need the switch. Deleting is not offered at all.
-    for (const method of ["chat.send", "agents.list", "agents.get", "tools.respond"]) {
-      expect(isChangeMethod(method)).toBe(false)
-    }
-    expect(isChangeMethod("agents.delete")).toBe(false)
     // Reading, running and stopping a workflow need only the link (spec 012, "Workflows").
     for (const method of [
+      "chat.send",
+      "tools.respond",
       "workflows.list",
       "workflows.runs",
       "workflows.runDetail",
@@ -183,36 +157,7 @@ describe("client requests", () => {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(false)
     }
-    // A client reads the handbook and its history with the link only; it changes the handbook with
-    // the switch (spec 002, 012).
-    for (const method of ["handbook.get", "handbook.history"]) {
-      expect(isClientMethod(method)).toBe(true)
-      expect(isChangeMethod(method)).toBe(false)
-    }
-    for (const method of ["handbook.save", "handbook.restore"]) {
-      expect(isChangeMethod(method)).toBe(true)
-    }
-    // A client sees the choice of the memory check with the link only, and changes it only with the
-    // switch (spec 008, 012). "Check now" runs the model of the server, so a client has no such
-    // request.
-    expect(isClientMethod("memory.check")).toBe(true)
-    expect(isChangeMethod("memory.check")).toBe(false)
-    expect(isClientMethod("memory.check.set")).toBe(true)
-    expect(isChangeMethod("memory.check.set")).toBe(true)
-    expect(isClientMethod("memory.check.now")).toBe(false)
-    // A client reads the organizations, their tools and the tools that an agent has from them with
-    // the link only. It makes, edits and deletes an organization only with the switch (spec 012, 030).
-    for (const method of ["organizations.list", "orgTools.list", "orgTools.forAgent"]) {
-      expect(isClientMethod(method)).toBe(true)
-      expect(isChangeMethod(method)).toBe(false)
-    }
-    // The tools of an organization are kept on the computer that owns the skills and connections.
-    expect(isClientMethod("orgTools.set")).toBe(false)
     // A client hears about workflows and runs.
-    expect(CLIENT_METHODS).toContain("followups.list")
-    expect(CLIENT_METHODS).toContain("followups.remove")
-    expect(isChangeMethod("followups.remove")).toBe(false)
-    expect(PUSHED_EVENTS).toContain("followups.changed")
     expect(PUSHED_EVENTS).toContain("workflows.changed")
     expect(PUSHED_EVENTS).toContain("workflows.run")
     // The event that tells one device about its switch goes to that device only.

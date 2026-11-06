@@ -100,31 +100,3 @@ export const WorkflowCreate = Schema.Struct({
   document: Schema.optionalKey(Schema.String),
 })
 export type WorkflowCreate = typeof WorkflowCreate.Type
-
-/** The problem of a graph, or null when the graph follows the rules of spec 010, "File". */
-export type GraphProblem =
-  | { readonly code: "too_many_nodes" }
-  | { readonly code: "connection_node_missing"; readonly connection: string }
-  | { readonly code: "connection_to_self"; readonly connection: string }
-  | { readonly code: "decision_options"; readonly node: string }
-  | { readonly code: "decision_option_unconnected"; readonly node: string; readonly option: string }
-
-/** Checks the rules of the graph that spec 010 states. It does not check loops (not decided). */
-export const graphProblem = (graph: WorkflowGraph): GraphProblem | null => {
-  if (graph.nodes.length > NODES_MAX) return { code: "too_many_nodes" }
-  const ids = new Set(graph.nodes.map((n) => n.id))
-  for (const c of graph.connections) {
-    if (!ids.has(c.from) || !ids.has(c.to))
-      return { code: "connection_node_missing", connection: c.id }
-    if (c.from === c.to) return { code: "connection_to_self", connection: c.id }
-  }
-  for (const node of graph.nodes) {
-    if (node.kind !== "decision") continue
-    if (node.options.length < OPTIONS_MIN) return { code: "decision_options", node: node.id }
-    for (const option of node.options) {
-      if (!graph.connections.some((c) => c.from === node.id && c.optionId === option.id))
-        return { code: "decision_option_unconnected", node: node.id, option: option.id }
-    }
-  }
-  return null
-}

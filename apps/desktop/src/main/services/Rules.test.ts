@@ -91,7 +91,7 @@ describe("the list of rules", () => {
     expect(missing).toMatchObject({ code: "rule_not_found" })
   })
 
-  test("a rule equal to one that exists is refused; another decision or agent is not equal", async () => {
+  test("a rule equal to one that exists is refused; another decision or workflow is not equal", async () => {
     const h = await harness()
     const other = await h.make("Bo")
     await h.rule({ kind: "web", text: "example.com" })
@@ -164,12 +164,6 @@ describe("the list of rules", () => {
     expect(refused).toMatchObject({ code: "rule_workflow_gone" })
   })
 })
-
-describe("what a rule matches, with real paths", () => {})
-
-describe("the order of the decisions for a step", () => {})
-
-describe("Always allow for this agent", () => {})
 
 describe("a rule that cannot be read", () => {
   const unreadable = async (h: Awaited<ReturnType<typeof harness>>, text: string) =>

@@ -317,7 +317,7 @@ export interface RpcEvents {
   "skills.changed": { serverId: string }
   "workflows.changed": { serverId: string }
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
-  "app.openPage": { page: "workflows" | "routines" | "teams"; serverId?: string }
+  "app.openPage": { page: "workflows"; serverId?: string }
 }
 
 export type RpcMethod = keyof RpcMethods
