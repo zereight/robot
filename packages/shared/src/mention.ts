@@ -42,6 +42,8 @@ export type MentionEntry<T> =
  * `@all` is in the list when `withAll` holds and the query starts the word "all". It is the last
  * line, so that a bare `@` and Enter never call every member by chance. When the query is the
  * whole word, it is the first line.
+ * `first` marks the members that come before the others (spec 003, "Mention another agent"); each
+ * of the two groups keeps the order above.
  */
 export const mentionEntries = <
   T extends { readonly name: string; readonly organization?: string | null },
@@ -49,6 +51,7 @@ export const mentionEntries = <
   members: readonly T[],
   query: string,
   withAll: boolean,
+  first?: (member: T) => boolean,
 ): MentionEntry<T>[] => {
   const q = query.toLocaleLowerCase()
   const starts = members.filter((m) => m.name.toLocaleLowerCase().startsWith(q))
@@ -57,7 +60,9 @@ export const mentionEntries = <
       !starts.includes(m) &&
       (m.name.toLocaleLowerCase().includes(q) || orgNameMatches(m.organization, q)),
   )
-  const lines: MentionEntry<T>[] = [...starts, ...inside]
+  const found = [...starts, ...inside]
+  const ordered = first ? [...found.filter(first), ...found.filter((m) => !first(m))] : found
+  const lines: MentionEntry<T>[] = ordered
     .slice(0, MENTION_LIST_MAX)
     .map((member) => ({ kind: "member", member }))
   if (!withAll || !EVERYONE_MENTION.startsWith(q)) return lines

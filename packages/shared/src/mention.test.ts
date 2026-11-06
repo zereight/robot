@@ -50,6 +50,21 @@ test("entries: names that start with the query first, then names that hold it", 
   expect(mentionEntries(members, "zz", false)).toEqual([])
 })
 
+test("entries: the members marked first come before the others, each group in its order", () => {
+  const members = [{ name: "Cy" }, { name: "Lia" }, { name: "Alia" }, { name: "Bo" }]
+  const first = (m: { name: string }) => m.name === "Alia" || m.name === "Bo"
+  expect(shown(mentionEntries(members, "", false, first))).toEqual(["Alia", "Bo", "Cy", "Lia"])
+  // A marked name that only holds the query still comes before an unmarked name that starts with it.
+  expect(shown(mentionEntries(members, "li", false, first))).toEqual(["Alia", "Lia"])
+  expect(shown(mentionEntries(members, "", true, () => false))).toEqual([
+    "Cy",
+    "Lia",
+    "Alia",
+    "Bo",
+    "@all",
+  ])
+})
+
 test("entries: a Korean name matches", () => {
   const members = [{ name: "하나" }, { name: "두리" }]
   expect(shown(mentionEntries(members, "두", false))).toEqual(["두리"])

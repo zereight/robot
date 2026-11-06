@@ -261,7 +261,11 @@ export const Composer = (props: ComposerProps) => {
       .agents()
       .filter((agent) => agent.id !== props.agent.id)
       .map((agent) => ({ ...agent, organization: orgs.prefixOrg(agent.id) }))
-    return mentionEntries(others, open.query, false)
+    // The agents of an organization that the chat's agent is in come first (spec 003).
+    const mine = new Set(orgs.ofAgent(props.agent.id).map((o) => o.id))
+    return mentionEntries(others, open.query, false, (agent) =>
+      orgs.ofAgent(agent.id).some((o) => mine.has(o.id)),
+    )
   })
   const mentionOpen = () => mentionable().length > 0 && !mentionDismissed()
   createEffect(
