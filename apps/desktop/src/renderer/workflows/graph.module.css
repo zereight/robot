@@ -1,0 +1,244 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: var(--spacing-lg);
+  align-items: start;
+}
+
+.layout[data-narrow="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.canvas {
+  position: relative;
+  min-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+}
+
+.canvasInner {
+  position: relative;
+}
+
+.lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--c-text-muted);
+}
+
+.lineLabel {
+  font-size: var(--text-xs);
+  fill: var(--c-text-muted);
+}
+
+.node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.node:active {
+  cursor: grabbing;
+}
+
+.node[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-selected);
+}
+
+.node[data-kind="decision"] {
+  border-radius: var(--radius-l);
+}
+
+.node[data-problem="true"] {
+  border-color: var(--c-danger);
+}
+
+.nodeName {
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeKind {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.problems {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  list-style: none;
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  color: var(--c-danger);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.fieldLabel {
+  font-weight: 600;
+}
+
+.control {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  color: var(--c-text);
+  padding: 5px 8px;
+  min-width: 0;
+  user-select: text;
+}
+
+textarea.control {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.optionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.versionsBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.tab {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--c-text-muted);
+  font-weight: 500;
+}
+
+.tab:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--c-selected);
+  color: var(--c-text);
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-width: 640px;
+}
+
+.path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.hintText {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  margin: 0;
+}
+
+.errorText {
+  color: var(--c-danger);
+  font-size: var(--text-s);
+  margin: 0;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}

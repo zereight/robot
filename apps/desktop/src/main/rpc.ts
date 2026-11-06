@@ -7,6 +7,9 @@ import {
   isChangeMethod,
   isClientMethod,
   type ModelChoice,
+  NodeInput,
+  NodePatch,
+  PERMISSION_LEVELS,
   ProviderConnect,
   type RpcInput,
   type RpcMethod,
@@ -17,6 +20,7 @@ import {
   SettingsPatch,
   SIGN_IN_ID,
   UiStatePatch,
+  type Workflow,
   WorkflowCreate,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
@@ -534,6 +538,79 @@ export const handlers: Handlers = {
   "workflows.document.restore": (input) =>
     decode(Schema.Struct({ id: Schema.String, versionId: Schema.String }))(input).pipe(
       Effect.flatMap(({ id, versionId }) => Workflows.use((w) => w.restoreDocument(id, versionId))),
+    ),
+  "workflows.setPermission": (input) =>
+    decode(Schema.Struct({ id: Schema.String, level: Schema.Literals(PERMISSION_LEVELS) }))(
+      input,
+    ).pipe(Effect.flatMap(({ id, level }) => Workflows.use((w) => w.setPermission(id, level)))),
+  "workflows.setFolder": (input) =>
+    decode(Schema.Struct({ id: Schema.String, folder: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, folder }) => Workflows.use((w) => w.setFolder(id, folder))),
+    ),
+  "workflows.pickFolder": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) =>
+        Effect.gen(function* () {
+          const p = yield* Platform
+          const current = yield* Workflows.use((w) => w.get(id))
+          const picked = yield* Effect.promise(() => p.pickFolder(current.folder))
+          return picked
+            ? yield* Workflows.use((w) => w.setFolder(id, picked))
+            : (current as Workflow)
+        }),
+      ),
+    ),
+  "workflows.node.add": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String, node: NodeInput }))(input).pipe(
+      Effect.flatMap(({ workflowId, node }) => Workflows.use((w) => w.addNode(workflowId, node))),
+    ),
+  "workflows.node.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, patch: NodePatch }))(input).pipe(
+      Effect.flatMap(({ id, patch }) => Workflows.use((w) => w.updateNode(id, patch))),
+    ),
+  "workflows.node.move": (input) =>
+    decode(Schema.Struct({ id: Schema.String, x: Schema.Number, y: Schema.Number }))(input).pipe(
+      Effect.flatMap(({ id, x, y }) => Workflows.use((w) => w.moveNode(id, x, y))),
+      done,
+    ),
+  "workflows.node.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Workflows.use((w) => w.removeNode(id))),
+      done,
+    ),
+  "workflows.option.add": (input) =>
+    decode(Schema.Struct({ nodeId: Schema.String, label: Schema.String }))(input).pipe(
+      Effect.flatMap(({ nodeId, label }) => Workflows.use((w) => w.addOption(nodeId, label))),
+    ),
+  "workflows.option.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, label: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, label }) => Workflows.use((w) => w.renameOption(id, label))),
+    ),
+  "workflows.option.remove": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.removeOption(id)))),
+  "workflows.connect": (input) =>
+    decode(
+      Schema.Struct({
+        workflowId: Schema.String,
+        from: Schema.String,
+        to: Schema.String,
+        optionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ workflowId, from, to, optionId }) =>
+        Workflows.use((w) => w.connect(workflowId, from, to, optionId ?? null)),
+      ),
+    ),
+  "workflows.disconnect": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Workflows.use((w) => w.disconnect(id))),
+      done,
+    ),
+  "workflows.versions": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.versions(id)))),
+  "workflows.versions.restore": (input) =>
+    decode(Schema.Struct({ id: Schema.String, versionId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, versionId }) => Workflows.use((w) => w.restoreVersion(id, versionId))),
     ),
   "workflows.delete": (input) =>
     decode(ById)(input).pipe(

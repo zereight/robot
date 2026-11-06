@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { PermissionLevel } from "./tools.ts"
+import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 
 // The data model of a workflow (spec 010): a graph of nodes, one responsible document (002), one
 // chat (003), one memory (008). Rules of the graph that the spec states are here as constants and
@@ -117,6 +117,51 @@ export interface DocumentVersion {
   readonly device: string | null
   readonly createdAt: number
 }
+
+/** A version of the graph: the graph as it was before a change that was saved (spec 010). */
+export interface GraphVersion {
+  readonly id: string
+  readonly source: VersionSource
+  readonly createdAt: number
+  readonly graph: WorkflowGraph
+}
+
+const Level = Schema.Literals(PERMISSION_LEVELS)
+
+/** A node to add (spec 010). A decision node needs at least two options. */
+export const NodeInput = Schema.Struct({
+  kind: Schema.Literals(NODE_KINDS),
+  name: Schema.String,
+  prompt: Schema.optionalKey(Schema.String),
+  accountId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  model: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  effort: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  permission: Schema.optionalKey(Schema.NullOr(Level)),
+  continueOnFailure: Schema.optionalKey(Schema.Boolean),
+  question: Schema.optionalKey(Schema.String),
+  threshold: Schema.optionalKey(Schema.Number),
+  /** The labels of the options of a decision node. */
+  options: Schema.optionalKey(Schema.Array(Schema.String)),
+  x: Schema.optionalKey(Schema.Number),
+  y: Schema.optionalKey(Schema.Number),
+})
+export type NodeInput = typeof NodeInput.Type
+
+/** A change of a node. A field that is left out stays as it was. */
+export const NodePatch = Schema.Struct({
+  name: Schema.optionalKey(Schema.String),
+  prompt: Schema.optionalKey(Schema.String),
+  accountId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  model: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  effort: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  permission: Schema.optionalKey(Schema.NullOr(Level)),
+  continueOnFailure: Schema.optionalKey(Schema.Boolean),
+  question: Schema.optionalKey(Schema.String),
+  threshold: Schema.optionalKey(Schema.Number),
+  x: Schema.optionalKey(Schema.Number),
+  y: Schema.optionalKey(Schema.Number),
+})
+export type NodePatch = typeof NodePatch.Type
 
 export const WorkflowCreate = Schema.Struct({
   serverId: Schema.String,

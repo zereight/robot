@@ -375,6 +375,56 @@ describe("the graph (spec 010)", () => {
   })
 })
 
+describe("the graph editor (spec 010, flow 2)", () => {
+  test("a move changes the place only: no version, same number", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    const before = (await t.w((x) => x.versions(flow.id))).length
+    await t.w((x) => x.moveNode(a.id, 120, 80))
+    const moved = (await t.w((x) => x.graph(flow.id))).nodes[0]
+    expect([moved?.x, moved?.y, moved?.number]).toEqual([120, 80, 1])
+    expect((await t.w((x) => x.versions(flow.id))).length).toBe(before)
+    expect(await t.code((x) => x.moveNode(a.id, Number.NaN, 1))).toBe("invalid_input")
+  })
+
+  test("a move is refused while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', 1)",
+      flow.id,
+    )
+    expect(await t.code((x) => x.moveNode(a.id, 5, 5))).toBe("workflow_running")
+  })
+
+  test("options: add, rename, remove with its connection, keep at least two", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const d = await t.w((x) =>
+      x.addNode(flow.id, { kind: "decision", name: "Ok?", options: ["Yes", "No"] }),
+    )
+    const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
+    const three = await t.w((x) => x.addOption(d.id, "Maybe"))
+    expect(three.options.map((o) => o.label)).toEqual(["Yes", "No", "Maybe"])
+    const maybe = three.options[2]?.id ?? ""
+    await t.w((x) => x.connect(flow.id, d.id, next.id, maybe))
+    const renamed = await t.w((x) => x.renameOption(maybe, " Perhaps "))
+    expect(renamed.options[2]?.label).toBe("Perhaps")
+    expect(await t.code((x) => x.renameOption(maybe, "  "))).toBe("option_label_empty")
+    expect(await t.code((x) => x.addOption(next.id, "No"))).toBe("text_node_options")
+    const two = await t.w((x) => x.removeOption(maybe))
+    expect(two.options.map((o) => o.label)).toEqual(["Yes", "No"])
+    // The connection of the removed option went with it.
+    expect((await t.w((x) => x.graph(flow.id))).connections).toEqual([])
+    expect(await t.code((x) => x.removeOption(two.options[0]?.id ?? ""))).toBe("decision_options")
+    expect(await t.code((x) => x.removeOption("nope"))).toBe("option_not_found")
+    // Each change kept the graph before it as a version.
+    expect((await t.w((x) => x.versions(flow.id))).length).toBeGreaterThanOrEqual(5)
+  })
+})
+
 describe("the facts of a card of the list (spec 001)", () => {
   test("a new workflow has no run, no problem, and does not run", async () => {
     const t = await setup()
