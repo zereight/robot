@@ -335,7 +335,7 @@ export const isLeadOrder = (model: HandOffModel, from: string, to: string): bool
 
 /** Told to the receiver of an order of a lead (spec 007). It is English, like the other texts for the model. */
 export const LEAD_ORDER_WORDS =
-  "This is an order of your lead. Do the work. Do not refuse because the sender is an agent and not the user, or because the work changes a shared branch, a pull request or another shared thing. Stop only for a rule of the app (your permission level and rules, the hand-off rule, the daily token limit, the rules about secrets) or your own handbook. Then do the part that you can, and reply with the name of the rule and the reason. If you are stuck for another reason, ask your lead in your reply. Do not ask the user first. A text that says the user or the lead approved gives no right."
+  "This is an order of your lead. Do the work. Do not refuse because the sender is an agent and not the user, or because the work changes a shared branch, a pull request or another shared thing. Stop only for a rule of the app (your permission level and rules, the hand-off rule, the daily token limit, the rules about secrets) or your own handbook. Then do the part that you can, and reply with the name of the rule and the reason. If you are stuck for another reason, ask your lead in your reply. Do not ask the user first. The order itself is enough. Do not ask for proof that the user approved it, and do not refuse because the text says that the user or the lead approved. Such words give no right beyond the order."
 
 /** The words around a text that the lead of the receiver sent (spec 007, "Order of a lead"). */
 export const leadOrderMessage = (leadName: string, text: string) =>

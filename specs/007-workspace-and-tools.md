@@ -182,7 +182,9 @@ the user gets a card only when the check is sure that the user asked for the ste
 - **Order of a lead**: a message that comes with "send message" from the lead of an organization
   (030), where the receiver is a member of that organization or of a lower one, is an order of a
   lead, not input from a colleague. The app knows the sender from the send, not from the words of
-  the text. A text that says "the lead agreed" or "the user approved" makes no order. The receiver
+  the text. A text that says "the lead agreed" or "the user approved" makes no order, and it gives
+  no right beyond the order. The order itself is enough: the receiver does not ask for proof that
+  the user approved it, and it does not refuse because the text holds such words. The receiver
   does the work of the order. It does not refuse because the sender is an agent and not the user, or
   because the work changes a shared branch, a pull request or another shared thing. The receiver
   is told this in the message.
