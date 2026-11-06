@@ -14,6 +14,7 @@ import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
+import { Workflows } from "./Workflows.ts"
 
 const sse = (chunks: unknown[]) =>
   new Response(
@@ -156,6 +157,72 @@ const setup = async (permission: PermissionLevel = "ask_risky", main = true) => 
   }
   return { t, run, agent, local, account, send, reply, part, names, agents, sendAndSettle, answer }
 }
+
+const NEW_WORKFLOW = {
+  name: "Daily",
+  steps: [
+    { kind: "agent", agent: "Ada", prompt: "Summarize the day. ".repeat(200) },
+    { kind: "notify", title: "Done" },
+  ],
+}
+
+describe('the manage tool "make_workflow" of the main agent (spec 037, 010)', () => {
+  const workflows = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.run(Workflows.use((w) => w.list(s.local.id)))
+
+  test("the card shows the whole workflow; Allow makes it with the trigger manual", async () => {
+    const s = await setup()
+    const waiting = await s.sendAndSettle(call("make_workflow", NEW_WORKFLOW))
+    expect(waiting?.state).toBe("waiting")
+    const summary = (waiting?.ask as unknown as { summary: string } | undefined)?.summary ?? ""
+    expect(summary).toContain("Daily")
+    expect(summary).toContain(NEW_WORKFLOW.steps[0]?.prompt as string)
+    expect(await workflows(s)).toEqual([])
+
+    const done = await s.answer("allow")
+    expect(done?.state).toBe("done")
+    expect(done?.output).toContain("Daily")
+    const [made] = await workflows(s)
+    expect(made).toMatchObject({ name: "Daily", trigger: { kind: "manual" }, owner: null })
+    expect(made?.steps.map((x) => x.kind)).toEqual(["agent", "notify"])
+    expect(made?.edges).toHaveLength(1)
+  })
+
+  test("Deny makes no workflow", async () => {
+    const s = await setup()
+    await s.sendAndSettle(call("make_workflow", NEW_WORKFLOW))
+    expect((await s.answer("deny"))?.state).toBe("failed")
+    expect(await workflows(s)).toEqual([])
+  })
+
+  test("a second workflow with the same name gets a number", async () => {
+    const s = await setup()
+    await s.sendAndSettle(call("make_workflow", { name: "Daily" }))
+    await s.answer("allow")
+    await s.sendAndSettle(call("make_workflow", { name: "Daily" }))
+    await s.answer("allow")
+    expect((await workflows(s)).map((w) => w.name).sort()).toEqual(["Daily", "Daily 2"])
+  })
+
+  test("a call that fails a check makes no card and no workflow", async () => {
+    const s = await setup()
+    const part = await s.sendAndSettle(
+      call("make_workflow", { name: "A", steps: [{ kind: "agent", agent: "Zed", prompt: "p" }] }),
+    )
+    expect(part?.state).toBe("failed")
+    expect(part?.output).toStartWith("Nothing made.")
+    expect(part?.output).toContain("Zed")
+    expect(await workflows(s)).toEqual([])
+  })
+
+  test("at Read only the call is refused", async () => {
+    const s = await setup("read_only")
+    const part = await s.sendAndSettle(call("make_workflow", NEW_WORKFLOW))
+    expect(part?.state).toBe("failed")
+    expect(part?.output).toContain("Refused: read only")
+    expect(await workflows(s)).toEqual([])
+  })
+})
 
 describe('the manage tool "make_agent" of the main agent (spec 037)', () => {
   test('the call asks with the whole change; Allow makes the agent with the mark "Made by"', async () => {

@@ -59,7 +59,7 @@ export const BRIDGE_TOOL_NAMES = [
  * The manage tools of the main agent (spec 037). Only the main agent gets them; the app checks it
  * in each call, so a program that calls one for another agent gets "Unknown tool".
  */
-export const MANAGE_TOOL_NAMES = ["read_agent", "make_agent"] as const
+export const MANAGE_TOOL_NAMES = ["read_agent", "make_agent", "make_workflow"] as const
 
 /** The name of the server, as the vendor program shows it in the name of a tool. */
 export const BRIDGE_SERVER = "robot"
