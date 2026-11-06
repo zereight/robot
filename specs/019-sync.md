@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The user has the same agents, chats, memory, routines and workflows on two computers,
+The user has the same workflows, chats and memory on two computers,
 for example MacBook 1 and MacBook 2. A change on one computer reaches the other. The user can
 switch computers and carry on. Data goes straight between the two computers (012). No other
 service holds it.
@@ -15,7 +15,7 @@ service holds it.
 - **Copy**: after a sync, each computer holds all the data in the "Syncs" list. Each copy is
   complete and works alone, also when the other computer is off.
 - **Origin**: the computer where a message was made or a task ran.
-- **Runs on**: the one computer where a routine or a workflow runs.
+- **Runs on**: the one computer where a workflow runs.
 - **Change list**: the newest 100 changes that came from the other computer, with the time, the
   kind and the name of the item. It shows in Settings → Devices.
 
@@ -23,41 +23,35 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Agents | Face, name, role line, Soul and the Soul history (002), the switch "Read the handbook", the switch "Main agent", model choice, backup model choice, archive state. |
-| Role instructions | The text of each role (002). It is data of the agents, like the handbook. The later change wins. |
-| Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
+| Workflows | The whole definition (010): the name, the trigger, the graph, the nodes with their prompts, providers, models and reasoning levels, the question, options and threshold of each decision node, the responsible document, and the rules that the user added to the TLA module. Also the earlier versions of the workflow, the run history with the results of the nodes, and the "Runs on" computer. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Messages | Direct chats with their threads, with tool cards and the rows "Compacted". |
+| Messages | The chat of each workflow, with tool cards. |
 | Tasks | State (also blocked), reason and result, how far a failed turn went, and the usage of the task (005). They show on the tasks page with the name of the origin. |
-| Memory | The items of each agent. |
-| Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes and its owner (010)), the run history, and the "Runs on" computer. |
-| Read state | The last place that the user read in each chat. |
-| The mark of outside content and the mark of a sensitive read of a place (007) | The marks and their clear. A turn on either computer then asks in the same way. |
-| A handover (003) | The new thread, the card, the message of the user, and the muted lines. The links between the two threads sync by id. |
+| Memory | The items of each workflow. |
+| Read state | The last message that the user read in each chat. |
+| The mark of outside content and the mark of a sensitive read of a chat (007) | The marks and their clear. A turn on either computer then asks in the same way. |
 
 ### Does not sync
 
 | Item | Why |
 | --- | --- |
 | Keys, tokens and the sign-in of vendor programs | Secrets stay on their computer (014). |
-| Permission levels, permission rules (allow and deny) and the action log (007) | A change on one computer must not give another computer more power over its files. The log tells what ran on one computer. |
+| Permission levels of workflows and nodes, permission rules (allow and deny) and the action log (007) | A change on one computer must not give another computer more power over its files. The log tells what ran on one computer. |
 | Connections (018) and the reviewed tools of a connection | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay in the keychain (014). Each computer reviews the tools of its own connections. |
-| Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. |
-| Workspace folders and the files in them | They are large and belong to a computer. Use git or a file service. |
+| Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. A prompt of a node syncs as text (see the questions for 019). |
+| Workspace folders of workflows and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |
-| The state of agent runtimes (006) | Each computer has its own programs and checks them itself. |
+| The state of vendor runtimes (006) | Each computer has its own programs and checks them itself. |
 | Settings, theme, language, notification choices, mutes | Settings are local (013). The silent limit (005) and the chase interval (013) are two of them. |
 | Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
-| Proposals and the change log of self-improvement (002) | A proposal waits for the user of one computer, like a memory proposal. The change log tells what the user answered on one computer. An applied change follows the rule of its target: a Soul change and a memory item sync, and a skill does not. |
+| Proposals and the change log of self-improvement (010) | A proposal waits for the user of one computer, like a memory proposal. The change log tells what the user answered on one computer. An applied change follows the rule of its target: a change to a workflow and a memory item sync. |
 | Usage numbers | They count what ran on this computer. |
-| Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
-| User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent arrives with no section. It then shows in "Unassigned". |
-| Pinned places (001) | They are part of the layout of one computer, like sections. |
+| Knowledge: articles, sources and the change list (016) | They are files in the workspace folder of a workflow. A synced workflow starts with no knowledge on the other computer. |
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
-| The secret of a web hook (010) | It is in the keychain of one computer, like a saved secret. |
+| The secret of a trigger of a workflow (010) | It is in the keychain of one computer, like a saved secret. |
 | Saved logins (020) | Their values are in the keychain of one computer, like saved secrets. |
-| The decision model and the other settings of 013, except the handbook | Settings are local. The handbook is data of the agents (002). |
-| Linked devices and their keys | They are not data of the agents. |
+| The decision model and the other settings of 013 | Settings are local. A decision node uses the choice that is saved on the computer where the workflow runs. |
+| Linked devices and their keys | They are not data of the workflows. |
 | The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
 | Outside programs and their keys (023) | A key reaches one computer only. |
 | The Teams link, its lists and its sign-in (028) | The link reads one chat from one computer, and the sign-in is a secret. Messages from Teams and their mark sync with the messages. |
@@ -69,7 +63,7 @@ service holds it.
 1. Settings → Devices → pick a linked computer → "Sync with this computer". The computer must
    be online. The link must go both ways. If it goes one way, the dialog says that the other
    computer will also be able to open this one.
-2. The dialog shows what each computer holds: agents and messages. The user picks how to
+2. The dialog shows what each computer holds: workflows and messages. The user picks how to
    start:
    - "Merge" (default): both computers keep their data and get the data of the other.
    - "Use the data of <name> here": this computer takes the data of the other one. Data of the
@@ -78,20 +72,20 @@ service holds it.
      the other computer has is removed.
 3. The other computer shows "Sync with <name>?" with the choice, the "Syncs" and "Does not sync"
    lists in short, and how many items it will drop. The text says that <name> can change and
-   delete its agents, chats, memory, routines and workflows, and can answer the
+   delete its workflows, chats and memory, and can answer the
    approval requests of its tasks, including steps that change files and run commands (as a
    linked device can, 012). The text also says that the user can stop at any time. The
    buttons are Allow and Deny.
 4. On Allow, each computer first saves a backup of its data (a ROBot export, 014) in a
    "backups" folder in its data folder. The app keeps the newest 3 sync backups. Then the copy
    starts. The user can keep working. The row shows "Copying 340 of 1,200".
-5. When the copy ends, the row shows "Up to date". The agents that came from the other computer
+5. When the copy ends, the row shows "Up to date". The workflows that came from the other computer
    use the permission level "Ask for everything" and a new, empty workspace folder on this
-   computer. Their model accounts show "Not connected" until the user connects them here.
+   computer. Their nodes use the level of their workflow. Their model accounts show "Not connected" until the user connects them here.
 
 ### Sync and the switch of 012
 
-Sync gives the other computer more than the switch "Can create and change agents" (012). So,
+Sync gives the other computer more than the switch "Can create and change workflows" (012). So,
 while sync is on, that switch shows as on for the other computer and the user cannot turn it
 off. "Stop syncing" returns the switch to the value that it had before sync began.
 
@@ -105,20 +99,24 @@ off. "Stop syncing" returns the switch to the value that it had before sync bega
   same state and text, and cannot run there. The user can stop it or answer its approval cards
   and questions from the other computer. The answer goes to the origin, as a client answer
   does (012). If the origin is offline, the card shows "<name> is offline."
-- A message that came from the other computer never starts a task here.
+- A message that came from the other computer never starts a task or a run here.
+- The user can ask the chat of a workflow about a run, and give feedback on its results, from the
+  computer where the workflow does not run. The chat answers from the run history that synced.
+  The feedback goes to the computer where the workflow runs, as an answer to an approval card
+  does. If that computer is offline, the chat shows "<name> is offline." and keeps the feedback
+  as a message (see the questions for 019).
 - Retry on a task from the other computer makes a new task that runs here. The retry note (005)
   has no list of steps, because the action log stays on its computer.
 - A message or a card that was made on the other computer shows "from <device name>" (012).
 
-### Routines and workflows
+### Workflows
 
-1. A routine or workflow that comes from the other computer shows "Runs on <name>". It does not
-   run here, also not at a schedule time.
-2. "Run on this computer" moves it. The other computer shows "Runs on <name>" at once. The
-   "Missed" rule of 009 counts only on the computer where it runs.
-3. Only the computer that will run a routine or workflow can choose to run it. A change from the
-   other computer that makes it run on this computer is ignored. The user here decides with
-   "Run on this computer".
+1. A workflow that comes from the other computer shows "Runs on <name>". It does not run here,
+   also not at a schedule time.
+2. "Run on this computer" moves it. The other computer shows "Runs on <name>" at once.
+3. Only the computer that will run a workflow can choose to run it. A change from the other
+   computer that makes it run on this computer is ignored. The user here decides with "Run on
+   this computer".
 
 ### Files of messages
 
@@ -130,7 +128,7 @@ off. "Stop syncing" returns the switch to the value that it had before sync bega
 
 - Settings → Devices → the computer → "Stop syncing". Both computers keep all their data. The
   other computer shows "<name> stopped syncing." Removing the link (012) also stops the sync.
-- A routine or workflow that runs on the other computer keeps "Runs on <name>" and does not run
+- A workflow that runs on the other computer keeps "Runs on <name>" and does not run
   here until the user chooses "Run on this computer". Two computers never run it by default.
 - A new sync after a stop starts as "Merge". Items with the same origin match, so no copies
   appear. An item that the user deleted on one computer while sync was off comes back from the
@@ -163,37 +161,29 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   clock of the computer that made the change, so a wrong clock can make an older change win.
   The app warns when the clocks differ (States).
 - **No lost text**: if two computers edit the same memory item while apart, the newest text
-  stays. The other text is saved as a new memory item of the same agent.
+  stays. The other text is saved as a new memory item of the same workflow.
 - Messages are made on one computer only, so they do not clash. Messages show in the order of
   their send time. Messages from one computer keep their order.
-- **Names**: a name stays unique on its server (002), and the rule ignores case. When two
-  different agents with one name meet in a merge, the one that comes in gets the name of its
-  origin computer in brackets, for example "Writer (MacBook 2)".
+- **Names**: the name of a workflow stays unique on its server, and the rule ignores case (010,
+  "File"). When two different workflows with one name meet in a merge, the one that comes in gets
+  the name of its origin computer in brackets, for example "Writer (MacBook 2)".
   Model accounts with the same name, vendor and address are one account.
-- **One main agent**: at most one agent on a server has the switch "Main agent" (002). When two
-  computers turn it on for two different agents while apart, the agent whose change is the later
-  one keeps it after the sync, and the other loses it on both computers. A user sees no notice.
-- **Delete**: deleting an agent deletes it on the other computer too. The delete dialog says so.
-  Sync never deletes files: the workspace folder of an agent that sync removes stays on disk, and
-  the change list shows its path. If one sync would delete 5 or more agents on a computer, that
-  computer asks first: "<name> wants to delete 8 agents here." with Delete and Keep. Keep leaves
-  them here, and they come back to the other computer.
-- **One task per agent**: while both computers are online, an agent runs one task at a time
-  across both (005). A task that waits shows "Waits for the task on <name>." There is no lock
-  between the computers. If the user starts a task for one agent on both computers within about
-  one second, both tasks can run. After that, the rule holds.
+- **Delete**: deleting a workflow deletes it on the other computer too, with its runs. The delete
+  dialog says so. Sync never deletes files: the workspace folder of a workflow that sync removes
+  stays on disk, and the change list shows its path. If one sync would delete 5 or more workflows
+  on a computer, that computer asks first: "<name> wants to delete 8 workflows here." with Delete
+  and Keep. Keep leaves them here, and they come back to the other computer.
+- **One run**: a workflow runs on one computer only ("Workflows" above). A try to start a run on
+  the other computer is refused with "Runs on <name>".
 - Unread counts follow the read state: reading a place on one computer clears its count on the
   other. Data that arrives by sync makes no system notification. An approval or a question of a
   task on the other computer does (015).
 - **New kinds of data**: data that a spec adds to the app does not sync unless this spec lists it
   under "Syncs". The slice that adds a field to a synced item adds it to the sync in the same
   slice.
-- **Limits**: a limit of another spec, for example 50 routines (009), holds when the user adds an
-  item. A sync can bring a computer above a limit. The user then cannot add an item of that kind
+- **Limits**: a limit of another spec, for example 30 nodes in a workflow (010), holds when the
+  user adds an item. A sync can bring a computer above a limit. The user then cannot add an item of that kind
   until the number is under the limit. Sync never deletes an item to keep a limit.
-- **Routines that pause**: a routine that paused itself after failed runs (009) arrives paused.
-  The count of failed runs stays on the computer that ran them. When a routine moves to this
-  computer, its count here starts at 0.
 - A copy of data that arrives never changes the permission level, the permission rules, the
   connections, the workspace folder or the secrets of this computer.
 - Only a linked computer that the user set to sync can send changes. Turning "Let other devices
@@ -208,7 +198,7 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - More than two computers in one sync pair.
 - Sync of workspace folders and files.
 - Sync of settings, secrets, permission levels, browser sessions and usage numbers.
-- Choosing single agents or kinds of data to sync.
+- Choosing single workflows or kinds of data to sync.
 - Sync through a service on the internet. The two computers must reach each other as in 012.
 - A phone in a sync pair. The phone opens a computer as a client.
 - Undo of one change. The backup and the change list are the way back.
@@ -216,28 +206,32 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 ## Acceptance
 
 - MacBook 2 is new. On MacBook 2: sync with MacBook 1, choose "Use the data of MacBook 1 here".
-  After the copy, MacBook 2 shows the same agents, messages and memory. Its model
-  accounts show "Not connected". Its agents use "Ask for everything". A backup folder exists on
+  After the copy, MacBook 2 shows the same workflows, messages and memory. Its model
+  accounts show "Not connected". Its workflows use "Ask for everything". A backup folder exists on
   both computers.
-- Both computers have an agent named "Writer". Merge. Both computers show "Writer" and "Writer
+- Both computers have a workflow named "Writer". Merge. Both computers show "Writer" and "Writer
   (MacBook 2)" with the right history, and the two lists are equal.
-- Rename an agent on MacBook 1. MacBook 2 shows the new name within 5 seconds, and the change
+- Rename a workflow on MacBook 1. MacBook 2 shows the new name within 5 seconds, and the change
   list shows it.
-- Send a message to an agent from MacBook 2. The task runs on MacBook 2, the reply streams on
-  both computers, and MacBook 1 starts no task. The message on MacBook 1 shows "from MacBook 2".
+- Send a message in the chat of a workflow from MacBook 2. The reply is made on MacBook 2 and
+  streams on both computers, and MacBook 1 starts no task. The message on MacBook 1 shows "from
+  MacBook 2".
 - Quit the app on MacBook 2. On MacBook 1 add a memory item and send a message. Start the app on
   MacBook 2: both arrive with no new pairing.
 - Edit one memory item on both computers while MacBook 2 is off. After the next sync both show
   the same newest text, and the older text exists as a second item.
 - A task on MacBook 1 waits for an approval. Answer it on MacBook 2. The task goes on.
-- A routine from MacBook 1 does not run on MacBook 2 at its time. "Run on this computer" on
+- A workflow from MacBook 1 does not run on MacBook 2 at its time. "Run on this computer" on
   MacBook 2 moves it, and MacBook 1 shows "Runs on MacBook 2".
-- Delete an archived agent on MacBook 1. It is gone on MacBook 2, and its workspace folder is
-  still on the disk. Delete 8 agents at once: MacBook 2 asks before it deletes them.
-- MacBook 1 sends a change that makes a routine run on MacBook 2. The routine on MacBook 2
+- A workflow runs on MacBook 1. On MacBook 2 ask its chat "How far are you?": the answer comes
+  from the run history that synced and names the node that works. Send feedback on a result: it
+  reaches MacBook 1. With MacBook 1 off, the chat of MacBook 2 shows "MacBook 1 is offline."
+- Delete a workflow on MacBook 1. It is gone on MacBook 2, and its workspace folder is still on
+  the disk. Delete 8 workflows at once: MacBook 2 asks before it deletes them.
+- MacBook 1 sends a change that makes a workflow run on MacBook 2. The workflow on MacBook 2
   still shows "Runs on MacBook 1" and does not run.
-- Turn sync on while the switch "Can create and change agents" for MacBook 1 is off on MacBook 2:
-  the switch shows on and cannot be turned off. After "Stop syncing" it is off again.
+- Turn sync on while the switch "Can create and change workflows" for MacBook 1 is off on MacBook
+  2: the switch shows on and cannot be turned off. After "Stop syncing" it is off again.
 - Stop syncing. A change on MacBook 1 does not reach MacBook 2. Remove the link in the same
   way: sync ends.
 - After a sync, MacBook 2 holds no key and no token of MacBook 1.
