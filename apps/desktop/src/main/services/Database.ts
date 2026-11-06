@@ -44,29 +44,52 @@ export class Database extends Context.Service<Database, DatabaseService>()("robo
  */
 export const SCHEMA_ID = 0x524f4231
 
-/** True when the file holds a database of the old model (agents), not of the workflow model. */
-const isLegacy = (file: string): boolean => {
+/**
+ * What a database file holds:
+ * - `fresh`: no file, or an empty one.
+ * - `legacy`: the old model (no workflow id, user version above 0).
+ * - `current`: the workflow model, with a version that this app knows.
+ * - `newer`: the workflow model, with a version that a later app made.
+ */
+export type FileState = "fresh" | "legacy" | "current" | "newer"
+
+/** The data in the file comes from a newer version of the app. The app does not touch it. */
+export class NewerDatabaseError extends Error {
+  readonly code = "database.newer"
+  constructor() {
+    super("The data folder comes from a newer version of the app.")
+    this.name = "NewerDatabaseError"
+  }
+}
+
+/** Reads the state of a database file. It changes nothing. */
+export const fileState = (file: string): FileState => {
+  if (file === ":memory:" || file === "" || !existsSync(file)) return "fresh"
   const db = new DatabaseSync(file)
   try {
     const id = (db.prepare("PRAGMA application_id").get() as { application_id: number })
       .application_id
     const version = (db.prepare("PRAGMA user_version").get() as { user_version: number })
       .user_version
-    return id !== SCHEMA_ID && version > 0
+    if (id === SCHEMA_ID) return version > migrations.length ? "newer" : "current"
+    return version > 0 ? "legacy" : "fresh"
   } finally {
     db.close()
   }
 }
 
 /**
- * Erases a database from before the workflow model (decision 16 of
- * `docs/proposal-workflow-first.md`: no migration). The file and its journal files go, so no old
- * row stays on the disk. Only the database goes. The folders of workflows and the attachments
- * next to it stay. The secrets in the keychain stay too, and nothing refers to them any more.
+ * Erases a database from before the workflow model. Owner decision (2026-11-07): the whole
+ * database goes at the first start of the new version, with the settings, the provider accounts,
+ * the skills, the connections and the linked devices. No backup stays, and a phone pairs again. The
+ * file and its journal files go, so no old row stays on the disk. Only the database goes. The
+ * folders of workflows and the attachments next to it stay. The secrets in the keychain stay too,
+ * and nothing refers to them any more. A database from a newer app is never erased.
  */
 const eraseLegacy = (file: string) => {
-  if (file === ":memory:" || file === "" || !existsSync(file)) return
-  if (!isLegacy(file)) return
+  const state = fileState(file)
+  if (state === "newer") throw new NewerDatabaseError()
+  if (state !== "legacy") return
   for (const name of [file, `${file}-wal`, `${file}-shm`, `${file}-journal`]) {
     rmSync(name, { force: true })
   }

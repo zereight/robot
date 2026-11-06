@@ -84,6 +84,7 @@ export const ActionLogSection = () => {
         {[
           formatDateTime(app.locale(), e.at),
           e.workflowName || t("permissions.log.deletedWorkflow"),
+          ...(e.nodeName === null ? [] : [`${e.nodeNumber}. ${e.nodeName}`]),
           t(`permissions.log.decided.${e.decidedBy}` as MessageKey),
         ].join(" · ")}
       </div>

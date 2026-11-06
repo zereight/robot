@@ -14,7 +14,9 @@ import {
   OPTIONS_MIN,
   type PermissionLevel,
   redactSecrets,
+  resolveLocale,
   THRESHOLD_DEFAULT,
+  translate,
   type VersionSource,
   type Workflow,
   type WorkflowConnection,
@@ -297,7 +299,15 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           const name = input.name.trim()
           const problem = checkName(input.serverId, name)
           if (problem) return yield* problem
-          const document = input.document ?? ""
+          // A new workflow gets a short default text in the language of the interface (spec 002
+          // and 010, "New workflow"). A text that the caller gives stays as it is, also empty.
+          const { language } = yield* settings.get
+          const document =
+            input.document ??
+            translate(
+              resolveLocale(language, platform.systemLocale()),
+              "workflows.document.default",
+            )
           if (charLength(document) > DOCUMENT_MAX)
             return yield* new AppError({ code: "document_too_long", detail: "document" })
           const id = randomUUID()
@@ -634,6 +644,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             } else if (optionId !== null) {
               return yield* new AppError({ code: "connection_option_unexpected" })
             }
+            // Each option has one outgoing connection (spec 010), and the same line is not made twice.
+            const taken = db.get(
+              optionId === null
+                ? "SELECT 1 FROM workflow_connection WHERE from_node_id = ? AND to_node_id = ? AND option_id IS NULL"
+                : "SELECT 1 FROM workflow_connection WHERE option_id = ?",
+              ...(optionId === null ? [from, to] : [optionId]),
+            )
+            if (taken) return yield* new AppError({ code: "connection_exists" })
             const id = randomUUID()
             db.transaction(() => {
               keepVersion(workflowId, "editor")
@@ -697,6 +715,12 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             db.transaction(() => {
               // A restore keeps the graph as it is now as a version (spec 010).
               keepVersion(id, "restore")
+              // Deleting a node sets the node of its tasks to NULL. The restored graph keeps the
+              // ids of its nodes, so the tasks of a node that comes back get their node again.
+              const links = db.all<{ id: string; node_id: string }>(
+                "SELECT id, node_id FROM task WHERE workflow_id = ? AND node_id IS NOT NULL",
+                id,
+              )
               db.run("DELETE FROM workflow_node WHERE workflow_id = ?", id)
               for (const n of graph.nodes) {
                 db.run(
@@ -739,6 +763,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                   c.optionId,
                 )
               }
+              const back = new Set(graph.nodes.map((n) => n.id))
+              for (const link of links)
+                if (back.has(link.node_id))
+                  db.run("UPDATE task SET node_id = ? WHERE id = ?", link.node_id, link.id)
               touch(id)
             })
             changed(row.server_id)

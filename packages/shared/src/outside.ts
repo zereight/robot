@@ -175,8 +175,11 @@ export interface ActionLogEntry {
   readonly id: string
   readonly at: number
   readonly workflowId: string
-  /** The name that the agent had at the time of the step. */
+  /** The name that the workflow had at the time of the step. */
   readonly workflowName: string
+  /** The name and the number that the node of the task had at the time of the step (spec 007). */
+  readonly nodeName: string | null
+  readonly nodeNumber: number | null
   readonly kind: ActionKind
   /** For a step of a file, whether it read or wrote (spec 007). Null for every other kind. */
   readonly access: StepAccess | null

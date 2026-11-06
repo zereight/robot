@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import { openDatabase, SCHEMA_ID } from "./Database.ts"
+import { fileState, NewerDatabaseError, openDatabase, SCHEMA_ID } from "./Database.ts"
 import { migrations } from "./migrations.ts"
 
 describe("Database", () => {
@@ -50,7 +50,7 @@ describe("Database", () => {
   })
 })
 
-describe("the reset of a database from before the workflow model (owner decision 16)", () => {
+describe("the reset of a database from before the workflow model (owner decision, 2026-11-07)", () => {
   const legacy = (dir: string) => {
     const file = join(dir, "robot.db")
     const old = new DatabaseSync(file)
@@ -91,5 +91,56 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
       migrations.length,
     )
+  })
+
+  test("a missing file is new: a database is made and the state is fresh", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-missing-")), "robot.db")
+    expect(fileState(file)).toBe("fresh")
+    const db = openDatabase(file)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
+    expect(fileState(file)).toBe("current")
+  })
+
+  test("an old database loses everything: settings, accounts and linked devices too", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-wipe-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec(
+      "CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT); INSERT INTO setting VALUES ('theme', 'dark'); CREATE TABLE device_link (id TEXT); INSERT INTO device_link VALUES ('phone'); PRAGMA user_version = 12;",
+    )
+    old.close()
+    expect(fileState(file)).toBe("legacy")
+    const db = openDatabase(file)
+    expect(db.all("SELECT * FROM setting")).toEqual([])
+    expect(db.all("SELECT * FROM device_link")).toEqual([])
+  })
+
+  test("a database of another program with no version is not erased as an old one", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-foreign-")), "robot.db")
+    const other = new DatabaseSync(file)
+    other.exec("CREATE TABLE x (a TEXT); INSERT INTO x VALUES ('keep')")
+    other.close()
+    expect(fileState(file)).toBe("fresh")
+  })
+
+  test("a database that a newer app made is refused and the file stays as it was", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-newer-")), "robot.db")
+    const later = new DatabaseSync(file)
+    later.exec(
+      `CREATE TABLE future (a TEXT); INSERT INTO future VALUES ('keep'); PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${migrations.length + 1};`,
+    )
+    later.close()
+    const before = readFileSync(file)
+    expect(fileState(file)).toBe("newer")
+    expect(() => openDatabase(file)).toThrow(NewerDatabaseError)
+    expect(existsSync(file)).toBe(true)
+    expect(readFileSync(file).equals(before)).toBe(true)
+    const check = new DatabaseSync(file)
+    expect(check.prepare("SELECT a FROM future").all()).toEqual([{ a: "keep" }])
+    expect(
+      (check.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+    ).toBe(migrations.length + 1)
+    check.close()
   })
 })

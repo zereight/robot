@@ -69,6 +69,8 @@ interface Row {
   at: number
   workflow_id: string
   workflow_name: string
+  node_name: string | null
+  node_number: number | null
   kind: ActionKind
   access: StepAccess | null
   target: string
@@ -129,6 +131,8 @@ const toEntry = (r: Row): ActionLogEntry => ({
   at: r.at,
   workflowId: r.workflow_id,
   workflowName: r.workflow_name,
+  nodeName: r.node_name,
+  nodeNumber: r.node_number,
   kind: r.kind,
   access: r.access,
   target: r.target,
@@ -167,13 +171,22 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
           const name =
             db.get<{ name: string }>("SELECT name FROM workflow WHERE id = ?", input.workflowId)
               ?.name ?? ""
+          // The node is the node of the task as it was then, so a later rename does not change it.
+          const node = input.taskId
+            ? db.get<{ node_name: string; node_number: number }>(
+                "SELECT node_name, node_number FROM task WHERE id = ?",
+                input.taskId,
+              )
+            : undefined
           db.run(
-            `INSERT INTO action_log (id, at, workflow_id, workflow_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, workflow_id, workflow_name, node_name, node_number, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
             input.workflowId,
             name,
+            node?.node_name ?? null,
+            node?.node_number ?? null,
             input.kind,
             input.kind === "file" ? (input.access ?? null) : null,
             logTarget(input.target),

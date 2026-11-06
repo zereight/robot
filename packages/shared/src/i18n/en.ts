@@ -75,6 +75,9 @@ export const en = {
   "error.workspace_failed": "ROBot could not make the workspace folder.",
   "error.invalid_input": "Some values are not valid.",
   "error.unknown": "Something went wrong. Try again.",
+  "error.database_newer.title": "ROBot cannot open this data",
+  "error.database_newer":
+    "The data of ROBot on this computer comes from a newer version of the app. Install the newest version of ROBot to open it. The data is not changed.",
 
   "providers.add": "Add account",
   "providers.kind": "Provider",
@@ -684,6 +687,9 @@ export const en = {
   "workflows.create": "Create",
   "workflows.delete": "Delete workflow",
   "workflows.nodes": "{n} nodes",
+  "workflows.nodes.one": "1 node",
+  "workflows.document.default":
+    "You answer for this workflow. Answer questions about its graph, its runs and its results. Keep to the task of this workflow. If a request is outside it, say so. Ask the user before you change something that the user did not ask for.",
   "workflows.document": "Responsible document",
   "workflows.document.empty": "The responsible document has no text yet.",
   "permissions.log.deletedWorkflow": "Deleted workflow",
@@ -712,6 +718,8 @@ export const en = {
   "error.decision_effort": "Only a decision node has this effort setting.",
   "error.connection_node_missing": "A node of this connection does not exist.",
   "error.connection_to_self": "A node cannot connect to itself.",
+  "error.connection_exists":
+    "These two nodes are already connected, or this option already has a connection.",
   "error.connection_option_missing": "A connection from a decision node needs an option.",
   "error.connection_option_unexpected": "Only a connection from a decision node has an option.",
   "error.node_not_found": "This node does not exist any more.",

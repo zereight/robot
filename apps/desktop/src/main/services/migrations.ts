@@ -128,7 +128,7 @@ export const migrations: readonly string[] = [
     -- The folder of the workflow (spec 007). Only the user changes it.
     folder TEXT NOT NULL,
     -- The permission level of the workflow (spec 007). Only the user changes it.
-    permission TEXT NOT NULL DEFAULT 'ask_risky',
+    permission TEXT NOT NULL DEFAULT 'ask_risky' CHECK (permission IN ('read_only', 'ask_all', 'ask_risky', 'ask_unsure', 'full')),
     -- The switch "Self-improvement" (spec 002). On by default.
     self_improvement INTEGER NOT NULL DEFAULT 1 CHECK (self_improvement IN (0, 1)),
     -- Computer use (spec 007): a switch of the workflow, on by default.
@@ -163,7 +163,7 @@ export const migrations: readonly string[] = [
     model TEXT,
     effort TEXT,
     -- A stricter level than the workflow, never a looser one (spec 010). NULL: the level of the workflow.
-    permission TEXT,
+    permission TEXT CHECK (permission IS NULL OR permission IN ('read_only', 'ask_all', 'ask_risky', 'ask_unsure', 'full')),
     continue_on_failure INTEGER NOT NULL DEFAULT 0 CHECK (continue_on_failure IN (0, 1)),
     -- A decision node (spec 010): the question and the threshold (0.9 at the start).
     question TEXT NOT NULL DEFAULT '',
@@ -194,6 +194,8 @@ export const migrations: readonly string[] = [
     CHECK (from_node_id <> to_node_id)
   );
   CREATE INDEX workflow_connection_workflow ON workflow_connection (workflow_id);
+  -- An option has one outgoing connection (spec 010).
+  CREATE UNIQUE INDEX workflow_connection_option ON workflow_connection (option_id) WHERE option_id IS NOT NULL;
 
   -- A version of the graph: the graph as it was before a change that was saved (spec 010).
   -- "graph" is JSON with the nodes, the options and the connections.
@@ -376,6 +378,9 @@ export const migrations: readonly string[] = [
     at INTEGER NOT NULL,
     workflow_id TEXT NOT NULL,
     workflow_name TEXT NOT NULL,
+    -- The node of the task that made the step, as it was then (spec 007). NULL for a step with no task.
+    node_name TEXT,
+    node_number INTEGER,
     kind TEXT NOT NULL,
     target TEXT NOT NULL,
     decided_by TEXT NOT NULL,

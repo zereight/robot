@@ -50,6 +50,21 @@ type Handler<M extends RpcMethod> = (
 /** Every window call has a handler here, except the calls that the host program answers. */
 type Handlers = { [M in Exclude<RpcMethod, HostMethod>]: Handler<M> }
 
+/**
+ * A linked device changes workflows only with the switch "Can create and change workflows" (spec
+ * 010, 012). The switch is read at each request, so a device that lost it a moment ago gets the
+ * error also on a connection that was open before. The window of this computer needs no switch.
+ */
+const mayChange = Effect.gen(function* () {
+  const actor = yield* CurrentActor
+  if (!actor) return
+  const devices = yield* Devices
+  if (!devices.canChange(actor.id)) {
+    // The detail names this computer; the client puts the name that it shows for it.
+    return yield* new AppError({ code: "change_off", detail: devices.deviceName() })
+  }
+})
+
 /** Checks untrusted input from the renderer against a schema. */
 const decode =
   <S extends Schema.Top & { readonly DecodingServices: never }>(schema: S) =>
@@ -511,7 +526,10 @@ export const handlers: Handlers = {
   "workflows.get": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.get(id)))),
   "workflows.create": (input) =>
-    decode(WorkflowCreate)(input).pipe(Effect.flatMap((v) => Workflows.use((w) => w.create(v)))),
+    mayChange.pipe(
+      Effect.flatMap(() => decode(WorkflowCreate)(input)),
+      Effect.flatMap((v) => Workflows.use((w) => w.create(v))),
+    ),
   "workflows.rename": (input) =>
     decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
       Effect.flatMap(({ id, name }) => Workflows.use((w) => w.rename(id, name))),
@@ -535,7 +553,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id, versionId }) => Workflows.use((w) => w.restoreDocument(id, versionId))),
     ),
   "workflows.delete": (input) =>
-    decode(ById)(input).pipe(
+    mayChange.pipe(
+      Effect.flatMap(() => decode(ById)(input)),
       Effect.flatMap(({ id }) => Workflows.use((w) => w.remove(id))),
       done,
     ),

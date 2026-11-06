@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { DOCUMENT_MAX, DOCUMENT_VERSIONS_MAX, NODES_MAX } from "@robot/shared"
+import { catalogues, DOCUMENT_MAX, DOCUMENT_VERSIONS_MAX, NODES_MAX } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { ActionLog } from "./ActionLog.ts"
 import { Database } from "./Database.ts"
 import { Rules } from "./Rules.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { testRuntime } from "./testing.ts"
 import { effectivePermission, Workflows, workflowFolderName } from "./Workflows.ts"
 
@@ -47,6 +48,28 @@ describe("a new workflow (spec 010)", () => {
     const detail = await t.w((x) => x.get(flow.id))
     expect(detail.document).toBe("Send the report.")
     expect(detail.graph).toEqual({ nodes: [], connections: [] })
+  })
+
+  test("with no text, the document has the short default text in the language of the interface", async () => {
+    const t = await setup()
+    const en = await t.create("English")
+    expect(en.id).toBeTruthy()
+    expect((await t.w((x) => x.get(en.id))).document).toBe(
+      catalogues.en["workflows.document.default"],
+    )
+    await t.run(SettingsStore.use((s) => s.update({ language: "ko" })))
+    const ko = await t.create("한국어")
+    const text = (await t.w((x) => x.get(ko.id))).document
+    expect(text).toBe(catalogues.ko["workflows.document.default"])
+    expect(text).not.toBe(catalogues.en["workflows.document.default"])
+    expect(text.length).toBeGreaterThan(0)
+    expect(text.length).toBeLessThan(500)
+  })
+
+  test("a text that the caller gives replaces the default, also an empty one", async () => {
+    const t = await setup()
+    const empty = await t.create("Empty", "")
+    expect((await t.w((x) => x.get(empty.id))).document).toBe("")
   })
 
   test("a name is not empty and is unique on the server, ignoring case", async () => {
@@ -209,6 +232,118 @@ describe("the graph (spec 010)", () => {
     expect(await t.code((x) => x.connect(flow.id, next.id, d.id, d.options[0]?.id ?? null))).toBe(
       "connection_option_unexpected",
     )
+  })
+
+  test("a line is not made twice, and an option has one outgoing connection", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "B" }))
+    const c = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "C" }))
+    await t.w((x) => x.connect(flow.id, a.id, b.id))
+    expect(await t.code((x) => x.connect(flow.id, a.id, b.id))).toBe("connection_exists")
+    const d = await t.w((x) =>
+      x.addNode(flow.id, {
+        kind: "decision",
+        name: "Ok?",
+        question: "Fine?",
+        options: ["Yes", "No"],
+      }),
+    )
+    const yes = d.options[0]?.id ?? null
+    const no = d.options[1]?.id ?? null
+    await t.w((x) => x.connect(flow.id, d.id, b.id, yes))
+    // The same option cannot lead to a second node, and the other option stays free.
+    expect(await t.code((x) => x.connect(flow.id, d.id, c.id, yes))).toBe("connection_exists")
+    expect(await t.code((x) => x.connect(flow.id, d.id, c.id, no))).toBe("ok")
+    expect((await t.w((x) => x.graph(flow.id))).connections).toHaveLength(3)
+  })
+
+  test("a restore keeps the node of the tasks of a node that comes back", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
+    const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Write" }))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r1', ?, 'done', 'hand', 1, 2)",
+      flow.id,
+    )
+    for (const [id, node, name, number] of [
+      ["t1", a.id, "Read", 1],
+      ["t2", b.id, "Write", 2],
+    ] as const)
+      await t.sql(
+        "INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, created_at) VALUES (?, 'r1', ?, ?, ?, ?, 'done', 1)",
+        id,
+        flow.id,
+        node,
+        name,
+        number,
+      )
+    // The version from before node B was added holds node A only.
+    const versions = await t.w((x) => x.versions(flow.id))
+    const beforeB = versions[0] as { id: string }
+    await t.w((x) => x.restoreVersion(flow.id, beforeB.id))
+    const tasks = await t.rows<{ id: string; node_id: string | null }>(
+      "SELECT id, node_id FROM task ORDER BY id",
+    )
+    // Node A is back with its id, so its task still points to it. Node B is gone.
+    expect(tasks).toEqual([
+      { id: "t1", node_id: a.id },
+      { id: "t2", node_id: null },
+    ])
+  })
+
+  test("a level that is not a permission level is refused by the database", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const node = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    await expect(
+      t.sql("UPDATE workflow SET permission = 'everything' WHERE id = ?", flow.id),
+    ).rejects.toThrow()
+    await expect(
+      t.sql("UPDATE workflow_node SET permission = 'everything' WHERE id = ?", node.id),
+    ).rejects.toThrow()
+    await t.sql("UPDATE workflow_node SET permission = 'read_only' WHERE id = ?", node.id)
+    await t.sql("UPDATE workflow_node SET permission = NULL WHERE id = ?", node.id)
+  })
+
+  test("a step in the action log names the node of its task as it was then", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const node = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r1', ?, 'done', 'hand', 1, 2)",
+      flow.id,
+    )
+    await t.sql(
+      "INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, created_at) VALUES ('t1', 'r1', ?, ?, 'Read', 1, 'done', 1)",
+      flow.id,
+      node.id,
+    )
+    const step = (taskId: string | null) =>
+      t.run(
+        ActionLog.use((l) =>
+          Effect.sync(() =>
+            l.add({
+              workflowId: flow.id,
+              kind: "shell",
+              target: "ls",
+              decidedBy: "user",
+              result: "ran",
+              taskId,
+              outside: null,
+            }),
+          ),
+        ),
+      )
+    const withTask = await step("t1")
+    expect([withTask.nodeName, withTask.nodeNumber]).toEqual(["Read", 1])
+    await t.w((x) => x.updateNode(node.id, { name: "Renamed" }))
+    const listed = await t.run(ActionLog.use((l) => l.list({ workflowId: flow.id })))
+    expect(listed[0]?.nodeName).toBe("Read")
+    const without = await step(null)
+    expect([without.nodeName, without.nodeNumber]).toEqual([null, null])
   })
 
   test("each edit keeps the graph as a version, and a restore keeps the graph it replaces", async () => {

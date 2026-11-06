@@ -167,9 +167,18 @@ export const WorkflowsPage = () => {
             <Show
               when={(list() ?? []).length > 0}
               fallback={
-                <p class={styles.empty} data-testid="workflows-empty">
-                  {t("workflows.empty")}
-                </p>
+                <div class={styles.emptyState}>
+                  <p class={styles.empty} data-testid="workflows-empty">
+                    {t("workflows.empty")}
+                  </p>
+                  <Button
+                    variant="primary"
+                    onClick={() => setCreating(true)}
+                    data-testid="new-workflow-empty"
+                  >
+                    {t("workflows.new")}
+                  </Button>
+                </div>
               }
             >
               <ul class={styles.list}>
@@ -183,7 +192,9 @@ export const WorkflowsPage = () => {
                       >
                         <span class={styles.name}>{flow.name}</span>
                         <span class={styles.meta}>
-                          {t("workflows.nodes", { n: flow.nodeCount })}
+                          {flow.nodeCount === 1
+                            ? t("workflows.nodes.one")
+                            : t("workflows.nodes", { n: flow.nodeCount })}
                         </span>
                       </button>
                     </li>

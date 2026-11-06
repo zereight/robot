@@ -8,7 +8,7 @@ export const ko: Record<MessageKey, string> = {
   "common.openSettings": "설정 열기",
 
   "welcome.title": "ROBot에 오신 걸 환영해요",
-  "welcome.body": "컴퓨터가 워크플로를 실행해요. 이 휴대폰은 컴퓨터에 연결해요.",
+  "welcome.body": "컴퓨터가 워크플로우를 실행해요. 이 휴대폰은 컴퓨터에 연결해요.",
   "welcome.name.label": "이 휴대폰의 이름",
   "welcome.name.hint": "페어링할 때 컴퓨터에 이 이름이 보여요.",
   "welcome.name.placeholder": "내 휴대폰",
@@ -101,5 +101,5 @@ export const ko: Record<MessageKey, string> = {
   "settings.device": "이 휴대폰",
   "settings.device.hint": "컴퓨터에 이 이름이 보여요.",
 
-  "server.soon": "이 컴퓨터의 워크플로는 나중에 휴대폰에서 볼 수 있어요.",
+  "server.soon": "이 컴퓨터의 워크플로우는 나중에 휴대폰에서 볼 수 있어요.",
 }

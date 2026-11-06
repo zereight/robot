@@ -1,13 +1,13 @@
 import { hostname } from "node:os"
 import { join, resolve } from "node:path"
-import { EVENT_CHANNEL } from "@robot/shared"
+import { EVENT_CHANNEL, resolveLocale, translate } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, dialog } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
 import { importLoginPath } from "./runtimes/login-path.ts"
-import { Database } from "./services/Database.ts"
+import { Database, fileState } from "./services/Database.ts"
 import { Host } from "./services/Host.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
@@ -127,6 +127,17 @@ app.whenReady().then(async () => {
   // Electron icon, so show the app mark instead.
   else if (!app.isPackaged && process.platform === "darwin")
     app.dock?.setIcon(join(app.getAppPath(), "resources/icon.png"))
+  // Data from a newer version is never opened and never erased. The app tells the user and quits.
+  const databaseFile = join(app.getPath("userData"), "robot.db")
+  if (fileState(databaseFile) === "newer") {
+    const locale = resolveLocale("system", process.env.ROBOT_SYSTEM_LOCALE ?? app.getLocale())
+    dialog.showErrorBox(
+      translate(locale, "error.database_newer.title"),
+      translate(locale, "error.database_newer"),
+    )
+    app.exit(1)
+    return
+  }
   const runtime = makeRuntime()
   // Keep native menus and dialogs in the chosen theme.
   await runtime.runPromise(
