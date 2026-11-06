@@ -233,8 +233,10 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 - The agents of one level in an organization node (the agents under the lead, or all agents when
   there is no lead) stand side by side in one row. A row that is wider than the limit below goes to
   the next row.
-- Organization nodes that do not fit in one row go to the next row. A row is at most 1,600 px wide at
-  zoom 100%.
+- Top organization nodes that do not fit in one row go to the next row. A row is at most 1,600 px
+  wide at zoom 100%.
+- The sub-organizations of one parent are siblings. They stand side by side in one row under the
+  parent, also when the row is wider than 1,600 px.
 - The same data gives the same layout, also on two computers (019). Saved positions (see "Arrange,
   outlines, details and steps") change only what the user sees on one computer. They are not part
   of the layout.
