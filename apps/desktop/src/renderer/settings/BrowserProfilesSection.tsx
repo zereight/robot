@@ -1,36 +1,27 @@
-import { type Agent, BROWSER_PROFILE_NAME_MAX, type BrowserProfile } from "@robot/shared"
+import { BROWSER_PROFILE_NAME_MAX, type BrowserProfile } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import styles from "./settings.module.css"
 
 /**
  * Settings, Browser: the browser profiles of this computer. The user makes, renames and deletes
- * them here, and gives one to an agent in the profile of the agent. A profile holds cookies and
+ * them here, and gives one to a workflow in the page of the workflow. A profile holds cookies and
  * sign-ins; the page never shows them.
  */
 export const BrowserProfilesSection = () => {
   const app = useApp()
   const { t } = app
-  const ui = useUi()
+  const workflows = useWorkflowList()
   const [profiles, { refetch }] = createResource(() => call("browserProfiles.list"), {
     initialValue: [] as readonly BrowserProfile[],
   })
-  const [agents, { refetch: refetchAgents }] = createResource(
-    () => ui.localServer()?.id,
-    async (serverId) => [
-      ...(await call("agents.list", { serverId, archived: false })),
-      ...(await call("agents.list", { serverId, archived: true })),
-    ],
-    { initialValue: [] as readonly Agent[] },
-  )
   onCleanup(window.robot.on("browserProfiles.changed", () => void refetch()))
-  onCleanup(window.robot.on("agents.changed", () => void refetchAgents()))
 
   /** A dialog with a name field: a new profile (`undefined`), or a profile to rename. */
   const [editing, setEditing] = createSignal<{ profile?: BrowserProfile }>()
@@ -39,8 +30,8 @@ export const BrowserProfilesSection = () => {
   const [name, setName] = createSignal("")
 
   const usedBy = (profile: BrowserProfile) =>
-    profile.agentIds
-      .map((id) => agents().find((a) => a.id === id)?.name ?? t("browserProfiles.unknownAgent"))
+    profile.workflowIds
+      .map((id) => workflows.byId(id)?.name ?? t("browserProfiles.unknownWorkflow"))
       .join(", ")
 
   const openEditor = (profile?: BrowserProfile) => {
@@ -107,50 +98,32 @@ export const BrowserProfilesSection = () => {
         <ul class={styles.log} data-testid="browser-profiles-list">
           <For each={profiles()}>
             {(profile) => (
-              <li
-                class={styles.logRow}
-                data-testid="browser-profile"
-                data-name={profile.teamsLink ? t("browserProfiles.teamsName") : profile.name}
-                data-teams-link={profile.teamsLink ? "true" : undefined}
-              >
+              <li class={styles.logRow} data-testid="browser-profile" data-name={profile.name}>
                 <div class={styles.logHead}>
-                  <span class={styles.label} data-user-data={profile.teamsLink ? undefined : ""}>
-                    {profile.teamsLink ? t("browserProfiles.teamsName") : profile.name}
+                  <span class={styles.label} data-user-data="">
+                    {profile.name}
                   </span>
                 </div>
-                {/* The sign-in profile of the Teams link has no rename and no delete (spec 028). */}
-                <Show
-                  when={!profile.teamsLink}
-                  fallback={
-                    <div class={styles.hint} data-testid="browser-profile-teams">
-                      {t("browserProfiles.usedByTeams")}
-                    </div>
-                  }
-                >
-                  <div class={styles.hint} data-testid="browser-profile-users" data-user-data>
-                    {profile.agentIds.length > 0
-                      ? t("browserProfiles.usedBy", { names: usedBy(profile) })
-                      : t("browserProfiles.unused")}
-                  </div>
-                  <div class={styles.actions}>
-                    <Button
-                      onClick={() => openEditor(profile)}
-                      data-testid="browser-profile-rename"
-                    >
-                      {t("browserProfiles.rename")}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      onClick={() => {
-                        setError(undefined)
-                        setDeleting(profile)
-                      }}
-                      data-testid="browser-profile-delete"
-                    >
-                      {t("browserProfiles.delete")}
-                    </Button>
-                  </div>
-                </Show>
+                <div class={styles.hint} data-testid="browser-profile-users" data-user-data>
+                  {profile.workflowIds.length > 0
+                    ? t("browserProfiles.usedBy", { names: usedBy(profile) })
+                    : t("browserProfiles.unused")}
+                </div>
+                <div class={styles.actions}>
+                  <Button onClick={() => openEditor(profile)} data-testid="browser-profile-rename">
+                    {t("browserProfiles.rename")}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => {
+                      setError(undefined)
+                      setDeleting(profile)
+                    }}
+                    data-testid="browser-profile-delete"
+                  >
+                    {t("browserProfiles.delete")}
+                  </Button>
+                </div>
               </li>
             )}
           </For>

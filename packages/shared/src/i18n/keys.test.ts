@@ -28,58 +28,7 @@ const CATALOGUE = /(?:^|\/)i18n\/(?:en|ko)\.ts$/
 // when a new key joins this situation, and fails again when a key on the list starts being read,
 // so the list can only shrink. Deleting the text is a separate decision, because a key that a
 // screen will read next week is not dead yet.
-const KNOWN_UNUSED: readonly string[] = [
-  "agents.field.main.off",
-  "backup.header",
-  "chat.stepReason",
-  "connections.review.failed",
-  "devices.thisDevice",
-  "firstRun.skip",
-  "handover.card.open",
-  "handover.line.open",
-  "handover.line.thread",
-  "link.noCache",
-  "memory.check.now.off",
-  "memory.check.started",
-  "memory.history.undone",
-  "memory.move.failed",
-  // The words of spec 038 that the tab Events does not read yet (S139 added the keys, and the
-  // check came after it). They belong to two parts of the spec that are not built: the "Why" line
-  // that names the routine or the workflow that took a call, and the panel "Check where this goes"
-  // of a trigger form. The tab reads `events.detail.why` through one helper, and the main process
-  // fills `why` with its own keys (`events.why.routineTime` and its family), so these thirteen are
-  // text that a screen will read when those parts are built. The check was written after them, so
-  // `main` was red on it before this branch existed.
-  "events.duplicate",
-  "events.duplicateTask",
-  "events.skipped.workflow",
-  "events.test.agent",
-  "events.test.noAgent",
-  "events.test.noPlace",
-  "events.test.prompt",
-  "events.test.step",
-  "events.test.workflowOff",
-  "events.waitingReason",
-  "events.why.filter",
-  "events.why.routine",
-  "events.why.workflow",
-  "providers.title",
-  "settings.data.folder.hint",
-  "settings.notify.server",
-  "taskUsage.noReport",
-  "teams.mark.from",
-  "teams.state",
-  "usage.total",
-  "workflows.enabled",
-  "workflows.note.label",
-  // `places.search.clear`, `connect.close`, `model.none` and `settings.workspaceRoot.hint` were on
-  // this list before the check was written; they stay here while the text is still in both
-  // catalogues.
-  "connect.close",
-  "model.none",
-  "places.search.clear",
-  "settings.workspaceRoot.hint",
-]
+const KNOWN_UNUSED: readonly string[] = []
 
 function sources(dir: string): string[] {
   if (!existsSync(dir)) return []
@@ -145,7 +94,7 @@ describe("translation keys", () => {
 
   // A key that `starterText` or `workflowStarterText` builds is read through two holes, so a
   // pattern cannot reach it. These families are read by construction and are not checked here.
-  const TWO_HOLE_FAMILIES = ["starter.", "workflowStarter."]
+  const TWO_HOLE_FAMILIES: readonly string[] = []
   const inTwoHoleFamily = (key: string) =>
     TWO_HOLE_FAMILIES.some((family) => key.startsWith(family))
 

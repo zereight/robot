@@ -1,11 +1,4 @@
-import type {
-  Agent,
-  MessageKey,
-  PermissionRule,
-  RuleDecision,
-  RuleInput,
-  RuleKind,
-} from "@robot/shared"
+import type { MessageKey, PermissionRule, RuleDecision, RuleInput, RuleKind } from "@robot/shared"
 import { RULE_KINDS, RULE_TEXT_MAX, RULES_MAX, SECRET_METHODS } from "@robot/shared"
 import {
   createEffect,
@@ -17,28 +10,27 @@ import {
   onCleanup,
   Show,
 } from "solid-js"
-import { Face } from "../agents/Face.tsx"
-import { formatDateTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { clearRulesTarget, rulesTarget } from "../state/rulesLink.ts"
-import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import styles from "./settings.module.css"
 
-/** The value of the agent filter: every rule, the rules for all agents, or one agent. */
+/** The value of the workflow filter: every rule, the rules for all workflows, or one workflow. */
 const EVERY = ""
-const ALL_AGENTS = "*"
+const ALL_WORKFLOWS = "*"
 
 type DecisionFilter = RuleDecision | "all"
 const DECISIONS: readonly DecisionFilter[] = ["all", "allow", "deny"]
 
 /** What the form holds while the user types. */
 interface Draft {
-  agent: string
+  workflow: string
   kind: RuleKind
   text: string
   detail: string
@@ -48,36 +40,28 @@ interface Draft {
 
 /**
  * Settings, Permissions: the permission rules of spec 007. Rules come newest first. The user can
- * filter by agent and by decision, add a rule, edit a rule and delete a rule. A rule that the app
+ * filter by workflow and by decision, add a rule, edit a rule and delete a rule. A rule that the app
  * cannot read says so, and the user can delete it.
  */
 export const RulesSection = () => {
   const app = useApp()
   const { t } = app
-  const ui = useUi()
-  const [agentFilter, setAgentFilter] = createSignal(EVERY)
+  const workflows = useWorkflowList()
+  const [workflowFilter, setWorkflowFilter] = createSignal(EVERY)
   const [decisionFilter, setDecisionFilter] = createSignal<DecisionFilter>("all")
   const [focused, setFocused] = createSignal<string>()
   const [rules, { refetch }] = createResource(
-    () => ({ agent: agentFilter(), decision: decisionFilter() }),
+    () => ({ workflow: workflowFilter(), decision: decisionFilter() }),
     (filter) =>
       call("rules.list", {
-        ...(filter.agent === EVERY
+        ...(filter.workflow === EVERY
           ? {}
-          : { agentId: filter.agent === ALL_AGENTS ? null : filter.agent }),
+          : { workflowId: filter.workflow === ALL_WORKFLOWS ? null : filter.workflow }),
         ...(filter.decision === "all" ? {} : { decision: filter.decision }),
       }),
   )
   const [count, { refetch: refetchCount }] = createResource(
     async () => (await call("rules.list", {})).length,
-  )
-  const [agents, { refetch: refetchAgents }] = createResource(
-    () => ui.localServer()?.id,
-    async (serverId) => [
-      ...(await call("agents.list", { serverId, archived: false })),
-      ...(await call("agents.list", { serverId, archived: true })),
-    ],
-    { initialValue: [] as readonly Agent[] },
   )
   onCleanup(
     window.robot.on("rules.changed", () => {
@@ -86,21 +70,19 @@ export const RulesSection = () => {
     }),
   )
   onCleanup(
-    window.robot.on("agents.changed", () => {
-      void refetchAgents()
+    window.robot.on("workflows.changed", () => {
       void refetch()
       void refetchCount()
     }),
   )
-  const agentOf = (id: string | null) => (id ? agents().find((a) => a.id === id) : undefined)
 
-  // A request from the profile of an agent or from a row of the action log (spec 007).
+  // A request from a row of the action log (spec 007).
   createEffect(
     on(rulesTarget, (target) => {
       if (!target) return
       clearRulesTarget()
       setDecisionFilter("all")
-      setAgentFilter(target.agentId ?? EVERY)
+      setWorkflowFilter(target.workflowId ?? EVERY)
       setFocused(target.ruleId)
       if (target.ruleId)
         queueMicrotask(() =>
@@ -123,7 +105,8 @@ export const RulesSection = () => {
   const [error, setError] = createSignal<ErrorText>()
 
   const blank = (): Draft => ({
-    agent: agentFilter() === EVERY ? (agents()[0]?.id ?? ALL_AGENTS) : agentFilter(),
+    workflow:
+      workflowFilter() === EVERY ? (workflows.list()[0]?.id ?? ALL_WORKFLOWS) : workflowFilter(),
     kind: "shell",
     text: "",
     detail: "",
@@ -131,7 +114,7 @@ export const RulesSection = () => {
     decision: "allow",
   })
   const draftOf = (rule: PermissionRule): Draft => ({
-    agent: rule.agentId ?? ALL_AGENTS,
+    workflow: rule.workflowId ?? ALL_WORKFLOWS,
     kind: rule.kind ?? "shell",
     text: rule.text,
     detail: rule.detail ?? "",
@@ -139,7 +122,7 @@ export const RulesSection = () => {
     decision: rule.decision ?? "allow",
   })
   const inputOf = (draft: Draft): RuleInput => ({
-    agentId: draft.agent === ALL_AGENTS ? null : draft.agent,
+    workflowId: draft.workflow === ALL_WORKFLOWS ? null : draft.workflow,
     kind: draft.kind,
     text: draft.text,
     ...(draft.kind === "connection" || draft.kind === "secret"
@@ -181,7 +164,7 @@ export const RulesSection = () => {
   }
 
   const row = (rule: PermissionRule) => {
-    const agent = () => agentOf(rule.agentId)
+    const workflow = () => workflows.byId(rule.workflowId)
     return (
       <li
         class={styles.logRow}
@@ -192,12 +175,9 @@ export const RulesSection = () => {
         data-focused={focused() === rule.id ? "true" : undefined}
       >
         <div class={styles.logHead}>
-          <span class={styles.secretAgent} data-testid="rule-agent">
-            <Show when={rule.agentId !== null} fallback={<span>{t("rules.allAgents")}</span>}>
-              <Show when={agent()}>
-                {(a) => <Face face={a().face} image={a().faceImage} size={20} />}
-              </Show>
-              <span>{agent()?.name ?? t("secrets.unknownAgent")}</span>
+          <span class={styles.secretAgent} data-testid="rule-workflow">
+            <Show when={rule.workflowId !== null} fallback={<span>{t("rules.allWorkflows")}</span>}>
+              <span>{workflow()?.name ?? t("secrets.unknownWorkflow")}</span>
             </Show>
           </span>
           <Show
@@ -286,22 +266,22 @@ export const RulesSection = () => {
       <div class={`${styles.row} ${styles.rowWrap}`}>
         <select
           class={styles.select}
-          aria-label={t("rules.filterAgent")}
-          data-testid="rules-agent"
-          value={agentFilter()}
-          onChange={(e) => setAgentFilter(e.currentTarget.value)}
+          aria-label={t("rules.filterWorkflow")}
+          data-testid="rules-workflow"
+          value={workflowFilter()}
+          onChange={(e) => setWorkflowFilter(e.currentTarget.value)}
         >
-          <option value={EVERY} selected={agentFilter() === EVERY}>
-            {t("rules.anyAgent")}
+          <option value={EVERY} selected={workflowFilter() === EVERY}>
+            {t("rules.anyWorkflow")}
           </option>
-          <option value={ALL_AGENTS} selected={agentFilter() === ALL_AGENTS}>
-            {t("rules.allAgents")}
+          <option value={ALL_WORKFLOWS} selected={workflowFilter() === ALL_WORKFLOWS}>
+            {t("rules.allWorkflows")}
           </option>
-          {/* The agents load after the page opens, so each option says if it is the chosen one. */}
-          <For each={agents()}>
-            {(a) => (
-              <option value={a.id} selected={agentFilter() === a.id}>
-                {a.name}
+          {/* The workflows load after the page opens, so each option says if it is the chosen one. */}
+          <For each={workflows.list()}>
+            {(w) => (
+              <option value={w.id} selected={workflowFilter() === w.id}>
+                {w.name}
               </option>
             )}
           </For>
@@ -354,16 +334,16 @@ export const RulesSection = () => {
                 {current.rule ? t("rules.edit.title") : t("rules.add.title")}
               </h2>
               {field(
-                t("rules.field.agent"),
+                t("rules.field.workflow"),
                 <select
                   class={styles.select}
-                  aria-label={t("rules.field.agent")}
-                  data-testid="rule-form-agent"
-                  value={current.draft.agent}
-                  onChange={(e) => patch({ agent: e.currentTarget.value })}
+                  aria-label={t("rules.field.workflow")}
+                  data-testid="rule-form-workflow"
+                  value={current.draft.workflow}
+                  onChange={(e) => patch({ workflow: e.currentTarget.value })}
                 >
-                  <option value={ALL_AGENTS}>{t("rules.allAgents")}</option>
-                  <For each={agents()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
+                  <option value={ALL_WORKFLOWS}>{t("rules.allWorkflows")}</option>
+                  <For each={workflows.list()}>{(w) => <option value={w.id}>{w.name}</option>}</For>
                 </select>,
               )}
               {field(

@@ -9,7 +9,6 @@ import { registerRpc } from "./register-rpc.ts"
 import { importLoginPath } from "./runtimes/login-path.ts"
 import { Database } from "./services/Database.ts"
 import { Host } from "./services/Host.ts"
-import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -134,12 +133,13 @@ app.whenReady().then(async () => {
     Effect.gen(function* () {
       const settings = yield* SettingsStore.use((s) => s.get)
       yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
-      // The first start guide is for new users. A data folder that already holds an agent or an
+      // The first start guide is for new users. A data folder that already holds a workflow or an
       // account, or a test run that asks to skip it, counts as done.
       if (!settings.firstRunDone) {
         const db = yield* Database
         const used =
-          db.get("SELECT 1 FROM agent LIMIT 1") || db.get("SELECT 1 FROM provider_account LIMIT 1")
+          db.get("SELECT 1 FROM workflow LIMIT 1") ||
+          db.get("SELECT 1 FROM provider_account LIMIT 1")
         if (used || process.env.ROBOT_SKIP_FIRST_RUN)
           yield* SettingsStore.use((s) => s.update({ firstRunDone: true }))
       }
@@ -148,7 +148,6 @@ app.whenReady().then(async () => {
   await loginPath
   registerRpc(runtime)
   createWindow()
-  await runtime.runPromise(Notifier.use((n) => Effect.sync(() => n.refresh())))
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

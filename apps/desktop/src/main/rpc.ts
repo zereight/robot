@@ -1,115 +1,43 @@
 import {
   ACTION_KINDS,
-  AgentCreate,
-  AgentModel,
-  AgentPatch,
-  AgentStarterCreate,
   BrowserProfileCreate,
-  ChatSend,
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
-  EVENT_RESULTS,
   isClientMethod,
-  MEMORY_MODES,
-  MESSAGE_MAX,
-  MOVE_DIRECTIONS,
-  MUTE_CHOICES,
-  PlaceKind,
-  PlaceRef,
+  type ModelChoice,
   ProviderConnect,
-  parseAddress,
-  RoutineInput,
-  RoutinePatch,
   type RpcInput,
   type RpcMethod,
   type RpcOutput,
   type RpcResult,
   RUNTIME_KINDS,
   redactSecrets,
-  SEARCH_CAP,
-  SEARCH_QUERY_MAX,
-  SectionCreate,
   SettingsPatch,
   SIGN_IN_ID,
-  SYNC_MODES,
-  TeamsPatch,
   UiStatePatch,
-  USAGE_RANGES,
-  WorkflowInput,
-  WorkflowPatch,
+  WorkflowCreate,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
-
-/** One text of an event: a key with its parameters, or text from outside (spec 038). */
-const EventTextSchema = Schema.Union([
-  Schema.Struct({
-    key: Schema.String,
-    params: Schema.Record(Schema.String, Schema.String),
-  }),
-  Schema.Struct({ text: Schema.String }),
-])
-
-import { modelChoices } from "./link/changes.ts"
-import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
-import { Activity } from "./services/Activity.ts"
-import { AgentFiles } from "./services/AgentFiles.ts"
-import { AgentSettings } from "./services/AgentSettings.ts"
-import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
-import { Chat } from "./services/Chat.ts"
-import { Checklists } from "./services/Checklists.ts"
 import { Connections } from "./services/Connections.ts"
-import { Data } from "./services/Data.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
-import { EventBus } from "./services/EventBus.ts"
-import { Events } from "./services/Events.ts"
 import { AppError } from "./services/errors.ts"
-import { FollowUps } from "./services/FollowUps.ts"
-import { Handbook } from "./services/Handbook.ts"
-import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
-import { KeepAwake } from "./services/KeepAwake.ts"
-import { Knowledge } from "./services/Knowledge.ts"
-import { Memory, MemoryFilterSchema } from "./services/Memory.ts"
-import { MemoryCheck } from "./services/MemoryCheck.ts"
-import { Notifier } from "./services/Notifier.ts"
-import { PlaceMarks } from "./services/PlaceMarks.ts"
-import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
-import { Remote } from "./services/Remote.ts"
-import { Routines } from "./services/Routines.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
-import { Search } from "./services/Search.ts"
-import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
-import { SkillDrafts } from "./services/SkillDrafts.ts"
 import { Skills } from "./services/Skills.ts"
-import { Starters } from "./services/Starters.ts"
-import { Sync } from "./services/Sync.ts"
-import {
-  listSetup,
-  readSetupFile,
-  runNamed,
-  setSetupAllowed,
-  writeSetupFile,
-} from "./services/setupRun.ts"
-import { Tasks } from "./services/Tasks.ts"
-import { Teach } from "./services/Teach.ts"
-import { TeamsLink } from "./services/TeamsLink.ts"
-import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
-import { Usage } from "./services/Usage.ts"
-import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
 import { STAGE_ROOT, stageFile } from "./staging.ts"
 
@@ -133,7 +61,7 @@ const decode =
 const ById = Schema.Struct({ id: Schema.String })
 /** A rule that the user adds or edits in the rules list (spec 007). */
 const RuleInputSchema = Schema.Struct({
-  agentId: Schema.NullOr(Schema.String),
+  workflowId: Schema.NullOr(Schema.String),
   kind: Schema.Literals(["file", "shell", "web", "connection", "secret"]),
   text: Schema.String,
   detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -157,15 +85,6 @@ const ConnectionInputSchema = Schema.Struct({
   env: Schema.Array(ConnectionEntrySchema).check(Schema.isMaxLength(1000)),
   address: Schema.String.check(Schema.isMaxLength(20_000)),
   headers: Schema.Array(ConnectionEntrySchema).check(Schema.isMaxLength(1000)),
-  agents: Schema.Union([
-    Schema.Literal("all"),
-    Schema.Array(Schema.String).check(Schema.isMaxLength(1000)),
-  ]),
-})
-const SettingsLine = Schema.Struct({
-  agentId: Schema.String,
-  messageId: Schema.String,
-  callId: Schema.String,
 })
 const ByAccount = Schema.Struct({ accountId: Schema.String })
 const SignInId = Schema.String.check(Schema.isPattern(SIGN_IN_ID))
@@ -173,52 +92,26 @@ const ByRuntime = Schema.Struct({
   kind: Schema.Literals(RUNTIME_KINDS),
   signIn: Schema.optionalKey(Schema.NullOr(SignInId)),
 })
-const ByAgent = Schema.Struct({ agentId: Schema.String })
-/** A conversation of an agent: the main thread when `threadId` is missing or null (spec 003). */
-const ByThread = Schema.Struct({
-  agentId: Schema.String,
-  threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
-})
-const placeOf = (input: { readonly agentId: string; readonly threadId?: string | null }) => ({
-  agentId: input.agentId,
-  threadId: input.threadId ?? null,
-})
-const FileOfMessage = Schema.Struct({
-  agentId: Schema.String,
-  path: Schema.String.check(Schema.isMaxLength(300)),
-  size: Schema.Number,
-  messageId: Schema.String,
-})
-const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
 const done = Effect.as(undefined)
 
-/**
- * The options of a retry. A request of a linked device asks about steps that are on this
- * computer, so the retry note names this computer and shows no list (spec 005, 012).
- */
-const retryOptions = (confirmed: boolean | undefined) =>
-  Effect.gen(function* () {
-    const actor = yield* CurrentActor
-    const awayFrom = actor
-      ? yield* Devices.use((d) => Effect.sync(() => d.deviceName()))
-      : undefined
-    return {
-      ...(confirmed ? { confirmed } : {}),
-      ...(awayFrom !== undefined ? { awayFrom } : {}),
-    }
-  })
-const ByLink = Schema.Struct({ linkId: Schema.String })
-
-/**
- * Answers an approval or a question card. A card of a task that runs on the other computer of a
- * sync pair (spec 019) goes to that computer, as the answer of a client does.
- */
-const answerCard = (agentId: string, callId: string, answer: string) =>
-  Sync.use((s) => s.respond(agentId, callId, answer)).pipe(
-    Effect.flatMap((sent) =>
-      sent ? Effect.void : Tools.use((t) => t.respond(agentId, callId, answer)),
-    ),
-  )
+/** The connected accounts and their models, without any key. */
+const modelChoices = Effect.gen(function* () {
+  const providers = yield* Providers
+  const accounts = yield* providers.list
+  const out: ModelChoice[] = []
+  for (const account of accounts) {
+    if (!account.connected) continue
+    const models = yield* providers.models(account.id).pipe(Effect.orElseSucceed(() => []))
+    out.push({
+      accountId: account.id,
+      accountName: account.name,
+      kind: account.kind,
+      readOnly: yield* providers.readOnlySupported(account.id),
+      models,
+    })
+  }
+  return out
+})
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -275,8 +168,6 @@ export const handlers: Handlers = {
         return yield* new AppError({ code: "decision_not_set_up" })
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
-      if (patch.island !== undefined || patch.islandWidth !== undefined)
-        yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
       return next
     }),
   "settings.pickWorkspaceRoot": () =>
@@ -299,36 +190,17 @@ export const handlers: Handlers = {
     Effect.gen(function* () {
       const devices = yield* Devices
       const local = yield* Servers.use((s) => s.list)
-      const linked = yield* Remote.use((r) => Effect.succeed(r.servers()))
       // This computer shows under the name that linked devices see.
-      return [
-        ...local.map((s) => (s.kind === "local" ? { ...s, name: devices.deviceName() } : s)),
-        ...linked,
-      ]
+      return local.map((s) => (s.kind === "local" ? { ...s, name: devices.deviceName() } : s))
     }),
-  "servers.retry": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Remote.use((r) => Effect.sync(() => r.retry(serverId)))),
-      done,
-    ),
-  "devices.get": () =>
-    Effect.gen(function* () {
-      const devices = yield* Devices
-      const remote = yield* Remote
-      return { ...devices.state(), servers: remote.entries() }
-    }),
+  "devices.get": () => Devices.use((d) => Effect.sync(() => d.state())),
   "devices.update": (input) =>
     decode(
       Schema.Struct({
         name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(DEVICE_NAME_MAX))),
         accept: Schema.optionalKey(Schema.Boolean),
       }),
-    )(input).pipe(
-      Effect.flatMap((patch) => Devices.use((d) => d.update(patch))),
-      Effect.flatMap((state) =>
-        Remote.use((r) => Effect.succeed({ ...state, servers: r.entries() })),
-      ),
-    ),
+    )(input).pipe(Effect.flatMap((patch) => Devices.use((d) => d.update(patch)))),
   "devices.pair.start": () => Devices.use((d) => d.pairStart()),
   "devices.pair.get": () => Devices.use((d) => Effect.sync(() => d.pairing())),
   "devices.pair.stop": () => Devices.use((d) => Effect.sync(() => d.pairStop())),
@@ -356,196 +228,7 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id, canChange }) => Devices.use((d) => d.setCanChange(id, canChange))),
       done,
     ),
-  "devices.server.remove": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Remote.use((r) => r.remove(id))),
-      done,
-    ),
-  "devices.server.setAddresses": (input) =>
-    decode(Schema.Struct({ id: Schema.String, addresses: Schema.Array(Schema.String) }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ id, addresses }) =>
-        Effect.gen(function* () {
-          const list = addresses.map((a) => a.trim()).filter(Boolean)
-          if (list.length === 0 || list.length > 16 || list.some((a) => !parseAddress(a))) {
-            return yield* new AppError({ code: "invalid_address" })
-          }
-          const devices = yield* Devices
-          const remote = yield* Remote
-          yield* devices.setAddresses(id, list)
-          const entry = remote.entries().find((e) => e.id === id)
-          if (entry) remote.retry(entry.serverId)
-          return remote.entries().find((e) => e.id === id) ?? entry
-        }),
-      ),
-      Effect.flatMap((entry) =>
-        entry ? Effect.succeed(entry) : Effect.fail(new AppError({ code: "server_not_found" })),
-      ),
-    ),
-  "devices.connect.probe": (input) =>
-    decode(
-      Schema.Struct({
-        link: Schema.optionalKey(Schema.String),
-        address: Schema.optionalKey(Schema.String),
-        code: Schema.optionalKey(Schema.String),
-      }),
-    )(input).pipe(Effect.flatMap((v) => Remote.use((r) => r.probe(v)))),
-  "devices.connect.finish": (input) =>
-    decode(Schema.Struct({ session: Schema.String, twoWay: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ session, twoWay }) => Remote.use((r) => r.finish(session, twoWay))),
-    ),
-  "devices.connect.cancel": (input) =>
-    decode(Schema.Struct({ session: Schema.String }))(input).pipe(
-      Effect.flatMap(({ session }) => Remote.use((r) => r.cancel(session))),
-      done,
-    ),
   "devices.nearby": () => Devices.use((d) => d.nearby()),
-  "sync.list": () => Sync.use((s) => Effect.sync(() => s.statuses())),
-  "sync.preview": (input) =>
-    decode(ByLink)(input).pipe(Effect.flatMap(({ linkId }) => Sync.use((s) => s.preview(linkId)))),
-  "sync.start": (input) =>
-    decode(Schema.Struct({ linkId: Schema.String, mode: Schema.Literals(SYNC_MODES) }))(input).pipe(
-      Effect.flatMap(({ linkId, mode }) => Sync.use((s) => s.start(linkId, mode))),
-    ),
-  "sync.cancelOffer": (input) =>
-    decode(ByLink)(input).pipe(
-      Effect.flatMap(({ linkId }) => Sync.use((s) => s.cancelOffer(linkId))),
-      done,
-    ),
-  "sync.pause": (input) =>
-    decode(ByLink)(input).pipe(
-      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, true))),
-      done,
-    ),
-  "sync.resume": (input) =>
-    decode(ByLink)(input).pipe(
-      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, false))),
-      done,
-    ),
-  "sync.stop": (input) =>
-    decode(ByLink)(input).pipe(
-      Effect.flatMap(({ linkId }) => Sync.use((s) => s.stop(linkId))),
-      done,
-    ),
-  "sync.dismiss": (input) =>
-    decode(ByLink)(input).pipe(
-      Effect.flatMap(({ linkId }) => Sync.use((s) => s.dismiss(linkId))),
-      done,
-    ),
-  "sync.requests": () => Sync.use((s) => Effect.sync(() => s.requests())),
-  "sync.decide": (input) =>
-    decode(Schema.Struct({ id: Schema.String, allow: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ id, allow }) => Sync.use((s) => s.decide(id, allow))),
-      done,
-    ),
-  "sync.changes": () => Sync.use((s) => Effect.sync(() => s.changes())),
-  "sync.guard": () => Sync.use((s) => Effect.sync(() => s.guard())),
-  "sync.guard.decide": (input) =>
-    decode(Schema.Struct({ remove: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ remove }) => Sync.use((s) => s.decideGuard(remove))),
-      done,
-    ),
-  "sync.file.here": (input) =>
-    decode(FileOfMessage)(input).pipe(
-      Effect.flatMap(({ agentId, path, size, messageId }) =>
-        Sync.use((s) => Effect.succeed(s.fileHere(agentId, path, size, messageId))),
-      ),
-    ),
-  "sync.file.open": (input) =>
-    decode(FileOfMessage)(input).pipe(
-      Effect.flatMap((file) => Sync.use((s) => s.openFile(file))),
-      done,
-    ),
-  // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
-  "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
-  // The picture of a file of this computer. A linked server sends it over the link.
-  "attachments.picture": (input) =>
-    decode(FileOfMessage)(input).pipe(
-      Effect.flatMap((file) => Sync.use((s) => Effect.promise(() => s.picture(file)))),
-    ),
-  "places.list": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
-    ),
-  "places.move": (input) =>
-    decode(
-      Schema.Struct({
-        kind: PlaceKind,
-        id: Schema.String,
-        sectionId: Schema.NullOr(Schema.String),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ kind, id, sectionId }) =>
-        Sections.use((s) => s.assign({ kind, id }, sectionId)),
-      ),
-      done,
-    ),
-  "places.pin": (input) =>
-    decode(Schema.Struct({ kind: PlaceKind, id: Schema.String, pinned: Schema.Boolean }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ kind, id, pinned }) => Sections.use((s) => s.pin({ kind, id }, pinned))),
-      done,
-    ),
-  "places.order": (input) =>
-    decode(Schema.Struct({ items: Schema.Array(PlaceRef) }))(input).pipe(
-      Effect.flatMap(({ items }) => Sections.use((s) => s.order(items))),
-      done,
-    ),
-  "sections.create": (input) =>
-    decode(SectionCreate)(input).pipe(
-      Effect.flatMap((data) => Sections.use((s) => s.create(data))),
-    ),
-  "sections.rename": (input) =>
-    decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
-      Effect.flatMap(({ id, name }) => Sections.use((s) => s.rename(id, name))),
-    ),
-  "sections.move": (input) =>
-    decode(Schema.Struct({ id: Schema.String, direction: Schema.Literals(MOVE_DIRECTIONS) }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ id, direction }) => Sections.use((s) => s.move(id, direction))),
-      done,
-    ),
-  "sections.delete": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Sections.use((s) => s.remove(id))),
-      done,
-    ),
-  "teams.get": () => TeamsLink.use((t) => t.view),
-  "teams.setup": () => TeamsLink.use((t) => t.setup),
-  "teams.update": (input) =>
-    decode(TeamsPatch)(input).pipe(
-      Effect.flatMap((patch) => TeamsLink.use((t) => t.update(patch))),
-    ),
-  "teams.setEnabled": (input) =>
-    decode(Schema.Struct({ enabled: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ enabled }) => TeamsLink.use((t) => t.setEnabled(enabled))),
-    ),
-  "teams.showPage": () => TeamsLink.use((t) => t.showPage),
-  "teams.hidePage": () => TeamsLink.use((t) => t.hidePage),
-  "teams.place": (input) =>
-    decode(
-      Schema.Struct({
-        bounds: Schema.NullOr(
-          Schema.Struct({
-            x: Schema.Number,
-            y: Schema.Number,
-            width: Schema.Number,
-            height: Schema.Number,
-          }),
-        ),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ bounds }) => TeamsLink.use((t) => t.place(bounds ?? undefined))),
-      done,
-    ),
-  "teams.useChat": () => TeamsLink.use((t) => t.useChat),
-  "teams.readSenders": () => TeamsLink.use((t) => t.readSenders),
-  "teams.resume": () => TeamsLink.use((t) => t.resume),
-  "teams.signOut": () => TeamsLink.use((t) => t.signOut),
-  "teams.remove": () => TeamsLink.use((t) => t.remove),
   "browserProfiles.list": () => BrowserProfiles.use((b) => b.list),
   "browserProfiles.create": (input) =>
     decode(BrowserProfileCreate)(input).pipe(
@@ -561,11 +244,11 @@ export const handlers: Handlers = {
       done,
     ),
   "browserProfiles.assign": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, profileId: Schema.NullOr(Schema.String) }))(
+    decode(Schema.Struct({ workflowId: Schema.String, profileId: Schema.NullOr(Schema.String) }))(
       input,
     ).pipe(
-      Effect.flatMap(({ agentId, profileId }) =>
-        BrowserProfiles.use((b) => b.assign(agentId, profileId)),
+      Effect.flatMap(({ workflowId, profileId }) =>
+        BrowserProfiles.use((b) => b.assign(workflowId, profileId)),
       ),
       done,
     ),
@@ -574,108 +257,7 @@ export const handlers: Handlers = {
     decode(UiStatePatch)(input).pipe(
       Effect.flatMap((patch) => UiStore.use((s) => s.update(patch))),
     ),
-  "agents.list": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, archived: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ serverId, archived }) => Agents.use((a) => a.list(serverId, archived))),
-    ),
-  "agents.get": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.get(id)))),
-  "agents.create": (input) =>
-    decode(AgentCreate)(input).pipe(Effect.flatMap((data) => Agents.use((a) => a.create(data)))),
-  "agents.createFromStarter": (input) =>
-    decode(AgentStarterCreate)(input).pipe(
-      Effect.flatMap((data) => Starters.use((s) => s.create(data))),
-    ),
-  "agents.update": (input) =>
-    decode(Schema.Struct({ id: Schema.String, patch: AgentPatch }))(input).pipe(
-      Effect.flatMap(({ id, patch }) => Agents.use((a) => a.update(id, patch))),
-    ),
-  "agents.duplicate": (input) =>
-    decode(
-      Schema.Struct({ id: Schema.String, suffix: Schema.String.check(Schema.isMaxLength(20)) }),
-    )(input).pipe(Effect.flatMap(({ id, suffix }) => Agents.use((a) => a.duplicate(id, suffix)))),
-  "agents.archive": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.archive(id)))),
-  "agents.useMain": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.useMain(id)))),
-  "agents.restore": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.restore(id)))),
-  "agents.delete": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Agents.use((a) => a.remove(id))),
-      Effect.as(undefined),
-    ),
-  "agents.setFaceImage": (input) =>
-    decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
-      Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
-    ),
-  "agents.history.list": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => AgentSettings.use((s) => s.history(agentId))),
-    ),
-  "agents.history.restore": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, versionId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, versionId }) =>
-        AgentSettings.use((s) => s.restore(agentId, versionId)),
-      ),
-    ),
-  "agents.settings.line": (input) =>
-    decode(SettingsLine)(input).pipe(
-      Effect.flatMap(({ agentId, messageId, callId }) =>
-        AgentSettings.use((s) => s.lineState(agentId, messageId, callId)),
-      ),
-    ),
-  "agents.settings.undo": (input) =>
-    decode(SettingsLine)(input).pipe(
-      Effect.flatMap(({ agentId, messageId, callId }) =>
-        Effect.gen(function* () {
-          yield* AgentSettings.use((s) => s.undo(agentId, messageId, callId))
-          // The line of the message in the chat shows that it was undone.
-          yield* Chat.use((c) => Effect.sync(() => c.announce(messageId)))
-        }),
-      ),
-      Effect.as(undefined),
-    ),
   "models.available": () => modelChoices,
-  "agentFile.export": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        agentIds: Schema.Array(Schema.String),
-        channels: Schema.optionalKey(Schema.Boolean),
-        skills: Schema.optionalKey(Schema.Boolean),
-        handbook: Schema.optionalKey(Schema.Boolean),
-      }),
-    )(input).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.export(data)))),
-  "agentFile.open": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
-    ),
-  "agentFile.apply": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        model: Schema.NullOr(AgentModel),
-        pick: Schema.Array(
-          Schema.Struct({
-            index: Schema.Int,
-            instructions: Schema.Boolean,
-            routines: Schema.Array(Schema.Int),
-          }),
-        ),
-        channels: Schema.optionalKey(Schema.Array(Schema.Int)),
-        skills: Schema.optionalKey(Schema.Array(Schema.Int)),
-        handbook: Schema.optionalKey(Schema.Boolean),
-      }),
-    )(input).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
-  "checklists.forAgent": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Checklists.use((c) => c.forAgent(agentId))),
-    ),
-  "checklists.forWorkflow": (input) =>
-    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ workflowId }) => Checklists.use((c) => c.forWorkflow(workflowId))),
-    ),
   "providers.list": () => Providers.use((p) => p.list),
   "providers.connect": (input) =>
     decode(ProviderConnect)(input).pipe(
@@ -775,154 +357,10 @@ export const handlers: Handlers = {
         }),
       ),
     ),
-  "data.export": () => Data.use((d) => d.export()),
-  "data.restore": () => Data.use((d) => d.import()),
-  "tasks.list": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Tasks.use((t) => t.list(serverId))),
-    ),
-  "tasks.get": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Tasks.use((t) => t.get(id)))),
-  "tasks.recent": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Tasks.use((t) => Effect.sync(() => t.recent(agentId)))),
-    ),
-  "tasks.stop": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.stopAny(id))),
-      done,
-    ),
-  "tasks.runNext": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.runNext(id))),
-      done,
-    ),
-  "tasks.retry": (input) =>
-    decode(Schema.Struct({ id: Schema.String, confirmed: Schema.optionalKey(Schema.Boolean) }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ id, confirmed }) =>
-        retryOptions(confirmed).pipe(Effect.flatMap((o) => Tasks.use((t) => t.retry(id, o)))),
-      ),
-    ),
-  "followups.list": (input) =>
-    decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ taskId }) => FollowUps.use((f) => f.ofTask(taskId))),
-    ),
-  "followups.remove": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => FollowUps.use((f) => f.remove(id))),
-      done,
-    ),
-  "events.list": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        result: Schema.optionalKey(Schema.Literals(EVENT_RESULTS)),
-        offset: Schema.optionalKey(Schema.Number),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ serverId, result, offset }) =>
-        Events.use((e) =>
-          e.list(serverId, {
-            ...(result ? { result } : {}),
-            ...(offset != null ? { offset } : {}),
-          }),
-        ),
-      ),
-    ),
-  "events.get": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Events.use((e) => e.get(id)))),
-  "events.test": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        source: Schema.Literals(["schedule", "watch", "web_hook"]),
-        type: EventTextSchema,
-        subject: Schema.optionalKey(Schema.NullOr(Schema.String)),
-        summary: EventTextSchema,
-        detail: Schema.optionalKey(Schema.String),
-        why: EventTextSchema,
-        got: Schema.optionalKey(Schema.String),
-      }),
-    )(input).pipe(
-      Effect.flatMap((data) =>
-        Events.use((e) =>
-          e.add({
-            serverId: data.serverId,
-            source: data.source,
-            type: data.type,
-            subject: data.subject ?? null,
-            summary: data.summary,
-            detail: data.detail ?? "",
-            why: data.why,
-            got: data.got ?? "",
-            result: "would_go",
-          }),
-        ),
-      ),
-    ),
-  // The handbook of a server (spec 002). The window of this computer saves with the source "page".
-  "handbook.get": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Handbook.use((h) => h.get(serverId))),
-    ),
-  "handbook.history": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Handbook.use((h) => h.history(serverId))),
-    ),
-  "handbook.save": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        text: Schema.String.check(Schema.isMaxLength(200_000)),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ serverId, text }) => Handbook.use((h) => h.save(serverId, text, "page"))),
-    ),
-  "handbook.restore": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, versionId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId, versionId }) =>
-        Handbook.use((h) => h.restore(serverId, versionId)),
-      ),
-    ),
-  "memory.list": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        query: Schema.optionalKey(Schema.String),
-        filter: Schema.optionalKey(MemoryFilterSchema),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, query, filter }) =>
-        Memory.use((m) => m.list(agentId, query, filter)),
-      ),
-    ),
-  "memory.scopes": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Memory.use((m) => m.scopes(agentId))),
-    ),
-  "memory.move": (input) =>
-    decode(Schema.Struct({ id: Schema.String, channelId: Schema.NullOr(Schema.String) }))(
-      input,
-    ).pipe(Effect.flatMap(({ id, channelId }) => Memory.use((m) => m.move(id, channelId)))),
-  // Only the window of this computer clears a mark: the method is not on the list of a linked
-  // device, so the phone and a linked computer get "not allowed" (spec 007, 012).
-  "placeMarks.clear": (input) =>
-    decode(
-      Schema.Struct({
-        place: Schema.Struct({
-          kind: Schema.Literals(["agent", "thread"]),
-          id: Schema.String,
-        }),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ place }) => PlaceMarks.use((m) => Effect.sync(() => m.clear(place)))),
-    ),
   "actionLog.list": (input) =>
     decode(
       Schema.Struct({
-        agentId: Schema.optionalKey(Schema.String),
+        workflowId: Schema.optionalKey(Schema.String),
         result: Schema.optionalKey(Schema.Literals(["ran", "failed", "refused", "stopped"])),
         kind: Schema.optionalKey(Schema.Literals(ACTION_KINDS)),
         search: Schema.optionalKey(Schema.String),
@@ -931,7 +369,7 @@ export const handlers: Handlers = {
   "rules.list": (input) =>
     decode(
       Schema.Struct({
-        agentId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+        workflowId: Schema.optionalKey(Schema.NullOr(Schema.String)),
         decision: Schema.optionalKey(Schema.Literals(["allow", "deny"])),
       }),
     )(input).pipe(Effect.flatMap((filter) => Rules.use((r) => r.list(filter)))),
@@ -1002,22 +440,10 @@ export const handlers: Handlers = {
       done,
     ),
   "secrets.list": (input) =>
-    decode(Schema.Struct({ agentId: Schema.optionalKey(Schema.String) }))(input).pipe(
-      Effect.flatMap(({ agentId }) => SavedSecrets.use((s) => Effect.sync(() => s.list(agentId)))),
-    ),
-  // The value of a secret goes from the window to the keychain only (spec 020).
-  "secrets.answer": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        callId: Schema.String,
-        value: Schema.NullOr(Schema.String),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, callId, value }) =>
-        Tools.use((t) => t.answerSecret(agentId, callId, value)),
+    decode(Schema.Struct({ workflowId: Schema.optionalKey(Schema.String) }))(input).pipe(
+      Effect.flatMap(({ workflowId }) =>
+        SavedSecrets.use((s) => Effect.sync(() => s.list(workflowId))),
       ),
-      done,
     ),
   "secrets.replace": (input) =>
     decode(Schema.Struct({ id: Schema.String, value: Schema.String }))(input).pipe(
@@ -1041,230 +467,9 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => SavedSecrets.use((s) => Effect.sync(() => s.remove(id)))),
       done,
     ),
-  "memory.add": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, text: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, text }) => Memory.use((m) => m.add(agentId, text, "user"))),
-    ),
-  "memory.update": (input) =>
-    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
-      Effect.flatMap(({ id, text }) => Memory.use((m) => m.update(id, text))),
-    ),
-  "memory.delete": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Memory.use((m) => m.remove(id))),
-      done,
-    ),
-  "memory.mode": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Memory.use((m) => m.mode(agentId))),
-    ),
-  "memory.setMode": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, mode: Schema.Literals(MEMORY_MODES) }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ agentId, mode }) => Memory.use((m) => m.setMode(agentId, mode))),
-      done,
-    ),
-  "memory.check": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => MemoryCheck.use((m) => m.info(agentId))),
-    ),
-  "memory.check.set": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, on: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ agentId, on }) => MemoryCheck.use((m) => m.setOn(agentId, on))),
-      done,
-    ),
-  "memory.check.now": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => MemoryCheck.use((m) => m.checkNow(agentId))),
-      done,
-    ),
-  "memory.proposals": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Memory.use((m) => m.proposals(agentId))),
-    ),
-  "memory.proposal.accept": (input) =>
-    decode(Schema.Struct({ id: Schema.String, text: Schema.optionalKey(Schema.String) }))(
-      input,
-    ).pipe(Effect.flatMap(({ id, text }) => Memory.use((m) => m.accept(id, text)))),
-  "memory.proposal.dismiss": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Memory.use((m) => m.dismiss(id))),
-      done,
-    ),
-  "memory.history": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Memory.use((m) => m.history(agentId))),
-    ),
-  "memory.history.get": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Memory.use((m) => m.historyRow(id)))),
-  "memory.undo": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Memory.use((m) => m.undo(id))),
-      done,
-    ),
-  "knowledge.list": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
-      input,
-    ).pipe(Effect.flatMap(({ agentId, query }) => Knowledge.use((k) => k.list(agentId, query)))),
-  "knowledge.get": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, file: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, file }) => Knowledge.use((k) => k.get(agentId, file))),
-    ),
-  "knowledge.save": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        file: Schema.NullOr(Schema.String),
-        title: Schema.String,
-        summary: Schema.String,
-        body: Schema.String,
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, ...article }) => Knowledge.use((k) => k.save(agentId, article))),
-    ),
-  "knowledge.delete": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, file: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, file }) => Knowledge.use((k) => k.remove(agentId, file))),
-      done,
-    ),
-  "knowledge.deleteSource": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, name: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, name }) => Knowledge.use((k) => k.removeSource(agentId, name))),
-      done,
-    ),
-  "knowledge.openSource": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, name: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, name }) =>
-        Effect.gen(function* () {
-          const path = yield* Knowledge.use((k) => k.sourcePath(agentId, name))
-          yield* Platform.use((p) => Effect.promise(() => p.openPath(path)))
-        }),
-      ),
-      done,
-    ),
-  "knowledge.openFolder": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) =>
-        Effect.gen(function* () {
-          const folder = yield* Knowledge.use((k) => k.folder(agentId))
-          // The folder can exist for a source before the first article is saved. It stays shut then.
-          if (!folder.saved) return yield* new AppError({ code: "knowledge_not_found" })
-          yield* Platform.use((p) => Effect.promise(() => p.openPath(folder.path)))
-        }),
-      ),
-      done,
-    ),
-  "knowledge.changes": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Knowledge.use((k) => k.changes(agentId))),
-    ),
-  "knowledge.change": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, changeId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, changeId }) => Knowledge.use((k) => k.change(agentId, changeId))),
-    ),
-  "knowledge.undo": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, changeId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, changeId }) => Knowledge.use((k) => k.undo(agentId, changeId))),
-      done,
-    ),
-  "knowledge.findings": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Knowledge.use((k) => k.findings(agentId))),
-    ),
-  "tools.respond": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ agentId, callId, answer }) => answerCard(agentId, callId, answer)),
-      done,
-    ),
-  "keepAwake.state": () => KeepAwake.use((k) => k.state),
-  "browser.state": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) =>
-        Tools.use((t) =>
-          Effect.succeed({ ...t.browserState(agentId), suggest: t.browserSuggestion(agentId) }),
-        ),
-      ),
-    ),
-  "browser.dismissSuggest": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) =>
-        Tools.use((t) => Effect.sync(() => t.dismissBrowserSuggestion(agentId))),
-      ),
-      done,
-    ),
-  "browser.control": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, control: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ agentId, control }) =>
-        Tools.use((t) => Effect.sync(() => t.setBrowserControl(agentId, control))),
-      ),
-      done,
-    ),
-  "browser.close": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Tools.use((t) => Effect.sync(() => t.closeBrowser(agentId)))),
-      done,
-    ),
-  "browser.place": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        bounds: Schema.NullOr(
-          Schema.Struct({
-            x: Schema.Number,
-            y: Schema.Number,
-            width: Schema.Number,
-            height: Schema.Number,
-          }),
-        ),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, bounds }) =>
-        Tools.use((t) => Effect.sync(() => t.placeBrowser(agentId, bounds ?? undefined))),
-      ),
-      done,
-    ),
-  "teach.state": () => Teach.use((t) => t.state),
-  "teach.start": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, result: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, result }) => Teach.use((t) => t.start(agentId, result))),
-    ),
-  "teach.open": (input) =>
-    decode(Schema.Struct({ url: Schema.String.check(Schema.isMaxLength(4000)) }))(input).pipe(
-      Effect.flatMap(({ url }) => Teach.use((t) => t.open(url))),
-      done,
-    ),
-  "teach.pause": (input) =>
-    decode(Schema.Struct({ paused: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ paused }) => Teach.use((t) => t.pause(paused))),
-      done,
-    ),
-  "teach.stop": () => Teach.use((t) => t.stop),
-  "teach.cancel": () => Teach.use((t) => t.cancel).pipe(done),
-  "teach.retry": () => Teach.use((t) => t.retry).pipe(done),
-  "teach.save": (input) =>
-    decode(
-      Schema.Struct({
-        name: Schema.String.check(Schema.isMaxLength(1000)),
-        description: Schema.String.check(Schema.isMaxLength(10_000)),
-        instructions: Schema.String.check(Schema.isMaxLength(100_000)),
-      }),
-    )(input).pipe(Effect.flatMap((draft) => Teach.use((t) => t.save(draft)))),
-  "teach.discard": () => Teach.use((t) => t.discard).pipe(done),
   "skills.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Skills.use((s) => s.list(serverId))),
-    ),
-  "skills.forAgent": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Skills.use((s) => s.forAgent(agentId))),
-    ),
-  "skills.onlyFor": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Skills.use((s) => s.onlyFor(agentId))),
-      Effect.map((count) => ({ count })),
     ),
   "skills.create": (input) =>
     decode(
@@ -1273,12 +478,9 @@ export const handlers: Handlers = {
         name: Schema.String.check(Schema.isMaxLength(1000)),
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
-        agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
       }),
     )(input).pipe(
-      Effect.flatMap(({ serverId, agentIds, ...skill }) =>
-        Skills.use((s) => s.create(serverId, skill, agentIds)),
-      ),
+      Effect.flatMap(({ serverId, ...skill }) => Skills.use((s) => s.create(serverId, skill))),
     ),
   "skills.update": (input) =>
     decode(
@@ -1287,13 +489,8 @@ export const handlers: Handlers = {
         name: Schema.String.check(Schema.isMaxLength(1000)),
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
-        agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
       }),
-    )(input).pipe(
-      Effect.flatMap(({ id, agentIds, ...skill }) =>
-        Skills.use((s) => s.update(id, skill, agentIds)),
-      ),
-    ),
+    )(input).pipe(Effect.flatMap(({ id, ...skill }) => Skills.use((s) => s.update(id, skill)))),
   "skills.duplicate": (input) =>
     decode(
       Schema.Struct({ id: Schema.String, suffix: Schema.String.check(Schema.isMaxLength(20)) }),
@@ -1307,430 +504,44 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Skills.use((s) => s.remove(id))),
       done,
     ),
-  "skills.draft": (input) =>
-    decode(
-      Schema.Struct({
-        requestId: Schema.String.check(Schema.isMaxLength(100)),
-        source: Schema.Union([
-          Schema.Struct({ kind: Schema.Literal("task"), id: Schema.String }),
-          Schema.Struct({
-            kind: Schema.Literal("article"),
-            agentId: Schema.String,
-            file: Schema.String.check(Schema.isMaxLength(1000)),
-          }),
-          Schema.Struct({ kind: Schema.Literal("memory"), id: Schema.String }),
-        ]),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ requestId, source }) => SkillDrafts.use((d) => d.draft(requestId, source))),
-    ),
-  "skills.draftCancel": (input) =>
-    decode(Schema.Struct({ requestId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ requestId }) => SkillDrafts.use((d) => d.cancel(requestId))),
-      done,
-    ),
-  "routines.list": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => Routines.use((r) => r.list(serverId))),
-    ),
-  "routines.create": (input) =>
-    decode(RoutineInput)(input).pipe(Effect.flatMap((v) => Routines.use((r) => r.create(v)))),
-  "routines.update": (input) =>
-    decode(Schema.Struct({ id: Schema.String, patch: RoutinePatch }))(input).pipe(
-      Effect.flatMap(({ id, patch }) => Routines.use((r) => r.update(id, patch))),
-    ),
-  "routines.delete": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Routines.use((r) => r.remove(id))),
-      done,
-    ),
-  "routines.runNow": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Routines.use((r) => r.runNow(id))),
-      done,
-    ),
-  "routines.runHere": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Routines.use((r) => r.runHere(id)))),
-  "routines.calendar": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, from: Schema.Number, to: Schema.Number }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ serverId, from, to }) =>
-        Routines.use((r) => r.calendar(serverId, from, to)),
-      ),
-    ),
   "workflows.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Workflows.use((w) => w.list(serverId))),
     ),
+  "workflows.get": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.get(id)))),
   "workflows.create": (input) =>
-    decode(WorkflowInput)(input).pipe(Effect.flatMap((v) => Workflows.use((w) => w.create(v)))),
-  "workflows.update": (input) =>
-    decode(Schema.Struct({ id: Schema.String, patch: WorkflowPatch }))(input).pipe(
-      Effect.flatMap(({ id, patch }) => Workflows.use((w) => w.update(id, patch))),
+    decode(WorkflowCreate)(input).pipe(Effect.flatMap((v) => Workflows.use((w) => w.create(v)))),
+  "workflows.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, name }) => Workflows.use((w) => w.rename(id, name))),
+    ),
+  "workflows.document.save": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, text }) =>
+        Effect.gen(function* () {
+          // The device that asks is named in the version (spec 002: "from <device>").
+          const actor = yield* CurrentActor
+          return yield* Workflows.use((w) => w.saveDocument(id, text, "editor", actor?.name))
+        }),
+      ),
+    ),
+  "workflows.document.history": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Workflows.use((w) => w.documentHistory(id))),
+    ),
+  "workflows.document.restore": (input) =>
+    decode(Schema.Struct({ id: Schema.String, versionId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, versionId }) => Workflows.use((w) => w.restoreDocument(id, versionId))),
     ),
   "workflows.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Workflows.use((w) => w.remove(id))),
       done,
     ),
-  "workflows.run": (input) =>
-    decode(Schema.Struct({ id: Schema.String, triggerText: Schema.optionalKey(Schema.String) }))(
-      input,
-    ).pipe(Effect.flatMap(({ id, triggerText }) => Workflows.use((w) => w.run(id, triggerText)))),
-  "workflows.runHere": (input) =>
-    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.runHere(id)))),
-  "workflows.stop": (input) =>
-    decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ runId }) => Workflows.use((w) => w.stop(runId))),
-      done,
-    ),
-  "workflows.approve": (input) =>
-    decode(
-      Schema.Struct({ runId: Schema.String, stepId: Schema.String, approved: Schema.Boolean }),
-    )(input).pipe(
-      Effect.flatMap(({ runId, stepId, approved }) =>
-        Workflows.use((w) => w.approve(runId, stepId, approved)),
-      ),
-      done,
-    ),
-  "workflows.runs": (input) =>
-    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ workflowId }) => Workflows.use((w) => w.runs(workflowId))),
-    ),
-  "workflows.runDetail": (input) =>
-    decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ runId }) => Workflows.use((w) => w.runDetail(runId))),
-    ),
-  "workflowFile.export": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, workflowIds: Schema.Array(Schema.String) }))(
-      input,
-    ).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.export(data)))),
-  "workflowFile.exportCc": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, workflowId: Schema.String }))(input).pipe(
-      Effect.flatMap((data) => WorkflowFiles.use((f) => f.exportCc(data))),
-    ),
-  "workflowFile.open": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
-    ),
-  "workflowFile.apply": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        pick: Schema.Array(Schema.Int),
-        agentId: Schema.optionalKey(Schema.String),
-      }),
-    )(input).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data)))),
-  "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
-  "notifications.setMute": (input) =>
-    decode(
-      Schema.Struct({
-        kind: Schema.Literals(["server"]),
-        id: Schema.String,
-        choice: Schema.Literals(MUTE_CHOICES),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ kind, id, choice }) => Notifier.use((n) => n.setMute(kind, id, choice))),
-      done,
-    ),
-  "island.get": () => Notifier.use((n) => Effect.succeed(n.island())),
-  "quiet.list": () => Activity.use((a) => Effect.sync(() => a.quietTurns())),
-  "island.respond": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
-      input,
-    ).pipe(
-      // The island takes "Always allow" only for a request that offers it. Else it is one "Allow".
-      Effect.flatMap(({ agentId, callId, answer }) =>
-        Notifier.use((n) =>
-          Effect.succeed(answer === "always" && !n.canAlways(agentId, callId) ? "allow" : answer),
-        ).pipe(Effect.flatMap((safe) => answerCard(agentId, callId, safe))),
-      ),
-      done,
-    ),
-  "island.openApp": (input) =>
-    decode(
-      Schema.Struct({
-        target: Schema.Struct({
-          kind: Schema.Literals(["agent"]),
-          id: Schema.String,
-          messageId: Schema.optionalKey(Schema.String),
-        }),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ target }) =>
-        Effect.gen(function* () {
-          const platform = yield* Platform
-          const bus = yield* EventBus
-          platform.showWindow()
-          // The window gets the place from the same event as a notification click.
-          bus.emit("app.openPlace", target)
-        }),
-      ),
-      done,
-    ),
-  "island.dismissResult": (input) =>
-    decode(Schema.Struct({ id: Schema.Number }))(input).pipe(
-      Effect.flatMap(({ id }) => Notifier.use((n) => Effect.sync(() => n.dismissResult(id)))),
-      done,
-    ),
-  "island.fit": (input) =>
-    decode(
-      Schema.Struct({
-        width: Schema.Number,
-        height: Schema.Number,
-        animate: Schema.optional(Schema.Boolean),
-      }),
-    )(input).pipe(
-      Effect.flatMap((size) => Platform.use((p) => Effect.sync(() => p.fitIsland(size)))),
-      done,
-    ),
-  "usage.summary": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        days: Schema.Literals(USAGE_RANGES),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ serverId, days }) => Usage.use((u) => u.summary(serverId, days))),
-    ),
-  "messages.search": (input) =>
-    decode(
-      Schema.Struct({
-        serverId: Schema.String,
-        query: Schema.String.check(Schema.isMaxLength(SEARCH_QUERY_MAX)),
-        offset: Schema.optionalKey(
-          Schema.Number.check(
-            Schema.isInt(),
-            Schema.isBetween({ minimum: 0, maximum: SEARCH_CAP }),
-          ),
-        ),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ serverId, query, offset }) =>
-        // A linked device finds the main thread only (spec 003, 001).
-        CurrentActor.pipe(
-          Effect.flatMap((actor) =>
-            Search.use((s) => s.page(serverId, query, offset ?? 0, actor !== null)),
-          ),
-        ),
-      ),
-    ),
-  "chat.history": (input) =>
-    decode(ByThread)(input).pipe(
-      Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.history(agentId, threadId))),
-    ),
-  "chat.send": (input) =>
-    decode(ChatSend)(input).pipe(Effect.flatMap((data) => Chat.use((c) => c.send(data)))),
-  "chat.stop": (input) =>
-    decode(ByThread)(input).pipe(
-      Effect.flatMap(({ agentId, threadId }) =>
-        // A reply that runs on the other computer of a sync pair is stopped there (spec 019).
-        Chat.use((c) => c.stop(agentId, threadId)).pipe(
-          Effect.andThen(threadId ? Effect.void : Tasks.use((t) => t.stopRemoteFor(agentId))),
-        ),
-      ),
-      done,
-    ),
-  "chat.retry": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        messageId: Schema.String,
-        confirmed: Schema.optionalKey(Schema.Boolean),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, messageId, confirmed }) =>
-        retryOptions(confirmed).pipe(
-          Effect.flatMap((o) => Chat.use((c) => c.retry(agentId, messageId, o))),
-        ),
-      ),
-    ),
-  "chat.edit": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String, text: MessageText }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ agentId, messageId, text }) =>
-        Chat.use((c) => c.edit(agentId, messageId, text)),
-      ),
-      done,
-    ),
-  "chat.queue.update": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, itemId: Schema.String, text: MessageText }))(
-      input,
-    ).pipe(
-      Effect.flatMap(({ agentId, itemId, text }) =>
-        Chat.use((c) => c.updateQueued(agentId, itemId, text)),
-      ),
-      done,
-    ),
-  "chat.queue.remove": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, itemId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, itemId }) => Chat.use((c) => c.removeQueued(agentId, itemId))),
-      done,
-    ),
-  "chat.queue.sendNow": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, itemId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, itemId }) => Chat.use((c) => c.sendNow(agentId, itemId))),
-      done,
-    ),
-  "chat.unread.delete": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, messageId }) =>
-        Chat.use((c) => c.deleteUnread(agentId, messageId)),
-      ),
-      done,
-    ),
-  "chat.markRead": (input) =>
-    decode(ByThread)(input).pipe(
-      Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.markRead(agentId, threadId))),
-      done,
-    ),
-  "chat.meter": (input) =>
-    decode(ByThread)(input).pipe(Effect.flatMap((i) => Chat.use((c) => c.meter(placeOf(i))))),
-  "chat.compact": (input) =>
-    decode(ByThread)(input).pipe(
-      Effect.flatMap((i) => Chat.use((c) => c.compact(placeOf(i)))),
-      done,
-    ),
-  "setup.list": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) =>
-        Effect.gen(function* () {
-          const agent = yield* Agents.use((a) => a.get(agentId))
-          return listSetup((yield* Platform).dataDir, agent.workspace)
-        }),
-      ),
-    ),
-  "setup.run": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, name }) =>
-        Effect.gen(function* () {
-          const agent = yield* Agents.use((a) => a.get(agentId))
-          return yield* Effect.promise(() => runNamed(agent.workspace, name))
-        }),
-      ),
-    ),
-  "setup.allow": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, on: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ agentId, on }) =>
-        Effect.gen(function* () {
-          const agent = yield* Agents.use((a) => a.get(agentId))
-          return setSetupAllowed((yield* Platform).dataDir, agent.workspace, on)
-        }),
-      ),
-    ),
-  "setup.file": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) =>
-        Effect.gen(function* () {
-          const agent = yield* Agents.use((a) => a.get(agentId))
-          return readSetupFile(agent.workspace)
-        }),
-      ),
-    ),
-  "setup.save": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        replace: Schema.Boolean,
-        actions: Schema.Array(
-          Schema.Struct({
-            name: Schema.String,
-            command: Schema.String,
-            onOwnCopy: Schema.Boolean,
-            onTurnStart: Schema.Boolean,
-          }),
-        ),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, actions, replace }) =>
-        Effect.gen(function* () {
-          const agent = yield* Agents.use((a) => a.get(agentId))
-          return writeSetupFile((yield* Platform).dataDir, agent.workspace, actions, replace)
-        }),
-      ),
-    ),
-  "chat.threads": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Chat.use((c) => c.threads(agentId))),
-    ),
-  "chat.thread.create": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Chat.use((c) => c.createThread(agentId))),
-    ),
-  "chat.thread.fork": (input) =>
-    decode(Schema.Struct({ ...ByThread.fields, messageId: Schema.String }))(input).pipe(
-      Effect.flatMap((i) => Chat.use((c) => c.fork(placeOf(i), i.messageId))),
-    ),
-  "chat.thread.rename": (input) =>
-    decode(
-      Schema.Struct({
-        agentId: Schema.String,
-        threadId: Schema.String,
-        title: Schema.String.check(Schema.isMaxLength(1000)),
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, threadId, title }) =>
-        Chat.use((c) => c.renameThread(agentId, threadId, title)),
-      ),
-      done,
-    ),
-  "chat.thread.archive": (input) =>
-    decode(
-      Schema.Struct({ agentId: Schema.String, threadId: Schema.String, archived: Schema.Boolean }),
-    )(input).pipe(
-      Effect.flatMap(({ agentId, threadId, archived }) =>
-        Chat.use((c) => c.archiveThread(agentId, threadId, archived)),
-      ),
-      done,
-    ),
-  "chat.thread.delete": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, threadId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.deleteThread(agentId, threadId))),
-      done,
-    ),
-  // Hand over is for the window of this computer: these methods are not on the list of a linked
-  // device, so the phone and a linked computer get "not allowed" (spec 003, 012).
-  "chat.handover.state": (input) =>
-    decode(ByThread)(input).pipe(Effect.flatMap((i) => Handover.use((h) => h.state(placeOf(i))))),
-  "chat.handover.open": (input) =>
-    decode(ByThread)(input).pipe(Effect.flatMap((i) => Handover.use((h) => h.open(placeOf(i))))),
-  "chat.handover.start": (input) =>
-    decode(
-      Schema.Struct({
-        ...ByThread.fields,
-        toAgentId: Schema.String,
-        text: Schema.String.check(Schema.isMaxLength(10_000)),
-        briefId: Schema.String,
-      }),
-    )(input).pipe(
-      Effect.flatMap((i) =>
-        Handover.use((h) =>
-          h.start({
-            place: placeOf(i),
-            toAgentId: i.toAgentId,
-            text: i.text,
-            briefId: i.briefId,
-          }),
-        ),
-      ),
-    ),
 }
 
 /** True when the input names a thread other than the main thread. */
-const otherThread = (input: unknown) =>
-  typeof input === "object" &&
-  input !== null &&
-  "threadId" in input &&
-  (input as { threadId?: unknown }).threadId !== null &&
-  (input as { threadId?: unknown }).threadId !== undefined
-
 /** Runs one request and turns every outcome into plain data. */
 export const runRequest = async (
   runtime: ManagedRuntime.ManagedRuntime<Services, never>,
@@ -1746,21 +557,12 @@ export const runRequest = async (
   if (isHostMethod(method)) {
     return runtime.runPromise(Host.use((h) => Effect.promise(() => h.call(method, input, actor))))
   }
-  // A linked device has the main thread only in this version (spec 011, 012).
-  if (actor && method.startsWith("chat.") && otherThread(input)) {
-    return { ok: false, error: { code: "not_allowed", message: "Not allowed" } }
-  }
-  const handler =
-    (actor ? linkHandlers[method] : undefined) ??
-    (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
+  const handler = (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
   if (!handler) return { ok: false, error: { code: "unknown_method", message: method } }
   // The device that asks is known to the handlers: they record "from <device>" with it.
-  // A linked device names its files by the tokens of its uploads, never by a path.
-  const run =
-    actor && method === "chat.send"
-      ? withUploads(actor, input, (mapped) => handler(mapped as never))
-      : handler(input as never)
-  const exit = await runtime.runPromiseExit(Effect.provideService(run, CurrentActor, actor))
+  const exit = await runtime.runPromiseExit(
+    Effect.provideService(handler(input as never), CurrentActor, actor),
+  )
   if (Exit.isSuccess(exit)) return { ok: true, value: exit.value }
   const failure = exit.cause.reasons.find(Cause.isFailReason)
   if (failure) {
@@ -1784,21 +586,10 @@ export const bindLinkDispatcher = (runtime: ManagedRuntime.ManagedRuntime<Servic
     ),
   )
 
-/**
- * A call of the window. A call for a linked server goes over the link; when the id is not a linked
- * server (it is this computer), the call runs here.
- */
+/** A call of the window. Linked servers are not reached in this version: the call runs here. */
 export const runWindowRequest = async (
   runtime: ManagedRuntime.ManagedRuntime<Services, never>,
   method: string,
   input: unknown,
-  server?: string,
-): Promise<RpcResult<unknown>> => {
-  if (server && typeof server === "string") {
-    const remote = await runtime.runPromise(
-      Remote.use((r) => Effect.promise(() => r.invoke(server, method, input))),
-    )
-    if (remote.ok || remote.error.code !== "server_not_found") return remote
-  }
-  return runRequest(runtime, method, input)
-}
+  _server?: string,
+): Promise<RpcResult<unknown>> => runRequest(runtime, method, input)

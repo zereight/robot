@@ -64,16 +64,7 @@ test("settings: language, theme and text size apply at once and survive a restar
   await expect(page.getByTestId("settings-nav-general")).toHaveText("일반")
   await expect(page.locator("html")).toHaveAttribute("lang", "ko")
 
-  for (const section of [
-    "general",
-    "appearance",
-    "providers",
-    "devices",
-    "notifications",
-    "archive",
-    "data",
-    "about",
-  ]) {
+  for (const section of ["general", "appearance", "providers", "devices", "data", "about"]) {
     await page.getByTestId(`settings-nav-${section}`).click()
     expect(await latinWords(page, "[data-testid=settings]"), `section ${section}`).toEqual([])
   }
@@ -92,8 +83,6 @@ test("settings: language, theme and text size apply at once and survive a restar
   await expect(page.locator("html")).toHaveCSS("font-size", "16px")
   await chooseOption(page, "setting-reduce-motion", "on")
   await expect(page.locator("html")).toHaveAttribute("data-reduce-motion", "true")
-  await page.getByTestId("setting-compact-places").click()
-  await expect(page.getByTestId("setting-compact-places")).toHaveAttribute("aria-checked", "true")
 
   await page.getByTestId("settings-close").click()
   await expect(page.getByTestId("settings")).toBeHidden()
@@ -105,7 +94,9 @@ test("settings: language, theme and text size apply at once and survive a restar
   await expect(page.locator("html")).toHaveCSS("font-size", "16px")
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-appearance").click()
-  await expect(page.getByTestId("setting-compact-places")).toHaveAttribute("aria-checked", "true")
+  await expect(
+    page.getByTestId("setting-reduce-motion").locator('label[data-value="on"] input'),
+  ).toBeChecked()
   await shot(page, "s1-04-after-restart")
   await app.close()
 })

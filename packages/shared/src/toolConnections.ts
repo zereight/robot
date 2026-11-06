@@ -1,4 +1,4 @@
-import { charLength, nameKey } from "./agents.ts"
+import { charLength, nameKey } from "./chars.ts"
 import type { HeldTag } from "./toolReview.ts"
 
 // ---------------------------------------------------------------------------------------------
@@ -66,8 +66,6 @@ export interface ToolConnectionInput {
   readonly env: readonly ConnectionEntryInput[]
   readonly address: string
   readonly headers: readonly ConnectionEntryInput[]
-  /** "all", or the ids of the agents that may use the connection. */
-  readonly agents: "all" | readonly string[]
 }
 
 /** What the window sends to save a connection. `id` is left out for a new connection. */
@@ -123,7 +121,6 @@ export interface ToolConnection {
   readonly env: readonly ConnectionEntryView[]
   readonly address: string
   readonly headers: readonly ConnectionEntryView[]
-  readonly agents: "all" | readonly string[]
   readonly state: ConnectionState
   /** The reason, when the state is "error". */
   readonly failure: ConnectionFailure | null

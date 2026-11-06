@@ -12,7 +12,6 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
-import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { ModelsPart } from "./ModelsPart.tsx"
@@ -407,16 +406,6 @@ export const ProvidersSection = () => {
   const { t } = useApp()
   const providers = useProviders()
   const [adding, setAdding] = createSignal(false)
-  // A page asks for an account: its row lights up. An account that is gone is dropped.
-  createEffect(() => {
-    const target = openTarget()
-    if (target?.kind !== "account") return
-    if (providers.accounts().some((a) => a.id === target.id)) {
-      queueMicrotask(() => {
-        if (flashRow(`[data-testid="provider-${target.id}"]`)) takeTarget("account")
-      })
-    } else takeTarget("account")
-  })
   const accountIds = createMemo(() => providers.accounts().map((a) => a.id), [], {
     equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
   })

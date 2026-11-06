@@ -48,7 +48,6 @@ import {
   openMcp,
 } from "../connections/mcp.ts"
 import type { ToolDef } from "../providers/chat.ts"
-import { mayUseRow } from "./agentList.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -73,7 +72,6 @@ interface Row {
   env: string
   address: string
   headers: string
-  agents: string | null
   enabled: number
   state: string
   failure: string | null
@@ -189,7 +187,7 @@ export interface ConnectionsService {
    * Starts the connections that an agent may use and gives the tools for one turn. A connection
    * that does not start is named in `down`, and the turn goes on without it.
    */
-  forTurn(agentId: string): Effect.Effect<ConnectionTurn>
+  forTurn(workflowId: string): Effect.Effect<ConnectionTurn>
   /** The saved secret values of all connections. An export hides them in the text that it writes. */
   knownValues(): string[]
   /** The ids of the connections that run now. For tests. */
@@ -373,7 +371,6 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             env: env.map(asView),
             address: row.address,
             headers: headers.map(asView),
-            agents: row.agents === null ? "all" : parse<string[]>(row.agents, []),
             state,
             failure:
               state === "error" ? ((row.failure as ConnectionFailure | null) ?? "ended") : null,
@@ -591,8 +588,8 @@ export class Connections extends Context.Service<Connections, ConnectionsService
           return { type: "object", properties: {}, additionalProperties: true }
         }
 
-        const forTurn = async (agentId: string): Promise<ConnectionTurn> => {
-          const mine = rows().filter((row) => row.enabled === 1 && mayUseRow(row, agentId))
+        const forTurn = async (_workflowId: string): Promise<ConnectionTurn> => {
+          const mine = rows().filter((row) => row.enabled === 1)
           const down: string[] = []
           const held: string[] = []
           const sources: { id: string; name: string; tools: McpTool[] }[] = []
@@ -873,8 +870,6 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               return yield* new AppError({ code: "connections_full" })
             if (form.kind === "program" && !input.confirmed)
               return yield* new AppError({ code: "connection_confirm", detail: "confirm" })
-            if (form.agents !== "all" && form.agents.length === 0)
-              return yield* new AppError({ code: "connection_agents", detail: "agents" })
 
             const id = before?.id ?? randomUUID()
             const isProgram = form.kind === "program"
@@ -906,7 +901,6 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             } catch {
               return yield* new AppError({ code: "connection_keychain" })
             }
-            const agents = form.agents === "all" ? null : JSON.stringify([...new Set(form.agents)])
             const next = {
               name: form.name.trim(),
               kind: form.kind as ToolConnectionKind,
@@ -923,9 +917,9 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
-                    agents, enabled, state, failure, tools, tools_more, tools_off,
+                    enabled, state, failure, tools, tools_more, tools_off,
                     reviewed, review_adopt, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?)`,
                 id,
                 serverId(),
                 next.name,
@@ -937,7 +931,6 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 next.env,
                 next.address,
                 next.headers,
-                agents,
                 probeResult ? "connected" : "untested",
                 JSON.stringify(probeResult ? toStored(probeResult.tools) : []),
                 probeResult?.more ? 1 : 0,
@@ -959,12 +952,12 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               const probeResult = tested.get(mark)
               tested.delete(mark)
               // How the app reaches the server changed: what it read before is not known any more,
-              // and the reviewed tools are cleared. A change of the name, of the agents or of a
+              // and the reviewed tools are cleared. A change of the name or of a
               // switch does not clear them (spec 018, "Tool review").
               const keepsTools = !reachChanged
               db.run(
                 `UPDATE tool_connection SET name = ?, name_key = ?, kind = ?, command = ?, args = ?,
-                   folder = ?, env = ?, address = ?, headers = ?, agents = ?,
+                   folder = ?, env = ?, address = ?, headers = ?,
                    state = ?, failure = NULL, tools = ?, tools_more = ?, tools_off = ?,
                    reviewed = ?, review_adopt = ?
                  WHERE id = ?`,
@@ -977,7 +970,6 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 next.env,
                 next.address,
                 next.headers,
-                agents,
                 probeResult ? "connected" : keepsTools ? before.state : "untested",
                 probeResult
                   ? JSON.stringify(toStored(probeResult.tools))
@@ -1138,7 +1130,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               db.run("DELETE FROM tool_connection WHERE id = ?", id)
               changed()
             }),
-          forTurn: (agentId) => Effect.promise(() => forTurn(agentId)),
+          forTurn: (workflowId) => Effect.promise(() => forTurn(workflowId)),
           knownValues: () => {
             const out: string[] = []
             for (const row of rows()) {

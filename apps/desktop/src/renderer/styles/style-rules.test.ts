@@ -14,9 +14,7 @@ import { palettes } from "../theme/tokens.ts"
 
 const root = join(import.meta.dir, "..")
 
-// The status island is its own window with a fixed dark look that ignores the theme, so it has
-// no theme colours. It loads the motion tokens alone (motion.css), and the test below checks them.
-const skipped = new Set(["island/island.css"])
+const skipped = new Set<string>()
 
 type Declaration = { file: string; line: number; prop: string; value: string }
 
@@ -85,12 +83,7 @@ rule(
   "Use var(--text-xs) to var(--text-2xl).",
   // A size in em is relative to the text around it, so it follows the step of that text.
   (d) => d.prop === "font-size" && !/^(?:var\(--text-[a-z0-9]+\)|inherit|[0-9.]+em)$/.test(d.value),
-  [
-    "chat/chat.module.css | font-size: 1.25rem",
-    "chat/chat.module.css | font-size: 0.8rem",
-    "devices/devices.module.css | font-size: 2rem",
-    "shell/shell.module.css | font-size: 0.9rem",
-  ],
+  ["devices/devices.module.css | font-size: 2rem"],
 )
 
 // DESIGN.md, "The Prose Rule". The step scale is what carries the hierarchy, so the scale itself
@@ -133,13 +126,7 @@ rule(
   "radius",
   "Use var(--radius-s), var(--radius-m) or var(--radius-l).",
   (d) => /^border(?:-[a-z]+)*-radius$/.test(d.prop) && !radiusValue.test(d.value),
-  [
-    "shell/shell.module.css | border-radius: 30%",
-    "shell/shell.module.css | border-radius: 2px",
-    "shell/shell.module.css | border-radius: 9px",
-    "ui/controls.module.css | border-radius: 10px",
-    "workflows/workflows.module.css | border-radius: 10px",
-  ],
+  ["shell/shell.module.css | border-radius: 30%", "ui/controls.module.css | border-radius: 10px"],
 )
 
 const motionProps = /^(?:transition|animation)(?:-(?:duration|delay|timing-function))?$/
@@ -168,13 +155,7 @@ rule(
     const value = d.value.replace(/rgb\(0 0 0 \/ [0-9.]+\)/g, "")
     return /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(value)
   },
-  [
-    "workflows/workflows.module.css | border-color: #3a9b57",
-    "workflows/workflows.module.css | --note-tone: #e0b400",
-    "workflows/workflows.module.css | --note-tone: #3b82f6",
-    "workflows/workflows.module.css | --note-tone: #22a55b",
-    "workflows/workflows.module.css | --note-tone: #e0558f",
-  ],
+  [],
 )
 
 // DESIGN.md, "Don't": a focus ring is never removed without a replacement. `:focus-visible` in
@@ -186,22 +167,10 @@ rule(
   "Do not set outline: none. Replace the ring in the same sheet, or leave the global one.",
   (d) => d.prop === "outline" && /^none$/.test(d.value),
   [
-    "agents/agents.module.css | outline: none",
-    "agents/agents.module.css | outline: none",
-    "agents/role.module.css | outline: none",
-    "agents/role.module.css | outline: none",
-    "chat/chat.module.css | outline: none",
-    "chat/handover.module.css | outline: none",
-    "knowledge/knowledge.module.css | outline: none",
     "providers/providers.module.css | outline: none",
     "settings/connections.module.css | outline: none",
-    "settings/handbook.module.css | outline: none",
     "settings/settings.module.css | outline: none",
-    "shell/shell.module.css | outline: none",
-    "shell/shell.module.css | outline: none",
-    "shell/shell.module.css | outline: none",
     "ui/controls.module.css | outline: none",
-    "workflows/workflows.module.css | outline: none",
   ],
 )
 
@@ -276,19 +245,3 @@ rule(
     ),
   [],
 )
-
-describe("status island motion", () => {
-  const css = readFileSync(join(root, "island/island.css"), "utf8")
-
-  test("it loads the shared motion tokens", () => {
-    expect(css).toContain('@import "../styles/motion.css"')
-  })
-
-  test("its motion times and curves are tokens", () => {
-    const lines = css
-      .split("\n")
-      .filter((l) => /^\s*animation:\s*\S+\s/.test(l) && !l.includes("none"))
-    expect(lines.length).toBeGreaterThan(0)
-    for (const l of lines) expect(l).toMatch(/var\(--motion-[a-z]+\)\s+var\(--ease-[a-z-]+\)/)
-  })
-})

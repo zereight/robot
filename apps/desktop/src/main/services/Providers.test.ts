@@ -3,10 +3,8 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit } from "effect"
-import { Agents } from "./Agents.ts"
 import { Database } from "./Database.ts"
 import { checkWait, Providers } from "./Providers.ts"
-import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
 
 const GOOD_KEY = "sk-test-good"
@@ -57,26 +55,12 @@ describe("Providers", () => {
     expect(models.find((m) => m.id === "o3")?.efforts).toEqual(["low", "medium", "high"])
   })
 
-  test("disconnect removes the key; agents that use the account go offline", async () => {
+  test("disconnect removes the key", async () => {
     const { runtime } = testRuntime()
     const account = await runtime.runPromise(
       Providers.use((p) => p.connect({ kind: "openai", name: "Work", baseUrl, apiKey: GOOD_KEY })),
     )
-    const local = await runtime.runPromise(Servers.use((s) => s.local))
-    const agent = await runtime.runPromise(
-      Agents.use((a) =>
-        a.create({
-          serverId: local.id,
-          name: "Ada",
-          role: "",
-          instructions: "",
-          model: { accountId: account.id, model: "o3", effort: "low" },
-        }),
-      ),
-    )
-    expect(agent.state).toBe("idle")
     await runtime.runPromise(Providers.use((p) => p.disconnect(account.id)))
-    expect((await runtime.runPromise(Agents.use((a) => a.get(agent.id)))).state).toBe("offline")
     expect((await runtime.runPromise(Providers.use((p) => p.list)))[0]?.connected).toBe(false)
     expect(code(await runtime.runPromiseExit(Providers.use((p) => p.connection(account.id))))).toBe(
       "provider_not_connected",

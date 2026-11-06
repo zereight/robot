@@ -1,44 +1,13 @@
-import type { AgentFileExported, AgentFileImported, AgentFilePreview } from "./agentFile.ts"
-import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
-import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
-import type { CcNotExported } from "./ccWorkflowExport.ts"
-import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
-import type { EventResult, EventText, EventWhy, RobotEvent } from "./events.ts"
-import type { FollowUp } from "./followUp.ts"
-import type { Handbook, HandbookVersion } from "./handbook.ts"
-import type { HandoverOpen, HandoverState } from "./handover.ts"
-import type { AgentPick, ImportChecklist } from "./importReview.ts"
-import type { KeepAwakeState } from "./keepAwake.ts"
 import type {
-  KnowledgeArticle,
-  KnowledgeChange,
-  KnowledgeFindings,
-  KnowledgeView,
-} from "./knowledge.ts"
-import type {
-  ConnectProbe,
   DevicesState,
   JoinRequest,
   ModelChoice,
   NearbyComputer,
   PairingState,
-  ServerEntry,
-  WireNotice,
 } from "./link.ts"
-import type {
-  MemoryFilter,
-  MemoryHistoryRow,
-  MemoryItem,
-  MemoryMode,
-  MemoryProposal,
-  MemoryScope,
-} from "./memory.ts"
-import type { MemoryCheckInfo } from "./memoryCheck.ts"
-import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
-import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
   ModelInfo,
   ProviderAccount,
@@ -48,36 +17,10 @@ import type {
   RuntimeStatus,
   RuntimeTarget,
 } from "./providers.ts"
-import type { QuietState } from "./quiet.ts"
-import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
-import type { SearchPage } from "./search.ts"
 import type { SavedSecret } from "./secrets.ts"
-import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
-import type {
-  SetupActionInput,
-  SetupFileView,
-  SetupList,
-  SetupRunResult,
-  SetupSaveResult,
-} from "./setupActions.ts"
-import type { SkillDraftResult, SkillSourceRef } from "./skillDraft.ts"
 import type { Skill, SkillInput } from "./skills.ts"
-import type { AgentStarterCreate } from "./starters.ts"
-import type { RetryResult } from "./steps.ts"
-import type {
-  SyncChangeEntry,
-  SyncGuard,
-  SyncMode,
-  SyncPreview,
-  SyncRequest,
-  SyncStatus,
-} from "./sync.ts"
-import type { Task, TaskDetail } from "./task.ts"
-import type { TeachState } from "./teach.ts"
-import type { TeamsLinkView, TeamsPatch } from "./teamsLink.ts"
-import type { ChatMeter, ChatThread, ChatThreads } from "./threads.ts"
 import type {
   ConnectionSaveInput,
   ConnectionTestResult,
@@ -85,18 +28,8 @@ import type {
   ToolConnectionInput,
 } from "./toolConnections.ts"
 import type { HeldToolView } from "./toolReview.ts"
-import type { ApprovalAnswer } from "./tools.ts"
-import type { PlaceKind, PlaceRef, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
-import type { UsageRange, UsageRow } from "./usage.ts"
-import type { RecentWorkRow } from "./work.ts"
-import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
-import type {
-  Workflow,
-  WorkflowInput,
-  WorkflowPatch,
-  WorkflowRun,
-  WorkflowRunDetail,
-} from "./workflows.ts"
+import type { Server, UiState, UiStatePatch } from "./ui.ts"
+import type { DocumentVersion, Workflow, WorkflowCreate, WorkflowDetail } from "./workflows.ts"
 
 /** Information about the running app. */
 export interface AppInfo {
@@ -136,8 +69,6 @@ export interface RpcMethods {
   "data.openFolder": { input: undefined; output: undefined }
   /** This computer, then the linked computers it can open, with their connection states. */
   "servers.list": { input: undefined; output: readonly Server[] }
-  /** Tries a linked server at once, when it is not online. */
-  "servers.retry": { input: { serverId: string }; output: undefined }
   "devices.get": { input: undefined; output: DevicesState }
   /** Changes the name of this device, or "Let other devices connect". */
   "devices.update": {
@@ -162,90 +93,8 @@ export interface RpcMethods {
   "devices.client.remove": { input: { id: string }; output: undefined }
   /** The switch "Can create and change agents" of one device. Fails while the computers sync. */
   "devices.client.setChange": { input: { id: string; canChange: boolean }; output: undefined }
-  /** Ends the link to a computer that this computer can open. Deletes its cache. */
-  "devices.server.remove": { input: { id: string }; output: undefined }
-  "devices.server.setAddresses": {
-    input: { id: string; addresses: readonly string[] }
-    output: ServerEntry
-  }
-  /**
-   * First step of "Connect to a computer": proves the code to the computer. Give a link text, or
-   * an address and a code.
-   */
-  "devices.connect.probe": {
-    input: { link?: string | undefined; address?: string | undefined; code?: string | undefined }
-    output: ConnectProbe
-  }
-  /** Second step: asks the computer to allow this device. Ends when the user there decided. */
-  "devices.connect.finish": {
-    input: { session: string; twoWay: boolean }
-    output: ServerEntry
-  }
-  "devices.connect.cancel": { input: { session: string }; output: undefined }
   /** Computers on this network that show a pairing code now. */
   "devices.nearby": { input: undefined; output: readonly NearbyComputer[] }
-  /** The sync row of each computer this computer can open (spec 019). */
-  "sync.list": { input: undefined; output: readonly SyncStatus[] }
-  /** What both computers hold, for the start dialog. The other computer must be online. */
-  "sync.preview": { input: { linkId: string }; output: SyncPreview }
-  /** Asks the other computer to sync. Ends when the other user decided, or the user cancelled. */
-  "sync.start": { input: { linkId: string; mode: SyncMode }; output: SyncStatus }
-  /** Cancels a request that waits for Allow. */
-  "sync.cancelOffer": { input: { linkId: string }; output: undefined }
-  "sync.pause": { input: { linkId: string }; output: undefined }
-  "sync.resume": { input: { linkId: string }; output: undefined }
-  /** Stops syncing. Both computers keep all their data. */
-  "sync.stop": { input: { linkId: string }; output: undefined }
-  /** Closes the "<name> stopped syncing" or "did not allow" line. */
-  "sync.dismiss": { input: { linkId: string }; output: undefined }
-  /** Requests from other computers that wait for Allow or Deny. */
-  "sync.requests": { input: undefined; output: readonly SyncRequest[] }
-  "sync.decide": { input: { id: string; allow: boolean }; output: undefined }
-  /** The newest 100 changes that came from the other computer. */
-  "sync.changes": { input: undefined; output: readonly SyncChangeEntry[] }
-  /** Deletions that wait for a decision (spec 019, Delete). */
-  "sync.guard": { input: undefined; output: SyncGuard | null }
-  "sync.guard.decide": { input: { remove: boolean }; output: undefined }
-  /** True when the file of a message is on this computer. */
-  "sync.file.here": {
-    input: { agentId: string; path: string; size: number; messageId: string }
-    output: boolean
-  }
-  /** Opens the file of a message. A file that is not here is copied from the origin first. */
-  "sync.file.open": {
-    input: { agentId: string; path: string; size: number; messageId: string }
-    output: undefined
-  }
-  "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
-  /**
-   * The bytes of a picture that a message holds (spec 003, flow 4), for the small picture above the
-   * message. Null when the file is not a picture of a kind that shows, is not on this computer or
-   * is not reachable now. A linked server sends the bytes over the link.
-   */
-  "attachments.picture": {
-    input: { agentId: string; path: string; size: number; messageId: string }
-    output: Uint8Array | null
-  }
-  /** Saves a file of a message of a linked server to this computer. Asks where to save it. */
-  "attachments.save": {
-    input: { agentId: string; path: string; name: string }
-    output: { saved: boolean }
-  }
-  /** Moves a place into a user section of its kind, or out of any (`sectionId` null). */
-  "places.move": {
-    input: { kind: PlaceKind; id: string; sectionId: string | null }
-    output: undefined
-  }
-  /** Pins a place to the group "Pinned", or unpins it. At 10 pinned places "pin" fails. */
-  "places.pin": { input: { kind: PlaceKind; id: string; pinned: boolean }; output: undefined }
-  /** Sets the order of one list of places: the place at index 0 is first. */
-  "places.order": { input: { items: readonly PlaceRef[] }; output: undefined }
-  "sections.create": { input: SectionCreate; output: UserSection }
-  "sections.rename": { input: { id: string; name: string }; output: UserSection }
-  /** One step in the order of the sections of its kind. At an end it changes nothing. */
-  "sections.move": { input: { id: string; direction: MoveDirection }; output: undefined }
-  /** Deletes the section. Its places move to "No section"; none is deleted. */
-  "sections.delete": { input: { id: string }; output: undefined }
   /** The browser profiles of this computer, each with the agents that use it. */
   "browserProfiles.list": { input: undefined; output: readonly BrowserProfile[] }
   "browserProfiles.create": { input: BrowserProfileCreate; output: BrowserProfile }
@@ -260,110 +109,11 @@ export interface RpcMethods {
    * the agent closes. It is refused while the user holds the browser of the agent.
    */
   "browserProfiles.assign": {
-    input: { agentId: string; profileId: string | null }
+    input: { workflowId: string; profileId: string | null }
     output: undefined
   }
-  /**
-   * The Teams link (spec 028): the form, the switch and the state. Only the window of this computer
-   * calls these methods; a linked device cannot.
-   */
-  "teams.get": { input: undefined; output: TeamsLinkView }
-  /** "Set up": makes the link with an empty form and the switch off. */
-  "teams.setup": { input: undefined; output: TeamsLinkView }
-  /** Changes fields of the form. The target, the title, the kind and the marker need the switch off. */
-  "teams.update": { input: TeamsPatch; output: TeamsLinkView }
-  /** The switch. A refusal leaves the switch off and lists the reasons in `problems`. */
-  "teams.setEnabled": { input: { enabled: boolean }; output: TeamsLinkView }
-  /** "Show the Teams page" and "Sign in to Teams". */
-  "teams.showPage": { input: undefined; output: TeamsLinkView }
-  "teams.hidePage": { input: undefined; output: TeamsLinkView }
-  /** Where the Teams page shows, in CSS px of the app window, or `null` to hide it. */
-  "teams.place": {
-    input: { bounds: { x: number; y: number; width: number; height: number } | null }
-    output: undefined
-  }
-  /** "Use this chat": the title of the chat that is open in the Teams page fills the form. */
-  "teams.useChat": { input: undefined; output: TeamsLinkView }
-  /** "Find in the chat": the names of the senders that the open chat shows. It changes nothing. */
-  "teams.readSenders": { input: undefined; output: readonly string[] }
-  /** "Resume": a paused link starts again with a baseline read (spec 028). */
-  "teams.resume": { input: undefined; output: TeamsLinkView }
-  /** "Sign out of Teams": deletes the saved sign-in and turns the link off. */
-  "teams.signOut": { input: undefined; output: TeamsLinkView }
-  /** "Remove link": deletes the link and the sign-in profile. */
-  "teams.remove": { input: undefined; output: TeamsLinkView }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
-  "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
-  "agents.get": { input: { id: string }; output: Agent }
-  "agents.create": { input: AgentCreate; output: Agent }
-  /**
-   * Makes an agent from the form with a starter picked. It also makes the paused routine and the
-   * skill of the starter, as far as the limits allow. A note in the chat says what it did not
-   * make (spec 002, "Starters"). A linked device cannot call it.
-   */
-  "agents.createFromStarter": { input: AgentStarterCreate; output: Agent }
-  "agents.update": { input: { id: string; patch: AgentPatch }; output: Agent }
-  "agents.duplicate": { input: { id: string; suffix: string }; output: Agent }
-  "agents.archive": { input: { id: string }; output: Agent }
-  /**
-   * "Use the main model now" (spec 006, "Backup model"): ends the hold of the main model. The next
-   * turn tries the main model. A linked device needs the switch "Can create and change agents".
-   */
-  "agents.useMain": { input: { id: string }; output: Agent }
-  "agents.restore": { input: { id: string }; output: Agent }
-  "agents.delete": { input: { id: string }; output: undefined }
-  /** The versions of the instructions of an agent, newest first (spec 002). */
-  "agents.history.list": { input: { agentId: string }; output: readonly InstructionVersion[] }
-  /** Makes the text of a version the instructions again. The restore is a new version. */
-  "agents.history.restore": { input: { agentId: string; versionId: string }; output: Agent }
-  /** Whether the line of a change from the chat can still undo it (spec 002). */
-  "agents.settings.line": {
-    input: { agentId: string; messageId: string; callId: string }
-    output: SettingsLineState
-  }
-  /** Puts back the values from before a change from the chat. */
-  "agents.settings.undo": {
-    input: { agentId: string; messageId: string; callId: string }
-    output: undefined
-  }
-  "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
-  /**
-   * Asks where to save, then writes one agent file. `path` is null when cancelled. The two flags
-   * are the tick boxes "Skills of these agents" and "Handbook" (spec 002); an absent flag is off.
-   * The output counts what the file holds.
-   */
-  "agentFile.export": {
-    input: {
-      serverId: string
-      agentIds: readonly string[]
-      skills?: boolean
-      handbook?: boolean
-    }
-    output: AgentFileExported
-  }
-  /** Asks for an agent file and reads it. `null` when cancelled. Nothing is made yet. */
-  "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
-  /**
-   * Makes the agents of the file that `agentFile.open` read that the user ticked, all with this
-   * model, then the ticked skills (off), and replaces the handbook when it is ticked (`skills` are
-   * places in the file). Each new agent with something left to do
-   * gets a checklist.
-   */
-  "agentFile.apply": {
-    input: {
-      serverId: string
-      model: AgentModel | null
-      pick: readonly AgentPick[]
-      skills?: readonly number[]
-      handbook?: boolean
-    }
-    output: AgentFileImported
-  }
-  /** The checklist that an import left in the chat of this agent, or null (spec 014). */
-  "checklists.forAgent": { input: { agentId: string }; output: ImportChecklist | null }
-  /** The checklist that an import left at the top of this workflow, or null (spec 014). */
-  "checklists.forWorkflow": { input: { workflowId: string }; output: ImportChecklist | null }
   "providers.list": { input: undefined; output: readonly ProviderAccount[] }
   "providers.connect": { input: ProviderConnect; output: ProviderAccount }
   "providers.check": { input: { accountId: string }; output: undefined }
@@ -428,124 +178,9 @@ export interface RpcMethods {
    * computer answers it, also when the window shows a linked server.
    */
   "files.stage": { input: { name: string; data: Uint8Array }; output: string }
-  /** Asks where to save, then writes the archive. `path` is null when cancelled. */
-  "data.export": { input: undefined; output: { path: string | null; files: number } }
-  /** Asks for an archive, then restores it into an empty app. `null` when cancelled. */
-  "data.restore": { input: undefined; output: { agents: number; messages: number } | null }
-  /** The newest 500 tasks of a server. */
-  "tasks.list": { input: { serverId: string }; output: readonly Task[] }
-  "tasks.get": { input: { id: string }; output: TaskDetail }
-  /**
-   * The turns that are quiet now (spec 005, "Quiet line"), each with the seconds on its quiet
-   * clock. In memory only. A linked device may call it when it connects.
-   */
-  "quiet.list": { input: undefined; output: QuietState }
-  /**
-   * The last 20 tasks of one agent, newest first, each with what it waits for (spec 002, "Recent
-   * work"). A read: a linked device may call it.
-   */
-  "tasks.recent": { input: { agentId: string }; output: readonly RecentWorkRow[] }
-  "tasks.stop": { input: { id: string }; output: undefined }
-  /**
-   * Moves a queued task of this computer to the front of the queue (spec 005, "Run next"). Not a
-   * request that a linked device may call.
-   */
-  "tasks.runNext": { input: { id: string }; output: undefined }
-  /**
-   * Tries a task again. When the first try ran steps that may have changed things, the answer
-   * holds the retry note and nothing starts. The same request with `confirmed` starts the task.
-   */
-  "tasks.retry": { input: { id: string; confirmed?: boolean }; output: RetryResult }
-  /**
-   * The follow-ups that wait in the details of one task (spec 005, "Follow-up"). A linked device
-   * may call it: the rows stay on the computer that runs them.
-   */
-  "followups.list": { input: { taskId: string }; output: readonly FollowUp[] }
-  /** Deletes one follow-up. No task starts for it. A linked device may call it (spec 005, 012). */
-  "followups.remove": { input: { id: string }; output: undefined }
-  /**
-   * The events of a server, newest first, in pages of 50 (spec 038). `result` hides the other
-   * results, and `offset` skips the rows of the pages before.
-   */
-  "events.list": {
-    input: { serverId: string; result?: EventResult; offset?: number }
-    output: readonly RobotEvent[]
-  }
-  "events.get": { input: { id: string }; output: RobotEvent | null }
-  /**
-   * A test of a trigger form (spec 038, "Check where this goes"). It records one event with the
-   * result "would_go" and starts nothing.
-   */
-  "events.test": {
-    input: {
-      serverId: string
-      source: "schedule" | "watch" | "web_hook"
-      /** The kind of the event: a key and its parameters, or text from outside. */
-      type: EventText
-      subject?: string | null
-      /** The summary line: a key and its parameters, or text from outside. */
-      summary: EventText
-      detail?: string
-      /** The "Why" line: a key and its parameters, never a sentence (AGENTS.md). */
-      why: EventWhy
-      got?: string
-    }
-    output: RobotEvent
-  }
-  /**
-   * The handbook of a server (spec 002, "Handbook"). A linked device reads it with no switch; it
-   * changes it only with "Can create and change agents" (spec 012).
-   */
-  "handbook.get": { input: { serverId: string }; output: Handbook }
-  /** The last 20 versions of the handbook, newest first. */
-  "handbook.history": { input: { serverId: string }; output: readonly HandbookVersion[] }
-  /** Saves a text as the handbook. A text that looks like a secret, or is too long, is refused. */
-  "handbook.save": { input: { serverId: string; text: string }; output: Handbook }
-  /** Makes the text of a version the handbook again. The restore is a new version. */
-  "handbook.restore": { input: { serverId: string; versionId: string }; output: Handbook }
-  /** The items of one agent. The filter keeps all items, the general items, or the notes of one channel. */
-  "memory.list": {
-    input: { agentId: string; query?: string; filter?: MemoryFilter }
-    output: readonly MemoryItem[]
-  }
-  /** The channels for the filter and for a move: those with notes of the agent, and those it is a member of. */
-  "memory.scopes": { input: { agentId: string }; output: readonly MemoryScope[] }
-  /** Moves an item to General (`null`) or to a channel that the agent is a member of (spec 008). */
-  "memory.move": { input: { id: string; channelId: string | null }; output: MemoryItem }
-  "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
-  "memory.update": { input: { id: string; text: string }; output: MemoryItem }
-  "memory.delete": { input: { id: string }; output: undefined }
-  /** "Save at once" or "Ask me first" for one agent (spec 008). Not for a linked device. */
-  "memory.mode": { input: { agentId: string }; output: MemoryMode }
-  "memory.setMode": { input: { agentId: string; mode: MemoryMode }; output: undefined }
-  /**
-   * The memory check of one agent (spec 008): the choice, the count of done turns since the last
-   * check, and why it is off. A linked device reads it with the link only.
-   */
-  "memory.check": { input: { agentId: string }; output: MemoryCheckInfo }
-  /** Turns the memory check of an agent on or off. A linked device needs "Can create and change agents". */
-  "memory.check.set": { input: { agentId: string; on: boolean }; output: undefined }
-  /** "Check now": adds a check with the turns since the last check. Not for a linked device. */
-  "memory.check.now": { input: { agentId: string }; output: undefined }
-  /** The proposals of an agent, oldest first. */
-  "memory.proposals": { input: { agentId: string }; output: readonly MemoryProposal[] }
-  /** Makes an item of a proposal. `text` is the edited text of "Edit and save". */
-  "memory.proposal.accept": { input: { id: string; text?: string }; output: MemoryItem }
-  "memory.proposal.dismiss": { input: { id: string }; output: undefined }
-  /** The changes to the memory of an agent, newest first. */
-  "memory.history": { input: { agentId: string }; output: readonly MemoryHistoryRow[] }
-  /** One row, for the line in the chat. Undefined when retention removed it. */
-  "memory.history.get": { input: { id: string }; output: MemoryHistoryRow | undefined }
-  "memory.undo": { input: { id: string }; output: undefined }
-  /**
-   * "Clear" on the header line of a place: removes the marks of the place for the next turns
-   * (spec 007, "The mark of a place"). It gives back the marks that it removed. A linked device
-   * and the phone cannot call it.
-   */
-  "placeMarks.clear": { input: { place: MarkPlace }; output: PlaceMarks }
   /** The action log of this computer, newest first (spec 007). It is not offered to a linked device. */
   "actionLog.list": {
-    input: { agentId?: string; result?: ActionResult; kind?: ActionKind; search?: string }
+    input: { workflowId?: string; result?: ActionResult; kind?: ActionKind; search?: string }
     output: readonly ActionLogEntry[]
   }
   /**
@@ -553,7 +188,7 @@ export interface RpcMethods {
    * computer only: none of the rules methods is offered to a linked device (spec 012).
    */
   "rules.list": {
-    input: { agentId?: string | null; decision?: RuleDecision }
+    input: { workflowId?: string | null; decision?: RuleDecision }
     output: readonly PermissionRule[]
   }
   /** Adds a rule from the rules list. A rule that equals one that exists is refused. */
@@ -610,15 +245,7 @@ export interface RpcMethods {
    * The saved secrets of this computer (spec 020), never a value. Not offered to a linked device,
    * and a value never goes over a link.
    */
-  "secrets.list": { input: { agentId?: string }; output: readonly SavedSecret[] }
-  /**
-   * Answers a protected card of this computer: `value` saves it in the keychain, `null` cancels.
-   * The answer of a linked device or of the other computer of a sync pair is refused.
-   */
-  "secrets.answer": {
-    input: { agentId: string; callId: string; value: string | null }
-    output: undefined
-  }
+  "secrets.list": { input: { workflowId?: string }; output: readonly SavedSecret[] }
   /** Puts a new value for a saved secret in the keychain. */
   "secrets.replace": { input: { id: string; value: string }; output: SavedSecret }
   /** Deletes a saved secret and its value. */
@@ -627,283 +254,46 @@ export interface RpcMethods {
    * The decision model (spec 013): whether a key is saved, never the key. Not offered to a linked
    * device: the keys stay on this computer.
    */
+  "workflows.list": { input: { serverId: string }; output: readonly Workflow[] }
+  "workflows.get": { input: { id: string }; output: WorkflowDetail }
+  "workflows.create": { input: WorkflowCreate; output: Workflow }
+  "workflows.rename": { input: { id: string; name: string }; output: Workflow }
+  /** Deletes the workflow with its graph, document, chat, runs and memory (spec 010). */
+  "workflows.delete": { input: { id: string }; output: undefined }
+  /** Saves the responsible document. The old text becomes a version (spec 002). */
+  "workflows.document.save": { input: { id: string; text: string }; output: WorkflowDetail }
+  "workflows.document.history": { input: { id: string }; output: readonly DocumentVersion[] }
+  /** Restores a version of the document. A restore makes a new version (spec 002). */
+  "workflows.document.restore": {
+    input: { id: string; versionId: string }
+    output: WorkflowDetail
+  }
   "decision.status": { input: undefined; output: DecisionStatus }
   /** Saves or removes the keys that the patch names; a key that is not named stays. */
   "decision.keys": { input: DecisionKeys; output: DecisionStatus }
   /** Sends one real request with three made-up members to the saved choice. */
   "decision.test": { input: undefined; output: DecisionTestResult }
-  "knowledge.list": { input: { agentId: string; query?: string }; output: KnowledgeView }
-  "knowledge.get": { input: { agentId: string; file: string }; output: KnowledgeArticle }
-  /** Saves an article as the user. `file` is null for a new article. */
-  "knowledge.save": {
-    input: { agentId: string; file: string | null; title: string; summary: string; body: string }
-    output: KnowledgeArticle
-  }
-  "knowledge.delete": { input: { agentId: string; file: string }; output: undefined }
-  "knowledge.deleteSource": { input: { agentId: string; name: string }; output: undefined }
-  "knowledge.openSource": { input: { agentId: string; name: string }; output: undefined }
-  "knowledge.openFolder": { input: { agentId: string }; output: undefined }
-  /** The last 50 changes, newest first. */
-  "knowledge.changes": { input: { agentId: string }; output: readonly KnowledgeChange[] }
-  /** One change, or null when it left the list of 50. */
-  "knowledge.change": {
-    input: { agentId: string; changeId: string }
-    output: KnowledgeChange | null
-  }
-  "knowledge.undo": { input: { agentId: string; changeId: string }; output: undefined }
-  "knowledge.findings": { input: { agentId: string }; output: KnowledgeFindings }
-  /** Answers an approval card (`allow`, `always`, `deny`) or a question card (the text). */
-  "tools.respond": {
-    input: { agentId: string; callId: string; answer: ApprovalAnswer | string }
-    output: undefined
-  }
-  /**
-   * `suggest` is the reason that the agent gave when it asked the user to look at the browser, or
-   * null. The browser stays hidden until the user chooses to see it.
-   */
-  "browser.state": {
-    input: { agentId: string }
-    output: { open: boolean; control: boolean; suggest: string | null }
-  }
-  /**
-   * Whether the app holds this computer awake now, and why (spec 013, "Keep the computer awake").
-   * A linked device never asks: the setting belongs to the computer.
-   */
-  "keepAwake.state": { input: undefined; output: KeepAwakeState }
-  /** The user takes the controls of the agent's browser, or gives them back. */
-  "browser.control": { input: { agentId: string; control: boolean }; output: undefined }
-  "browser.close": { input: { agentId: string }; output: undefined }
-  /** The user shows the browser, or says "Not now": the request of the agent to look goes away. */
-  "browser.dismissSuggest": { input: { agentId: string }; output: undefined }
-  /**
-   * The chat screen says where the browser of the agent shows, in CSS px of the app window. `null`
-   * hides it, for example when the screen shows another chat or a dialog covers the place.
-   */
-  "browser.place": {
-    input: {
-      agentId: string
-      bounds: { x: number; y: number; width: number; height: number } | null
-    }
-    output: undefined
-  }
-  /** "Teach a task" (spec 017). One recording at a time on this computer. */
-  "teach.state": { input: undefined; output: TeachState }
-  "teach.start": { input: { agentId: string; result: string }; output: TeachState }
-  /** Opens an address in the browser that the user teaches with. */
-  "teach.open": { input: { url: string }; output: undefined }
-  "teach.pause": { input: { paused: boolean }; output: undefined }
-  /** Ends the recording and asks for a draft. `empty` is true when no step was recorded. */
-  "teach.stop": { input: undefined; output: { empty: boolean } }
-  "teach.cancel": { input: undefined; output: undefined }
-  "teach.retry": { input: undefined; output: undefined }
-  "teach.save": { input: SkillInput; output: Skill }
-  "teach.discard": { input: undefined; output: undefined }
   /** Skills (spec 017). */
   "skills.list": { input: { serverId: string }; output: readonly Skill[] }
-  /** The skills that an agent may use now: on, and for this agent or for all agents. */
-  "skills.forAgent": { input: { agentId: string }; output: readonly Skill[] }
-  /** The skills that are only for this agent. A delete of the agent deletes them too (002, 017). */
-  "skills.onlyFor": { input: { agentId: string }; output: { count: number } }
-  /**
-   * `agentIds` is the list of agents that may use the skill, or `null` for all agents.
-   */
-  "skills.create": {
-    input: SkillInput & {
-      serverId: string
-      agentIds: readonly string[] | null
-    }
-    output: Skill
-  }
+  /** A skill belongs to the server, not to one workflow (spec 017). */
+  "skills.create": { input: SkillInput & { serverId: string }; output: Skill }
   /** Edit (spec 017, flow 2): every field of the form. The skill stays on or off as it was. */
-  "skills.update": {
-    input: SkillInput & {
-      id: string
-      agentIds: readonly string[] | null
-    }
-    output: Skill
-  }
+  "skills.update": { input: SkillInput & { id: string }; output: Skill }
   /** Duplicate (spec 017, flow 3): `suffix` is the word "copy" in the language of the window. */
   "skills.duplicate": { input: { id: string; suffix: string }; output: Skill }
   "skills.setEnabled": { input: { id: string; enabled: boolean }; output: Skill }
   "skills.delete": { input: { id: string }; output: undefined }
-  /**
-   * "Make a skill" from a task, an article or a memory item: one request to the model account of
-   * the agent of the source (spec 017). It makes no task and no message. `requestId` names the
-   * request, so that `skills.draftCancel` can drop it.
-   */
-  "skills.draft": {
-    input: { requestId: string; source: SkillSourceRef }
-    output: SkillDraftResult
-  }
-  "skills.draftCancel": { input: { requestId: string }; output: undefined }
-  "routines.list": { input: { serverId: string }; output: readonly Routine[] }
-  "routines.create": { input: RoutineInput; output: Routine }
-  "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
-  "routines.delete": { input: { id: string }; output: undefined }
-  /** Moves a routine of the other computer here: it runs here from now on (spec 019). */
-  "routines.runHere": { input: { id: string }; output: Routine }
-  "routines.runNow": { input: { id: string }; output: undefined }
-  "routines.calendar": {
-    input: { serverId: string; from: number; to: number }
-    output: readonly RoutineEntry[]
-  }
-  "workflows.list": { input: { serverId: string }; output: readonly Workflow[] }
-  "workflows.create": { input: WorkflowInput; output: Workflow }
-  "workflows.update": { input: { id: string; patch: WorkflowPatch }; output: Workflow }
-  "workflows.delete": { input: { id: string }; output: undefined }
-  "workflows.run": { input: { id: string; triggerText?: string }; output: WorkflowRun }
-  /** Moves a workflow of the other computer here: it runs here from now on (spec 019). */
-  "workflows.runHere": { input: { id: string }; output: Workflow }
-  "workflows.stop": { input: { runId: string }; output: undefined }
-  "workflows.approve": {
-    input: { runId: string; stepId: string; approved: boolean }
-    output: undefined
-  }
-  "workflows.runs": { input: { workflowId: string }; output: readonly WorkflowRun[] }
-  "workflows.runDetail": { input: { runId: string }; output: WorkflowRunDetail }
-  /** Asks where to save, then writes one workflow file. `path` is null when cancelled. */
-  "workflowFile.export": {
-    input: { serverId: string; workflowIds: readonly string[] }
-    output: { path: string | null; count: number }
-  }
-  /**
-   * Asks where to save, then writes one workflow as a file of CC Workflow Studio. `path` is null
-   * when cancelled. `notExported` lists what the file does not hold.
-   */
-  "workflowFile.exportCc": {
-    input: { serverId: string; workflowId: string }
-    output: { path: string | null; notExported: readonly CcNotExported[] }
-  }
-  /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
-  "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
-  /**
-   * Makes the workflows of the file that `workflowFile.open` read that the user ticked (`pick`:
-   * their places in the file, from 0). All of them are off. For a file of CC Workflow Studio,
-   * `agentId` is the agent of every agent step (the file names none).
-   */
-  "workflowFile.apply": {
-    input: { serverId: string; pick: readonly number[]; agentId?: string }
-    output: WorkflowFileImported
-  }
-  "notifications.mutes": { input: undefined; output: readonly Mute[] }
-  "notifications.setMute": {
-    input: { kind: "server"; id: string; choice: MuteChoice }
-    output: undefined
-  }
-  "island.get": { input: undefined; output: IslandState }
-  /** Answers the approval or question that the island shows. */
-  "island.respond": {
-    input: { agentId: string; callId: string; answer: string }
-    output: undefined
-  }
-  /** Opens the app at the place of the waiting step. */
-  "island.openApp": { input: { target: PlaceTarget }; output: undefined }
-  /** The result card has ended: its time is over and the pointer is not on it. */
-  "island.dismissResult": { input: { id: number }; output: undefined }
-  /** The size that the island content needs, in px. The island window takes this size. */
-  "island.fit": {
-    input: { width: number; height: number; animate?: boolean | undefined }
-    output: undefined
-  }
-  "usage.summary": {
-    input: { serverId: string; days: UsageRange }
-    output: readonly UsageRow[]
-  }
-  /**
-   * Message search (spec 001): one page of the messages of a server that hold every word of the
-   * text, newest first. A linked server answers it; while the link is offline the answer comes
-   * from the saved messages and says so.
-   */
-  "messages.search": {
-    input: { serverId: string; query: string; offset?: number }
-    output: SearchPage
-  }
-  /**
-   * Each chat method takes the thread (spec 003, "Threads"). None or null is the main thread. A
-   * linked computer and the phone get the main thread only (011, 012).
-   */
-  "chat.history": { input: ThreadRef; output: ChatHistory }
-  "chat.send": {
-    input: ChatSend
-    /**
-     * `failedFiles` names the local paths that did not reach a linked server. The other files of
-     * the message still go (spec 003, flow 4). Absent when every file went, and on this computer.
-     */
-    output: { queued: boolean; failedFiles?: readonly string[] }
-  }
-  "chat.stop": { input: ThreadRef; output: undefined }
-  /** As `tasks.retry`, for the failed reply of a chat. */
-  "chat.retry": {
-    input: ThreadRef & { messageId: string; confirmed?: boolean }
-    output: RetryResult
-  }
-  "chat.edit": { input: ThreadRef & { messageId: string; text: string }; output: undefined }
-  "chat.queue.update": {
-    input: ThreadRef & { itemId: string; text: string }
-    output: undefined
-  }
-  "chat.queue.remove": { input: ThreadRef & { itemId: string }; output: undefined }
-  /** Sends a queued message into the turn that runs now (spec 003). */
-  "chat.queue.sendNow": { input: ThreadRef & { itemId: string }; output: undefined }
-  /** Deletes a message of the running turn that the agent did not read yet (spec 003). */
-  "chat.unread.delete": { input: ThreadRef & { messageId: string }; output: undefined }
-  "chat.markRead": { input: ThreadRef; output: undefined }
-  /** The context meter of a thread and why Compact is off (spec 003). */
-  "chat.meter": { input: ThreadRef; output: ChatMeter }
-  /** Runs a manual compact of the thread (spec 003, "Compact"). It ends when the compact ends. */
-  "chat.compact": { input: ThreadRef; output: undefined }
-  /** The setup actions of the agent's workspace (spec 035). This computer only. */
-  "setup.list": { input: { agentId: string }; output: SetupList }
-  /** Runs the named action in that workspace. The user picked it. */
-  "setup.run": { input: { agentId: string; name: string }; output: SetupRunResult }
-  /** Allows or stops automatic runs of the list in that workspace. */
-  "setup.allow": { input: { agentId: string; on: boolean }; output: SetupList }
-  /** The file the editor shows for that workspace: the shared file, or one to make. */
-  "setup.file": { input: { agentId: string }; output: SetupFileView }
-  /** Writes the list from the editor. `replace` confirms an unreadable file goes away. */
-  "setup.save": {
-    input: { agentId: string; actions: readonly SetupActionInput[]; replace: boolean }
-    output: SetupSaveResult
-  }
-  /** The threads of an agent, for the list in the chat header (spec 003, "Threads"). */
-  "chat.threads": { input: { agentId: string }; output: ChatThreads }
-  "chat.thread.create": { input: { agentId: string }; output: ChatThread }
-  /** A new thread with a copy of the conversation up to the message (spec 003, "Fork"). */
-  "chat.thread.fork": { input: ThreadRef & { messageId: string }; output: ChatThread }
-  "chat.thread.rename": {
-    input: { agentId: string; threadId: string; title: string }
-    output: undefined
-  }
-  "chat.thread.archive": {
-    input: { agentId: string; threadId: string; archived: boolean }
-    output: undefined
-  }
-  "chat.thread.delete": { input: { agentId: string; threadId: string }; output: undefined }
-  /** Whether "Hand over" is on for a chat or thread, and why not (spec 003). This computer only. */
-  "chat.handover.state": { input: ThreadRef; output: HandoverState }
-  /** Writes the brief and lists the agents for the dialog of "Hand over" (spec 003). */
-  "chat.handover.open": { input: ThreadRef; output: HandoverOpen }
-  /**
-   * Hands the chat over: a new thread in the chat of `toAgentId` with the card and the text (spec
-   * 003). It stores the brief that `open` wrote under `briefId`. It gives the new thread.
-   */
-  "chat.handover.start": {
-    input: ThreadRef & { toAgentId: string; text: string; briefId: string }
-    output: { agentId: string; threadId: string }
-  }
 }
 
 /** A thread of an agent. `threadId` none or null is the main thread. */
 export interface ThreadRef {
-  agentId: string
+  workflowId: string
   threadId?: string | null
 }
 
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
-  /** The app holds the computer awake, or lets it go, or the reason changed. */
-  "keepAwake.changed": KeepAwakeState
   /** The device name, the switch, the linked devices or a connection state changed. */
   "devices.changed": Record<string, never>
   "devices.pairing": PairingState
@@ -911,26 +301,9 @@ export interface RpcEvents {
   "devices.join": { request?: JoinRequest; closed?: string }
   /** The list of servers, or the state of one, changed. */
   "servers.changed": Record<string, never>
-  /** The sync row of a computer, a request to sync, or the change list changed. */
-  "sync.changed": Record<string, never>
-  /** A request to sync waits (`request`), or an earlier one ended (`closed`). */
-  "sync.request": { request?: SyncRequest; closed?: string }
-  /** A notice for a linked device. Windows ignore it; the link pushes it. */
-  notice: WireNotice
-  "places.changed": { serverId: string }
-  /** `serverId` is "*" when agents of every server may have changed. */
-  "agents.changed": { serverId: string }
   "providers.changed": Record<string, never>
   /** A vendor program was found, downloaded, signed in to, or reports new limits. */
   "runtimes.changed": RuntimeStatus
-  "tasks.changed": { serverId: string }
-  "memory.changed": { agentId: string }
-  /** A follow-up of an agent was made, deleted, or started its task (spec 005, "Follow-up"). */
-  "followups.changed": { agentId: string }
-  /** An event of a server was recorded, or the test events of it were trimmed (spec 038). */
-  "events.changed": { serverId: string }
-  /** The handbook of a server was saved or restored, here or by sync or a linked device (spec 002). */
-  "handbook.changed": { serverId: string }
   "actionLog.changed": Record<string, never>
   /** A permission rule was added, changed or deleted, or an agent with rules was deleted. */
   "rules.changed": Record<string, never>
@@ -938,59 +311,13 @@ export interface RpcEvents {
   "connections.changed": Record<string, never>
   /** A saved secret was added, used, replaced or deleted. */
   "secrets.changed": Record<string, never>
-  /** An article, a source or the change list of an agent changed. */
-  "knowledge.changed": { agentId: string }
-  "browser.changed": { agentId: string }
   /** A browser profile was made, renamed or deleted, or an agent got another one. */
   "browserProfiles.changed": Record<string, never>
-  /** The Teams link changed: its form, its switch, its state or its last read. */
-  "teams.changed": Record<string, never>
-  /** "Teach a task" started, recorded a step, paused, stopped, made a draft, or ended. */
-  "teach.changed": TeachState
   /** A skill was made, turned on or off, or deleted. */
   "skills.changed": { serverId: string }
-  "routines.changed": { serverId: string }
   "workflows.changed": { serverId: string }
-  "workflows.run": { runId: string }
-  "island.state": IslandState
-  /**
-   * Where the camera notch of the screen is, or null when the screen has none (spec 015). The
-   * island page centres the mark and the faces in the two wings of the notch with it.
-   */
-  "island.notch": { width: number; height: number } | null
-  /**
-   * A turn became quiet, or went on, or ended (spec 005, "Quiet line"): all turns that are quiet
-   * now, with their seconds at this moment. A window counts on from there. It does not come each
-   * second.
-   */
-  "quiet.changed": QuietState
-  "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
   "app.openPage": { page: "workflows" | "routines" | "teams"; serverId?: string }
-  "notifications.changed": Record<string, never>
-  /**
-   * A file of a message is going to a linked server (spec 003, flow 4). The window that sends it
-   * shows the progress on the chip. It does not go to other devices.
-   */
-  "attachments.transfer": {
-    path: string
-    sent: number
-    total: number
-    state: "sending" | "failed" | "done"
-  }
-  /** A new or changed message. While a reply streams, this comes many times. */
-  "chat.message": ChatMessage
-  "chat.removed": { agentId: string; messageId: string }
-  "chat.queue": {
-    agentId: string
-    threadId?: string | null
-    queue: readonly QueuedMessage[]
-    hold: QueueHold | null
-  }
-  /** The meter or the compact state of a thread changed: the window reads `chat.meter` again. */
-  "chat.meter": { agentId: string; threadId: string | null }
-  /** A thread was made, renamed, archived, restored or deleted, or its unread count changed. */
-  "chat.threads": { agentId: string }
 }
 
 export type RpcMethod = keyof RpcMethods

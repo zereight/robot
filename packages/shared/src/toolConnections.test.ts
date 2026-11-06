@@ -35,7 +35,6 @@ const program: ToolConnectionInput = {
   env: [],
   address: "",
   headers: [],
-  agents: "all",
 }
 
 describe("the name of a connection", () => {

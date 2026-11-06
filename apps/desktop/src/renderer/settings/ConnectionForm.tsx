@@ -19,7 +19,6 @@ import { X } from "lucide-solid"
 import { createEffect, createSignal, For, Index, on, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
-import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -34,7 +33,6 @@ const FIELDS = [
   "env",
   "address",
   "headers",
-  "agents",
   "confirm",
 ] as const
 type Field = (typeof FIELDS)[number]
@@ -78,7 +76,6 @@ export const ConnectionFormDialog = (props: {
   onClose: () => void
 }) => {
   const { t } = useApp()
-  const agents = useAgents()
   const was = props.connection
   const fromView = (list: ToolConnection["env"]): Entry[] =>
     list.map((e) => ({
@@ -97,10 +94,6 @@ export const ConnectionFormDialog = (props: {
   const [env, setEnv] = createSignal<Entry[]>(fromView(was?.env ?? []))
   const [address, setAddress] = createSignal(was?.address ?? "")
   const [headers, setHeaders] = createSignal<Entry[]>(fromView(was?.headers ?? []))
-  const [all, setAll] = createSignal(was ? was.agents === "all" : true)
-  const [chosen, setChosen] = createSignal<readonly string[]>(
-    was && was.agents !== "all" ? was.agents : [],
-  )
   const [confirmed, setConfirmed] = createSignal(false)
   const [touched, setTouched] = createSignal<ReadonlySet<Field>>(new Set())
   const [problem, setProblem] = createSignal<{ field: Field | null; text: ErrorText }>()
@@ -134,7 +127,6 @@ export const ConnectionFormDialog = (props: {
     env: kind() === "program" ? entriesOf(env()) : [],
     address: address(),
     headers: kind() === "web" ? entriesOf(headers()) : [],
-    agents: all() ? "all" : chosen(),
   })
 
   // A Test shows the form as it was. A change makes it old, so it goes.
@@ -191,7 +183,6 @@ export const ConnectionFormDialog = (props: {
           kind() === "program" ? "connection_env_value_missing" : "connection_header_value_missing",
         ),
       }
-    if (!all() && chosen().length === 0) return { field: "agents", text: text("connection_agents") }
     return undefined
   }
 
@@ -236,7 +227,7 @@ export const ConnectionFormDialog = (props: {
     setTouched(new Set(FIELDS))
     try {
       const found = check()
-      if (found && found.field !== "agents") return setProblem(found)
+      if (found) return setProblem(found)
       // The result belongs to the form as it is when the Test starts.
       const answer = await call("connections.test", {
         ...(was ? { id: was.id } : {}),
@@ -249,9 +240,6 @@ export const ConnectionFormDialog = (props: {
       setTesting(false)
     }
   }
-
-  const toggleAgent = (id: string) =>
-    setChosen(chosen().includes(id) ? chosen().filter((x) => x !== id) : [...chosen(), id])
 
   const reason = (failure: ConnectionFailure) => t(`connections.failure.${failure}` as MessageKey)
 
@@ -454,40 +442,6 @@ export const ConnectionFormDialog = (props: {
           {textField("connections.form.folder", folder, setFolder, "folder", "connection-folder")}
           {lines("connections.form.env", "connections.form.env.add", env, setEnv, "env", "env")}
         </Show>
-        <div class={styles.field} data-testid="connection-agents">
-          <span class={styles.label}>{t("connections.form.agents")}</span>
-          <Segmented
-            label={t("connections.form.agents")}
-            testId="connection-agents-mode"
-            value={all() ? "all" : "some"}
-            onChange={(value) => setAll(value === "all")}
-            options={[
-              { value: "all", label: t("connections.form.agents.all") },
-              { value: "some", label: t("connections.form.agents.some") },
-            ]}
-          />
-          <Show when={!all()}>
-            <ul class={styles.agentList} data-testid="connection-agent-list">
-              <For each={agents.agents()}>
-                {(agent) => (
-                  <li>
-                    <label class={styles.agentRow}>
-                      <input
-                        type="checkbox"
-                        checked={chosen().includes(agent.id)}
-                        onChange={() => toggleAgent(agent.id)}
-                        data-testid="connection-agent"
-                        data-agent={agent.name}
-                      />
-                      <span>{agent.name}</span>
-                    </label>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </Show>
-          {under("agents")}
-        </div>
         <Show when={kind() === "program"}>
           <div class={styles.field} data-testid="connection-program-warning">
             <span class={styles.label}>{t("connections.form.line")}</span>

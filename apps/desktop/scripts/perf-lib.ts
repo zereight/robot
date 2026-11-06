@@ -1,7 +1,16 @@
 // Pure parts of the performance report and of the size check (docs/performance.md).
 import { readdirSync, statSync } from "node:fs"
 import { join, relative, sep } from "node:path"
-import { median } from "@robot/shared"
+
+/** The median of a list of numbers. Null for an empty list. */
+const median = (values: readonly number[]) => {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1
+    ? (sorted[mid] as number)
+    : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2
+}
 
 export type Unit = "ms" | "%" | "MB" | "bytes" | "count"
 

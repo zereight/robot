@@ -28,8 +28,8 @@ import { Platform } from "./Platform.ts"
 import { realOf } from "./realPath.ts"
 
 export interface RuleFilter {
-  /** One agent, or `null` for the rules that are for all agents. Left out: every rule. */
-  readonly agentId?: string | null
+  /** One workflow, or `null` for the rules that are for all workflows. Left out: every rule. */
+  readonly workflowId?: string | null
   readonly decision?: RuleDecision
 }
 
@@ -42,19 +42,19 @@ export interface RulesService {
   update(id: string, input: RuleInput): Effect.Effect<PermissionRule, AppError>
   remove(id: string): Effect.Effect<void>
   /**
-   * What the rules say about a step of an agent (spec 007, "Permission rules"): a Deny rule, a rule
-   * that cannot be read, an Allow rule, or nothing. The rules of the agent and the rules for all
-   * agents count.
+   * What the rules say about a step of a workflow (spec 007, "Permission rules"): a Deny rule, a rule
+   * that cannot be read, an Allow rule, or nothing. The rules of the workflow and the rules for all
+   * workflows count.
    */
-  verdict(agentId: string, step: RuleStep): RuleVerdict
+  verdict(workflowId: string, step: RuleStep): RuleVerdict
   /**
-   * "Always allow for this agent": saves an Allow rule that is not wider than the step. Returns
+   * "Always allow for this workflow": saves an Allow rule that is not wider than the step. Returns
    * the rule, or null when none could be saved: the text is over the limit, or the server holds
    * 500 rules. A rule that exists already is returned and not made again.
    */
-  saveFromCard(agentId: string, step: RuleStep): PermissionRule | null
+  saveFromCard(workflowId: string, step: RuleStep): PermissionRule | null
   /** True when a card for this step can offer "Always allow": the rule would fit. */
-  canSave(agentId: string, step: RuleStep): boolean
+  canSave(workflowId: string, step: RuleStep): boolean
   /**
    * Deletes the rules for the tools of a connection, when the connection is removed (spec 018).
    * The names of connections match with case ignored, as a rule does.
@@ -67,7 +67,7 @@ export interface RulesService {
 interface Row {
   id: string
   server_id: string
-  agent_id: string | null
+  workflow_id: string | null
   kind: string
   match_text: string
   detail: string | null
@@ -107,7 +107,7 @@ export const readRule = (r: Row): PermissionRule => {
   }
   return {
     id: r.id,
-    agentId: r.agent_id,
+    workflowId: r.workflow_id,
     kind,
     text: r.match_text,
     detail: r.detail,
@@ -148,10 +148,10 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
         if (!checked.ok) return { code: checked.code }
         const value = checked.value
         if (
-          value.agentId !== null &&
-          !db.get("SELECT 1 AS x FROM agent WHERE id = ?", value.agentId)
+          value.workflowId !== null &&
+          !db.get("SELECT 1 AS x FROM workflow WHERE id = ?", value.workflowId)
         )
-          return { code: "rule_agent_gone" }
+          return { code: "rule_workflow_gone" }
         const key = ruleSameKey(value)
         for (const rule of all()) {
           if (
@@ -168,11 +168,11 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
           if (count >= RULES_MAX) return { code: "rules_full" }
           const made = randomUUID()
           db.run(
-            `INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+            `INSERT INTO permission_rule (id, server_id, workflow_id, kind, match_text, detail, decision, source, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             made,
             serverId(),
-            value.agentId,
+            value.workflowId,
             value.kind,
             value.text,
             value.detail,
@@ -186,9 +186,9 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
         if (!db.get("SELECT 1 AS x FROM permission_rule WHERE id = ?", id))
           return { code: "rule_not_found" }
         db.run(
-          `UPDATE permission_rule SET agent_id = ?, kind = ?, match_text = ?, detail = ?, decision = ?
+          `UPDATE permission_rule SET workflow_id = ?, kind = ?, match_text = ?, detail = ?, decision = ?
            WHERE id = ?`,
-          value.agentId,
+          value.workflowId,
           value.kind,
           value.text,
           value.detail,
@@ -204,14 +204,14 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
         return row ? readRule(row) : null
       }
 
-      const verdict = (agentId: string, step: RuleStep): RuleVerdict => {
+      const verdict = (workflowId: string, step: RuleStep): RuleVerdict => {
         const rows = db.all<Row>(
-          `${SELECT} WHERE agent_id = ?1
-              OR (agent_id IS NULL AND server_id = (SELECT server_id FROM agent WHERE id = ?1))
+          `${SELECT} WHERE workflow_id = ?1
+              OR (workflow_id IS NULL AND server_id = (SELECT server_id FROM workflow WHERE id = ?1))
            ORDER BY created_at DESC, rowid DESC`,
-          agentId,
+          workflowId,
         )
-        return ruleVerdict(rows.map(readRule), agentId, step, env)
+        return ruleVerdict(rows.map(readRule), workflowId, step, env)
       }
 
       /** The rule that equals this input, or null. */
@@ -230,8 +230,8 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
         )
       }
 
-      const canSave = (agentId: string, step: RuleStep): boolean => {
-        const input = ruleInputOfStep(agentId, step)
+      const canSave = (workflowId: string, step: RuleStep): boolean => {
+        const input = ruleInputOfStep(workflowId, step)
         if (!input) return false
         const count = db.get<{ n: number }>("SELECT COUNT(*) AS n FROM permission_rule")?.n ?? 0
         // At the limit, a rule that exists already still counts as saved.
@@ -263,7 +263,7 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
           Effect.sync(() =>
             all().filter(
               (r) =>
-                (filter.agentId === undefined || r.agentId === filter.agentId) &&
+                (filter.workflowId === undefined || r.workflowId === filter.workflowId) &&
                 (filter.decision === undefined || r.decision === filter.decision),
             ),
           ),
@@ -284,8 +284,8 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
             db.run("DELETE FROM permission_rule WHERE id = ?", id)
             changed()
           }),
-        saveFromCard: (agentId, step) => {
-          const input = ruleInputOfStep(agentId, step)
+        saveFromCard: (workflowId, step) => {
+          const input = ruleInputOfStep(workflowId, step)
           if (!input) return null
           const made = keep(input, "card")
           if ("rule" in made) return made.rule

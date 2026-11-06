@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { charLength, nameKey } from "./agents.ts"
+import { charLength, nameKey } from "./chars.ts"
 
 /** The longest name of a browser profile, in characters that the user sees. */
 export const BROWSER_PROFILE_NAME_MAX = 40
@@ -8,21 +8,15 @@ export const BROWSER_PROFILES_MAX = 20
 
 /**
  * A browser profile: a named set of saved browser data (cookies, sign-ins) on this computer. Each
- * agent uses one profile, or its own private data when none is assigned. Agents that use the same
+ * workflow uses one profile, or its own private data when none is assigned. Workflows that use the same
  * profile are signed in to the same sites.
  */
 export interface BrowserProfile {
   readonly id: string
   readonly name: string
   readonly createdAt: number
-  /** The agents that use this profile now. The sign-in profile of the Teams link has none. */
-  readonly agentIds: readonly string[]
-  /**
-   * The app made this profile for the Teams link (spec 028) and it holds the sign-in of the Teams
-   * page. No agent can get it, the user cannot rename or delete it, and it does not count in the
-   * limit of profiles.
-   */
-  readonly teamsLink: boolean
+  /** The workflows that use this profile now. */
+  readonly workflowIds: readonly string[]
 }
 
 export const BrowserProfileCreate = Schema.Struct({
@@ -51,6 +45,6 @@ export const checkBrowserProfileName = (
 
 /**
  * True when the computer already holds the most browser profiles that it can. The count is the
- * count of the profiles that the user made: the sign-in profile of the Teams link is not in it.
+ * count of the profiles that the user made.
  */
 export const browserProfilesFull = (count: number) => count >= BROWSER_PROFILES_MAX

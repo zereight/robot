@@ -153,31 +153,6 @@ export const connectMock = async (page: Page, baseUrl: string, apiKey: string, n
 }
 
 /**
- * Sets the role line of the open agent form through the role field (spec 002, "Role label"): opens
- * the list, types the role, and presses Enter on the marked choice. A role that a listed role
- * equals (ignoring case) gets the spelling of the list. The list closes at the end.
- */
-export const pickRole = async (page: Page, role: string) => {
-  await page.getByTestId("agent-role-open").or(page.getByTestId("agent-role-chip")).click()
-  const filter = page.getByTestId("agent-role-filter")
-  await filter.fill(role)
-  await filter.press("Enter")
-  await page.getByTestId("agent-role-list").waitFor({ state: "detached" })
-}
-
-/** Creates an agent with the first model of the first account. */
-export const createAgent = async (page: Page, name: string) => {
-  await page.getByTestId("new-agent").click()
-  await page.getByTestId("agent-name").fill(name)
-  await page.getByTestId("model-model").waitFor()
-  await page.getByTestId("agent-submit").click()
-  await page.getByTestId("chat-start").filter({ hasText: name }).waitFor()
-  // The box of the form plays an exit motion first. A test that goes on at once can meet the box
-  // twice: it holds the same controls as the next box (for example the one that picks a model).
-  await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
-}
-
-/**
  * Records the window with the Chrome DevTools screencast. `stop` writes `<name>.mp4` and
  * `<name>.gif` under build/e2e/videos when ffmpeg is on PATH; the frames stay otherwise.
  */

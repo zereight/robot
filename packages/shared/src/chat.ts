@@ -1,13 +1,8 @@
 import { Schema } from "effect"
-import type { SettingsNote } from "./agentSettings.ts"
-import type { KnowledgeNote } from "./knowledge.ts"
-import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
 import type { SecretAsk } from "./secrets.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
-import type { SetupFailCode } from "./setupActions.ts"
-import type { TaskProgress } from "./task.ts"
 import type { RefusalReason } from "./tools.ts"
 
 export type MessagePart =
@@ -114,29 +109,6 @@ export type MessagePart =
       readonly toAgentId: string
       readonly toThreadId: string
     }
-  /**
-   * A muted line "Setup failed: <name>" (spec 035). The command did not succeed and the turn went
-   * on. `code` is "exit" when the command ended with an error, "timeout" when the time ran out,
-   * and "spawn" when it did not start. The model never reads it.
-   */
-  | {
-      readonly kind: "note"
-      readonly note: "setup_failed"
-      readonly name: string
-      readonly code: SetupFailCode
-    }
-  /**
-   * The handover card (spec 003, "Hand over"): the brief that the app wrote, and the place it
-   * came from. The card is no words of the user (spec 007). `fromThreadId` is null for a main
-   * thread. The model gets the brief as information from a colleague.
-   */
-  | {
-      readonly kind: "handover"
-      readonly brief: string
-      readonly fromName: string
-      readonly fromAgentId: string
-      readonly fromThreadId: string | null
-    }
   | {
       readonly kind: "tool"
       readonly id: string
@@ -153,14 +125,10 @@ export type MessagePart =
       readonly memory?: MemoryNote
       /** Set when a linked device answered the approval: its answer and its name (spec 012). */
       readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
-      /** Set for a knowledge tool: what it read or changed, so the card can show it. */
-      readonly knowledge?: KnowledgeNote
       /** Set when a message of the user in the chat answered this question card (spec 003). */
       readonly answeredInChat?: boolean
       /** Set when a protected card ended: the value was saved, or the user cancelled (spec 020). */
       readonly secret?: "saved" | "cancelled"
-      /** Set for the settings tool: what the call changed, so the chat shows a line with Undo. */
-      readonly settings?: SettingsNote
       /**
        * Set when the step did not run because the permission level refused it: the card says
        * "Refused: read only" (spec 007). The action log reads this to record the result Refused,
@@ -421,7 +389,6 @@ const speakerOf = (message: ChatMessage) => message.speakerId ?? message.agentId
 
 export const startsGroup = (previous: ChatMessage | undefined, message: ChatMessage) =>
   !previous ||
-  handoverOf(previous) !== undefined ||
   previous.author !== message.author ||
   (previous.author === "agent" &&
     message.author === "agent" &&
@@ -440,28 +407,13 @@ export const sameDay = (a: number, b: number) => {
   )
 }
 
-/** The handover card of a message, if it is one (spec 003, "Hand over"). */
-export const handoverOf = (message: Pick<ChatMessage, "parts">) =>
-  message.parts.find((p): p is Extract<MessagePart, { kind: "handover" }> => p.kind === "handover")
-
-/** The muted line "Handed over to <name>" of a message, if it is one. */
-export const handedOverOf = (message: Pick<ChatMessage, "parts">) =>
-  message.parts.find(
-    (p): p is Extract<MessagePart, { kind: "note"; note: "handed_over" }> =>
-      p.kind === "note" && p.note === "handed_over",
-  )
-
 /**
- * The words of the user in a chat (spec 007): the text of the messages that the user wrote. A
- * handover card has the author "user" in the chat, but it is no words of the user: only the text
- * that the user typed in the dialog is (spec 003, "Hand over"). Files, skill chips and cards add
- * no words. A check of a step at the level "Ask when unsure" reads the words from here.
+ * The words of the user in a chat (spec 007): the text of the messages that the user wrote. Files,
+ * skill chips and cards add no words. A check of a step at the level "Ask when unsure" reads the words from here.
  */
 export const userWords = (messages: readonly Pick<ChatMessage, "author" | "parts">[]): string[] =>
   messages.flatMap((m) =>
-    m.author === "user" && handoverOf(m) === undefined && messageText(m).trim() !== ""
-      ? [messageText(m)]
-      : [],
+    m.author === "user" && messageText(m).trim() !== "" ? [messageText(m)] : [],
   )
 
 /** The skill chip of a message, if it has one. */
@@ -497,9 +449,7 @@ export const isFoldableTool = (part: MessagePart): part is ToolPart =>
   part.refused === undefined &&
   part.reason === undefined &&
   part.decision === undefined &&
-  part.knowledge === undefined &&
-  part.memory === undefined &&
-  part.settings === undefined
+  part.memory === undefined
 
 /** One row of a message: one part, or a run of folded tool steps. */
 export type PartSegment =
@@ -553,3 +503,11 @@ export const foldedToolsKey = (
   count: number,
 ): "chat.tools.folded.one" | "chat.tools.folded.other" =>
   count === 1 ? "chat.tools.folded.one" : "chat.tools.folded.other"
+
+/** How far the turn of a task went (spec 005, "How far a turn went"). It only goes up. */
+export type TaskProgress = "not_sent" | "sent" | "started"
+
+/** The line in the chat: what the memory tool did. It holds ids only, no text. */
+export type MemoryNote =
+  | { readonly kind: "saved"; readonly historyId: string }
+  | { readonly kind: "suggested"; readonly proposalId: string }

@@ -1,6 +1,7 @@
+import { existsSync, rmSync } from "node:fs"
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
 import { Context, Effect, Layer } from "effect"
-import { dataSteps, migrations } from "./migrations.ts"
+import { migrations } from "./migrations.ts"
 
 export type Row = Record<string, SQLInputValue>
 type Params = readonly SQLInputValue[]
@@ -37,7 +38,42 @@ export class Database extends Context.Service<Database, DatabaseService>()("robo
     )
 }
 
+/**
+ * The application id of a database in the workflow schema ("ROB1"). A database from before has no
+ * id and a user version above 0: it holds agents, routines and chats of the old model.
+ */
+export const SCHEMA_ID = 0x524f4231
+
+/** True when the file holds a database of the old model (agents), not of the workflow model. */
+const isLegacy = (file: string): boolean => {
+  const db = new DatabaseSync(file)
+  try {
+    const id = (db.prepare("PRAGMA application_id").get() as { application_id: number })
+      .application_id
+    const version = (db.prepare("PRAGMA user_version").get() as { user_version: number })
+      .user_version
+    return id !== SCHEMA_ID && version > 0
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Erases a database from before the workflow model (decision 16 of
+ * `docs/proposal-workflow-first.md`: no migration). The file and its journal files go, so no old
+ * row stays on the disk. Only the database goes. The folders of workflows and the attachments
+ * next to it stay. The secrets in the keychain stay too, and nothing refers to them any more.
+ */
+const eraseLegacy = (file: string) => {
+  if (file === ":memory:" || file === "" || !existsSync(file)) return
+  if (!isLegacy(file)) return
+  for (const name of [file, `${file}-wal`, `${file}-shm`, `${file}-journal`]) {
+    rmSync(name, { force: true })
+  }
+}
+
 const open = (file: string) => {
+  eraseLegacy(file)
   const db = new DatabaseSync(file)
   db.exec("PRAGMA journal_mode = WAL")
   db.exec("PRAGMA foreign_keys = ON")
@@ -47,11 +83,11 @@ const open = (file: string) => {
 
 export const migrate = (db: DatabaseSync) => {
   const row = db.prepare("PRAGMA user_version").get() as { user_version: number }
+  if (row.user_version === 0) db.exec(`PRAGMA application_id = ${SCHEMA_ID}`)
   for (let version = row.user_version; version < migrations.length; version++) {
     db.exec("BEGIN")
     try {
       db.exec(migrations[version] ?? "")
-      dataSteps[version]?.(db)
       db.exec(`PRAGMA user_version = ${version + 1}`)
       db.exec("COMMIT")
     } catch (error) {

@@ -1,18 +1,15 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { TeachEvent } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
-import { FakeChat } from "../teams/fakeChat.testing.ts"
 import { PAGE_CONTROLS_MAX } from "../web/pageControls.ts"
 import type { ConnectionsOptions } from "./Connections.ts"
 import type { BrowserAct, BrowserPage, PlatformService } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
-import { fakeClock } from "./silence.testing.ts"
 
 /** One control of a fake page: the selector it answers, and its line in the read list. */
 export interface FakeBrowserControl {
@@ -31,39 +28,28 @@ export interface FakeBrowserSeed {
   loading?: boolean
 }
 
-/**
- * A platform for unit tests: a temp data folder and a trash list. A test that restarts the app
- * gives the same stand-in Teams to both starts, because the outside world does not restart.
- */
-export const testPlatform = (options: { chat?: FakeChat } = {}) => {
+/** A platform for unit tests: a temp data folder and a trash list. */
+export const testPlatform = () => {
   const dataDir = mkdtempSync(join(tmpdir(), "robot-unit-"))
   // A home folder of its own, so a test never reads or writes a real place of the user (spec 007).
   const homeDir = mkdtempSync(join(tmpdir(), "robot-unit-home-"))
   /** The addresses that each host name leads to, for a web page fetch. A name not here fails. */
   const hosts = new Map<string, string[]>()
   const trashed: string[] = []
-  /** What the fake browsers did, in order, as "agent:action". */
+  /** What the fake browsers did, in order, as "workflow:action". */
   const browserLog: string[] = []
-  /** Where the fake browsers were told to show, as "agent:x,y WxH" or "agent:hidden". */
+  /** Where the fake browsers were told to show, as "workflow:x,y WxH" or "workflow:hidden". */
   const browserPlaced: string[] = []
-  /** Whether the input of the user was let in or kept out, as "agent:on" or "agent:off". */
+  /** Whether the input of the user was let in or kept out, as "workflow:on" or "workflow:off". */
   const browserInput: string[] = []
   const pages = new Map<string, BrowserPage>()
-  /** The stand-in Teams (spec 028). No Teams page opens until the Teams link asks for one. */
-  const chat = options.chat ?? new FakeChat()
-  /** The browser profile that holds the sign-in of the Teams page now, as the platform was told. */
-  const teamsProfile: { id: string | undefined } = { id: undefined }
   /** The browser profile that each agent uses now, as the fake platform was told. */
   const browserProfiles = new Map<string, string>()
   /** The browser profiles whose saved data was deleted, in order. */
   const clearedProfiles: string[] = []
-  /** The recorders of "Teach a task" that run now, by agent. A test calls one to act as the user. */
-  const recorders = new Map<string, (event: TeachEvent) => void>()
   const shell = {
     focused: true,
     notices: [] as { title: string; body: string; click: () => void }[],
-    shapes: [] as string[],
-    fits: [] as { width: number; height: number }[],
     shown: 0,
     /** What "Save as" answers. Undefined means the user cancelled. */
     savePath: undefined as string | undefined,
@@ -82,20 +68,20 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     string,
     { controls: FakeBrowserControl[]; focus: string | null; errors: string[]; loading: boolean }
   >()
-  const seedBrowserPage = (agentId: string, seed: FakeBrowserSeed) => {
-    browserSeeds.set(agentId, {
+  const seedBrowserPage = (workflowId: string, seed: FakeBrowserSeed) => {
+    browserSeeds.set(workflowId, {
       controls: seed.controls ?? [],
       focus: seed.focus ?? null,
       errors: [...(seed.errors ?? [])],
       loading: seed.loading ?? false,
     })
   }
-  const fakeBrowser = (agentId: string): BrowserPage => {
+  const fakeBrowser = (workflowId: string): BrowserPage => {
     let open = false
     let url = ""
     const listeners: (() => void)[] = []
     const state = () => {
-      const known = browserSeeds.get(agentId)
+      const known = browserSeeds.get(workflowId)
       if (known) return known
       const fresh = {
         controls: [] as FakeBrowserControl[],
@@ -103,7 +89,7 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
         errors: [] as string[],
         loading: false,
       }
-      browserSeeds.set(agentId, fresh)
+      browserSeeds.set(workflowId, fresh)
       return fresh
     }
     /** A click or a type: a number picks from the list, a selector must fit exactly one. */
@@ -141,7 +127,7 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
       open: async (next) => {
         open = true
         url = next
-        browserLog.push(`${agentId}:open ${next}`)
+        browserLog.push(`${workflowId}:open ${next}`)
         return { url, title: "Fake page" }
       },
       read: async () => {
@@ -157,11 +143,11 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
         }
       },
       click: async (target) => {
-        browserLog.push(`${agentId}:click ${target}`)
+        browserLog.push(`${workflowId}:click ${target}`)
         return act(target)
       },
       type: async (target, text) => {
-        browserLog.push(`${agentId}:type ${target} ${text}`)
+        browserLog.push(`${workflowId}:type ${target} ${text}`)
         return act(target)
       },
       evaluate: async () => {
@@ -169,24 +155,20 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
       },
       place: (bounds) => {
         browserPlaced.push(
-          `${agentId}:${bounds ? `${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}` : "hidden"}`,
+          `${workflowId}:${bounds ? `${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}` : "hidden"}`,
         )
       },
       allowUserInput: (allowed) => {
-        browserInput.push(`${agentId}:${allowed ? "on" : "off"}`)
+        browserInput.push(`${workflowId}:${allowed ? "on" : "off"}`)
       },
       close: () => {
         if (!open) return
         open = false
-        browserLog.push(`${agentId}:close`)
+        browserLog.push(`${workflowId}:close`)
         for (const l of listeners) l()
       },
       onClosed: (l) => {
         listeners.push(l)
-      },
-      record: (listener) => {
-        if (listener) recorders.set(agentId, listener)
-        else recorders.delete(agentId)
       },
     }
   }
@@ -207,8 +189,6 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     pickFiles: async () => [],
     pickSavePath: async () => shell.savePath,
     pickArchive: async () => undefined,
-    pickAgentFileSave: async () => undefined,
-    pickAgentFile: async () => undefined,
     pickWorkflowFileSave: async () => undefined,
     pickWorkflowFile: async () => undefined,
     openPath: async () => {},
@@ -237,42 +217,26 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     showWindow: () => {
       shell.shown++
     },
-    setIslandWidth: () => {},
-    setIslandShape: (shape) => {
-      shell.shapes.push(shape)
-    },
-    fitIsland: (size) => {
-      shell.fits.push(size)
-    },
-    browser: (agentId) => {
-      const known = pages.get(agentId)
+    browser: (workflowId) => {
+      const known = pages.get(workflowId)
       if (known) return known
-      const page = fakeBrowser(agentId)
-      pages.set(agentId, page)
+      const page = fakeBrowser(workflowId)
+      pages.set(workflowId, page)
       return page
     },
-    setBrowserProfile: (agentId, profileId) => {
-      const before = browserProfiles.get(agentId)
-      if (profileId === undefined) browserProfiles.delete(agentId)
-      else browserProfiles.set(agentId, profileId)
-      if (before !== profileId) pages.get(agentId)?.close()
+    setBrowserProfile: (workflowId, profileId) => {
+      const before = browserProfiles.get(workflowId)
+      if (profileId === undefined) browserProfiles.delete(workflowId)
+      else browserProfiles.set(workflowId, profileId)
+      if (before !== profileId) pages.get(workflowId)?.close()
     },
     clearBrowserProfile: async (profileId) => {
       clearedProfiles.push(profileId)
-      // The saved sign-in is gone: the stand-in Teams shows a sign-in form again.
-      if (profileId === teamsProfile.id) chat.endSession()
-    },
-    teams: () => chat.surface,
-    setTeamsProfile: (profileId) => {
-      if (profileId !== teamsProfile.id) chat.closeByUser()
-      teamsProfile.id = profileId
     },
     diagnosticReport: async () => ({ text: "report", path: join(dataDir, "logs", "report.txt") }),
   }
   return {
     platform,
-    chat,
-    teamsProfile,
     dataDir,
     homeDir,
     hosts,
@@ -282,7 +246,6 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     browserInput,
     browserProfiles,
     clearedProfiles,
-    recorders,
     shell,
     seedBrowserPage,
   }
@@ -297,16 +260,12 @@ export const testRuntime = (
     cacheHosts?: readonly string[]
     /** A database file, for a test that starts the app again on the same data. */
     databaseFile?: string
-    /** The stand-in Teams to use. A restart gives the same one to both starts. */
-    chat?: FakeChat
     /** How connections are reached, and their time limits (spec 018). */
     connections?: ConnectionsOptions
   } = {},
 ) => {
   const {
     platform,
-    chat,
-    teamsProfile,
     dataDir,
     homeDir,
     hosts,
@@ -316,19 +275,13 @@ export const testRuntime = (
     browserInput,
     browserProfiles,
     clearedProfiles,
-    recorders,
     shell,
     seedBrowserPage,
-  } = testPlatform(options.chat ? { chat: options.chat } : {})
+  } = testPlatform()
   const events: { event: string; payload: unknown; server?: string }[] = []
-  // The clock of the Teams link. A test moves it by hand (`advance`, `sleep`).
-  const { clock, advance, sleep } = fakeClock()
-  // The messages of the stand-in Teams carry the time of this clock.
-  chat.useClock(clock.now)
   const runtime = ManagedRuntime.make(
     appLayer({
       platform,
-      clock,
       databaseFile: options.databaseFile ?? ":memory:",
       linkPort: 0,
       nearbySocket: (options.network ?? new MemoryNetwork()).open,
@@ -345,11 +298,6 @@ export const testRuntime = (
   void bindLinkDispatcher(runtime)
   return {
     runtime,
-    chat,
-    teamsProfile,
-    clock,
-    advance,
-    sleep,
     dataDir,
     homeDir,
     hosts,
@@ -360,7 +308,6 @@ export const testRuntime = (
     browserInput,
     browserProfiles,
     clearedProfiles,
-    recorders,
     shell,
     seedBrowserPage,
   }
@@ -369,15 +316,15 @@ export const testRuntime = (
 export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]
 
 /**
- * Saves the rule "Always allow for this agent" for a fetch of a local host (spec 007, "Addresses of
+ * Saves the rule "Always allow for this workflow" for a fetch of a local host (spec 007, "Addresses of
  * a web page fetch"). A test that fetches from a test server on this computer needs it: a fetch of
  * a local address is a hard step, and it asks without the rule.
  */
-export const allowLocalHost = (runtime: TestRuntime, agentId: string, host = "127.0.0.1") =>
+export const allowLocalHost = (runtime: TestRuntime, workflowId: string, host = "127.0.0.1") =>
   runtime.runPromise(
     Rules.use((rules) =>
       Effect.sync(() => {
-        rules.saveFromCard(agentId, { kind: "web", host })
+        rules.saveFromCard(workflowId, { kind: "web", host })
       }),
     ),
   )

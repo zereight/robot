@@ -57,9 +57,13 @@ describe("Korean particles after a name (resolveJosa)", () => {
   })
 
   test("translate fills the name and then picks the particle", () => {
-    expect(translate("ko", "agents.delete.title", { name: "Bo" })).toBe("Bo를 삭제할까요?")
-    expect(translate("ko", "agents.delete.title", { name: "Ben" })).toBe("Ben을 삭제할까요?")
-    expect(translate("ko", "agents.delete.title", { name: "Bob" })).toBe("Bob을(를) 삭제할까요?")
-    expect(translate("en", "agents.delete.title", { name: "Bo" })).toBe("Delete Bo?")
+    expect(translate("ko", "secrets.delete.title", { name: "Bo" })).toBe("비밀 값 Bo를 삭제할까요?")
+    expect(translate("ko", "secrets.delete.title", { name: "Ben" })).toBe(
+      "비밀 값 Ben을 삭제할까요?",
+    )
+    expect(translate("ko", "secrets.delete.title", { name: "Bob" })).toBe(
+      "비밀 값 Bob을(를) 삭제할까요?",
+    )
+    expect(translate("en", "secrets.delete.title", { name: "Bo" })).toBe("Delete the secret Bo?")
   })
 })

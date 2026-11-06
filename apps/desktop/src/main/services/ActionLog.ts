@@ -24,9 +24,9 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 
-/** What a step adds to the log. The service adds the time, the name of the agent and the id. */
+/** What a step adds to the log. The service adds the time, the name of the workflow and the id. */
 export interface ActionLogInput {
-  readonly agentId: string
+  readonly workflowId: string
   readonly kind: ActionKind
   /** For a step of a file, whether it read or wrote. Left out for every other kind. */
   readonly access?: StepAccess | null
@@ -44,9 +44,9 @@ export interface ActionLogInput {
 }
 
 export interface ActionLogFilter {
-  readonly agentId?: string
+  readonly workflowId?: string
   readonly result?: ActionResult
-  /** The kind of step (spec 007: the log has filters for the agent, the result and the step kind). */
+  /** The kind of step (spec 007: the log has filters for the workflow, the result and the step kind). */
   readonly kind?: ActionKind
   /** A search of the target: the entries whose target holds this text, with no regard to case. */
   readonly search?: string
@@ -67,8 +67,8 @@ export interface ActionLogService {
 interface Row {
   id: string
   at: number
-  agent_id: string
-  agent_name: string
+  workflow_id: string
+  workflow_name: string
   kind: ActionKind
   access: StepAccess | null
   target: string
@@ -127,8 +127,8 @@ const toCheck = (r: Row): ActionCheck | null => {
 const toEntry = (r: Row): ActionLogEntry => ({
   id: r.id,
   at: r.at,
-  agentId: r.agent_id,
-  agentName: r.agent_name,
+  workflowId: r.workflow_id,
+  workflowName: r.workflow_name,
   kind: r.kind,
   access: r.access,
   target: r.target,
@@ -165,14 +165,14 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
           const id = randomUUID()
           const at = Date.now()
           const name =
-            db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", input.agentId)?.name ??
-            ""
+            db.get<{ name: string }>("SELECT name FROM workflow WHERE id = ?", input.workflowId)
+              ?.name ?? ""
           db.run(
-            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability)
+            `INSERT INTO action_log (id, at, workflow_id, workflow_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
-            input.agentId,
+            input.workflowId,
             name,
             input.kind,
             input.kind === "file" ? (input.access ?? null) : null,
@@ -217,9 +217,9 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
           Effect.sync(() => {
             const where: string[] = []
             const params: (string | number)[] = []
-            if (filter.agentId) {
-              where.push("l.agent_id = ?")
-              params.push(filter.agentId)
+            if (filter.workflowId) {
+              where.push("l.workflow_id = ?")
+              params.push(filter.workflowId)
             }
             if (filter.result) {
               where.push("l.result = ?")

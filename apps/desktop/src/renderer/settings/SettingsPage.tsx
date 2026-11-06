@@ -1,19 +1,4 @@
-import {
-  AGENTS_AT_ONCE_MAX,
-  AGENTS_AT_ONCE_MIN,
-  CHASE_INTERVALS,
-  type ChaseInterval,
-  isAgentsAtOnce,
-  isStepLimit,
-  type KeepAwakeState,
-  type LicenseEntry,
-  type MessageKey,
-  type MessageParams,
-  SILENT_LIMITS,
-  type SilentLimit,
-  STEP_LIMIT_MAX,
-  STEP_LIMIT_MIN,
-} from "@robot/shared"
+import type { LicenseEntry, MessageKey } from "@robot/shared"
 import { X } from "lucide-solid"
 import {
   createResource,
@@ -27,7 +12,6 @@ import {
   Show,
   Switch as SwitchCase,
 } from "solid-js"
-import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
@@ -35,23 +19,16 @@ import { useClosing } from "../ui/Presence.tsx"
 import { ActionLogSection } from "./ActionLogSection.tsx"
 import { BrowserProfilesSection } from "./BrowserProfilesSection.tsx"
 import { DecisionSection } from "./DecisionSection.tsx"
-import { HandbookSection } from "./HandbookSection.tsx"
 import { RulesSection } from "./RulesSection.tsx"
 import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
 import styles from "./settings.module.css"
-import { TeamsSection } from "./TeamsSection.tsx"
 
 export const sections = [
   "general",
   "appearance",
   "providers",
   "decision",
-  "handbook",
-  "setup",
-  "teams",
   "devices",
-  "notifications",
-  "archive",
   "browser",
   "permissions",
   "connections",
@@ -88,127 +65,6 @@ const Row = (
   </div>
 )
 
-/**
- * "Keep the computer awake" (spec 013): when the app stops the computer from sleeping, and, in a
- * muted line, whether it does now and why. The line follows the app while the user looks at it.
- */
-const KeepAwake = () => {
-  const app = useApp()
-  const { t } = app
-  const [state, { mutate }] = createResource(() => call("keepAwake.state"))
-  onCleanup(window.robot.on("keepAwake.changed", (next) => mutate(next)))
-  const words = (now: KeepAwakeState | undefined) => {
-    if (!now) return undefined
-    if (now.reason === "working") return t("settings.keepAwake.now.working", { count: now.working })
-    if (now.reason === "routines")
-      return t("settings.keepAwake.now.routines", { count: now.routines })
-    // On its battery the computer lets a waiting routine go. Say why, so it does not look broken.
-    if (now.mode === "routines" && now.routines > 0 && now.onBattery)
-      return t("settings.keepAwake.now.battery")
-    return t("settings.keepAwake.now.none")
-  }
-  const noteOf = () => {
-    const text = words(state())
-    return text ? { text, testId: "setting-keep-awake-state" } : undefined
-  }
-  return (
-    <Row label={t("settings.keepAwake")} hint={t("settings.keepAwake.hint")} note={noteOf()}>
-      <Segmented
-        label={t("settings.keepAwake")}
-        testId="setting-keep-awake"
-        value={app.settings.keepAwake}
-        onChange={(keepAwake) => app.update({ keepAwake })}
-        options={[
-          { value: "off", label: t("settings.keepAwake.off") },
-          { value: "working", label: t("settings.keepAwake.working") },
-          { value: "routines", label: t("settings.keepAwake.routines") },
-        ]}
-      />
-    </Row>
-  )
-}
-
-/**
- * "Agents working at once": a whole number from 1 to 8 (spec 005, 013). A number out of range
- * shows the reason, and the old value stays.
- */
-const AgentsAtOnce = () => {
-  const app = useApp()
-  const { t } = app
-  const [draft, setDraft] = createSignal<string>()
-  const shown = () => draft() ?? String(app.settings.agentsAtOnce)
-  const parsed = () => (/^\d+$/.test(shown().trim()) ? Number(shown().trim()) : Number.NaN)
-  const invalid = () => draft() !== undefined && !isAgentsAtOnce(parsed())
-  const commit = () => {
-    const value = parsed()
-    if (isAgentsAtOnce(value) && value !== app.settings.agentsAtOnce)
-      app.update({ agentsAtOnce: value })
-    setDraft(undefined)
-  }
-  return (
-    <Row
-      label={t("settings.agentsAtOnce")}
-      hint={invalid() ? t("settings.agentsAtOnce.invalid") : t("settings.agentsAtOnce.hint")}
-      testId="setting-agents-at-once-row"
-    >
-      <input
-        class={styles.number}
-        type="number"
-        inputMode="numeric"
-        min={AGENTS_AT_ONCE_MIN}
-        max={AGENTS_AT_ONCE_MAX}
-        step={1}
-        value={shown()}
-        aria-label={t("settings.agentsAtOnce")}
-        aria-invalid={invalid()}
-        onInput={(e) => setDraft(e.currentTarget.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        data-testid="setting-agents-at-once"
-      />
-    </Row>
-  )
-}
-
-/** The step limit of a task: a whole number from 20 to 2000 (spec 013). */
-const StepLimit = () => {
-  const app = useApp()
-  const { t } = app
-  const [draft, setDraft] = createSignal<string>()
-  const shown = () => draft() ?? String(app.settings.stepLimit)
-  const parsed = () => (/^\d+$/.test(shown().trim()) ? Number(shown().trim()) : Number.NaN)
-  const invalid = () => draft() !== undefined && !isStepLimit(parsed())
-  /** Saves a valid number when the user leaves the field or presses Enter. */
-  const commit = () => {
-    const value = parsed()
-    if (isStepLimit(value) && value !== app.settings.stepLimit) app.update({ stepLimit: value })
-    setDraft(undefined)
-  }
-  return (
-    <Row
-      label={t("settings.stepLimit")}
-      hint={invalid() ? t("settings.stepLimit.invalid") : t("settings.stepLimit.hint")}
-      testId="setting-step-limit-row"
-    >
-      <input
-        class={styles.number}
-        type="number"
-        inputMode="numeric"
-        min={STEP_LIMIT_MIN}
-        max={STEP_LIMIT_MAX}
-        step={1}
-        value={shown()}
-        aria-label={t("settings.stepLimit")}
-        aria-invalid={invalid()}
-        onInput={(e) => setDraft(e.currentTarget.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        data-testid="setting-step-limit"
-      />
-    </Row>
-  )
-}
-
 const General = () => {
   const app = useApp()
   const { t } = app
@@ -235,7 +91,6 @@ const General = () => {
           onChange={(startAtLogin) => app.update({ startAtLogin })}
         />
       </Row>
-      <KeepAwake />
       <Row
         label={t("settings.workspaceRoot")}
         hint={app.settings.workspaceRoot || app.info.defaultWorkspaceRoot}
@@ -252,66 +107,6 @@ const General = () => {
           </Button>
         </div>
       </Row>
-      <Row label={t("settings.duringTurn")} hint={t("settings.duringTurn.hint")}>
-        <Segmented
-          label={t("settings.duringTurn")}
-          testId="setting-during-turn"
-          value={app.settings.duringTurn}
-          onChange={(duringTurn) => app.update({ duringTurn })}
-          options={[
-            { value: "join", label: t("settings.duringTurn.join") },
-            { value: "queue", label: t("settings.duringTurn.queue") },
-          ]}
-        />
-      </Row>
-      <Row label={t("settings.autoCompact")} hint={t("settings.autoCompact.hint")}>
-        <Switch
-          label={t("settings.autoCompact")}
-          testId="setting-auto-compact"
-          checked={app.settings.autoCompact}
-          onChange={(autoCompact) => app.update({ autoCompact })}
-        />
-      </Row>
-      <Row label={t("settings.keepGoing")} hint={t("settings.keepGoing.hint")}>
-        <Switch
-          label={t("settings.keepGoing")}
-          testId="setting-keep-going"
-          checked={app.settings.keepGoing}
-          onChange={(keepGoing) => app.update({ keepGoing })}
-        />
-      </Row>
-      <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
-        <Segmented
-          label={t("settings.silentLimit")}
-          testId="setting-silent-limit"
-          value={String(app.settings.silentLimit)}
-          onChange={(value) => app.update({ silentLimit: Number(value) as SilentLimit })}
-          options={SILENT_LIMITS.map((minutes) => ({
-            value: String(minutes),
-            label:
-              minutes === 0
-                ? t("settings.silentLimit.never")
-                : t("settings.silentLimit.option", { count: minutes }),
-          }))}
-        />
-      </Row>
-      <Row label={t("settings.chaseInterval")} hint={t("settings.chaseInterval.hint")}>
-        <Segmented
-          label={t("settings.chaseInterval")}
-          testId="setting-chase-interval"
-          value={String(app.settings.chaseInterval)}
-          onChange={(value) => app.update({ chaseInterval: Number(value) as ChaseInterval })}
-          options={CHASE_INTERVALS.map((minutes) => ({
-            value: String(minutes),
-            label:
-              minutes === 0
-                ? t("settings.chaseInterval.off")
-                : t("settings.chaseInterval.option", { count: minutes }),
-          }))}
-        />
-      </Row>
-      <StepLimit />
-      <AgentsAtOnce />
     </>
   )
 }
@@ -347,22 +142,6 @@ const Appearance = () => {
           ]}
         />
       </Row>
-      <Row label={t("settings.compactPlaces")} hint={t("settings.compactPlaces.hint")}>
-        <Switch
-          label={t("settings.compactPlaces")}
-          testId="setting-compact-places"
-          checked={app.settings.compactPlaces}
-          onChange={(compactPlaces) => app.update({ compactPlaces })}
-        />
-      </Row>
-      <Row label={t("settings.showToolSteps")} hint={t("settings.showToolSteps.hint")}>
-        <Switch
-          label={t("settings.showToolSteps")}
-          testId="setting-show-tool-steps"
-          checked={app.settings.showToolSteps}
-          onChange={(showToolSteps) => app.update({ showToolSteps })}
-        />
-      </Row>
       <Row label={t("settings.reduceMotion")}>
         <Segmented
           label={t("settings.reduceMotion")}
@@ -383,8 +162,6 @@ const Appearance = () => {
 const Data = () => {
   const app = useApp()
   const { t } = app
-  const [note, setNote] = createSignal<{ key: MessageKey; params?: MessageParams }>()
-  const [failed, setFailed] = createSignal(false)
   /** The state of the last "Copy a diagnostic report": it shows on the button for a moment. */
   const [report, setReport] = createSignal<"done" | "failed">()
   let reportTimer: ReturnType<typeof setTimeout> | undefined
@@ -399,18 +176,6 @@ const Data = () => {
       setReport("failed")
     }
     reportTimer = setTimeout(() => setReport(undefined), 3_000)
-  }
-  const run = async (
-    action: () => Promise<{ key: MessageKey; params?: MessageParams } | undefined>,
-  ) => {
-    setNote(undefined)
-    setFailed(false)
-    try {
-      setNote(await action())
-    } catch (e) {
-      setFailed(true)
-      setNote(describeError(e))
-    }
   }
   return (
     <>
@@ -430,53 +195,6 @@ const Data = () => {
               : t("settings.data.report.button")}
         </Button>
       </Row>
-      <Row
-        label={t("settings.data.export")}
-        hint={t("settings.data.export.hint")}
-        testId="setting-export"
-      >
-        <Button
-          data-testid="data-export"
-          onClick={() =>
-            run(async () => {
-              const result = await call("data.export")
-              return result.path
-                ? { key: "settings.data.exported", params: { path: result.path } }
-                : undefined
-            })
-          }
-        >
-          {t("settings.data.export.button")}
-        </Button>
-      </Row>
-      <Row
-        label={t("settings.data.restore")}
-        hint={t("settings.data.restore.hint")}
-        testId="setting-restore"
-      >
-        <Button
-          data-testid="data-restore"
-          onClick={() =>
-            run(async () => {
-              const result = await call("data.restore")
-              return result ? { key: "settings.data.restoreed", params: result } : undefined
-            })
-          }
-        >
-          {t("settings.data.restore.button")}
-        </Button>
-      </Row>
-      <Show when={note()}>
-        {(n) => (
-          <p
-            class={styles.hint}
-            role={failed() ? "alert" : "status"}
-            data-testid={failed() ? "data-error" : "data-note"}
-          >
-            {t(n().key, n().params)}
-          </p>
-        )}
-      </Show>
     </>
   )
 }
@@ -582,14 +300,8 @@ export const SettingsPage = (props: {
           <Match when={section() === "decision"}>
             <DecisionSection />
           </Match>
-          <Match when={section() === "handbook"}>
-            <HandbookSection />
-          </Match>
           <Match when={section() === "browser"}>
             <BrowserProfilesSection />
-          </Match>
-          <Match when={section() === "teams"}>
-            <TeamsSection />
           </Match>
           <Match when={section() === "permissions"}>
             <SavedSecretsSection />
