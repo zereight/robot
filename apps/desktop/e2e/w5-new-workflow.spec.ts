@@ -21,6 +21,7 @@ test("workflow list: the empty state, a new workflow, the card, the delete quest
   await expect(page.getByTestId("workflow-header")).toContainText("Weekly")
 
   // The responsible document has the short default text.
+  await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-text")).toHaveValue(/You answer for this workflow/)
 
   await page.getByTestId("workflow-back").click()
@@ -59,6 +60,7 @@ test("workflow list in Korean: the words 워크플로우 and 담당 문서", asy
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("주간 보고")
   await page.getByTestId("new-workflow-name").press("Enter")
+  await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-editor")).toContainText("담당 문서")
   await shot(page, "w5-05-document-ko")
   await page.getByTestId("workflow-back").click()
