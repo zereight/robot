@@ -21,9 +21,6 @@ change before it applies.
   "Self-improvement").
 - **Switch "Self-improvement"**: a switch of the workflow, on by default (see "Self-improvement").
 
-Where the user opens the responsible document, and where the switch is, is not decided (see the
-questions for 002).
-
 ## Flows
 
 1. Make: a new workflow gets a responsible document with a short default text (010, "New
@@ -50,10 +47,8 @@ questions for 002).
 - **Empty**: an empty responsible document is valid. A node then runs with its own prompt only. The
   responsible document answers in the chat with the rules of the app only.
 - **Order**: at run time, the app sends the responsible document first and the prompt of the node
-  after it (010). The rules of the app (007, 014) always win over both. Which text wins when the two
-  say different things is not decided (see the questions for 002).
-- **While a run works**: the responsible document is read-only, as the workflow is (010). Whether
-  this rule is right for the responsible document is not decided (see the questions for 002).
+  after it (010). The rules of the app (007, 014) always win over both.
+- **While a run works**: the responsible document is read-only, as the workflow is (010).
 - **Who changes it**: the user, in the editor (also on a linked device that the user allows, 012);
   a proposal that the user accepts (see "Self-improvement"); Undo and Restore of a version. A
   request in the chat becomes a proposal. The user decides each change. No other part of the app
@@ -61,7 +56,6 @@ questions for 002).
 - **Text of a secret**: text that looks like a secret (014) is refused on save, with the reason. The
   responsible document goes to the model provider of each node and of the chat. The page says so.
 - **Data**: the responsible document syncs with its workflow (019), and an export holds it (014).
-  Whether the workflow file holds it is not decided (see the questions for 002).
 - **Words**: the interface says "responsible document". It does not say "instructions", "prompt",
   "persona", "system prompt" or "Soul" for this text. A node prompt and the instructions of a skill
   (017) keep their names, because they are other texts.
@@ -89,7 +83,7 @@ rely on.
 - **Why it stopped or waits**: the user asks why a run stopped or why it waits. The answer names the
   node and the reason. The reasons are the ones that 005 lists for a task: a failed node with its
   reason, a wait for the approval of the user, a wait for the pick of a decision node, a wait behind
-  a slot, a stop by the user, and "The app stopped".
+  a slot, a cancel by the user ("Stopped by you"), and "The app stopped".
 - **Results so far**: the user asks what the results are. The answer gives the result of each node
   that has ended, in the order of the run.
 - **Feedback**: while a run works or waits, the user writes feedback on a result in the chat. The
@@ -100,12 +94,12 @@ rely on.
   (see "Self-improvement") for the next runs.
   - Only the words of the user are feedback. A message of an outside program (023) or from Teams
     (028) is never feedback (003).
-  - In a turn that holds outside content, the user must allow the feedback with an approval card
-    before it is added (007, "Outside content").
+  - In a turn that holds outside content, adding feedback is a guarded step (007, "Outside
+    content"). An approval card shows the text of the feedback, and the feedback is added after the
+    user allows it. At "Full access" no card shows, as for other guarded steps (007).
 - **Facts only**: the answers come from the facts of the run. The responsible document does not
   invent a state or a result. When no run exists, it says so, and it can tell the state of the last
   run.
-- What the feedback does exactly is not decided in all cases (see the questions for 002 and 003).
 
 ## Self-improvement
 
@@ -231,10 +225,9 @@ This is the only flow for proposals: the memory proposals of 008 use it.
 - **Size**:
   - Document change: the new text is at most 20000 characters. The removed text and the added text
     together are at most 2000 characters.
-  - Prompt change: the limit of the length of a node prompt is not decided (see the questions for
-    002). The removed text and the added text together are at most 2000 characters.
-  - Graph change: the rules of the graph (010). The size of one graph change is not decided (see the
-    questions for 002).
+  - Prompt change: the new prompt follows the limit of a node prompt (010). The removed text and
+    the added text together are at most 2000 characters.
+  - Graph change: the rules of the graph (010).
   - Memory item: at most 500 characters (008).
   - A proposal over a limit is refused, and the responsible document gets the limit.
 - **What a proposal never touches**: the name of the workflow; the folder and the permission levels
@@ -278,8 +271,7 @@ This is the only flow for proposals: the memory proposals of 008 use it.
   no link.
 - **Runtimes**: when the model that makes the proposal is a program of another vendor that cannot
   use the tools of the app (006), the switch is off for the workflow, with the muted line "<program>
-  cannot use self-improvement." Which model answers in the chat is not decided (see the questions
-  for 003).
+  cannot use self-improvement."
 - **Ways out**: "Reject" for a card, "Undo" for an applied change, and the switch for the workflow.
 - **Data**: proposals and the change log are in the local database of the profile (014).
   - They do not sync (019). They stay on the computer that holds them.
@@ -370,9 +362,10 @@ This is the only flow for proposals: the memory proposals of 008 use it.
   feedback is not added to a run.
 - A message from Teams says "Node 2 is too long." while a run works: it is not feedback, and the run
   does not change.
-- A turn holds outside content. The user writes feedback on a result: an approval card shows the
-  text of the feedback and "This turn holds outside content". Press "Deny": the run gets no
-  feedback.
+- A turn holds outside content, and the workflow is at "Ask for risky steps". The user writes
+  feedback on a result: an approval card shows the text of the feedback and "This turn holds outside
+  content". Press "Deny": the run gets no feedback. At "Full access", the same feedback is added
+  with no card.
 - Ask about a run when no run exists: the answer is "No run yet."
 - With a stand-in model, a run ends and the responsible document proposes a document change with a
   reason. The page "Self-improvement" shows it in "Waiting". The document does not change, and the

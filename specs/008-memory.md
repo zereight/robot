@@ -26,9 +26,6 @@ it may keep, and can undo a change.
 - **Memory check**: a choice for each workflow, off by default. When it is on, the app gives the
   workflow a short turn after every 10 done tasks, to find facts that no node saved.
 
-Whether the responsible document can use the memory tool in the chat of the workflow is not decided
-(see the questions for 008).
-
 ## Flows
 
 1. A text node finds a lasting fact (a preference, a name, a decision).
@@ -36,12 +33,11 @@ Whether the responsible document can use the memory tool in the chat of the work
      line with an undo control. The control does the same as "Undo" in the history (see 4).
    - With "Ask me first", it makes a proposal. The run view shows a muted "Suggested for memory"
      line with the link "Review", which opens the card (002, "Self-improvement").
-2. The user opens the memory page of the workflow. Where the page opens from is not decided (see
-   the questions for 008). Under the page title, above the choice "Memory saving" and the tabs, one
-   muted line says how a workflow gets better: through its responsible document, the prompts of its
-   nodes, its graph and its memory, and through the proposals that the user accepts.
-   The line also says that ROBot does not train the model (see 000). It shows on every tab, when
-   the list is empty, and when memory is off. The page has two tabs.
+2. The user opens the memory page of the workflow. Under the page title, above the choice "Memory
+   saving" and the tabs, one muted line says how a workflow gets better: through its responsible
+   document, the prompts of its nodes, its graph and its memory, and through the proposals that the
+   user accepts. The line also says that ROBot does not train the model (see 000). It shows on
+   every tab, when the list is empty, and when memory is off. The page has two tabs.
    - **Items**: a list, newest first, with search. The user can add, edit, or delete items.
    - **History**: the changes, newest first.
    When a proposal of a memory item waits, the page shows the link "Proposals (N)" above the tabs.
@@ -114,15 +110,14 @@ Whether the responsible document can use the memory tool in the chat of the work
 
 ### Memory check
 
-- The count: each task of a text node that ends as done adds 1. A task that fails, is stopped, is
+- The count: each task of a text node that ends as done adds 1. A task that fails, is
   cancelled or ends as Blocked adds nothing. A task of a decision node adds nothing. A memory check
-  adds nothing. A restart keeps the count. The count is 0 when the choice goes on. Whether a turn
-  of the chat adds to the count is not decided (see the questions for 008).
+  adds nothing. A restart keeps the count. The count is 0 when the choice goes on. A turn of the
+  chat adds nothing.
 - At 10, the app adds a check to the queue of the workflow (005). It runs when the workflow has no
   task that runs or waits. The count goes to 0 when the check starts.
 - The check is a turn that no node makes. It posts no message in any place, and it makes no
-  notification, also when it fails. Where the user sees it, and where its usage shows, is not
-  decided (see the questions for 008).
+  notification, also when it fails.
 - What the check reads: the input and the result of the tasks that it counted, at most 20000
   characters, the newest first; and the items and proposals of the workflow. It reads no tool
   output, no web page and no file.
@@ -131,8 +126,6 @@ Whether the responsible document can use the memory tool in the chat of the work
   The proposal rules above and in 002 hold: 500 characters, no duplicates, no secrets, at most 20
   that wait. The card shows "From a memory check" as the source. A check makes no change of the
   responsible document, of a node prompt or of the graph.
-- Which provider, model and reasoning level the check uses is not decided (see the questions for
-  008).
 - With memory off, no check runs and the count does not grow.
 - On a sync pair (019), the check runs on the computer that runs the workflow (010). The count is
   local to each computer. Proposals do not sync (019), so the proposals of a check stay on the

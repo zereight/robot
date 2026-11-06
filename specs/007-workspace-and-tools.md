@@ -12,14 +12,13 @@ can take the feedback of the user while the run works.
 - **Folder**: one folder for each workflow. A new workflow gets an empty folder in the default
   workspace folder (013). The user can point the workflow at another folder, such as an existing
   project. Only the user changes the folder. A node cannot change it. A proposal for
-  self-improvement cannot change it (010, "Folder and permission level"). Whether two workflows may
-  use one folder is not decided (see the questions for 007).
+  self-improvement cannot change it (010, "Folder and permission level").
 - **Tools of a text node**: shell commands, files (read, write and search), the browser (with the
   fetch of web pages), and memory (008). A text node uses them in the folder and at the permission
-  level of its workflow (010, "Tools"). A decision node uses no tool. Which other tools a text node
-  may use is not decided (see the questions for 007): computer use (see "Computer use"), the tools
-  of the connections (018), saved secrets (020), the tools of the built-in connection "Test
-  devices" (032 to 034), and the question card. The rules in this spec for these tools stay.
+  level of its workflow (010, "Tools"). A decision node uses no tool. A text node can also use computer
+  use (see "Computer use"), the tools of the connections (018), saved secrets (020), the tools of
+  the built-in connection "Test devices" (032 to 034), and the question card. The rules in this
+  spec for these tools hold.
 - **Tools of the responsible document**: the tools of the chat. They work only in a turn that the
   user started in the chat of the workflow. They are: the tools to read and change the workflow, to
   list workflows and to start a run (010, "Assistant"); the tools "search chats" and "read chat"
@@ -27,7 +26,7 @@ can take the feedback of the user while the run works.
 - **Permission level**: one level for each workflow: "Read only", "Ask for everything", "Ask for
   risky steps" (default), "Ask when unsure", or "Full access". The list goes from the strictest to
   the loosest level. A text node can pick a stricter level than its workflow, never a looser one.
-  A linked device (012) can make the level of a workflow stricter, never looser. See "Permission
+  A linked device (012) cannot change the level of a workflow or of a node. See "Permission
   levels".
 - **Rule**: a saved decision that the user made. A rule can allow or deny a kind of step. See
   "Permission rules".
@@ -67,9 +66,9 @@ reads the run with the tools below. It does not guess.
   "not reached". It also tells which node is running, and how many nodes have ended.
 - **Why it stopped or waits**: for a task that waits, the responsible document tells what the task
   waits for: an approval card (and which step; the card is in the chat), a question card, or the
-  pick of a decision node (010). For a run that stopped or failed, it tells the reason that the run
-  view shows, for example the node that failed, "The app stopped", a step that was refused, or a
-  stop by the user. It does not say that a run is fine when a task waits.
+  pick of a decision node (010). For a run that was cancelled or failed, it tells the reason that
+  the run view shows, for example the node that failed, "The app stopped", a step that was refused,
+  or "Stopped by you". It does not say that a run is fine when a task waits.
 - **Intermediate results**: the responsible document can read the result of a node that has ended in
   the run and tell it to the user. A run that works has results of the nodes that have ended. It
   reads no result of a node that has not ended. If the user asks for one, it says so.
@@ -95,12 +94,13 @@ reads the run with the tools below. It does not guess.
   content"). Starting a run is refused at "Read only" (see "Permission levels").
 - **Who may use them**: these tools work only in a turn that the user started in the chat of the
   workflow. This includes a turn about a run that a trigger started. A node of a run does not use
-  them (010, "Assistant"). They work on the computer that holds the run. A linked client (012) can ask the same questions in the chat.
+  them (010, "Assistant"). They work on the computer that holds the run. A linked client (012) can
+  ask the same questions in the chat and give feedback in it. The client needs only the right to
+  send messages.
 - A result of a node is input from the run. The responsible document does not treat it as an order
   that overrides the rules of the app. A result of a task that held outside content makes the turn
   hold outside content (see "Outside content").
-- The text of a result that looks like a secret is hidden (014). The size limit of a result that
-  the responsible document reads is not decided (see the questions for 007).
+- The text of a result that looks like a secret is hidden (014).
 - The responsible document reports the state and the reason in the language of the interface.
 
 ## Permission levels
@@ -138,7 +138,7 @@ reads the run with the tools below. It does not guess.
 - The editor shows one line under the level. It tells in words how the level applies to the
   provider of the node, for example which mode of the program the app sets. For a node that uses
   the tools of the app, it tells that the app decides each step.
-- A linked device can set "Read only" and every other stricter level (012).
+- A linked device cannot change a level (012).
 - Test device steps (032 to 034) follow the table in 032, "Rules", and not the rules of this
   section for other steps. At "Read only", reads run, and every change and erase step is refused.
   Their cards never offer "Always allow", and no Allow rule covers them.
@@ -204,8 +204,7 @@ the user gets a card only when the check is sure that the user asked for the ste
   the level says so.
 - The action log names "the check" as the one who decided, with the probability. A step that the
   check sent to the user names the user, and the reason of the check.
-- The level is looser than "Ask for risky steps". A linked device (012) cannot set it, except to
-  make "Full access" stricter.
+- The level is looser than "Ask for risky steps". A linked device (012) cannot set it.
 
 ## Searching past chats
 
@@ -215,8 +214,8 @@ responsible document only (see "Concepts"). A text node does not use them.
 
 ### Search chats
 
-- The tool "search chats" searches the messages of the chat of this workflow. Whether it also
-  searches threads of the chat is not decided (see the questions for 003).
+- The tool "search chats" searches the messages of the chat of this workflow, in the main thread
+  and in its other threads.
 - The responsible document gives up to 12 words. The tool ignores a word of one character and a
   word that repeats. As in message search (001), a word matches as a part of a word, and the case
   of the letters does not matter. If no word is left, the tool tells the responsible document in
@@ -275,8 +274,7 @@ message.
   for this. If the permission is missing, the page for it in settings says what to do, and offers
   a retry. If a retry does not help, the page tells the user to quit and start the app again, and
   then to install the newest version.
-- A switch in the editor turns computer use on or off for the workflow. The default is on. Whether
-  the switch belongs to the workflow is not decided (see the questions for 007).
+- A switch in the editor turns computer use on or off for the workflow. The default is on.
 - **Fast path**: a tool in which a fast decision model (see 013, "Decision model") tries the first
   steps, before the model of the node.
   - It is off until the user turns on its switch in the decision model section of settings.
@@ -352,8 +350,7 @@ at all.
 
 - A rule has: the workflow it is for (one workflow, or all workflows), a step kind, a match text,
   a decision (Allow or Deny), the date, and where it came from (an approval card, or the rules
-  list). Whether a rule belongs to a workflow or to the server only is not decided (see the
-  questions for 007).
+  list).
 - The step kinds are: files (read or write), shell command, web page fetch, a tool of a
   connection (see 018), and a request with a saved secret (see 020). Browser steps and computer use
   have no rules. They follow the permission level and "Outside content".
@@ -428,8 +425,7 @@ text is in the task or in the turn.
   - a web page that it fetches, or a page in its browser,
   - the result of a tool of a connection (018),
   - the answer of a request with a saved secret (020),
-  - the change that starts a run through a watch trigger (010; the kinds of trigger are not
-    decided, see the questions for 010),
+  - the change that starts a run through a watch trigger (010),
   - a message of an outside program (023),
   - a message from Teams (028),
   - the text that a test device shows or logs (032 to 034), such as a screen snapshot, a log line or
@@ -447,8 +443,7 @@ text is in the task or in the turn.
   A message of an outside program or from Teams never joins a running turn (023, 028).
 - A turn also holds outside content from its start when an earlier turn of the same chat held it,
   because the outside text is still in front of the responsible document. A compact (003) keeps
-  the mark. Whether a thread or a fork of the chat keeps the mark is not decided (see the
-  questions for 003).
+  the mark. A thread and a fork of the chat keep the mark of the chat.
 - A result that a token saving set aside (026) keeps its mark. When a node or the responsible
   document reads it again, the task or the turn holds outside content.
 - **The mark of a place**: the chat of a workflow whose next turn will hold outside content shows a
@@ -610,8 +605,7 @@ steer the node to an address that only this computer or its network can reach.
 - A runtime from a vendor (see 006) uses the vendor's own permission prompts; the app shows them as
   approval cards. The level of the node also sets how the app starts the program (see "Permission
   levels").
-- Browser data (cookies, logins) is kept for each workflow, on the computer. Whether it belongs to
-  the workflow is not decided (see the questions for 007).
+- Browser data (cookies, logins) is kept for each workflow, on the computer.
 - The list of browser tabs is read again when the browser window gets the focus, and when a press
   fails on a tab that no longer exists.
 - The "take control" card never stays after the user gives control back, after Stop, or after the
@@ -627,8 +621,8 @@ steer the node to an address that only this computer or its network can reach.
 
 ## Out of scope
 
-- The decision of which tools beyond shell, files, browser and memory a text node uses (see
-  "Concepts").
+- Tools to list other agents, to send a message to another agent, and a task for another agent. A
+  workflow has no such tool.
 
 ## Acceptance
 
@@ -679,8 +673,9 @@ steer the node to an address that only this computer or its network can reach.
   not change.
 - Feedback is not an answer: a task waits for an approval card, the user writes "yes, do it" in
   the chat as feedback, and the card still waits.
-- A turn holds outside content. The user gives feedback: an approval card shows the text, with
-  "This turn holds outside content". "Allow once" adds the feedback. "Deny" adds nothing.
+- A turn holds outside content, and the workflow is at "Ask for risky steps". The user gives
+  feedback: an approval card shows the text, with "This turn holds outside content". "Allow once"
+  adds the feedback. "Deny" adds nothing. At "Full access", the feedback is added with no card.
 - A message from Teams (028) says "Node 2 is too long." during a run: it is not feedback.
 - A turn that holds outside content makes a proposal for the responsible document: no approval card
   shows at the proposal. The card of the proposal shows the muted line of 002, and the responsible
@@ -752,8 +747,7 @@ steer the node to an address that only this computer or its network can reach.
 - At "Ask for risky steps", a node writes a file inside the data folder of ROBot: an approval card
   shows.
 - A node at "Ask when unsure" changes to a vendor runtime: it asks for each risky step, and the line
-  under its level says so. A linked device cannot set "Ask when unsure" for a workflow at "Ask for
-  risky steps".
+  under its level says so. A linked device cannot change the level of a workflow or of a node.
 - Turn the switch "Permission checks" off. A workflow at "Ask when unsure" asks for each risky step,
   and the line under its level says that it works as "Ask for risky steps".
 - An outside program sends a message to the chat of a workflow, and the user denies the card of that

@@ -17,8 +17,7 @@ when the task needs it. The user's own skills also stay as texts that a node pro
   - The description holds up to 140 characters. It may be empty.
   - The instructions hold 1 to 20000 characters of plain text.
 - **Form of a skill**: a name, a description and a text of instructions. The responsible document
-  (002) and the prompt of a node (010) have this form. Which fields of the form they use is not
-  decided (see the questions for 017).
+  (002) and the prompt of a node (010) have this form.
 - **Skill chip**: a small tag with the name of a skill. It sits in the message box, and later in
   the message row.
 - A **runtime skill** is a skill that a runtime reports (see 006). The user cannot edit it here. It
@@ -56,10 +55,7 @@ when the task needs it. The user's own skills also stay as texts that a node pro
      "This skill is not available."
    - The slash chip works as before. When a message holds a chip and the responsible document
      loads more skills, it reads the chip first.
-   - Whether a text node loads a skill by itself is not decided (see the questions for 017).
-9. In a node prompt: a text node prompt can include the text of a skill of the user (010). How the
-   prompt names the skill, when the app puts its text into the prompt, and whether the slash call
-   works inside a prompt are not decided (see the questions for 010 and 017).
+9. In a node prompt: a text node prompt can include the text of a skill of the user (010).
 
 ## Teach a task
 
@@ -88,8 +84,7 @@ workflow, and the chat writes a draft skill from what the user did.
    in one request, and asks for a draft skill. The chat shows a "Draft skill" card with these
    fields, which the user can edit: the name, the description (when to use the skill), and the
    instructions. The instructions hold the steps in plain words, what to check at the end, and when
-   to ask the user first. The card also shows the number of recorded steps. Which model answers in
-   the chat is not decided (see the questions for 017).
+   to ask the user first. The card also shows the number of recorded steps.
 6. Save: the app makes the skill, as in flow 1, turned on. The same limits and checks apply. The
    card shows "Saved" and "Try it". "Try it" puts the chip of the skill in the message box with the
    result text after it, and the user sends it.
@@ -109,7 +104,7 @@ workflow, and the chat writes a draft skill from what the user did.
 - Self-improvement (002, 010) proposes changes to the responsible document, to a node prompt, to
   the graph and to the memory. It does not propose a new skill or a change to a skill in this
   version. The flow "Make a skill" from a task, an article or a memory item is not part of
-  this version. Whether it returns is not decided (see the questions for 017).
+  this version.
 - A skill changes only when the user changes it (flows 1 to 5, "Teach a task").
 
 ## States
@@ -135,8 +130,7 @@ workflow, and the chat writes a draft skill from what the user did.
 - The slash and the pick by the responsible document work in the chat of a workflow. The use of a
   skill in a node prompt is in flow 9.
 - Skills are stored in the local database. An export holds them (see 014). A workflow file (010)
-  holds the prompts as strings. Whether it also holds the skills that a prompt includes is not
-  decided (see the questions for 017).
+  holds the prompts as strings.
 - A skill is not a secret store. The instructions go to the model provider with the message, as
   any message does.
 - The turn stores the name and a copy of the instructions of each loaded skill, as sent. A later

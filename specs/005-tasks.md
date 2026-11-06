@@ -8,21 +8,20 @@ stopped or failed, and what it made.
 ## Concepts
 
 - **Task**: one execution of one node of a workflow (010). A run is made of tasks. A task has the
-  node (its name and number), the run, the trigger that started the run (by hand, the chat, or a
-  schedule; see 010, "Trigger"), the input of the node, its state, start and end time, and its
-  result or error. A node that is skipped, or that the run has not reached, makes no task
+  node (its name and number), the run, the source that started the run (by hand or a schedule, see
+  010, "Trigger"; the chat, see 010, "Assistant"), the input of the node, its state, start and end
+  time, and its result or error. A node that is skipped, or that the run has not reached, makes no task
   (see "States and reasons").
 - **Run**: one execution of a workflow (010). The state of a run follows its tasks: it waits for
   the user while one of its tasks waits for the user. It stops when a node fails, unless the node
   has the mark "Continue on failure" (010). Stop ends it. The list of runs (010) shows the states.
-  The names of the states of a run are not decided (see the questions for 005).
 - **Turn**: one request to a model, and the work that follows until the reply ends. A task has one
   turn or more (see "Keep going"). The chat of the workflow has turns too (003). They are not
   tasks.
 - **States**: queued, running, waiting for the user, done, failed, blocked, or cancelled. A task
-  goes queued → running → (waiting for the user ↔ running) → done, failed, blocked or cancelled.
-  "Blocked" is not in 000 (see the questions for 005). A node also shows as "skipped" or as "not
-  reached" (see "States and reasons"). Other specs and the chat use these words.
+  goes queued → running → (waiting for the user ↔ running) → done, failed, blocked or cancelled
+  (000). A node also shows as "skipped" or as "not reached" (see "States and reasons"). Other
+  specs and the chat use these words.
 - **Reason**: every state that is not done and not running has a reason in words. See "States and
   reasons".
 - **Result**: what a node made. A task keeps its result when it ends. A done task keeps the
@@ -77,10 +76,8 @@ results of ended tasks (003).
 - A table of tasks, newest first: workflow name, node name, source, state, duration.
 - The page holds two tabs at the top of its header line: "Tasks" and "Events" (038). The tab
   "Events" holds the list of the events of this computer. Nothing else on the page changes.
-- Filters: state, workflow, source. What the search matches is not decided (see the questions for
-  005).
-- The source of a task is the trigger of its run: "By hand", "From the chat", or "Schedule".
-  Other triggers are not decided (see the questions for 010).
+- Filters: state, workflow, source.
+- The source of a task is the source of its run: "By hand", "From the chat", or "Schedule".
 - A row opens the task: its node, its input, its steps, its result, and its three times. It shows
   a list of moments too (see "Moments").
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), run next
@@ -104,7 +101,6 @@ The usage page (006) shows usage. The user must see what one run used.
   then. A runtime that reports no usage adds nothing, and its line shows "—".
 - The numbers hold no message text. They sync with the task (019) and an export holds them (014).
   The phone and a linked device show them in the task view (011, 012).
-- What the usage page groups by is not decided (see the questions for 005).
 
 ## Moments
 
@@ -195,7 +191,6 @@ may have run in part.
   pair (019) and for a client of a linked server (012).
 - A model call that the app tries again by itself (see "Rules") shows no note. The note belongs to
   the Retry button.
-- What Retry does to the run of the task is not decided (see the questions for 005).
 
 ## How far a turn went
 
@@ -294,8 +289,6 @@ stops the turn.
   - A later node of a run: the app makes no task, and the node fails (010).
   - Retry follows the rule of its source.
   - A memory check (008) is not added. The app adds it after the next task that ends as done.
-  - A start by an outside program (023) or by a message from Teams (028) is not decided (see the
-    questions for 005).
 - **Order**: the tasks that wait start in this order. It holds for the queue of one workflow and
   for the slots described below.
   1. The tasks that the user picked with "Run next", the latest pick first.
@@ -303,16 +296,14 @@ stops the turn.
   3. The tasks of runs that a trigger started, the oldest first.
   4. A memory check. It starts only when its workflow has no other task that runs or waits (008).
 - A new task never stops a task that runs. It only takes its place in the order. A task of a run
-  that a trigger started has no time limit in the queue. What happens when a trigger fires while
-  a run of the workflow still goes is not decided (see the questions for 010).
+  that a trigger started has no time limit in the queue.
 - **Run next**: on a queued task, the user picks "Run next" on the Tasks page or on the line of the
   queued task. The task goes to the front of the order. It does not stop the task that runs. It
   cannot start a task before a task of its workflow that waits for the user. It is off for a task
   that is not queued. It has no undo: the position matters only until the task starts. A linked
   computer and the phone do not have it in this version (011, 012).
 - **Tasks at once**: a setting in General (013), "Agents working at once". It is a whole number
-  from 1 to 8. The default is 4. The name of the setting still says "agents" (see the questions
-  for 005). The word "slot" means one of the tasks that can run at the same time.
+  from 1 to 8. The default is 4. The setting is named "Agents working at once" in 013. The word "slot" means one of the tasks that can run at the same time.
   - At most that many tasks run at the same time in one profile (022). Each profile uses its own
     number, also when it is not open. Each task that runs uses one slot.
   - A task that waits for the user (an approval or a question) uses no slot.
@@ -331,8 +322,7 @@ stops the turn.
 ## Rules
 
 - One workflow runs one task at a time. Other tasks for it wait in its queue, in the order of
-  "Queue". Whether tasks of parallel branches may run at the same time is not decided (see the
-  questions for 005).
+  "Queue". Tasks of parallel branches run one after the other.
 - A task waiting for the user (an approval or a question) does not block other workflows.
 - Stopping a run stops its tasks. A run whose tasks are all cancelled shows as cancelled, not as
   done.

@@ -26,8 +26,7 @@ the run works.
 ## Message rows
 
 - A row starts with a header line: the name of the sender and the time. A reply shows the name of
-  the workflow. Rows from the same sender within 5 minutes join under one header. Whether a
-  workflow has a face or a mark in the row is not decided (see the questions for 003).
+  the workflow. Rows from the same sender within 5 minutes join under one header.
 - Day changes show as a centred date line.
 - Replies render Markdown: headings, lists, tables, code blocks with copy buttons, links, and
   images. The app adds no automatic image preview below a reply. An image shows only where the
@@ -109,7 +108,7 @@ A long series of tool steps fills the chat. The user can fold it away.
    skill of a runtime shows the name of the runtime. The list narrows as the user types. It shows
    at most 30 skills, in this order. A skill that the user saved sets a chip in the box when picked
    (see 017). A slash in any other place is plain text, so a path such as `~/notes/todo` never
-   opens the list. How a skill goes into a node prompt is not decided (see the questions for 010).
+   opens the list.
 8. Compact: the user runs the command "compact" from the list, or uses the Compact control of the
    context meter. The app asks the model to replace the older part of the conversation with a
    summary, to free room in the context. A failure shows in the normal error line above the box.
@@ -192,8 +191,7 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   - The feedback goes with the input of every text node of the run that starts after the feedback.
     The node reads it as a note of the user on the results. It is not a new prompt.
   - A node that has ended does not run again. A node that is running keeps the input that it had.
-  - A decision node does not get the feedback. It takes its input as before (see the questions for
-    003).
+  - A decision node does not get the feedback. It takes its input as before.
 - **What feedback never changes.** It does not change the graph, the node prompts, the responsible
   document, the memory, the folder or the permission levels of the run. The graph does not change
   during a run (010).
@@ -203,8 +201,10 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   responsible document does not know if a message is feedback, it asks one question and adds
   nothing until the user answers.
 - **Outside content.** In a turn that holds outside content (007), adding feedback is a guarded
-  step. An approval card shows the full text of the feedback, with Allow once and Deny. "Deny" adds
-  nothing, and the responsible document says so.
+  step, and it follows the permission level of the workflow as other guarded steps do (007,
+  "Outside content"). Where it asks, an approval card shows the full text of the feedback, with
+  Allow once and Deny. "Deny" adds nothing, and the responsible document says so. At "Full access"
+  no card shows, and the feedback is added.
 - **Self-improvement.** The responsible document can turn feedback into a proposal for the next
   runs: a change of the responsible document, of a node prompt, of the graph, or of the memory (002,
   "Self-improvement"). The proposal waits until the user accepts it. It changes nothing in the run
@@ -212,9 +212,8 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   says so and can make a proposal from it.
 - **After the run.** When the run ends, new feedback is not added to it. The responsible document
   says that the run ended.
-- **Stops and ends in the chat.** Whether the responsible document tells the user by itself when a
-  run stops, waits or ends is not decided (see the questions for 003). Now it answers when the user
-  asks.
+- **Stops and ends in the chat.** The responsible document answers when the user asks. It does not
+  tell the user by itself when a run stops, waits or ends.
 
 ### States
 
@@ -222,7 +221,7 @@ it to five lines." or "The summary of node 3 is wrong about the date."
   of the last run.
 - **Run works**: the answer lists the nodes and their states. Feedback is added to the run.
 - **Run waits**: the answer says what the run waits for. Feedback is added to the run.
-- **Run ended**: done, failed or stopped. The answer gives the results and, for a failed run, the
+- **Run ended**: done, failed, blocked or cancelled. The answer gives the results and, for a failed run, the
   reason. Feedback is not added.
 - **After a restart**: a run that was going is failed with the reason "The app stopped" (010). The
   answer says so.
@@ -243,8 +242,7 @@ it to five lines." or "The summary of node 3 is wrong about the date."
 The user can change the course of a turn without stopping it.
 
 - A setting in General (see 013) has two values: "Join the current turn" (the default) and "Wait
-  in a queue". The setting is called "While an agent works, new messages" in 013 (see the questions
-  for 003).
+  in a queue". The setting is named "While an agent works, new messages" in 013.
 - **Join the current turn**: a message that the user sends while the responsible document works
   shows in the chat at once, with the muted line "Read at the next step". The responsible document
   reads it at the next step of the same turn: when the tool step that runs now ends, or at once
@@ -350,8 +348,7 @@ the app can run it (see "Automatic compact").
 
 ## Threads
 
-The rules below hold for the chat. Whether the one chat of a workflow keeps threads and forks is not
-decided (see the questions for 003).
+The chat of a workflow keeps threads and forks. The rules below hold for the chat and its threads.
 
 - **Thread**: a second conversation with the same workflow. The workflow keeps its responsible
   document, its memory and its folder; only the history is separate. The chat is the main thread.
@@ -371,7 +368,7 @@ decided (see the questions for 003).
 - A thread has no run of its own. A run belongs to the workflow (010). The answers of "Progress,
   stops, results and feedback" are the same in every thread.
 - Work that an outside program (023) or Teams (028) sends to the chat of a workflow goes to the main
-  thread (see the questions for 003).
+  thread.
 - A fork made at a message after a "Compacted" line copies the summary and the turns after it. The
   model of the fork gets the same summary.
 - A linked computer and the phone show the main thread only in this version. They never get the
@@ -395,8 +392,7 @@ decided (see the questions for 003).
 ## Mark as unread
 
 - On a finished reply, the action "Mark as unread" makes that reply and the later replies count as
-  unread again. The chat shows the new count. Where else the count shows is not decided (see the
-  questions for 003).
+  unread again. The chat shows the new count.
 - The next time the user opens the chat, it opens at that message. The count clears when the chat
   shows its latest message, as for any chat.
 - A thread keeps its own count (see "Threads"). The mark works inside a thread.
@@ -627,9 +623,10 @@ moves.
   change (002).
 - A message from Teams or from an outside program says "Node 2 is too long." during a run: it is not
   feedback, and the run does not change.
-- A turn holds outside content. The user writes feedback: an approval card shows the text and
-  "This turn holds outside content". "Allow once" adds the feedback. "Deny" adds nothing, and the
-  responsible document says so.
+- A turn holds outside content, and the workflow is at "Ask for risky steps". The user writes
+  feedback: an approval card shows the text and "This turn holds outside content". "Allow once"
+  adds the feedback. "Deny" adds nothing, and the responsible document says so. At "Full access",
+  the feedback is added with no card.
 - The run has ended. The user writes feedback: the responsible document says that the run ended, and
   adds nothing.
 - A run that a schedule started works with no user at the screen. The user opens the chat and writes

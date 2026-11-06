@@ -126,8 +126,7 @@ Change (it makes a change request):
 - Delete of a workflow.
 - The fields in "Rules", "No other fields".
 - Changes to a workflow that exists. Their tools are in 010, "Assistant".
-- A schedule, a web hook and any other trigger. The rules of the trigger are not decided (see the
-  questions for 010).
+- A schedule, a web hook and any other trigger.
 - A tool that starts a run (see the questions for 037).
 - "Always allow" and rules for manage steps.
 - MCP resources and prompts (023).
