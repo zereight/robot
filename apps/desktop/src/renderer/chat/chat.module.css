@@ -535,6 +535,11 @@
   box-shadow: var(--halo-focus);
 }
 
+/* The box shows the focus ring. The text field inside draws none of its own. */
+.input:focus-visible {
+  box-shadow: none;
+}
+
 .input {
   flex: 1;
   resize: none;
