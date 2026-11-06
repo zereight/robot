@@ -153,6 +153,7 @@ describe("client requests", () => {
       "workflows.run",
       "workflows.stop",
       "workflows.approve",
+      "models.available",
     ]) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(false)

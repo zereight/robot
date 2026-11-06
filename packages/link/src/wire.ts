@@ -197,6 +197,7 @@ export const CLIENT_METHODS = [
   // Change the handbook (spec 002, 012): save a text, or restore a version.
   "handbook.save",
   "handbook.restore",
+  // The list of models is a constant read. It changes nothing and needs only the link (spec 012).
   "models.available",
   "workflows.create",
   "workflows.update",

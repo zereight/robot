@@ -6,11 +6,6 @@ import solid from "vite-plugin-solid"
 export default defineConfig({
   main: {
     build: { externalizeDeps: true },
-    resolve: {
-      // The Node build of fflate declares its own `require`, which clashes in the bundle.
-      // The plain build has no Node parts and works the same here.
-      alias: { fflate: resolve(import.meta.dirname, "node_modules/fflate/esm/browser.js") },
-    },
   },
   preload: {
     build: {
