@@ -218,7 +218,7 @@ not sign in for it. The sign-in stays in the program on this computer.
 - The model list is the list the program gives, in the order of the program. The list names no
   effort levels, so the picker shows none. A level is never sent.
 - A turn sends one prompt. The program does not read a message that the user sends during the
-  turn (003). The prompt holds the instructions of the agent. A turn that may only answer starts
+  turn (003). The prompt holds the Soul of the agent. A turn that may only answer starts
   in the read-only mode and tells the program to answer in text and not to use its tools.
 - The program reads files and runs commands itself. The app shows the steps as cards (003, 007).
   The program does not ask the user during a run from the app. The permission level follows 007.

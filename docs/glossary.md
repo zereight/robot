@@ -12,16 +12,23 @@ A new word goes here in the same pull request as the spec that brings it.
 
 | Term | Meaning | Korean | Avoid |
 | --- | --- | --- | --- |
-| Agent | A worker that does one role, with a face, name, role line, model, workspace and memory (002). | 에이전트 | bot (except the bot tag), assistant, employee, coworker |
+| Agent | A worker that does one role, with a face, name, role line, model, workspace and memory. It is the whole bot: the agent, its skills, its Soul and its self-improvement (000, 002). | 에이전트 | bot (except the bot tag), assistant, employee, coworker |
 | Main agent | The agent with the switch "Main agent" in the profile of an agent, and at most one agent has it. | 메인 에이전트 | boss, manager |
 | Role line | The short line under the name of an agent. It works as a label: the user picks it from a list, adds a new one, or removes it (002). | 역할 | job title |
 | Role badge | The small label that shows the role line of an agent in a row of the place list (001). Not shown as a word in the interface. | — | — |
-| Instructions | The text that an agent follows in every turn (002). | 지침 | prompt, soul, persona |
+| Soul | The text that says who an agent is: its character, its values, its way of work and its limits. The agent follows it in every turn (002). It is the field that was called "instructions" before. | 소울 (proposed; see "Open points") | instructions (for this text), 지침 (the old word), prompt, persona, system prompt |
+| Soul history | The versions of the Soul of an agent, with Restore (002). | 소울 기록 (proposed) | instruction history |
+| Self-improvement | The flow in which an agent proposes changes to its own Soul, skills and memory from its work, and the user accepts, edits or rejects each one (002). Also the switch of an agent that turns it on and off. | 자기 개선 (proposed) | learning, training, evolving, self-learning, gets smarter |
+| Change log | The list of the proposals of an agent that do not wait any more: applied, rejected, failed or undone, with Undo for an applied change (002). It is also the name of a tab of the page "Self-improvement". | 변경 기록 (proposed) | log (alone: the action log of 007 and "Log session" of 033 are other lists), history (the memory history and the Soul history are other lists), audit |
 | Workspace | The folder of an agent (007). | 작업 폴더 | project, sandbox |
 | Memory | Short facts that an agent keeps between chats (008). | 메모리 | brain, learning |
-| Proposal | A fact that an agent suggests and the user has not accepted (008). | 제안 | memory (a proposal is not memory) |
+| Proposal | A change to its own Soul, a skill or its memory that an agent suggests, and that the user has not accepted (002, 008, 017). | 제안 | memory (a proposal is not memory), change (a proposal changes nothing yet), change request (that is 037) |
+| Proposals (N) | The link on the memory page to the proposals that wait, with their number (008, 002). | 제안 (N) (proposed) | inbox, requests |
+| Waiting | The state of a proposal that waits for the user, and the tab of the page "Self-improvement" that lists those proposals (002). | 대기 중 (proposed) | pending, queued (that is a task, 005) |
+| Accept, Edit and accept, Reject | The three buttons of the card of a proposal (002). | 수락, 수정 후 수락, 거절 (proposed) | approve, allow, deny (those answer an approval card or a change request, 007, 037), dismiss |
+| Undone | The state of a change log row after the user pressed "Undo" on it (002). | 되돌림 (proposed) | reverted, rolled back |
 | Knowledge | Linked articles that an agent writes and reads again (016). | 지식 | memory, wiki |
-| Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the instructions of an agent (지침). | 스킬 | plugin, tool |
+| Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the Soul of an agent (소울). | 스킬 | plugin, tool |
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
 | Tool search | The step "Search tools", with which an agent finds the tools of its connections when it may use more than 20 (018). | 도구 검색 (proposed) | lookup, discover, browse |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
@@ -164,9 +171,20 @@ A new word goes here in the same pull request as the spec that brings it.
 - "Hire", "fire", "employee", "coworker" for an agent. The words "agent" and "New agent"
   stay (see `docs/spec-changes.md`, "Decided against").
 - "Autonomous" and "24/7". ROBot runs while the computer runs.
-- "Bot" as a name for an agent. "Bot" is only the tag beside the name.
+- "Bot" as a name for an agent. "Bot" is only the tag beside the name. The plan in
+  `docs/rebuild-plan.md` says "bot" for an agent with its skills, Soul and self-improvement. The
+  interface says "agent".
+- "Instructions" or "지침" for the text that says who an agent is. Say "Soul" (소울). Specs that are
+  not updated yet say "the instructions of an agent" and mean the Soul, and "instruction history"
+  means the Soul history. "Role instructions" and the
+  "instructions" of a skill are other texts and keep their names.
 
 ## Open points
+
+- "Soul" in Korean: "영혼" is the direct word, but in a work tool it reads as religious or as a
+  joke. "소울" (proposed) keeps one word for both languages, as "스킬" does for "skill". Other
+  choices are "정체성" (identity) and "성격" (character), but each one names only one part of the
+  text. A spec author decides when the catalogue key is added.
 
 - "기기" names a linked computer or phone (012) and a test device (032). In the interface, a
   simulator or an emulator is "테스트 기기" (proposed). A spec author decides which word changes.

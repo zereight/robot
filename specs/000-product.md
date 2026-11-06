@@ -2,7 +2,9 @@
 
 ## Purpose
 
-ROBot lets one person run AI agents on their own computer. Each agent does one role. The
+ROBot lets one person run AI agents on their own computer. Each agent does one role. An agent is
+the whole bot: the agent, its skills, its Soul and its self-improvement. Beside the agents, ROBot
+keeps routines and workflows, and each of them has a "Check" (see 009 and 010). The
 interface follows a chat server: servers on the far left, the list of agents beside them, the
 direct chat in the middle, and an activity panel on the right. Agents appear with a face, a name
 and a bot tag, so the user reads their work as they read messages from colleagues.
@@ -17,14 +19,24 @@ and a bot tag, so the user reads their work as they read messages from colleague
   profile works as this spec says everywhere.
 - **Agent**: does one role for the user. One agent can be the main agent that hands work to the
   others. It has a face, a name, a short role line, a model, a workspace folder, and a memory. An
-  agent keeps its identity and history when the user changes its model or restarts the app.
+  agent keeps its identity and history when the user changes its model or restarts the app. An
+  agent is made of four parts (002):
+  - **The agent**: its identity, model, workspace and memory.
+  - **Skills**: saved instructions that the user or the agent calls when a task needs them (017).
+  - **Soul**: a text that says who the agent is: its character, its values, its way of work and
+    its limits. The user writes it, and the agent follows it in every turn (002, "Soul").
+  - **Self-improvement**: the agent proposes changes to its own Soul, skills and memory from its
+    work. The user accepts each one before it applies, and can undo it (002,
+    "Self-improvement").
 - **Direct chat**: a conversation between the user and one agent. It can have more threads, and a
   thread can be forked from a message.
 - **Task**: one piece of work that an agent does. A task can have child tasks, when an agent
   hands work to another agent (007). Tasks have a state: queued, running, waiting for the user,
   done, failed, or cancelled.
-- **Routine**: a task that runs on a schedule.
-- **Workflow**: a set of connected steps that runs when a trigger fires.
+- **Routine**: a task that runs on a schedule (009).
+- **Workflow**: a set of connected steps that runs when a trigger fires (010).
+- Routines and workflows are the two other areas that ROBot keeps beside the agents. Each routine
+  and each workflow has a "Check" (see 009 and 010). Those specs say what it does.
 
 ## Platforms
 
@@ -72,8 +84,9 @@ and a bot tag, so the user reads their work as they read messages from colleague
   app makes for test devices is a download that the user starts (032, 014).
 - Secrets never appear in logs, exports or diagnostics.
 - ROBot does not train or change a model. An agent gets better at its job only through things that
-  the user can see and edit: its instructions (002), its memory (008), its knowledge (016), and the
-  skills that the user saves (017). Interface text and documents do not say that a model learns,
+  the user can see and edit: its Soul (002), its memory (008), its knowledge (016), and its skills
+  (017). Self-improvement (002) only proposes changes to these things, and a change applies only
+  when the user accepts it. Interface text and documents do not say that a model learns,
   trains or evolves. The rule covers text that the user reads. It does not cover the instructions
   that the app sends to a model. The memory page and the knowledge page of an agent show one muted
   line with this fact (see 008 and 016).
@@ -131,6 +144,8 @@ and a bot tag, so the user reads their work as they read messages from colleague
 ## Acceptance
 
 - A new user can go from first start to a streamed agent reply without reading documentation.
+- A proposal of an agent for its Soul, a skill or its memory changes nothing until the user
+  accepts it, and an accepted change can be undone (002).
 - A delete or a remove shows as a red button in both themes. Pressing the delete of a workflow,
   a routine, a connection, an account, a link to a device or a source of knowledge asks first
   with a line that names what goes away. "Keep it" changes nothing.

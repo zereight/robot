@@ -23,7 +23,7 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Agents | Face, name, role line, instructions, the switch "Read the handbook", the switch "Main agent", model choice, backup model choice, archive state. |
+| Agents | Face, name, role line, Soul and the Soul history (002), the switch "Read the handbook", the switch "Main agent", model choice, backup model choice, archive state. |
 | Role instructions | The text of each role (002). It is data of the agents, like the handbook. The later change wins. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
@@ -48,6 +48,7 @@ service holds it.
 | The state of agent runtimes (006) | Each computer has its own programs and checks them itself. |
 | Settings, theme, language, notification choices, mutes | Settings are local (013). The silent limit (005) and the chase interval (013) are two of them. |
 | Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
+| Proposals and the change log of self-improvement (002) | A proposal waits for the user of one computer, like a memory proposal. The change log tells what the user answered on one computer. An applied change follows the rule of its target: a Soul change and a memory item sync, and a skill does not. |
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent arrives with no section. It then shows in "Unassigned". |

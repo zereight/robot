@@ -25,14 +25,15 @@ question of responsibility, not of behaviour.
 
 | Part | Meaning | At zero | Spec |
 | --- | --- | --- | --- |
-| Instructions | What the agent must do | It does anything | 002, "Handbook"; 004, channel instructions |
+| Instructions | What the agent must do | It does anything | 002, "Soul", "Handbook" and "Role instructions" |
 | Action space | What the agent can do | It only speaks | 007, "Permission level" |
 | State | What stays after the turn | It starts blank at each call: a completion | 007, "Workspace"; 008, "Scope" |
 | Loop | More than one step, and one way to end | One request gives one answer | 003; 005, "States" |
 
-Before a turn, the app joins three texts in one order: the handbook, the instructions of the agent
-and the instructions of the channel (002, "Handbook"). A direct chat has the first two; a channel
-turn has all three. These texts are the part *instructions*.
+Before a turn, the app joins three texts in one order: the handbook, the role instructions and the
+Soul of the agent (002, "Soul"). These texts are the part *instructions*. The Soul is the one text
+of the three that belongs to one agent: it says who the agent is. "Soul" is the word that the user
+reads; the part keeps the name *instructions* in this note, because it holds all three texts.
 
 ### The action space makes an agent, not the words
 
@@ -45,8 +46,8 @@ The code shows this. A skill is a text in front of the message of the user:
 - `packages/shared/src/skills.ts` — `skillLead` makes the text of a skill.
 - `apps/desktop/src/main/services/Chat.ts` — the turn puts that text before the message.
 
-The app does not let a model pick a skill by itself (017, "Out of scope"). The user calls a skill
-with a slash. A skill has instructions only. It has no permission, no folder, no loop and no state
+The user calls a skill with a slash, or the agent loads one when a task needs it (017). A skill has
+instructions only. It has no permission, no folder, no loop and no state
 of its own. The product is zero.
 
 ## The two relations
@@ -88,23 +89,24 @@ Do not count names. Count the sets of state and action space that share no membe
   skills that it may use, or the handbook (002, "Changes from the chat").
 
 A role line is not a part of this equation. The turn prompt of a direct chat holds the handbook and
-the instructions of the agent. It holds no role line. A model reads the role line in three places:
-the check of the lead (004), the fast pick (004), and the answer of the settings tool (002,
-"Changes from the chat"). In a channel, the turn prompt names the agent and its members; in a
-direct chat it names no one. The role line is a label for placement, not an identity. 002,
+the Soul of the agent. It holds no role line. A model reads the role line in one place only: the
+answer of the settings tool (002, "Changes from the chat"). The turn prompt of a direct chat names
+no one. The role line is a label for placement, not an identity. 002,
 "Role label", "What the model reads" holds this rule.
 
 ## What this model explains
 
 - A large set of skills does not make a large set of agents. The instructions grow. The action
   space and the state stay at one.
-- A channel of five agents is five agents, because each member has its own folder, memory and
-  permission level. The channel adds instructions and one lead. It makes no new identity.
+- Self-improvement makes no new agent and no new action space. A proposal can change the part
+  *instructions* (the Soul, a skill) and the part *state* (memory), and only after the user accepts
+  it. A proposal can never touch the permission level, the rules, the workspace or the connections
+  (002, "Self-improvement"), so the action space stays as the user set it.
 - A routine is not an agent. It is a timer that starts a task of an agent (009). It has no folder,
   no memory and no permission level of its own, and it works in the workspace of its agent.
 - A workflow step is not an agent. It uses the loop and the tools of an agent, or a model with no
   tools (010).
-- A member that works in an own copy of a Git repository is still one agent (025). The copy is a
+- An agent that works in an own copy of a Git repository is still one agent (035). The copy is a
   state of one task, not a second agent.
 
 ## Where this model can be wrong
@@ -120,6 +122,7 @@ direct chat it names no one. The role line is a label for placement, not an iden
 
 ## Words
 
-Use "agent" for a member with the four parts and the two relations. Use "skill" for saved
+Use "agent" for a worker with the four parts and the two relations. Use "Soul" for the text that
+says who one agent is (002). Use "skill" for saved
 instructions that the user calls with a slash (017). Do not call a skill an agent. Do not call a
 text that only adds words an agent.
