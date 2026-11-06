@@ -23,7 +23,7 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Workflows | The whole definition (010): the name, the trigger, the graph, the nodes with their prompts, providers, models and reasoning levels, the question, options and threshold of each decision node, the responsible document, and the rules that the user added to the TLA module. Also the earlier versions of the workflow, the run history with the results of the nodes, and the "Runs on" computer. |
+| Workflows | The whole definition (010): the name, the trigger, the graph, the nodes with their prompts, providers, models and reasoning levels, the question, options and threshold of each decision node, the responsible document with its history (002), and the rules that the user added to the TLA module. Also the earlier versions of the workflow, the run history with the results of the nodes, and the "Runs on" computer. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
 | Messages | The chat of each workflow, with tool cards. |
 | Tasks | State (also blocked), reason and result, how far a failed turn went, and the usage of the task (005). They show on the tasks page with the name of the origin. |

@@ -66,7 +66,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - A service that a saved secret (020) is for gets what a text node writes in a request with that
   secret. The app sends it nothing else.
 - The local database also holds the earlier versions of each workflow (010), with the text of its
-  responsible document and its prompts, and the times of each task (005). The times hold no
+  responsible document and its prompts, the history of the responsible document (002), and the times of each task (005). The times hold no
   message text.
 - A recording of "Teach a task" (017) stays on this computer. The app sends its list of steps once
   to the model that answers in the chat of the workflow,

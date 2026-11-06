@@ -100,7 +100,7 @@ client shows it and sends commands.
 | Answer approval cards and questions, and pick an option on the card of a decision node | The usage page, the action log, knowledge (016), download or repair a vendor runtime (006) |
 | See the task list and task details; stop a task | Browser "Take control"; memory proposals and memory history (008); the proposals of self-improvement and their change log (010) |
 | See a workflow: its nodes with their numbers, its connections, its run history, the details and results of each run, and the live state of a run; run and stop a workflow; ask the chat about a run and give feedback on its results | Export and import of workflow files; the workflows log (014) |
-| Only with "Can create and change workflows": create, edit, duplicate, turn on or off and delete workflows; edit the responsible document, the prompts and the memory of a workflow; restore a version; let the chat change the graph | Export and import of data |
+| Only with "Can create and change workflows": create, edit, duplicate, turn on or off and delete workflows; edit the responsible document, the prompts and the memory of a workflow, and the choices of its memory page; restore a version; let the chat change the graph | Export and import of data |
 
 A client can mark a message or a chat as read or as unread (001, 003). The read state follows the
 server. The usage page button and page, and the other parts in the right column, show a muted
@@ -122,7 +122,8 @@ workflows of the server in the same screens as on the server (010, 008).
   threshold of a decision node), its connections, its trigger, and the text of its responsible
   document. A client can also read and change the memory of a workflow (008).
 - **Memory:** a client does the same four things as the memory page of a workflow on the server
-  (008): list and search, add, edit and delete items. It has no switch for memory on or off.
+  (008): list and search, add, edit and delete items. It can also change the choices of the memory
+  page, for example the memory check, because the server allows it to change workflows (008).
 - **Names:** the name of a workflow is unique on a server, ignoring case. A client that sets a name
   that is taken gets a plain error: "That name is taken."
 - **Model:** the client picks from the model accounts that are connected on the server. It cannot
@@ -171,6 +172,9 @@ A client opens the workflow list of the server (001, 010) in the same screens as
   switch "Can create and change workflows". Without it, the canvas is read only and shows no edit
   controls. A try gets the "Not allowed" error of "No switch" above. The rule of 010 holds: a
   workflow cannot be edited while it runs.
+- **Outside content:** the header of the chat of a workflow shows the line "Holds outside content"
+  on a client, as on the server (007). A client cannot clear the mark. Only the user at the server
+  clears it.
 - **Server things:** a text node picks from the model accounts of the server. A decision node
   uses the choice that is saved on the server (013). A client never sees a key or a path.
 - **Trigger:** a client sees the kind of trigger of a workflow. It sees no secret and no address
@@ -330,6 +334,10 @@ accept connections, this is the same computer.
 - A run waits at a decision node. On MacBook 1, ask the chat "Why does it wait?": the answer names
   the node and says that it waits for the user to pick an option. Pick the option on MacBook 1:
   the run goes on, and the card shows "Picked by MacBook 1".
+- The chat of a workflow of MacBook 2 holds outside content. On MacBook 1 the header of the chat
+  shows "Holds outside content", and a request to clear the mark gets "Not allowed".
+- With the switch on, change the choice "Memory check" of a workflow of MacBook 2 from MacBook 1:
+  the choice changes on MacBook 2. With the switch off, the request gets "Not allowed".
 - Turn the switch on and add a node from MacBook 1: the canvas on MacBook 2 shows it at once.
   Export and import of workflow files show "Open this on MacBook 2."
 - A workflow of MacBook 2 that runs on a third computer through sync shows "Runs on <name>" on
