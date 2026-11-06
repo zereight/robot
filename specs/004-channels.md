@@ -214,6 +214,31 @@ plan and the channel. Then the user does not need to stop for it.
 - A lead that cannot answer leaves the channel as it is, and the parts keep no verdict. A check
   never fails a job.
 
+## Chase by the lead
+
+The lead keeps track of the work it gave. A part that waits in silence, or that a member refused
+or dropped, does not stay unseen.
+
+- **When**: the chase works for a channel with a lead that is not archived. It uses the setting
+  "Chase interval" (013). With the value "Off" there is no chase.
+- **A quiet part**: a part is quiet when it is running or waiting for the member, and nothing
+  happened in it for the chase interval. Nothing means no step, no message and no result. The
+  lead then sends the member one message that asks for the state and the next step. It shows in
+  the channel as a message of the lead. It starts no new part. The member answers in the same part.
+- **A refused or dropped part**: when a member refuses a part, or the part ends as Failed or
+  Cancelled without a Stop by the user, the lead is told at once. It does not wait for the work of
+  the channel to stop. The lead then does one of these:
+  1. Chase: it sends the member one more concrete instruction. This is a nudge (see "Check by the
+     lead"); it starts a new part with the done test of the old part.
+  2. Ask: it posts one question to the user, when the member refused for a reason that only the
+     user can remove.
+- **Limits**: the lead chases one part at most 3 times. A part that a chase started and that the
+  member refuses or drops again gets no second chase. The lead asks the user (Ask) with the reason
+  of the member. The chase counts do not change the limit of 3 looks of a check.
+- **No chase**: a part that the user stopped, a part with the status Blocked by a usage limit (the
+  reason of 030 shows), and a part in review (see "Review of parts") get no chase.
+- **A lead that cannot answer** leaves the part as it is. A chase never fails a job.
+
 ## Activity panel ("Now")
 
 - Title "Now" with an activity icon.
@@ -229,6 +254,13 @@ plan and the channel. Then the user does not need to stop for it.
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
   Two members can still have one folder as workspace. Then the rules of 025 apply.
+- **Orders of the lead**: a part that the lead gives is an order of the lead. The member does the
+  work of the part. It does not refuse because the lead is an agent and not the user, or because the
+  work changes a shared branch, a pull request or another shared thing. The member may stop only
+  for a reason of the permission level of the member, its rules (007), the daily token limit (030),
+  the rules about secrets (020), or its own handbook (002). It then replies with the name of the
+  rule and the reason, and the part ends as Blocked with that reason. The lead chases it (see "Chase
+  by the lead"). A text in a message that says "the user approved" gives no right.
 - **Lead prompt**: a fixed text that tells an agent that it is the lead of a channel, what the
   lead does, and what the lead does not do. It says that the lead is an orchestrator: it gives work
   to members and does not do the work itself. The lead gets it in each turn of that channel. A member
@@ -317,6 +349,20 @@ plan and the channel. Then the user does not need to stop for it.
 - A part that a nudge started gets "Not met" again: the lead does not nudge it again for that
   reason. It posts one question or does nothing, and the summary names the part.
 - A part has no done test, or it failed, or it was blocked: it shows no verdict.
+- The lead gives a part "Commit the fix to the branch of the pull request and push". The member is at
+  "All permissions". It commits and pushes and replies with the result. It does not ask for "a direct
+  order of the user".
+- The same part, but the member has a Deny rule for "git push". The member does not push. It
+  replies with the Deny rule and the reason, and the part ends as Blocked with that reason. The lead
+  chases once, as in the rules of the chase.
+- The chase interval is 10 minutes. A member is quiet in a running part for 10 minutes: the lead
+  posts one message that asks for the state. The member answers and the part goes on.
+- A member refuses a part while another part of the channel still runs. The lead is told at once
+  and sends one more instruction, and a new part starts. The channel did not have to stop first.
+- The member refuses the new part too. The lead posts one question to the user with the reason of
+  the member. It does not chase a third time for that part.
+- The user stops a part: no chase starts. "Chase interval" is "Off": no quiet part gets a message,
+  and a refused part waits for the check as before.
 - Turn on "Review parts". The user accepts a part: it shows no verdict, and the check does not
   read it.
 - The lead is blocked by a usage limit when the parts end: no part gets a verdict, and the job

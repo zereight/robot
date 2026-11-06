@@ -34,6 +34,15 @@ export const SilentLimit = Schema.Literals(SILENT_LIMITS)
 export type SilentLimit = typeof SilentLimit.Type
 export const DEFAULT_SILENT_LIMIT: SilentLimit = 10
 
+/**
+ * How long work that an agent gave may stay quiet before the giver asks for its state, in minutes
+ * (spec 013, 004, 007). 0 means off.
+ */
+export const CHASE_INTERVALS = [5, 10, 15, 30, 60, 0] as const
+export const ChaseInterval = Schema.Literals(CHASE_INTERVALS)
+export type ChaseInterval = typeof ChaseInterval.Type
+export const DEFAULT_CHASE_INTERVAL: ChaseInterval = 15
+
 /** User settings. Local to this computer. */
 export const Settings = Schema.Struct({
   language: Language,
@@ -52,6 +61,8 @@ export const Settings = Schema.Struct({
   firstRunDone: Schema.Boolean,
   /** The silent limit in minutes; 0 for never. Local to this computer (spec 019). */
   silentLimit: SilentLimit,
+  /** The chase interval in minutes; 0 for off. Local to this computer (spec 019). */
+  chaseInterval: ChaseInterval,
   /** Which kinds of system notification are on. */
   notifyKinds: Schema.Struct({
     reply: Schema.Boolean,
@@ -147,6 +158,7 @@ export const defaultSettings: Settings = {
   stepLimit: STEP_LIMIT_DEFAULT,
   firstRunDone: false,
   silentLimit: DEFAULT_SILENT_LIMIT,
+  chaseInterval: DEFAULT_CHASE_INTERVAL,
   notifyKinds: {
     reply: true,
     mention: true,

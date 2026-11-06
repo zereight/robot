@@ -1,3 +1,4 @@
+import { ORG_LIMIT_CODE } from "./orgLimit.ts"
 import { blockedReasonForAgent, type TaskState } from "./task.ts"
 
 // ---------------------------------------------------------------------------------------------
@@ -339,7 +340,26 @@ export const nudgeRefusal = (part: NudgeFacts): NudgeRefusal | null => {
   if (part.state === "cancelled") return "stopped"
   if (part.state !== "done" && part.state !== "failed" && part.state !== "blocked") return "open"
   if (part.verdict === "not_met" && part.nudged) return "again"
+  // A part that a chase started and that failed or was blocked again gets no second chase (spec 004).
+  if ((part.state === "failed" || part.state === "blocked") && part.nudged) return "again"
   return null
+}
+
+/**
+ * What the lead does at once when a part ends (spec 004, "Chase by the lead"). A part that failed
+ * or is blocked is chased: the lead looks now, and does not wait for the other parts. A part that a
+ * chase started and that ended badly again is not chased a second time: the lead asks the user. A
+ * part that a usage limit or the daily token limit blocked is not chased, and nor is a part that
+ * ended any other way.
+ */
+export const chaseOnEnd = (part: {
+  readonly state: TaskState
+  readonly error: { readonly code: string } | null
+  readonly nudged: boolean
+}): "chase" | "ask" | null => {
+  if (part.state !== "failed" && part.state !== "blocked") return null
+  if (part.error?.code === ORG_LIMIT_CODE || part.error?.code === "provider_limit") return null
+  return part.nudged ? "ask" : "chase"
 }
 
 export interface LinkedPart {
@@ -369,3 +389,20 @@ export const stillNotMet = (parts: readonly LinkedPart[]): string[] => {
     })
   return parts.filter((p) => p.verdict === "not_met" && !fixed(p.id)).map((p) => p.id)
 }
+
+/** Told to the lead when a member refused or dropped a part again after a chase (spec 004). */
+export const ASK_AFTER_CHASE_RULE =
+  "A member refused or dropped a part again after you gave one more instruction. Write one short question for the user. Name the part and the reason, and ask how to go on. Write only the question."
+
+/** What the lead reads to write that question: the member, the part and the reason. */
+export const chaseAskText = (part: {
+  readonly agentName: string
+  readonly label: string
+  readonly state: TaskState
+  readonly error: { readonly code: string; readonly detail: string } | null
+}) =>
+  `Member: ${part.agentName}\nPart: ${part.label}\nState: ${part.state}\nReason: ${
+    part.state === "blocked"
+      ? blockedReasonForAgent(part.error) || "none given"
+      : (part.error?.code ?? "unknown")
+  }`

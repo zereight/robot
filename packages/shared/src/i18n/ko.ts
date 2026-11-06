@@ -2283,6 +2283,11 @@ export const ko: Record<MessageKey, string> = {
     "에이전트에게서 아무 신호가 없을 때 앱이 작업을 멈추기까지 기다리는 시간이에요.",
   "settings.silentLimit.option": "{count}분",
   "settings.silentLimit.never": "안 함",
+  "settings.chaseInterval": "조용한 작업의 상태를 묻는 시간",
+  "settings.chaseInterval.hint":
+    "에이전트가 시킨 일이 조용할 때, 시킨 쪽이 진행 상황을 묻기까지 기다리는 시간이에요.",
+  "settings.chaseInterval.option": "{count}분",
+  "settings.chaseInterval.off": "안 함",
   "error.blocked": "{detail}",
   "error.blocked_empty": "에이전트가 막힌 이유를 말하지 않았어요.",
   "error.task_not_in_review": "이 작업은 검토 중이 아니에요.",

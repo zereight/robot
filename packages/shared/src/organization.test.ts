@@ -15,6 +15,8 @@ import {
   handOffRefusalOutput,
   handOffRefusalText,
   isHandOffRule,
+  isLeadOrder,
+  LEAD_ORDER_WORDS,
   MAIN_AGENT_HAND_OFF_RULE,
 } from "./organization.ts"
 import type { HandOffRange } from "./organizations.ts"
@@ -580,5 +582,39 @@ describe("the rule value and the words for the agent", () => {
     expect(MAIN_AGENT_HAND_OFF_RULE).toContain("along the organizations")
     expect(MAIN_AGENT_HAND_OFF_RULE).toContain("lead of an organization")
     expect(MAIN_AGENT_HAND_OFF_RULE).not.toContain("channel")
+  })
+})
+
+// Spec 007, "Order of a lead": a send from the lead of an organization to a member of it, or of a
+// lower organization, is an order of a lead and no input from a colleague.
+describe("order of a lead (spec 007)", () => {
+  test("the lead of an organization orders its members and the members of lower organizations", () => {
+    expect(isLeadOrder(setup(), "P", "D")).toBe(true)
+    expect(isLeadOrder(setup(), "P", "A")).toBe(true)
+    expect(isLeadOrder(setup(), "D", "A")).toBe(true)
+  })
+
+  test("a member, a higher lead's peer, the main agent and an outsider give no order", () => {
+    expect(isLeadOrder(setup(), "A", "D")).toBe(false)
+    expect(isLeadOrder(setup(), "D", "P")).toBe(false)
+    expect(isLeadOrder(setup(), "M", "A")).toBe(false)
+    expect(isLeadOrder(setup(), "P", "X")).toBe(false)
+    expect(isLeadOrder(setup(), "P", "P")).toBe(false)
+  })
+
+  test("an archived lead and an archived receiver give no order", () => {
+    const archivedLead = setup({
+      agents: ["M", "P", "D", "A", "X"].map((id) => agent(id, id === "P")),
+    })
+    expect(isLeadOrder(archivedLead, "P", "A")).toBe(false)
+    const archivedReceiver = setup({
+      agents: ["M", "P", "D", "A", "X"].map((id) => agent(id, id === "A")),
+    })
+    expect(isLeadOrder(archivedReceiver, "P", "A")).toBe(false)
+  })
+
+  test("the words tell the receiver to do the work and name the rules that still hold", () => {
+    expect(LEAD_ORDER_WORDS).toContain("order of your lead")
+    expect(LEAD_ORDER_WORDS).toContain("Do the work")
   })
 })

@@ -45,6 +45,10 @@ The user sets the app up the way they like in one place.
 - **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
 - **Hand-off rules**: the hand-off rule ("Any agent" or "Along the organizations") and the switch
   "Ask up the line", off at first. See 030. These two sync like the handbook (019).
+- **Chase interval**: how long work that an agent gave may stay quiet before the giver asks for its
+  state: Off, 5, 10, 15, 30 or 60 minutes. The first value is 15 minutes. It applies to the parts
+  of a lead (004) and to "send message" (007). It is local to this computer, as the silent limit
+  is (019).
 - **Teams**: the link to one Microsoft Teams chat, off at first. See 028.
 - **Setup actions**: the agents of this computer, the setup list of the picked agent, and its
   allow. See 035. It shows on the computer only.
@@ -146,6 +150,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   the key.
 - Change the silent limit to 30 minutes: a turn that starts after the change fails after 30 minutes
   of silence and not after 10. Choose Never: a silent turn does not fail by itself.
+- Set "Chase interval" to Off: a quiet part or a quiet send gets no message. Set it to 5 minutes:
+  the next quiet one gets its message after 5 minutes.
 - Turn off "Compact long chats automatically": a chat that is at 90 percent use, or at 400000
   tokens, starts its next turn with no compact. Turn it on: the next turn compacts first.
 - Set "Agents working at once" to 1: tasks of two agents run one after the other. Set it to 9 or 0:

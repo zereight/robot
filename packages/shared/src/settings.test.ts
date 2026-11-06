@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
+  CHASE_INTERVALS,
   defaultSettings,
   isAgentsAtOnce,
   resolveLocale,
@@ -27,6 +28,14 @@ describe("settings", () => {
       expect(Schema.is(SettingsPatch)({ silentLimit })).toBe(true)
     expect(Schema.is(SettingsPatch)({ silentLimit: 7 })).toBe(false)
     expect(Schema.is(SettingsPatch)({ silentLimit: "never" })).toBe(false)
+  })
+
+  test("the chase interval is 15 minutes at first, and takes only the listed choices (spec 013)", () => {
+    expect(defaultSettings.chaseInterval).toBe(15)
+    expect([...CHASE_INTERVALS].sort((a, b) => a - b)).toEqual([0, 5, 10, 15, 30, 60])
+    for (const chaseInterval of CHASE_INTERVALS)
+      expect(Schema.is(SettingsPatch)({ chaseInterval })).toBe(true)
+    expect(Schema.is(SettingsPatch)({ chaseInterval: 7 })).toBe(false)
   })
 
   test("the step limit is a whole number from 20 to 2000, 300 by default (spec 013)", () => {

@@ -8,6 +8,7 @@ import {
   type CheckMember,
   type CheckMessage,
   type CheckPart,
+  chaseOnEnd,
   checkInstruction,
   checkStateText,
   cleanDoneTest,
@@ -179,8 +180,29 @@ describe("when the lead may nudge", () => {
   })
   test("a nudged part that is still Not met is not nudged again for that reason", () => {
     expect(nudgeRefusal({ ...part, verdict: "not_met", nudged: true })).toBe("again")
-    // Another reason: a nudged part that failed may be tried again.
-    expect(nudgeRefusal({ ...part, state: "failed", nudged: true })).toBeNull()
+  })
+  test("a nudged part that failed or is blocked again is not nudged again (spec 004, chase)", () => {
+    for (const state of ["failed", "blocked"] as const) {
+      expect(nudgeRefusal({ ...part, state, nudged: true }), state).toBe("again")
+      expect(nudgeRefusal({ ...part, state, nudged: false }), state).toBeNull()
+    }
+  })
+})
+
+describe("what the lead does at once when a part ends (spec 004, chase)", () => {
+  const ended = { state: "failed" as const, error: null, nudged: false }
+  test("a part that failed or is blocked is chased; a part that ended well or was stopped is not", () => {
+    for (const state of ["failed", "blocked"] as const)
+      expect(chaseOnEnd({ ...ended, state }), state).toBe("chase")
+    for (const state of ["done", "cancelled", "review", "running"] as const)
+      expect(chaseOnEnd({ ...ended, state }), state).toBeNull()
+  })
+  test("a part that a chase started and that ended badly again is asked to the user", () => {
+    expect(chaseOnEnd({ ...ended, nudged: true })).toBe("ask")
+  })
+  test("a part that a limit blocked is not chased", () => {
+    for (const code of ["org_limit", "provider_limit"])
+      expect(chaseOnEnd({ state: "blocked", error: { code }, nudged: false }), code).toBeNull()
   })
 })
 
