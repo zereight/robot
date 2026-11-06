@@ -910,15 +910,34 @@ const placeIsland = (win: BrowserWindow, size: { width: number; height: number }
 /**
  * The notch of the screen, read once. A screen does not change its notch while the app runs, so
  * the read runs one time and every later caller waits on the same promise. A read that fails
- * leaves null, and the island keeps 340 px (spec 015).
+ * leaves null, and the island keeps 340 px (spec 015). A change of the screen (its resolution, or a
+ * screen that comes or goes) moves the notch, so that one starts a new read.
  */
-const onceNotch = notchReader()
+let onceNotch = notchReader()
 
 /** The event that tells the island page where the camera notch is (spec 015). */
 const ISLAND_NOTCH_EVENT = "island.notch"
 
 /** The island windows that got the notch, so that a window is told one time. */
 const windowsToldNotch = new WeakSet<BrowserWindow>()
+
+/** The screen changed: read the notch again, tell the page, and place the window again. */
+const followScreen = () => {
+  onceNotch = notchReader()
+  void onceNotch().then((notch) => {
+    islandNotch = notch
+    const win = island
+    if (!win || win.isDestroyed()) return
+    windowsToldNotch.add(win)
+    win.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, notch)
+    if (islandShapeNow === "hidden") return
+    // The bar takes the width of the new notch. A card keeps its size and only moves.
+    if (islandShapeNow === "bar")
+      placeIsland(win, { width: islandBarWidthNow(), height: win.getBounds().height })
+    else placeIsland(win, win.getBounds())
+  })
+}
+let followingScreen = false
 
 const setIslandShape = (shape: IslandShape) => {
   if (!islandAllowed()) return
@@ -1019,6 +1038,12 @@ export const electronPlatform = (): PlatformService => {
     void onceNotch().then((notch) => {
       islandNotch = notch
     })
+  if (islandAllowed() && !followingScreen) {
+    followingScreen = true
+    screen.on("display-metrics-changed", followScreen)
+    screen.on("display-added", followScreen)
+    screen.on("display-removed", followScreen)
+  }
   let teamsSurface: TeamsSurface | undefined
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)

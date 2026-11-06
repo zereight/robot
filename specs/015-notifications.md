@@ -32,6 +32,8 @@ The user knows when an agent needs them or finishes, without watching the window
 
 - A small dark shape at the top centre of the screen, around the camera notch when there is one.
   Nothing of the island sits behind the notch.
+- When the screen changes (its resolution, or a screen that comes or goes), the island moves to the
+  top centre of the screen again, and reads the notch again.
 - Idle: the app mark at the left and a still muted dot at the right. Nothing moves when idle.
 - Working: the faces of working agents (up to 3) and a count.
 - Attention: an approval or question expands the island with the agent face, a short summary

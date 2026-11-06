@@ -15,11 +15,13 @@ export interface Notch {
  * bounds and its work area. The two wings of the menu bar, at each side of the notch, give it.
  * The read runs in another program, so it can fail or take a moment: a screen with no notch, a
  * system where AppKit does not answer, and a read that is too slow all give no notch, and the
- * island then keeps its usual size.
+ * island then keeps its usual size. The read asks the first screen, which holds the menu bar and
+ * is the primary display of Electron: `mainScreen` is the screen of the focused window, and that
+ * may be an external screen with no notch.
  */
 const SCRIPT = `
 ObjC.import("AppKit");
-const s = $.NSScreen.mainScreen;
+const s = $.NSScreen.screens.objectAtIndex(0);
 const l = s.auxiliaryTopLeftArea;
 const r = s.auxiliaryTopRightArea;
 const safe = s.safeAreaInsets;
