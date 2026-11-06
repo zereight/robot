@@ -128,6 +128,9 @@ describe("permission levels (spec 007)", () => {
       "make_agent",
       "make_team_member",
       "change_team_member",
+      "remove_team_member",
+      "archive_team_member",
+      "restore_team_member",
       "make_workflow",
     ])
     for (const tool of READ_ONLY_GUARDED_TOOLS)

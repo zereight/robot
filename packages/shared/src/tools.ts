@@ -132,6 +132,19 @@ export const READ_ONLY_TOOLS: readonly string[] = [
 ]
 
 /**
+ * The team tools of a lead (spec 037, "Team tools"). They have no tool that deletes an agent: for
+ * a lead, archive is the end of a member.
+ */
+export const TEAM_TOOL_NAMES = [
+  "make_team_member",
+  "change_team_member",
+  "remove_team_member",
+  "archive_team_member",
+  "restore_team_member",
+] as const
+export type TeamToolName = (typeof TEAM_TOOL_NAMES)[number]
+
+/**
  * The tools that "Read only" hands to the guard of spec 007 ("Outside content"). The guard decides:
  * it refuses a request for a new secret and a request with a saved secret that uses a method other
  * than GET, a change of the agent's own settings, and a manage tool (spec 037), and it writes the
@@ -143,8 +156,7 @@ export const READ_ONLY_GUARDED_TOOLS: readonly string[] = [
   "secret_request",
   "settings",
   "make_agent",
-  "make_team_member",
-  "change_team_member",
+  ...TEAM_TOOL_NAMES,
   "make_workflow",
 ]
 

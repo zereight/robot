@@ -886,6 +886,10 @@ export const ko: Record<MessageKey, string> = {
   "chat.settings.undo": "되돌리기",
   "chat.settings.undone": "되돌렸어요",
   "chat.settings.changedAgain": "그 뒤에 다시 바뀌었어요",
+  "chat.settings.member": "{member}: {change}",
+  "chat.settings.permission": "권한 수준을 바꿨어요: {before} → {after}",
+  "chat.settings.archived": "보관했어요",
+  "chat.settings.restored": "복원했어요",
   "outside.held": "이 턴에는 외부 내용이 있어요",
   "outside.hint":
     "외부 글에는 내가 하지 않은 지시가 들어 있을 수 있어요. 내가 요청한 단계일 때만 허용하세요.",
@@ -926,6 +930,7 @@ export const ko: Record<MessageKey, string> = {
   "permissions.log.kind.secret_request": "저장된 비밀을 쓴 요청",
   "permissions.log.kind.secret_new": "새 비밀 요청",
   "permissions.log.kind.manage": "변경 요청",
+  "permissions.log.kind.team": "팀 변경",
   "permissions.log.kind.file": "파일",
   "permissions.log.kind.shell": "셸 명령",
   "permissions.log.kind.web": "웹 페이지",

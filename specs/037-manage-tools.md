@@ -4,13 +4,15 @@
 
 An agent, or a program outside ROBot, can make and change agents, channels and routines, and make
 workflows, with tools, as the user does in the app. Every change waits for the user. Nothing
-changes until the user allows it.
+changes until the user allows it. One exception: a lead changes its own team with the team tools at
+once (see "Team tools").
 
 ## Concepts
 
 - **Manage tools**: the tools in "Tools". Three kinds of caller have them:
   - the **main agent** (002), on every runtime (006);
-  - the **lead of a channel** (004), with the team tools in "Team tools" only;
+  - the **lead of a channel** (004) or the **lead of an organization** (030), with the team tools in
+    "Team tools" only;
   - an **outside program** (023) with the access "Read, send work and manage".
 
   No other agent has them. Another agent that needs a change asks the lead, the main agent, or the
@@ -51,7 +53,7 @@ Reads (access "Read, send work and manage", and the main agent):
 - **Wait for a request**: for outside programs only (flow 5). It gives the state and, when the
   request is "Allowed", the result.
 
-Changes (each makes a change request, except "Pause a routine"):
+Changes (each makes a change request, except "Pause a routine" and the team tools):
 
 - **Make an agent**: name, role line, instructions, face, model account, model, effort, section.
   The permission level, the workspace folder, the memory switch and every other field are the
@@ -78,19 +80,28 @@ Changes (each makes a change request, except "Pause a routine"):
 
 ## Team tools
 
-The lead of a channel (004) has two tools. They work on its own channel only. An agent that is the
-lead of no channel does not get them. A lead of more than one channel names the channel in each
-call.
+The lead of a channel (004) or of an organization (030) has the team tools. They work on its own
+team only: the members of the channel, or the members of the organization. An agent that leads
+neither does not get them. A lead of more than one team names the team in each call.
 
-- **Make a team member**: name, role line, instructions, face, model account, model, effort. It
-  makes an agent as "Make an agent" does, and adds it to the channel as a member. The role line is
-  the role of the member.
-- **Change a team member**: for one member of the channel that is not archived and is not the
-  caller. The fields are the role line and the instructions only. A member that is the lead of
-  another channel, or the main agent, is refused.
+- **Make a team member**: name, role line, instructions, face, model account, model, effort,
+  permission level. It makes an agent as "Make an agent" does, and adds it to the team as a member.
+  The permission level cannot be higher than the level of the lead.
+  The role line is the role of the member.
+- **Change a team member**: for one member of the team that is not archived and is not the caller.
+  The fields are the same as in "Change an agent", and the permission level too. The permission
+  level cannot be higher than the level of the lead.
+- **Remove a team member**: takes a member out of the team. The agent stays.
+- **Archive a team member** and **Restore a team member**: as the user does (002, "Archive").
+  A lead cannot delete an agent. Archive is the end of a member for a lead, and Restore brings it
+  back at any time, with its history, workspace and section.
 
-Both tools make a change request. The card names the lead and the channel. The lead can read a
-member with "Read an agent" for the members of its channel.
+A lead cannot change, archive, restore or remove itself or the main agent. **The team tools make no
+change request.** They work at once, at every permission level except "Read only", and no card
+shows. Each call shows as a line in the chat or the channel of the lead and has an entry in the action log (007)
+with the lead, the team, the member and the new values. The user can undo a change or an archive
+from that line (see flow 4). A member that is archived does not count in the limit of "Too many team
+members". The lead can read a member with "Read an agent" for the members of its team.
 
 ## States
 
@@ -109,7 +120,7 @@ member with "Read an agent" for the members of its channel.
 
 ## Rules
 
-- **The user decides.** Every change tool except "Pause a routine" makes a request. This holds at
+- **The user decides.** Every change tool except "Pause a routine" and the team tools makes a request. This holds at
   every permission level, also "Full access". The card has "Allow" and "Deny" only. It has no
   "Always allow". No rule of 007 covers a manage step, an Allow rule does not open it, and a Deny
   rule is not needed because "Deny" is always there.
@@ -132,8 +143,8 @@ member with "Read an agent" for the members of its channel.
   request made show the muted line "Made by <caller>". The line stays after later edits.
 - **Limits.** One entry of an outside program holds at most 5 requests that wait. The sixth call
   gets "Too many open requests. Wait for the user." and makes no request. Calls count in the limit
-  of 60 calls in one minute (023). A turn of the main agent or of a lead holds one waiting request at a time. A channel holds at
-  most 5 members that its lead made; the sixth call gets "Too many team members. Ask the user." The member limit of 004 holds.
+  of 60 calls in one minute (023). A turn of the main agent or of a lead holds one waiting request at a time. A team holds at
+  most 20 active members that its lead made; the 21st call gets "Too many team members. Ask the user." The member limit of 004 holds.
 - **Answer anywhere.** A linked device (012) can answer a request card only with the switch "Can
   create and change agents". The phone (011) can answer it.
 - **Logs.** The log of outside programs (023) holds the kind, the number and the result of each
@@ -168,9 +179,8 @@ member with "Read an agent" for the members of its channel.
   organizations.
 - A watch routine.
 - "Always allow" and rules for manage steps.
-- A manage tool for any agent other than the main agent and the lead of a channel. A lead has the
-  team tools only.
-- A lead that changes the model, the permission level, the workspace or the memory of a member.
+- A manage tool for any agent other than the main agent and a lead. A lead has the team tools only.
+- A lead that changes the workspace or the memory of a member.
 - MCP resources and prompts (023).
 
 ## Acceptance
@@ -192,19 +202,22 @@ member with "Read an agent" for the members of its channel.
   second request. Before it is allowed, the routine does not run.
 - "Make a routine" with a watch is refused with the reason. At 50 routines the 51st is refused.
 - "Pause a routine" makes no request and pauses the routine at once.
-- The lead of a channel calls "Make a team member" with the role line "Tester": a card shows with
-  the name of the lead and the channel. Before "Allow" no agent exists. After "Allow" the agent
-  exists, has the role line "Tester", is a member of the channel, and its profile shows "Made by
-  <lead name>".
-- A lead calls "Change a team member" with the field "model": refused, the tool has no such field.
-  With the role line of a member: a card shows the old and the new role line.
-- A lead calls "Change a team member" for an agent outside its channel, for itself, or for the
-  main agent: refused with the reason.
-- An agent that leads no channel does not get the team tools. A member that is not the lead does
-  not either.
+- The lead of a channel calls "Make a team member" with the role line "Tester": no card shows. The
+  agent exists at once, has the role line "Tester", is a member of the channel, and its profile
+  shows "Made by <lead name>". The chat of the lead shows a line, and the action log has an entry.
+- A lead calls "Change a team member" with the field "model": the model changes at once, and Undo
+  is on the line. With a permission level higher than its own: refused with the reason.
+- A lead calls "Change a team member" for an agent outside its team, for itself, or for the main
+  agent: refused with the reason.
+- The lead of an organization calls "Make a team member": the agent is a member of the
+  organization. No channel is needed, and a direct chat with the lead is enough.
+- A lead calls "Archive a team member": the agent leaves the place list at once. "Restore a team
+  member" brings it back with its history and workspace. A lead has no tool to delete an agent.
+- An agent that leads no channel and no organization does not get the team tools. A member that is
+  not the lead does not either.
 - A lead at "Read only" calls "Make a team member": "Refused: read only", no card shows.
-- The sixth team member that a lead made in one channel is refused with "Too many team members. Ask
-  the user."
+- The 21st active team member that a lead made in one team is refused with "Too many team members.
+  Ask the user." After the lead archives one, the call works.
 - Change a channel with "Allow": the members change. The instructions of the channel do not
   change, and the tool has no field for them.
 - Undo after "Change an agent": the old values return. When the agent changed again since, Undo is

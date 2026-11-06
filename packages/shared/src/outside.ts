@@ -80,6 +80,13 @@ export const MANAGE_STEP = "manage" as const
 export type ManageStep = typeof MANAGE_STEP
 
 /**
+ * The step of a team tool of a lead (spec 037, "Team tools"). It makes no request: it runs at once
+ * at every level except "Read only", which refuses it. No rule covers it.
+ */
+export const TEAM_STEP = "team" as const
+export type TeamStep = typeof TEAM_STEP
+
+/**
  * The permission levels that the guard knows. "Read only" is the strictest level of spec 007; the
  * guard decides for it already, so that the level can use the guard when it comes.
  */
@@ -96,7 +103,7 @@ export type GuardLevel = PermissionLevel | "read_only"
 export type GuardVerdict = "refuse_rule" | "refuse_read_only" | "ask" | "run" | "usual"
 
 export interface GuardInput {
-  readonly step: GuardedStep | ManageStep
+  readonly step: GuardedStep | ManageStep | TeamStep
   readonly level: GuardLevel
   /** True when the turn holds outside content. */
   readonly outside: boolean
@@ -119,6 +126,8 @@ export const guardDecision = (input: GuardInput): GuardVerdict => {
   // A manage step (spec 037) ignores the rules and the outside rules: "Read only" refuses it, and
   // every other level asks.
   if (input.step === MANAGE_STEP) return input.level === "read_only" ? "refuse_read_only" : "ask"
+  // A team step (spec 037) also ignores the rules: "Read only" refuses it, and it runs at the others.
+  if (input.step === TEAM_STEP) return input.level === "read_only" ? "refuse_read_only" : "run"
   if (input.denied) return "refuse_rule"
   // At "Read only" a save to memory follows the outside rule; every other guarded step is a change.
   if (input.level === "read_only" && input.step !== "memory") return "refuse_read_only"
@@ -382,7 +391,7 @@ export type ActionResult = "ran" | "failed" | "refused" | "stopped"
  * The kind of an entry of the action log: a guarded step (spec 007, "Outside content"), or a step
  * of the four kinds of "Permission rules": file, shell command, web page, tool of a connection.
  */
-export type ActionKind = GuardedStep | ManageStep | LoggedKind
+export type ActionKind = GuardedStep | ManageStep | TeamStep | LoggedKind
 /** Every kind of step that the action log holds, for its filter (spec 007). */
 export const ACTION_KINDS = [
   "memory",
@@ -390,6 +399,7 @@ export const ACTION_KINDS = [
   "secret_request",
   "secret_new",
   MANAGE_STEP,
+  TEAM_STEP,
   "file",
   "shell",
   "web",

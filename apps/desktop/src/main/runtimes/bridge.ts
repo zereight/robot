@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { TEAM_TOOL_NAMES } from "@robot/shared"
 
 /**
  * Tools of the app for an agent runtime. A vendor program (Claude Code, Codex, Pi, Muse Code)
@@ -69,8 +70,7 @@ export const MANAGE_TOOL_NAMES = [
   "read_agent",
   "make_agent",
   "make_workflow",
-  "make_team_member",
-  "change_team_member",
+  ...TEAM_TOOL_NAMES,
 ] as const
 
 /** The name of the server, as the vendor program shows it in the name of a tool. */

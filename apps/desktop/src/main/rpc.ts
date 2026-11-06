@@ -648,8 +648,9 @@ export const handlers: Handlers = {
       Effect.flatMap(({ agentId, messageId, callId }) =>
         Effect.gen(function* () {
           yield* AgentSettings.use((s) => s.undo(agentId, messageId, callId))
-          // The line of the message shows that it was undone.
+          // The line of the message shows that it was undone, in a chat or a channel.
           yield* Chat.use((c) => Effect.sync(() => c.announce(messageId)))
+          yield* Channels.use((c) => Effect.sync(() => c.announce(messageId)))
         }),
       ),
       Effect.as(undefined),

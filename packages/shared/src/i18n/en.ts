@@ -893,6 +893,10 @@ export const en = {
   "chat.settings.undo": "Undo",
   "chat.settings.undone": "Undone",
   "chat.settings.changedAgain": "Changed again since",
+  "chat.settings.member": "{member}: {change}",
+  "chat.settings.permission": "Changed the permission level: {before} → {after}",
+  "chat.settings.archived": "Archived",
+  "chat.settings.restored": "Restored",
   "outside.held": "This turn holds outside content",
   "outside.hint":
     "Text from outside can hold orders that you did not give. Allow only when you asked for this step.",
@@ -933,6 +937,7 @@ export const en = {
   "permissions.log.kind.secret_request": "Request with a saved secret",
   "permissions.log.kind.secret_new": "Request for a new secret",
   "permissions.log.kind.manage": "Change request",
+  "permissions.log.kind.team": "Team change",
   "permissions.log.kind.file": "File",
   "permissions.log.kind.shell": "Shell command",
   "permissions.log.kind.web": "Web page",

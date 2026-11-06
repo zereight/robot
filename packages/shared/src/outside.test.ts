@@ -16,6 +16,7 @@ import {
   outsideOfCall,
   outsideOfParts,
   starterOf,
+  TEAM_STEP,
   type TurnStarter,
 } from "./outside.ts"
 
@@ -99,6 +100,17 @@ describe("guardDecision for a manage step (spec 037)", () => {
       expect(
         guardDecision({ step: MANAGE_STEP, level, outside: false, starter: "user", denied: true }),
       ).toBe(level === "read_only" ? "refuse_read_only" : "ask")
+  })
+})
+
+describe('guardDecision for a team step (spec 037, "Team tools")', () => {
+  test("a team step runs at once at every level except Read only, and no rule covers it", () => {
+    for (const level of LEVELS)
+      for (const outside of [true, false])
+        for (const denied of [true, false])
+          expect(guardDecision({ step: TEAM_STEP, level, outside, starter: "agent", denied })).toBe(
+            level === "read_only" ? "refuse_read_only" : "run",
+          )
   })
 })
 

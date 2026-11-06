@@ -270,9 +270,8 @@ or dropped, does not stay unseen.
   channel." The app saves it once: a second change makes no second note. When the agent becomes the
   lead again, the app takes the note away. The note is a normal memory item with a history row, and
   the user can see and undo it. It starts no agent turn.
-- The lead can make a new member and change the role line and the instructions of a member with the
-  team tools (037, "Team tools"). Each is a request that the user allows. The new member joins this
-  channel when the user allows.
+- The lead can make, change, remove, archive and restore a member with the team tools (037, "Team
+  tools"). They work at once and need no request. The new member joins this channel.
 - A channel that the main agent or an outside program makes or changes (037) follows a request
   that the user allows. The request cannot set the instructions or the settings "Review parts", "The
   lead answers questions" and "Own copies for parts" of the channel.
