@@ -52,6 +52,7 @@ interface AgentRow {
   read_handbook: number
   is_main: number
   place_section_id: string | null
+  pinned: number
   archived_at: number | null
   created_at: number
   changed_by: string | null
@@ -387,6 +388,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
             )
           db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
         })
+        // An agent that moves to another section comes last there (spec 001, "Order of places").
+        if (patch.sectionId !== undefined && patch.sectionId !== row.place_section_id)
+          yield* sections.last({ kind: "agent", id })
         // The hold is about the main model and the backup of this agent. A new main model is not
         // the one that is held, and with no backup nothing takes the turns (spec 006).
         const mainMoved =
@@ -418,6 +422,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
             by.at,
             id,
           )
+          // An archived agent leaves the group "Pinned" (spec 001, "Pinned places").
+          if (archived) db.run("UPDATE agent SET pinned = 0 WHERE id = ?", id)
           changed(row.server_id)
           return toAgent(yield* findRow(id))
         })

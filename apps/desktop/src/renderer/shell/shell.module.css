@@ -97,7 +97,7 @@
 }
 
 .tileWrap[data-selected="true"] .tile {
-  background: var(--c-accent);
+  background: var(--c-focus);
   color: var(--c-accent-text);
 }
 
@@ -130,7 +130,7 @@
   height: 16px;
   padding: 0 4px;
   border-radius: var(--radius-m);
-  background: var(--c-accent);
+  background: var(--c-focus);
   color: var(--c-accent-text);
   font-size: 0.7rem;
   font-weight: 600;
@@ -350,7 +350,7 @@
 
 .hitText mark {
   border-radius: 2px;
-  background: color-mix(in srgb, var(--c-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--c-focus) 35%, transparent);
   color: var(--c-text);
 }
 
@@ -374,6 +374,15 @@
 
 .row[data-dragging="true"] {
   opacity: 0.5;
+}
+
+/* The line of the spot where a dragged row would drop. */
+.row[data-drop-edge="before"] {
+  box-shadow: 0 -2px 0 0 var(--c-focus);
+}
+
+.row[data-drop-edge="after"] {
+  box-shadow: 0 2px 0 0 var(--c-focus);
 }
 
 .nameBox {
@@ -537,7 +546,7 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--c-accent);
+  background: var(--c-focus);
   color: var(--c-accent-text);
   font-size: var(--text-xs);
   font-weight: 600;

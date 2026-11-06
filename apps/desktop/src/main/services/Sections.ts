@@ -4,8 +4,10 @@ import {
   type MoveDirection,
   moveInOrder,
   nameKey,
+  orderByPosition,
   type PlaceKind,
   type PlaceRef,
+  pinsFull,
   type SectionCreate,
   sectionsFull,
   type UserSection,
@@ -34,6 +36,12 @@ export interface SectionsService {
   remove(id: string): Effect.Effect<void, AppError>
   /** Puts a place in a section, or in none (`null`). */
   assign(place: PlaceRef, sectionId: string | null): Effect.Effect<void, AppError>
+  /** Pins a place to the group "Pinned", or unpins it. It comes last in the list that it joins. */
+  pin(place: PlaceRef, pinned: boolean): Effect.Effect<void, AppError>
+  /** Puts a place last in the list that it is in now. A move to another section calls it. */
+  last(place: PlaceRef): Effect.Effect<void>
+  /** Sets the order of one list: each place gets the spot of its index. */
+  order(items: readonly PlaceRef[]): Effect.Effect<void, AppError>
   /**
    * Checks that a place of `kind` on `serverId` may join the section. `null` always passes.
    * Returns the id to store.
@@ -80,6 +88,67 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
           serverId,
           kind,
         )
+
+      const tableOf = (kind: PlaceKind) => (kind === "agent" ? "agent" : "channel")
+      const missing = (kind: PlaceKind) =>
+        new AppError({ code: kind === "agent" ? "agent_not_found" : "channel_not_found" })
+
+      interface PlaceRow {
+        server_id: string
+        pinned: number
+        place_section_id: string | null
+      }
+      const placeRow = (place: PlaceRef) =>
+        db.get<PlaceRow>(
+          `SELECT server_id, pinned, place_section_id FROM ${tableOf(place.kind)} WHERE id = ?`,
+          place.id,
+        )
+
+      /**
+       * The places of the list that holds a place, in the order that they show: the ones with a
+       * position first, then the others by name. A pinned place is in the group "Pinned", whatever
+       * its section is.
+       */
+      const listOf = (place: PlaceRef, row: PlaceRow): PlaceRef[] => {
+        const pick = (kind: PlaceKind, where: string, ...args: (string | null)[]) =>
+          db
+            .all<{ id: string; place_position: number | null }>(
+              `SELECT id, place_position FROM ${tableOf(kind)} WHERE server_id = ? AND ${where}
+               ${kind === "agent" ? "AND archived_at IS NULL" : ""} ORDER BY name_key`,
+              row.server_id,
+              ...args,
+            )
+            .map((r) => ({ kind, ...r }))
+        const rows =
+          row.pinned === 1
+            ? [...pick("agent", "pinned = 1"), ...pick("channel", "pinned = 1")]
+            : pick(place.kind, "pinned = 0 AND place_section_id IS ?", row.place_section_id)
+        return orderByPosition(rows, (r) => r.place_position).map((r) => ({
+          kind: r.kind,
+          id: r.id,
+        }))
+      }
+
+      /** Writes the spots of a list. */
+      const write = (items: readonly PlaceRef[]) =>
+        db.transaction(() => {
+          for (const [index, item] of items.entries())
+            db.run(
+              `UPDATE ${tableOf(item.kind)} SET place_position = ? WHERE id = ?`,
+              index,
+              item.id,
+            )
+        })
+
+      /** Puts a place last in the list that it is in now (after a move to another list). */
+      const putLast = (place: PlaceRef) => {
+        const row = placeRow(place)
+        if (!row) return
+        const others = listOf(place, row).filter(
+          (p) => !(p.kind === place.kind && p.id === place.id),
+        )
+        write([...others, place])
+      }
 
       /** Tells every list that shows places that something changed. */
       const changed = (serverId: string, kind: PlaceKind) => {
@@ -184,11 +253,51 @@ export class Sections extends Context.Service<Sections, SectionsService>()("robo
           })
         const stored = yield* check(owner.server_id, place.kind, sectionId)
         db.run(`UPDATE ${table} SET place_section_id = ? WHERE id = ?`, stored, place.id)
+        // A place comes last in its new section. A pinned place keeps its spot in "Pinned".
+        if (placeRow(place)?.pinned === 0) putLast(place)
         changed(owner.server_id, place.kind)
         if (place.kind === "channel") bus.emit("channels.changed", { channelId: place.id })
       })
 
+      const pin = Effect.fn("Sections.pin")(function* (place: PlaceRef, pinned: boolean) {
+        const row = placeRow(place)
+        if (!row) return yield* missing(place.kind)
+        if (row.pinned === (pinned ? 1 : 0)) return
+        if (pinned) {
+          const count = db.get<{ n: number }>(
+            `SELECT (SELECT COUNT(*) FROM agent WHERE server_id = ?1 AND pinned = 1 AND archived_at IS NULL)
+                  + (SELECT COUNT(*) FROM channel WHERE server_id = ?1 AND pinned = 1) AS n`,
+            row.server_id,
+          )?.n
+          if (pinsFull(count ?? 0)) return yield* new AppError({ code: "pin_limit" })
+        }
+        db.run(
+          `UPDATE ${tableOf(place.kind)} SET pinned = ? WHERE id = ?`,
+          pinned ? 1 : 0,
+          place.id,
+        )
+        putLast(place)
+        changed(row.server_id, place.kind)
+        if (place.kind === "channel") bus.emit("channels.changed", { channelId: place.id })
+      })
+
+      const order = Effect.fn("Sections.order")(function* (items: readonly PlaceRef[]) {
+        if (items.length === 0 || items.length > 1000)
+          return yield* new AppError({ code: "invalid_input" })
+        const rows = items.map((item) => placeRow(item))
+        for (const [index, row] of rows.entries())
+          if (!row) return yield* missing((items[index] as PlaceRef).kind)
+        const serverId = rows[0]?.server_id
+        if (rows.some((row) => row?.server_id !== serverId))
+          return yield* new AppError({ code: "invalid_input" })
+        write(items)
+        for (const kind of new Set(items.map((i) => i.kind))) changed(serverId as string, kind)
+      })
+
       return Sections.of({
+        pin,
+        order,
+        last: (place) => Effect.sync(() => putLast(place)),
         list: (serverId) =>
           Effect.sync(() =>
             db

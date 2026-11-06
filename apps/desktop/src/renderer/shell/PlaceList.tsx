@@ -1,12 +1,17 @@
 import {
   allPlaces,
   builtInSection,
+  canMovePlace,
   canMoveSection,
   clampPlaceListWidth,
+  dropInList,
   filterPlaces,
+  isPinned,
+  listOfPlace,
   loosePlacesFirst,
   type MessageKey,
   markedParts,
+  moveInList,
   NO_ORG_SECTION_ID,
   organizationSections,
   PLACE_LIST_MAX,
@@ -14,6 +19,8 @@ import {
   type Place,
   type PlaceKind,
   type PlaceSection,
+  pinnedPlaces,
+  pinsFull,
   SECTION_NAME_MAX,
   type SearchHit,
   type SectionId,
@@ -23,6 +30,7 @@ import {
   summarize,
   UNASSIGNED_SECTION_ID,
   type UserSectionView,
+  withoutPinned,
 } from "@robot/shared"
 import { ChevronDown, Ellipsis, Hash } from "lucide-solid"
 import {
@@ -161,7 +169,16 @@ interface Dragged {
   readonly kind: PlaceKind
   readonly id: string
   readonly sectionId: string | null
+  /** The list that holds the row: only a drop inside this list sets the order. */
+  readonly list: string
 }
+
+/** The list that holds a place: the group "Pinned", or its section, or "no section" of its kind. */
+const listKeyOf = (place: Place) =>
+  isPinned(place) ? "pinned" : `${place.kind}:${place.sectionId ?? ""}`
+
+/** The group "Pinned" is a fixed section: this is its collapse key and the base of its test ids. */
+const PINNED_KEY = "pinned"
 
 export const PlaceList = (props: PlaceListProps) => {
   const app = useApp()
@@ -175,6 +192,8 @@ export const PlaceList = (props: PlaceListProps) => {
   const [dragging, setDragging] = createSignal<Dragged>()
   /** The header under the pointer while a place is dragged: a user section id, or `built-in:id`. */
   const [dropKey, setDropKey] = createSignal<string>()
+  /** The spot between two rows while a place is dragged: the row, and the edge of the line. */
+  const [spot, setSpot] = createSignal<{ key: string; edge: "before" | "after" }>()
   let dragCancelled = false
   let search: HTMLInputElement | undefined
   let list: HTMLDivElement | undefined
@@ -186,13 +205,16 @@ export const PlaceList = (props: PlaceListProps) => {
   const readOnly = () => ui.linked()
 
   // The search also matches the whole name of the organization of an agent, with the prefix on (spec 036).
-  const sections = createMemo(() =>
+  const matching = createMemo(() =>
     filterPlaces(ui.sections(), query(), (place) =>
       place.kind === "agent" ? orgs.prefixOrg(place.id) : null,
     ),
   )
+  // A pinned place shows in the group "Pinned" and not in its section (spec 001).
+  const pinned = createMemo(() => pinnedPlaces(matching()))
+  const sections = createMemo(() => withoutPinned(matching()))
   const searching = () => query().trim().length > 0
-  const anyMatch = () => sections().some((s) => allPlaces(s).length > 0)
+  const anyMatch = () => pinned().length > 0 || sections().some((s) => allPlaces(s).length > 0)
   /**
    * The organizations of this computer that the text matches (spec 029, "Ways in"). The chart of a
    * linked server is not kept here, so its organizations are not in this list.
@@ -454,8 +476,32 @@ export const PlaceList = (props: PlaceListProps) => {
     const row = event.currentTarget as HTMLElement
     const kind = place.kind
     const mine = userSectionsOf(builtInSection(kind))
-    const pick = (sectionId: string | null) => () =>
-      ui.movePlace({ kind: place.kind, id: place.id }, sectionId)
+    const ref = { kind: place.kind, id: place.id }
+    const pick = (sectionId: string | null) => () => ui.movePlace(ref, sectionId)
+    const full = pinsFull(pinnedPlaces(ui.sections()).length)
+    // The order is set in the whole list, not in a filtered one, and not under the organizations.
+    const orderOff = searching()
+      ? t("places.orderFiltered")
+      : place.kind === "agent" && orgView()
+        ? t("places.orderByOrganization")
+        : undefined
+    const whole = listOfPlace(ui.sections(), ref)
+    const step = (direction: "up" | "down"): MenuItem => ({
+      label: t(direction === "up" ? "sections.moveUp" : "sections.moveDown"),
+      disabled: orderOff !== undefined || !canMovePlace(whole, ref, direction),
+      ...(orderOff !== undefined ? { reason: orderOff } : {}),
+      onSelect: () => void ui.orderPlaces(moveInList(whole, ref, direction)),
+      testId: direction === "up" ? "place-move-up" : "place-move-down",
+    })
+    const pinItem: MenuItem = isPinned(place)
+      ? { label: t("places.unpin"), onSelect: () => ui.pinPlace(ref, false), testId: "place-unpin" }
+      : {
+          label: t("places.pin"),
+          disabled: full,
+          ...(full ? { reason: t("places.pinLimit") } : {}),
+          onSelect: () => ui.pinPlace(ref, true),
+          testId: "place-pin",
+        }
     // The view "By organization" has no user sections to move to (spec 001).
     const moveTo: MenuItem[] = locked(place)
       ? [
@@ -489,7 +535,12 @@ export const PlaceList = (props: PlaceListProps) => {
             testId: "move-to-none",
           },
         ]
-    openMenu({ label: place.name, returnTo: row, ...menuAt(event, row), items: moveTo })
+    openMenu({
+      label: place.name,
+      returnTo: row,
+      ...menuAt(event, row),
+      items: [pinItem, step("up"), step("down"), ...moveTo],
+    })
   }
 
   const sectionMenu = (
@@ -542,6 +593,7 @@ export const PlaceList = (props: PlaceListProps) => {
   const endDrag = () => {
     setDragging(undefined)
     setDropKey(undefined)
+    setSpot(undefined)
     window.removeEventListener("keydown", onDragKey, true)
   }
   onCleanup(() => window.removeEventListener("keydown", onDragKey, true))
@@ -550,11 +602,17 @@ export const PlaceList = (props: PlaceListProps) => {
     if (event.key !== "Escape") return
     dragCancelled = true
     setDropKey(undefined)
+    setSpot(undefined)
   }
 
   const startDrag = (event: DragEvent, place: Place) => {
     dragCancelled = false
-    setDragging({ kind: place.kind, id: place.id, sectionId: place.sectionId })
+    setDragging({
+      kind: place.kind,
+      id: place.id,
+      sectionId: place.sectionId,
+      list: listKeyOf(place),
+    })
     window.addEventListener("keydown", onDragKey, true)
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = "move"
@@ -595,6 +653,48 @@ export const PlaceList = (props: PlaceListProps) => {
     }
   }
 
+  /**
+   * The handlers of a row that takes a dropped row of the same list: the drop sets the spot between
+   * two rows (spec 001, "Order of places"). Any other drag passes over the row to its header.
+   */
+  const rowDrop = (place: Place) => {
+    const key = `${place.kind}:${place.id}`
+    const accepts = () => {
+      const drag = dragging()
+      return drag && !dragCancelled && !searching() && drag.list === listKeyOf(place) ? drag : null
+    }
+    const edgeOf = (event: DragEvent) => {
+      const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      return event.clientY < box.top + box.height / 2 ? "before" : "after"
+    }
+    const over = (event: DragEvent) => {
+      if (!accepts()) return
+      event.preventDefault()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
+      setSpot({ key, edge: edgeOf(event) })
+    }
+    return {
+      onDragEnter: over,
+      onDragOver: over,
+      onDragLeave: (event: DragEvent) => {
+        const to = event.relatedTarget as Node | null
+        if (!to || !(event.currentTarget as HTMLElement).contains(to))
+          setSpot((current) => (current?.key === key ? undefined : current))
+      },
+      onDrop: (event: DragEvent) => {
+        const drag = accepts()
+        if (!drag) return
+        event.preventDefault()
+        const edge = edgeOf(event)
+        endDrag()
+        const whole = listOfPlace(ui.sections(), place)
+        const at = whole.findIndex((p) => p.kind === place.kind && p.id === place.id)
+        const next = edge === "before" ? whole[at] : whole[at + 1]
+        void ui.orderPlaces(dropInList(whole, drag, next ? { kind: next.kind, id: next.id } : null))
+      },
+    }
+  }
+
   // Parts of the list ---------------------------------------------------------------------
 
   const renderPlace = (place: Place, withPrefix: boolean) => {
@@ -610,6 +710,8 @@ export const PlaceList = (props: PlaceListProps) => {
         data-testid={`place-${place.kind}-${place.id}`}
         data-unread={place.unread > 0}
         data-dragging={dragging()?.id === place.id}
+        data-drop-edge={spot()?.key === `${place.kind}:${place.id}` ? spot()?.edge : undefined}
+        {...(readOnly() ? {} : rowDrop(place))}
         aria-current={selected()}
         aria-label={accessibleName(place, withPrefix)}
         onClick={() => ui.selectPlace({ kind: place.kind, id: place.id })}
@@ -1076,6 +1178,14 @@ export const PlaceList = (props: PlaceListProps) => {
           </section>
         </Show>
         {/* A section with no match hides itself while the user searches. */}
+        <Show when={pinned().length > 0}>
+          {renderFixedSection(
+            { key: PINNED_KEY, testId: "pinned" },
+            () => ({ name: t("places.section.pinned"), places: pinned() }),
+            "",
+            renderRow,
+          )}
+        </Show>
         <For each={sections()}>{renderSection}</For>
         <Show when={messageSearch() && (hits().length > 0 || slow())}>
           <section data-testid="search-messages" aria-label={t("search.messages")}>

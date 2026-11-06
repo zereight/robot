@@ -251,6 +251,7 @@ These are in the code today and the specs now say something else.
 | S146 | Make an agent in the form of an organization: the button "New agent". | 030, 002 |
 | S147 | Refused send: the hint line in the step text and the button "Open Hand-off rules" on the card. | 030, 013 |
 | S148 | Role instructions: one text for each role line, written on the Roles page, read by every agent of the role before its own instructions; sync, rename, join, remove and the read-only view in the profile. | 002, 013, 019 |
+| S149 | Pinned places built (the menu, the group, the limit of 10), and order of places: drag and "Move up" / "Move down" inside one list. | 001, 011, 012 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

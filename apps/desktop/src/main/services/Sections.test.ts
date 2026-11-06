@@ -196,24 +196,24 @@ describe("put places in sections", () => {
       sections: [{ name: "Research", places: ["Ada"] }],
     })
     expect((await t.run(Agents.use((a) => a.get(ada.id)))).sectionId).toBe(research.id)
-    // Back to no section.
+    // Back to no section: Ada comes last there (spec 001, "Order of places").
     await t.move("agent", ada.id, null)
     expect(await t.places("agents")).toEqual({
-      none: ["Ada", "Bo"],
+      none: ["Bo", "Ada"],
       sections: [{ name: "Research", places: [] }],
     })
   })
 
-  test("the order of the places inside a section does not change when one moves", async () => {
+  test("the order of the places inside a section is the order of the moves", async () => {
     const t = await setup()
     const r = await t.section("agent", "R")
     const ids = []
     for (const name of ["Cy", "Ada", "Bo"]) ids.push((await t.agent(name)).id)
     for (const id of ids) await t.move("agent", id, r.id)
-    expect((await t.places("agents")).sections[0]?.places).toEqual(["Ada", "Bo", "Cy"])
+    expect((await t.places("agents")).sections[0]?.places).toEqual(["Cy", "Ada", "Bo"])
     await t.move("agent", ids[1] ?? "", null)
     await t.move("agent", ids[1] ?? "", r.id)
-    expect((await t.places("agents")).sections[0]?.places).toEqual(["Ada", "Bo", "Cy"])
+    expect((await t.places("agents")).sections[0]?.places).toEqual(["Cy", "Bo", "Ada"])
   })
 
   test("a channel moves the same way", async () => {
@@ -459,5 +459,87 @@ describe("the agent file", () => {
     expect(made).toBeDefined()
     expect(made?.sectionId).toBeNull()
     await runtime.dispose()
+  })
+})
+
+describe("pinned places and the order of places", () => {
+  const all = async (t: Awaited<ReturnType<typeof setup>>) => {
+    const list = await t.run(Places.use((p) => p.list(t.server.id)))
+    return list.flatMap((s) => [s.places, ...s.sections.map((u) => u.places)].flat())
+  }
+  const pin = (kind: PlaceKind, id: string, pinned: boolean) =>
+    Sections.use((s) => s.pin({ kind, id }, pinned))
+
+  test("a pinned place gets a rank, in the order of pinning", async () => {
+    const t = await setup()
+    const ada = await t.agent("Ada")
+    const bo = await t.agent("Bo")
+    const ops = await t.channel("Ops")
+    await t.run(pin("agent", bo.id, true))
+    await t.run(pin("channel", ops.id, true))
+    await t.run(pin("agent", ada.id, true))
+    const ranks = (await all(t)).filter((p) => p.pinRank !== undefined)
+    expect(ranks.sort((a, b) => (a.pinRank ?? 0) - (b.pinRank ?? 0)).map((p) => p.name)).toEqual([
+      "Bo",
+      "Ops",
+      "Ada",
+    ])
+    await t.run(pin("agent", bo.id, false))
+    const rest = await all(t)
+    expect(rest.find((p) => p.name === "Bo")?.pinRank).toBeUndefined()
+    expect(rest.find((p) => p.name === "Ops")?.pinRank).toBe(0)
+  })
+
+  test("at 10 pinned places the next pin is refused; an archived place does not count", async () => {
+    const t = await setup()
+    const made: { id: string }[] = []
+    for (let i = 0; i < 11; i++) made.push(await t.agent(`Agent ${i}`))
+    for (const a of made.slice(0, 10)) await t.run(pin("agent", a.id, true))
+    const over = await t.exit(pin("agent", (made[10] as { id: string }).id, true))
+    expect(failCode(over)).toBe("pin_limit")
+    await t.run(Agents.use((a) => a.archive((made[0] as { id: string }).id)))
+    await t.run(pin("agent", (made[10] as { id: string }).id, true))
+    // The archived agent left the group, and a restore does not pin it again.
+    await t.run(Agents.use((a) => a.restore((made[0] as { id: string }).id)))
+    const back = (await all(t)).find((p) => p.name === "Agent 0")
+    expect(back?.pinRank).toBeUndefined()
+  })
+
+  test("order sets the spots; the places that were not ordered follow by name", async () => {
+    const t = await setup()
+    const a = await t.agent("A")
+    const b = await t.agent("B")
+    const c = await t.agent("C")
+    await t.run(
+      Sections.use((s) =>
+        s.order([
+          { kind: "agent", id: c.id },
+          { kind: "agent", id: b.id },
+        ]),
+      ),
+    )
+    expect((await t.places("agents")).none).toEqual(["C", "B", "A"])
+    expect(a.name).toBe("A")
+  })
+
+  test("a place that moves to another list comes last there", async () => {
+    const t = await setup()
+    const sec = await t.section("agent", "Team")
+    const a = await t.agent("A", sec.id)
+    await t.agent("B", sec.id)
+    const c = await t.agent("C")
+    await t.move("agent", c.id, sec.id)
+    expect((await t.places("agents")).sections[0]?.places).toEqual(["A", "B", "C"])
+    await t.move("agent", a.id, null)
+    await t.move("agent", a.id, sec.id)
+    expect((await t.places("agents")).sections[0]?.places).toEqual(["B", "C", "A"])
+  })
+
+  test("order refuses an unknown place and an empty list", async () => {
+    const t = await setup()
+    const none = await t.exit(Sections.use((s) => s.order([{ kind: "agent", id: "nope" }])))
+    expect(failCode(none)).toBe("agent_not_found")
+    const empty = await t.exit(Sections.use((s) => s.order([])))
+    expect(failCode(empty)).toBe("invalid_input")
   })
 })

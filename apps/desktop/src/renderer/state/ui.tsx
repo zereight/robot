@@ -212,6 +212,11 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** Puts a place in a section of its kind, or in none (`null`). */
     movePlace: (ref: PlaceRef, sectionId: string | null) =>
       sectionCall(() => call("places.move", { ...ref, sectionId })),
+    /** Pins a place to the group "Pinned", or unpins it. A refused pin throws. */
+    pinPlace: (ref: PlaceRef, pinned: boolean) =>
+      sectionCall(() => call("places.pin", { ...ref, pinned })),
+    /** Sets the order of one list of places. */
+    orderPlaces: (items: readonly PlaceRef[]) => sectionCall(() => call("places.order", { items })),
     /** Changes the width on screen only. Call `saveWidth` when the drag ends. */
     previewWidth: (placeListWidth: number) => setUi({ placeListWidth }),
     /** Extra width in px (negative or positive) while a drag is past a limit. Only on screen. */

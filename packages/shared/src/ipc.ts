@@ -100,7 +100,7 @@ import type {
 } from "./toolConnections.ts"
 import type { HeldToolView } from "./toolReview.ts"
 import type { ApprovalAnswer } from "./tools.ts"
-import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
+import type { PlaceKind, PlaceRef, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
 import type { RecentWorkRow } from "./work.ts"
 import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
@@ -250,6 +250,10 @@ export interface RpcMethods {
     input: { kind: PlaceKind; id: string; sectionId: string | null }
     output: undefined
   }
+  /** Pins a place to the group "Pinned", or unpins it. At 10 pinned places "pin" fails. */
+  "places.pin": { input: { kind: PlaceKind; id: string; pinned: boolean }; output: undefined }
+  /** Sets the order of one list of places: the place at index 0 is first. */
+  "places.order": { input: { items: readonly PlaceRef[] }; output: undefined }
   "sections.create": { input: SectionCreate; output: UserSection }
   "sections.rename": { input: { id: string; name: string }; output: UserSection }
   /** One step in the order of the sections of its kind. At an end it changes nothing. */

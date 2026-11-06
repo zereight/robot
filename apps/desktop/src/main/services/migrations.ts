@@ -1404,6 +1404,16 @@ export const migrations: readonly string[] = [
   -- this step adds it only when it is missing.
   SELECT 1; -- routine-org-id
   `,
+  `
+  -- Pinned places and the order of places (spec 001, "Pinned places", "Order of places"). The
+  -- position is the spot of the place in its list (a section, "Unassigned", the places with no
+  -- section, or "Pinned"), 0 first, and NULL for a place that the user has not ordered. They are the
+  -- layout of one computer, like the sections, so sync does not carry them. An export holds them.
+  ALTER TABLE agent ADD COLUMN place_position INTEGER;
+  ALTER TABLE agent ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE channel ADD COLUMN place_position INTEGER;
+  ALTER TABLE channel ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+  `,
 ]
 
 /**
