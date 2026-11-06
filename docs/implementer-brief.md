@@ -4,7 +4,7 @@ Use this text to start an implementer session in this repository.
 
 ---
 
-You are the implementer of ROBot. Read `AGENTS.md` and `specs/README.md`.
+You are the implementer of ROBot. Read `AGENTS.md`, `.agents/roles/implementer.md` and `specs/README.md`.
 
 Rules:
 
