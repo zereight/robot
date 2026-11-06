@@ -530,8 +530,9 @@ describe("sub-organizations (spec 030)", () => {
     expect(rect("o:Docs").y).toBeGreaterThanOrEqual(bottomOf("o:Product"))
     expect(rect("o:Site").y).toBeGreaterThanOrEqual(bottomOf("o:Docs"))
     expect(rect("o:Site").y).toBe(rect("o:Blog").y)
-    // Ops is a top organization: in the row of Product.
-    expect(rect("o:Ops").y).toBe(rect("o:Product").y)
+    // Ops is a top organization: a row of the top level, not under Docs. It shares the row of
+    // Product only when both areas fit in one row.
+    expect(rect("o:Ops").y).toBeLessThan(rect("o:Docs").y)
     // The lines that belong to the tree: root to the top orgs, a parent to its sub-organizations.
     const structure = layout.lines.filter((l) => l.kind === "structure").map((l) => l.id)
     expect(structure).toContain("s:o:Product>o:Docs")
@@ -577,5 +578,28 @@ describe("organization nodes with no member (spec 029)", () => {
     // It sits in the row of its sibling, one level under Product.
     expect(empty?.rect.y).toBe(docs?.rect.y)
     expect(layout.lines.some((l) => l.id === "s:o:Product>o:Empty")).toBe(true)
+  })
+})
+
+describe("team areas (spec 029)", () => {
+  const rectsOverlap = (a: Rect, b: Rect) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  const inside = (a: Rect, b: Rect) =>
+    a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h
+
+  test("an area has a depth, lies in its parent, and no two areas of one level cross", () => {
+    const layout = layoutChart(buildChart(threeLevels()), 16)
+    const areas = layout.areas
+    expect(areas.length).toBeGreaterThan(1)
+    expect(Math.max(...areas.map((a) => a.depth))).toBeGreaterThan(0)
+    for (const a of areas)
+      for (const b of areas) {
+        if (a === b) continue
+        if (a.depth === b.depth) expect(rectsOverlap(a.rect, b.rect)).toBe(false)
+        else if (rectsOverlap(a.rect, b.rect)) {
+          const [outer, inner] = a.depth < b.depth ? [a, b] : [b, a]
+          expect(inside(inner.rect, outer.rect)).toBe(true)
+        }
+      }
   })
 })

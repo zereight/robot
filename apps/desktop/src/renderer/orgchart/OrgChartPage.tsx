@@ -1001,6 +1001,20 @@ export const OrgChartPage = () => {
                         height={(layout()?.bounds.y ?? 0) + (layout()?.bounds.h ?? 0)}
                         aria-hidden="true"
                       >
+                        <For each={layout()?.areas ?? []}>
+                          {(area) => (
+                            <rect
+                              class={styles.area}
+                              data-depth={area.depth % 5}
+                              data-testid="org-area"
+                              x={area.rect.x}
+                              y={area.rect.y}
+                              width={area.rect.w}
+                              height={area.rect.h}
+                              rx="12"
+                            />
+                          )}
+                        </For>
                         <defs>
                           <marker
                             id="org-arrow-lead"

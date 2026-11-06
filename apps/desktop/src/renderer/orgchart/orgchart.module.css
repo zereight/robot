@@ -104,6 +104,30 @@
   pointer-events: none;
 }
 
+/* The area of a team, behind the lines. A team inside a team has the next colour. */
+.area {
+  --area-tone: var(--c-accent);
+  fill: color-mix(in srgb, var(--area-tone) 8%, transparent);
+  stroke: color-mix(in srgb, var(--area-tone) 35%, transparent);
+  stroke-width: 1px;
+}
+
+.area[data-depth="1"] {
+  --area-tone: var(--c-success);
+}
+
+.area[data-depth="2"] {
+  --area-tone: var(--c-focus);
+}
+
+.area[data-depth="3"] {
+  --area-tone: var(--c-danger);
+}
+
+.area[data-depth="4"] {
+  --area-tone: var(--c-text-muted);
+}
+
 .line {
   fill: none;
   stroke-linejoin: round;
