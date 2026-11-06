@@ -126,6 +126,8 @@ describe("permission levels (spec 007)", () => {
       "secret_request",
       "settings",
       "make_agent",
+      "make_team_member",
+      "change_team_member",
     ])
     for (const tool of READ_ONLY_GUARDED_TOOLS)
       expect(readOnlyRefuses("read_only", tool)).toBe(false)

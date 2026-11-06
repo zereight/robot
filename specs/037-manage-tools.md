@@ -8,11 +8,13 @@ allows it.
 
 ## Concepts
 
-- **Manage tools**: the tools in "Tools". Two kinds of caller have them:
+- **Manage tools**: the tools in "Tools". Three kinds of caller have them:
   - the **main agent** (002), on every runtime (006);
+  - the **lead of a channel** (004), with the team tools in "Team tools" only;
   - an **outside program** (023) with the access "Read, send work and manage".
 
-  No other agent has them. Another agent that needs a change asks the main agent, or the user.
+  No other agent has them. Another agent that needs a change asks the lead, the main agent, or the
+  user.
 - **Change request**: one call of a manage tool that changes data. It holds the whole change. It
   has a number, the caller, the time, and a state: "Waits for the user", "Allowed", "Denied",
   "Expired" or "Failed". It does nothing until the user allows it.
@@ -71,6 +73,22 @@ Changes (each makes a change request, except "Pause a routine"):
 - **Pause a routine**: makes no request. It only stops work, so it runs at once. Resume needs a
   request.
 
+## Team tools
+
+The lead of a channel (004) has two tools. They work on its own channel only. An agent that is the
+lead of no channel does not get them. A lead of more than one channel names the channel in each
+call.
+
+- **Make a team member**: name, role line, instructions, face, model account, model, effort. It
+  makes an agent as "Make an agent" does, and adds it to the channel as a member. The role line is
+  the role of the member.
+- **Change a team member**: for one member of the channel that is not archived and is not the
+  caller. The fields are the role line and the instructions only. A member that is the lead of
+  another channel, or the main agent, is refused.
+
+Both tools make a change request. The card names the lead and the channel. The lead can read a
+member with "Read an agent" for the members of its channel.
+
 ## States
 
 - **Waits for the user**: the card shows on the computer, on a linked device, on the phone, and in
@@ -80,7 +98,7 @@ Changes (each makes a change request, except "Pause a routine"):
   changes nothing. The card goes.
 - **Failed**: after "Allow", a check can fail now, for example the name is taken since the call.
   The request is "Failed" with the reason, and the caller gets the reason.
-- **Read only**: the main agent at "Read only" gets "Refused: read only" for every change tool
+- **Read only**: the main agent, or a lead, at "Read only" gets "Refused: read only" for every change tool
   (007). The reads work.
 - **Access off**: an outside program without the access "Read, send work and manage" gets
   "This access does not allow this tool." The switch "Allow outside programs" off gives the answer
@@ -111,7 +129,8 @@ Changes (each makes a change request, except "Pause a routine"):
   request made show the muted line "Made by <caller>". The line stays after later edits.
 - **Limits.** One entry of an outside program holds at most 5 requests that wait. The sixth call
   gets "Too many open requests. Wait for the user." and makes no request. Calls count in the limit
-  of 60 calls in one minute (023). A turn of the main agent holds one waiting request at a time.
+  of 60 calls in one minute (023). A turn of the main agent or of a lead holds one waiting request at a time. A channel holds at
+  most 5 members that its lead made; the sixth call gets "Too many team members. Ask the user." The member limit of 004 holds.
 - **Answer anywhere.** A linked device (012) can answer a request card only with the switch "Can
   create and change agents". The phone (011) can answer it.
 - **Logs.** The log of outside programs (023) holds the kind, the number and the result of each
@@ -146,7 +165,9 @@ Changes (each makes a change request, except "Pause a routine"):
   organizations.
 - A watch routine.
 - "Always allow" and rules for manage steps.
-- A manage tool for any agent other than the main agent.
+- A manage tool for any agent other than the main agent and the lead of a channel. A lead has the
+  team tools only.
+- A lead that changes the model, the permission level, the workspace or the memory of a member.
 - MCP resources and prompts (023).
 
 ## Acceptance
@@ -168,6 +189,19 @@ Changes (each makes a change request, except "Pause a routine"):
   second request. Before it is allowed, the routine does not run.
 - "Make a routine" with a watch is refused with the reason. At 50 routines the 51st is refused.
 - "Pause a routine" makes no request and pauses the routine at once.
+- The lead of a channel calls "Make a team member" with the role line "Tester": a card shows with
+  the name of the lead and the channel. Before "Allow" no agent exists. After "Allow" the agent
+  exists, has the role line "Tester", is a member of the channel, and its profile shows "Made by
+  <lead name>".
+- A lead calls "Change a team member" with the field "model": refused, the tool has no such field.
+  With the role line of a member: a card shows the old and the new role line.
+- A lead calls "Change a team member" for an agent outside its channel, for itself, or for the
+  main agent: refused with the reason.
+- An agent that leads no channel does not get the team tools. A member that is not the lead does
+  not either.
+- A lead at "Read only" calls "Make a team member": "Refused: read only", no card shows.
+- The sixth team member that a lead made in one channel is refused with "Too many team members. Ask
+  the user."
 - Change a channel with "Allow": the members change. The instructions of the channel do not
   change, and the tool has no field for them.
 - Undo after "Change an agent": the old values return. When the agent changed again since, Undo is

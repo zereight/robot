@@ -678,6 +678,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         hideRaw?: boolean
         /** The agent may use tools in this reply. Plans and summaries do not. */
         tools?: boolean
+        /** The lead may use the team tools only in this reply (spec 037, "Team tools"). */
+        team?: boolean
         /** Who started the turn, and its outside content (spec 007). Plans and summaries need none. */
         turn?: TurnMark
         /** The text that the knowledge of the agent is matched against. Default: the last turn. */
@@ -900,12 +902,15 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (o.refuse) return yield* new AppError({ code: o.refuse })
             if (!agent.model_account_id || !agent.model_name)
               return yield* new AppError({ code: "provider_not_connected" })
-            const useTools = o.tools === true
             const isRuntime = providers.isRuntime(agent.model_account_id)
+            // The plan turn of a lead has the team tools only (spec 037, "Team tools"). A runtime
+            // gets them through the bridge in the turns of its parts.
+            const teamOnly = o.team === true && o.tools !== true && !isRuntime
+            const useTools = o.tools === true || teamOnly
             // Only an agent whose model comes from an API provider gets connections (spec 018). A
             // connection that does not start is left out, and the reply says so once.
             const connected =
-              useTools && !isRuntime ? yield* connections.forTurn(o.agent.id) : undefined
+              o.tools === true && !isRuntime ? yield* connections.forTurn(o.agent.id) : undefined
             if (connected && (connected.down.length > 0 || connected.held.length > 0) && !noted) {
               noted = true
               for (const name of connected.down)
@@ -1087,23 +1092,25 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               {
                 model: agent.model_name,
                 effort: agent.model_effort,
-                system: useTools
-                  ? [
-                      `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
-                      CHAIN_LIMIT_RULE,
-                      // The main agent is told what the hand-off rule means for it (spec 030).
-                      organization.told(o.agent.id),
-                      connected?.rule() ?? "",
-                      // An agent in a channel uses its own knowledge only.
-                      knowledge.prompt(
-                        o.agent.id,
-                        o.match ?? o.turns.at(-1)?.content ?? "",
-                        isRuntime ? "files" : "tools",
-                      ) ?? "",
-                    ]
-                      .filter(Boolean)
-                      .join("\n\n")
-                  : o.system,
+                system: teamOnly
+                  ? `${o.system}\n\nIf the job needs a member that the channel does not have, you may ask the user for one with make_team_member, and for a changed role with change_team_member. Then answer or reply with the plan.`
+                  : useTools
+                    ? [
+                        `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
+                        CHAIN_LIMIT_RULE,
+                        // The main agent is told what the hand-off rule means for it (spec 030).
+                        organization.told(o.agent.id),
+                        connected?.rule() ?? "",
+                        // An agent in a channel uses its own knowledge only.
+                        knowledge.prompt(
+                          o.agent.id,
+                          o.match ?? o.turns.at(-1)?.content ?? "",
+                          isRuntime ? "files" : "tools",
+                        ) ?? "",
+                      ]
+                        .filter(Boolean)
+                        .join("\n\n")
+                    : o.system,
                 // The backup model that goes on with a reply that ran steps gets the work so far and a
                 // short message that asks it to go on (spec 006).
                 // A turn that goes on because the list has open steps gets the same, with its own
@@ -1120,6 +1127,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                       tools: tools.defs({
                         memory: o.agent.memory_enabled === 1,
                         knowledge: knowledge.enabled(o.agent.id),
+                        // A lead gets the team tools (spec 037). Its plan turn has no other tool.
+                        team: o.agent.id === o.channel.lead_agent_id,
+                        ...(teamOnly ? { teamOnly: true } : {}),
                       }),
                       ...(connected ? { moreTools: () => connected.defs() } : {}),
                     }
@@ -2436,6 +2446,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               ),
               turns: planTurns,
               hideRaw: true,
+              team: true,
             })
             const plan: ParsedPlan | null = parsePlan(
               reply.text,

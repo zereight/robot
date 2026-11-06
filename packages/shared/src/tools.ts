@@ -143,6 +143,8 @@ export const READ_ONLY_GUARDED_TOOLS: readonly string[] = [
   "secret_request",
   "settings",
   "make_agent",
+  "make_team_member",
+  "change_team_member",
 ]
 
 /** True when the level is "Read only" and the tool of the app is not one that it lets run. */
