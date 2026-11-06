@@ -1,4 +1,5 @@
 import {
+  CHASE_MAX,
   type QuietTurn,
   quietTimeMs,
   silentFailure,
@@ -56,6 +57,15 @@ export interface SilenceTimerOptions {
   readonly onQuiet?: (seconds: number | null) => void
   /** True while the user holds the browser of the agent (spec 007). Asked at each tick. */
   readonly userHoldsBrowser?: () => boolean
+  /**
+   * The chase time in ms (spec 004, 007). 0 or absent: no chase. The chase clock counts the time
+   * with no sign of life, and it goes on while a tool step runs: a step that runs for long and
+   * shows nothing is quiet work. It stops while the turn waits for the user or the user holds the
+   * browser.
+   */
+  readonly chaseMs?: number
+  /** Called with 1, 2 and 3 each time the chase time passes, and never more than CHASE_MAX times. */
+  readonly onChase?: (n: number) => void
 }
 
 /**
@@ -70,6 +80,8 @@ export class SilenceTimer {
   private stopTicking: (() => void) | undefined
   private done = false
   private quiet = false
+  private idle = 0
+  private chases = 0
 
   constructor(private readonly options: SilenceTimerOptions) {}
 
@@ -84,6 +96,7 @@ export class SilenceTimer {
   /** A sign of life. */
   alive() {
     this.elapsed = 0
+    this.idle = 0
     this.last = this.options.clock.now()
     this.endQuiet()
   }
@@ -92,6 +105,7 @@ export class SilenceTimer {
   hold(key: string) {
     this.holds.add(key)
     this.elapsed = 0
+    this.idle = 0
     this.endQuiet()
   }
 
@@ -99,6 +113,7 @@ export class SilenceTimer {
   release(key: string) {
     if (!this.holds.delete(key)) return
     this.elapsed = 0
+    this.idle = 0
     this.last = this.options.clock.now()
     this.endQuiet()
   }
@@ -117,6 +132,19 @@ export class SilenceTimer {
     return this.quiet
   }
 
+  /** Counts the time with no sign of life, and calls `onChase` each time the chase time passes. */
+  private chaseTick(gap: number) {
+    const { chaseMs, onChase } = this.options
+    if (!chaseMs || !onChase || this.chases >= CHASE_MAX) return
+    // The user decides how long these take, so they do not count.
+    if (this.holds.has("user") || this.options.userHoldsBrowser?.()) return
+    this.idle += gap > SLEEP_GAP_MS ? TICK_MS : gap
+    if (this.idle < chaseMs) return
+    this.idle = 0
+    this.chases++
+    onChase(this.chases)
+  }
+
   private endQuiet() {
     if (!this.quiet) return
     this.quiet = false
@@ -133,6 +161,7 @@ export class SilenceTimer {
     const now = this.options.clock.now()
     const gap = Math.max(0, now - this.last)
     this.last = now
+    this.chaseTick(gap)
     if (this.holds.size > 0 || this.options.userHoldsBrowser?.()) {
       this.elapsed = 0
       this.endQuiet()
@@ -188,6 +217,9 @@ export interface TurnWatchOptions {
    */
   readonly onQuiet?: (seconds: number | null) => void
   readonly userHoldsBrowser?: () => boolean
+  /** The chase time in minutes (spec 013), and the call for each chase. 0 or absent: no chase. */
+  readonly chaseMinutes?: number
+  readonly onChase?: (n: number) => void
   readonly clock?: Clock
 }
 
@@ -211,6 +243,9 @@ export const turnWatch = (options: TurnWatchOptions): TurnWatch => {
     },
     ...(options.onQuiet ? { onQuiet: options.onQuiet } : {}),
     ...(options.userHoldsBrowser ? { userHoldsBrowser: options.userHoldsBrowser } : {}),
+    ...(options.onChase && options.chaseMinutes
+      ? { chaseMs: options.chaseMinutes * 60_000, onChase: options.onChase }
+      : {}),
   })
   return {
     handedOver: () => {

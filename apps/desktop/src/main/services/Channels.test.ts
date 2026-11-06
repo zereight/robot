@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import type { ChannelMessage } from "@robot/shared"
+import { CHASE_WORDS, type ChannelMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
@@ -104,6 +104,8 @@ const server = Bun.serve({
           prompt: `TOOL save_memory ${JSON.stringify({ text: "Bo answers yes" })}`,
         },
       ])
+    if (last.includes("split hang"))
+      reply = plan([{ member: "Bo", label: "Hung work", prompt: "HANG work" }])
     if (last.includes("split slow"))
       reply = plan([{ member: "Bo", label: "Slow work", prompt: "SLOW work" }])
     const slow = last.includes("SLOW")
@@ -336,6 +338,53 @@ describe("channel jobs", () => {
     // Stop ends the turn, and the line goes with it.
     await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
     await until(async () => (await quiet()).length === 0)
+  })
+
+  test("the lead chases a part that shows nothing for the chase interval, 3 times at most (spec 004)", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ chaseInterval: 5, silentLimit: 0 })))
+    await s.send("split hang now")
+    await until(async () =>
+      (await s.tasks()).some((t) => t.parentId !== null && t.progress === "sent"),
+    )
+    const chases = async () =>
+      (await s.history()).filter(
+        (m) =>
+          m.agentId === s.lead.id &&
+          m.parts.some((p) => p.kind === "text" && p.text.includes(CHASE_WORDS)),
+      )
+    fake.advance(4 * 60_000)
+    expect(await chases()).toHaveLength(0)
+    fake.advance(60_000)
+    const first = await chases()
+    expect(first).toHaveLength(1)
+    // The lead names the member in the message.
+    expect(first[0]?.parts[0]).toMatchObject({ text: expect.stringContaining("Bo:") })
+    fake.advance(60 * 60_000)
+    expect(await chases()).toHaveLength(3)
+    // The part still runs: a chase starts no new part.
+    expect((await s.tasks()).filter((t) => t.parentId !== null)).toHaveLength(1)
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+  })
+
+  test("with the chase interval Off a quiet part gets no message", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ chaseInterval: 0, silentLimit: 0 })))
+    await s.send("split hang now")
+    await until(async () =>
+      (await s.tasks()).some((t) => t.parentId !== null && t.progress === "sent"),
+    )
+    fake.advance(120 * 60_000)
+    expect(
+      (await s.history()).filter((m) =>
+        m.parts.some((p) => p.kind === "text" && p.text.includes(CHASE_WORDS)),
+      ),
+    ).toHaveLength(0)
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
   })
 
   test("an ordinary answer of the lead is no plan", async () => {

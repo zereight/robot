@@ -18,6 +18,7 @@ import {
   CHANNEL_NAME_MAX,
   CHANNEL_SUMMARY_SYSTEM,
   CHANNEL_TOPIC_MAX,
+  CHASE_WORDS,
   CHECK_MESSAGES,
   type Channel,
   type ChannelActivity,
@@ -66,6 +67,7 @@ import {
   leadLookInstruction,
   leadLookLog,
   leadLookText,
+  leadOrderMessage,
   levelOnRuntime,
   lineLeadIds,
   lineLookInstruction,
@@ -137,6 +139,7 @@ import { BUSY_TRIES } from "../providers/busyRetry.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { goOnTurns } from "../providers/resume.ts"
+import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
@@ -692,6 +695,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         match?: string
         /** The reply fails at once with this error code (the text of a member does not fit). */
         refuse?: string
+        /**
+         * The lead that gave this part, and its job. When the part shows nothing for the chase
+         * interval, the lead asks for its state (spec 004, "Chase by the lead").
+         */
+        chase?: { readonly lead: AgentRow; readonly jobId: string }
       }) {
         const id = randomUUID()
         const parts: MessagePart[] = []
@@ -769,7 +777,31 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               "",
           ),
           userHoldsBrowser: () => tools.browserState(o.agent.id).control,
+          ...(o.chase
+            ? {
+                chaseMinutes: (yield* settings.get).chaseInterval,
+                onChase: () => {
+                  const { lead, jobId } = o.chase as NonNullable<typeof o.chase>
+                  leadSays(o.channel, lead, jobId, `${o.agent.name}: ${CHASE_WORDS}`)
+                  joined.push({
+                    id: randomUUID(),
+                    text: leadOrderMessage(lead.name, CHASE_WORDS),
+                  })
+                  for (const ready of [...watchers]) ready()
+                },
+              }
+            : {}),
         })
+        // The chase messages that wait for the next step of this reply.
+        const joined: JoinedMessage[] = []
+        const watchers = new Set<() => void>()
+        const inbox: TurnInbox = {
+          take: () => joined.splice(0),
+          watch: (ready) => {
+            watchers.add(ready)
+            return () => watchers.delete(ready)
+          },
+        }
         let lastEmit = 0
         let lastSave = 0
         let hidden = false
@@ -1144,6 +1176,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 workspace: o.agent.workspace,
                 permission: levelOnRuntime(o.agent.permission, isRuntime),
                 useTools,
+                ...(o.chase ? { inbox } : {}),
                 // A vendor runtime shows what its program reports. A call with no tools of the app
                 // is not tried again (spec 006).
                 ...(!isRuntime && useTools
@@ -1589,6 +1622,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               tools: true,
               turn,
               match: assignment,
+              ...(from ? { chase: { lead: from, jobId: task.parentId ?? task.id } } : {}),
               ...(fits ? {} : { refuse: "channel_context_too_small" }),
               // A part of a plan, a routine or a workflow can say that it was blocked (spec 005).
               // A new try reads which steps of the earlier try may have changed things (spec 005).
