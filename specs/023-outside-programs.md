@@ -40,37 +40,35 @@ anything, and an agent asks the user before it changes a setting for it.
 With the access "Read":
 
 - **List agents**: for each agent that is not archived, the name, the role line and the state.
-- **List channels**: for each channel that is not archived, the name, the topic and the members.
 - **List tasks**: the newest 50 tasks, with filters for agent and state: the agent, the label, the
   source, the state and the times (005).
 - **Read a task**: the prompt, the state, the reason of a failure, the reply text, and the usage
   (005).
-- **Read messages**: a page of at most 50 messages of one direct chat or channel, the newest first,
-  with the name of who wrote each one and its time. It gives the text of messages only. Files show
-  as names. It gives no tool card, no thinking and no content of an approval or question card.
+- **Read messages**: a page of at most 50 messages of one direct chat, the newest first, with the
+  name of who wrote each one and its time. It gives the text of messages only. Files show as
+  names. It gives no tool card, no thinking and no content of an approval or question card.
   Text that looks like a secret is hidden (014).
 - **Search messages**: the same search as the search field (001), at most 50 hits.
 
 With the access "Read and send work", also:
 
-- **Send a message**: a message to the direct chat of one agent or to one channel, at most 100000
-  characters. It goes the same way as a message of the user (003, 004), with one difference: it
-  never joins a running turn. When the agent works, the message waits and starts its own turn. The
-  waiting message is not in the queue of the user (003). It has no "Send now" and no edit, and it
-  never merges with messages of the user. It
-  shows in the place with the mark "Sent by <program name>". It returns the task that it started.
-  A message can carry an id of at most 200 characters and a subject of 1 to 100 characters. A
-  message with an id that the program used before starts no second task (038, "Duplicates"). A
-  message with a subject waits behind the task of the same subject (038, "One at a time for one
-  subject"). A message with no id and no subject works as before.
+- **Send a message**: a message to the direct chat of one agent, at most 100000 characters. It
+  goes the same way as a message of the user (003), with one difference: it never joins a running
+  turn. When the agent works, the message waits and starts its own turn. The waiting message is not
+  in the queue of the user (003). It has no "Send now" and no edit, and it never merges with
+  messages of the user. It shows in the place with the mark "Sent by <program name>". It returns
+  the task that it started. A message can carry an id of at most 200 characters and a subject of
+  1 to 100 characters. A message with an id that the program used before starts no second task
+  (038, "Duplicates"). A message with a subject waits behind the task of the same subject (038,
+  "One at a time for one subject"). A message with no id and no subject works as before.
 - **Wait for a task**: waits until the task ends, waits for the user, or 10 minutes pass. It
   returns the state ("Still running" after 10 minutes, "Waits for the user", or the final state)
   and, when the task ended, the reply text.
 - **Stop a task**: stops a task that this program started, as Stop does (005).
 
 With the access "Read, send work and manage", also the manage tools (037): read an agent, list and
-read routines, make and change agents, channels and routines, and wait for a request. Each change
-is a request that the user allows. The program cannot allow it.
+read routines, make and change agents and routines, and wait for a request. Each change is a
+request that the user allows. The program cannot allow it.
 
 ## States
 
@@ -83,7 +81,7 @@ is a request that the user allows. The program cannot allow it.
 
 ## Rules
 
-- A tool can change an agent, a channel or a routine only through a request that the user allows
+- A tool can change an agent or a routine only through a request that the user allows
   (037), and only with the access "Read, send work and manage".
 - No tool can answer an approval or a question, change a permission level or a rule, change a
   workflow or a setting, delete anything, or read a key, a saved
@@ -94,13 +92,11 @@ is a request that the user allows. The program cannot allow it.
 - Such a turn holds the program mark (007). In a turn with the program mark, every guarded step
   (007), for example a change of settings or a save to memory, asks the user, also at "Full
   access". At "Read only", the steps that "Read only" refuses stay refused. The program mark goes
-  to later turns of the same chat, to forks, to the parts of a job, and to a message that the
-  agent sends to another agent, until the user clears it (007, "The mark of a place"). A hit of
-  "search chats", or a result of "read chat", that holds a message of an outside program gives the
+  to later turns of the same chat, to forks, and to a message that the agent sends to another
+  agent, until the user clears it (007, "The mark of a place"). A hit of "search chats", or a
+  result of "read chat", that holds a message of an outside program gives the
   program mark too.
 - A task of an outside program has depth 0 (005).
-- A job that an outside program sends to a channel holds outside content and the program mark in
-  every part (007).
 - Each message of an outside program makes one event on the tab "Events" (038). A message with an
   id that the program used before starts no second task (038, "Duplicates").
 - The helper reaches ROBot on this computer only. ROBot offers no network address for it. The way
@@ -132,7 +128,7 @@ is a request that the user allows. The program cannot allow it.
 ## Out of scope
 
 - An address on the network for the helper.
-- Creating or changing workflows from an outside program. Agents, channels and routines: see 037.
+- Creating or changing workflows from an outside program. Agents and routines: see 037.
 - Answers to approvals and questions from an outside program.
 - MCP resources and prompts. The helper offers tools only.
 

@@ -24,8 +24,6 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   an agent uses, the pages an agent visits, and the devices that the user linked (012). Traffic
   to a linked device is end-to-end encrypted. There is one more exception, and it is off by
   default: the decision model that the user sets up (see 013). When the user sets it up:
-  - For a channel pick (see 004), the app sends to it the channel name and topic, the last few
-    messages of the channel, the job, and the name and role line of each member.
   - For the fast path of computer use (see 007), when the user turns it on, the app sends the goal
     that the agent wrote and the role, label and value of each control of one window. It sends no
     screenshot. It sends no value of a secret control.
@@ -81,13 +79,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 
 - Logs are files in a logs folder inside the data folder. The user opens the folder from settings
   (see 013). Each log has a size limit; the oldest lines go first.
-- There is one log for each of these areas: channels, organizations, browser, workflows, outside
-  programs, and the Teams link.
-  - Channels: one line for each answer of the decision model (see 004), and one line for each
-    look of the lead at a question of a member (004), and one line for each look of an agent on the
-    line (030). It holds no job text, no question text, no answer text and no key.
-  - Organizations: one line for each repair of the tree and one line for each send that the
-    hand-off rule refused (030). It holds no message text.
+- There is one log for each of these areas: browser, workflows, outside programs, and the Teams
+  link.
   - Browser: failed tool calls, Stop requests with their result, warnings, and live view input
     that the app dropped or refused (see 007).
   - Workflows: retries, final failures of model steps and conditions (see 010).
@@ -104,15 +97,6 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   not included, and an import brings none back. The archive holds the rules, the action log, the
   skills and
   the connections without their secret values.
-- The cards of the board and their comments (024) are in the archive, with their numbers and
-  their links to tasks. An import restores them.
-- The org chart (029) is drawn from agents, organizations and tasks, which the archive holds. So an
-  import into an empty profile draws the same chart. The positions that the user set with "Arrange"
-  are the layout of one computer and are not in the archive, so the imported chart starts with the
-  computed places.
-- The organizations (030) are in the archive: each one with its name, members, lead, parent, hand-off
-  range and daily token limit, the hand-off rule, the switch "Ask up the line", and the
-  organizations in the agent lists of skills and connections. An import restores them.
 - The memory history in the archive follows the rule for secrets above: text that looks like a
   secret is replaced with "[redacted]".
 - Import of a ROBot export into an empty profile (022) restores everything except secrets. Every
@@ -136,10 +120,9 @@ anything. The user sees each part that the file holds and picks what to keep.
     is not ticked. It shows the mark "A secret was removed".
   - A workflow of a CC Workflow Studio file that lost a connection at a node that became a note
     (see 010) is not ticked. It shows the mark "Connections were lost".
-- An agent file can also hold channels, skills and a handbook (002). The screen lists them after
-  the agents, each with a tick box. Channels and skills are ticked, and they say which agents they
-  need. The handbook is not ticked, and the screen says that it replaces the handbook of this
-  server. Skills are made off.
+- An agent file can also hold skills and a handbook (002). The screen lists them after the agents,
+  each with a tick box. Skills are ticked, and they say which agents they need. The handbook is not
+  ticked, and the screen says that it replaces the handbook of this server. Skills are made off.
 - An agent that is not ticked takes its instructions and routines with it. Instructions that are
   not ticked leave the new agent with empty instructions.
 - A file of CC Workflow Studio (010) goes through the same screen. The screen lists its one
@@ -148,9 +131,9 @@ anything. The user sees each part that the file holds and picks what to keep.
   has the field "Agent for agent steps": a list of the agents that are not archived, with the
   choice "None" at the start. An agent that the user picks is the agent of every agent step of
   the workflow.
-- The screen has a part "Not imported". It lists what the file holds that ROBot does not make,
-  each with the reason, for example a field that this version does not know, or a post step that
-  has no place. For a file of CC Workflow Studio it also lists each node that became a note.
+- The screen has a part "Not imported". It lists what the file holds that ROBot does not make, each
+  with the reason, for example a field that this version does not know. For a file of CC Workflow
+  Studio it also lists each node that became a note.
 - The screen shows the counts that it will make, for example "2 agents, 1 routine (paused)". The
   import button is off when nothing is ticked.
 - After the import, the chat of each new agent shows one message from the app, not from the
@@ -164,8 +147,6 @@ anything. The user sees each part that the file holds and picks what to keep.
 
 ## Acceptance
 
-- Run a channel job with the fast pick set up. The channels log holds one line for it. A search
-  of the log finds neither the job text nor the key.
 - After an export, searching the archive for a stored key finds nothing.
 - Add a connection with a secret value, export, and search the archive for the value: it finds
   nothing. Import the archive into an empty profile: the connection shows and is turned off, and its
@@ -177,8 +158,6 @@ anything. The user sees each part that the file holds and picks what to keep.
   and its chat shows a checklist with "Turn on" for the routine. Turn it on: the item ticks.
 - An agent file whose instructions held a key: the review shows the instructions not ticked,
   with "A secret was removed".
-- Import a workflow file with a post step: "Not imported" names the place of the step, and the
-  canvas of the new workflow shows the checklist item "Pick".
 - Import a CC Workflow Studio file with a question node between two prompt nodes: the review shows
   the workflow not ticked, with "Connections were lost", and "Not imported" names the question
   node. Tick it and import: the canvas shows a pink note, and the checklist item "Connect" for the

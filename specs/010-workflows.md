@@ -8,16 +8,14 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 
 - **Workflow**: a name, a trigger, and a graph of steps on a canvas. The workflow list is its own
   page. The Workflows button on the rail opens it (001). The page does not show routines.
-- **Owner**: none (the default), one organization (030), or one agent (002). A workflow with no
-  owner is a **shared workflow**. The owner decides who can work in the workflow (see "Owner and
-  participants").
+- **Owner**: none (the default) or one agent (002). A workflow with no owner is a **shared
+  workflow**. The owner decides who can work in the workflow (see "Owner and participants").
 - **Participant**: an agent that may be the agent of an agent step of a workflow. A shared workflow
   has every agent as a participant. See "Owner and participants".
-- **Trigger**: manual, schedule (as in 009), a message in a chosen channel that matches text, or
-  a web hook (see "Web hook").
+- **Trigger**: manual, schedule (as in 009), or a web hook (see "Web hook").
 - **Step kinds**: agent step (an agent and a prompt that can use earlier results), model step (a
   prompt for a model with no tools and no chat), condition (if/else on a result), wait for
-  approval, post message, and notify.
+  approval, and notify.
 - **Notify step**: shows a system notification (see 015). The title is a text that the user sets.
   The body is the first 200 characters of the input of the step. The run view shows the whole
   input. The step passes its input on unchanged.
@@ -58,24 +56,20 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
    workflows", or exports one workflow with "Export for CC Workflow Studio" (see "CC Workflow Studio
    files").
 9. Diagram: the editor shows the Mermaid text of the open workflow (see "Diagram").
-10. Own a workflow: the user sets the field "Owner" of a workflow to an organization or to an
-    agent, or back to "None" (see "Owner and participants").
+10. Own a workflow: the user sets the field "Owner" of a workflow to an agent, or back to "None"
+    (see "Owner and participants").
 
 ## Owner and participants
 
-A workflow can have an owner: one organization or one agent. The owner makes the workflow private
-to a group of agents. A workflow with no owner is shared, and it works as in all other parts of
-this spec.
+A workflow can have an owner: one agent. The owner makes the workflow private to that agent. A
+workflow with no owner is shared, and it works as in all other parts of this spec.
 
 - **Who participates**: an archived agent is never a participant. For the others:
   - A shared workflow: every agent.
-  - A workflow of an organization: the members of that organization, and the lead of every other
-    organization. Membership does not go up or down the tree (030). The members of its lower
-    organizations are not participants, unless they lead an organization.
   - A workflow of an agent: that agent only.
-- **What is checked**: the agent steps only. A person, a trigger (a schedule, a message, a web
-  hook) and the assistant (flow 4) are no participants and need no right. The user can always
-  edit and run the workflow, and any agent can be the assistant.
+- **What is checked**: the agent steps only. A person, a trigger (a schedule or a web hook) and
+  the assistant (flow 4) are no participants and need no right. The user can always edit and run
+  the workflow, and any agent can be the assistant.
 - **In the editor**: the agent list of an agent step shows the participants only. A step that names
   an agent who is not a participant shows "Not a participant" on its node, in the place of the
   kind of the step. The agent that the step names stays in its list, with "Not a participant"
@@ -83,19 +77,19 @@ this spec.
 - **In a run**: the app reads the participants when an agent step starts. A step whose agent is
   not a participant fails with the reason "Not a participant", and no task starts. The step rules
   of "Rules" apply to it, so "Continue on failure" lets the run go on.
-- **A change of the group**: a change of the owner, of the members of an organization, of a lead
-  or of the archive state of an agent changes no step. The step keeps its agent. The next run
-  reads the participants again, so a step can fail, or work again, with no edit.
-- **Set the owner**: the editor has a field "Owner" with the choices "None", the organizations and
-  the agents. The dialog of a new workflow has the same field. It starts at "None", or at the owner
-  that the filter of the page names. The field is read-only while the workflow runs.
-- **See the owner**: the Workflows page has a filter "Owner" (All, None, an organization, an
-  agent), and each card shows the name of its owner. The form of an organization (030) and the
-  profile of an agent (002) have a row "Workflows" with the workflows that they own. A click closes
-  the box and shows the card of the workflow on the page, whatever the filter "Owner" says.
-- **When the owner is gone**: an organization or an agent that is deleted leaves its workflows
-  with the owner "None". The workflows, their runs and their steps stay. The confirm of the
-  delete says how many workflows then have no owner and that any agent can work in them (030, 002).
+- **A change of the group**: a change of the owner or of the archive state of an agent changes no
+  step. The step keeps its agent. The next run reads the participants again, so a step can fail,
+  or work again, with no edit.
+- **Set the owner**: the editor has a field "Owner" with the choices "None" and the agents. The
+  dialog of a new workflow has the same field. It starts at "None", or at the owner that the
+  filter of the page names. The field is read-only while the workflow runs.
+- **See the owner**: the Workflows page has a filter "Owner" (All, None, an agent), and each card
+  shows the name of its owner. The profile of an agent (002) has a row "Workflows" with the
+  workflows that it owns. A click closes the box and shows the card of the workflow on the page,
+  whatever the filter "Owner" says.
+- **When the owner is gone**: an agent that is deleted leaves its workflows with the owner
+  "None". The workflows, their runs and their steps stay. The confirm of the delete says how many
+  workflows then have no owner and that any agent can work in them (002).
   An archived agent stays the owner. It is no participant while it is archived.
 - **Linked client**: it sees the owner and the participants as on the server. It changes the owner
   only with the switch "Can create and change agents" (012). The phone shows no owner.
@@ -110,9 +104,7 @@ this spec.
   kind, its name, its place on the canvas and the fields of its kind. A condition holds its mode
   and its text. An agent step names its agent by the name of the agent, and it holds its prompt,
   its effort and its "Continue on failure" mark.
-- The trigger in the file is manual or a schedule. A workflow with a message trigger is written
-  with the manual trigger. A post step is written with no place, because the file holds no
-  channel.
+- The trigger in the file is manual or a schedule.
 - The file holds no run, no version, no chat, no key and no secret. Text in the file that looks
   like a secret is hidden, as in an export (see 014).
 - The file holds at most 20 workflows and is at most 10 MB. A file with two workflows of one name
@@ -120,12 +112,10 @@ this spec.
 - Import makes new workflows only. It never changes a workflow that exists. A name that is taken
   gets a number, ignoring case, inside the length limit.
 - Every imported workflow is off: its schedule does not fire until the user turns it on. Import
-  makes no agent, no channel and no routine.
+  makes no agent and no routine.
 - An agent step is linked to the agent that has the same name, ignoring case, and is not
   archived. If there is none, the step has no agent. It shows "Pick an agent", and a run fails at
   that step with the reason "No agent".
-- A post step from a file shows "Pick a place", and a run fails at that step with the reason "No
-  place".
 - If a workflow in the file breaks the rules of the graph (a connection to a step that does not
   exist, a condition without both branches, or more steps than the limit), the app refuses the
   whole file and names the workflow and the place of the fault.
@@ -183,8 +173,8 @@ in silence.
 - An agent step becomes a sub-agent node with the prompt of the step. A condition becomes an if
   and else node. An approval step becomes a node that asks "Approve" or "Reject"; only "Approve"
   goes on. The app adds a start node and an end node.
-- A post step and a notify step are not written. The connections go around them, so the steps
-  before and after them stay joined.
+- A notify step is not written. The connections go around it, so the steps before and after it
+  stay joined.
 - Notes, the trigger, the agent of a step, the effort of a step and the mark "Continue on failure"
   have no place in that tool, so the app does not write them.
 - A text that is longer than the limit of that tool is cut.
@@ -193,8 +183,7 @@ in silence.
   step that is not written, the trigger when it is not "manual", the count of notes, the count of
   steps that lost an agent, an effort or the mark "Continue on failure", and each cut text. If
   nothing is lost, the app shows no list.
-- The file holds no run, no version, no chat, no key, no secret, no channel, no agent and no id of
-  ROBot.
+- The file holds no run, no version, no chat, no key, no secret, no agent and no id of ROBot.
 - The import of the file that the app wrote makes a workflow with the same agent steps and
   conditions, the same connections between them and the same prompts. A condition in the mode
   "contains text" comes back in the mode "Ask a model". Each agent step comes back with no agent,
@@ -367,8 +356,8 @@ a new issue. ROBot runs no service on the internet for this (000).
   the calls go to that computer.
 - **Linked client**: it sees the kind of trigger and the name of the computer. It sees neither
   the address nor the secret (012).
-- **File**: the workflow file writes a web hook as the trigger "manual", with no secret, as for a
-  message trigger (`docs/workflow-file-format.md`).
+- **File**: the workflow file writes a web hook as the trigger "manual", with no secret
+  (`docs/workflow-file-format.md`).
 - A trigger from a chat service (Discord, Slack and so on) is not in this version.
 
 ## Assistant
@@ -381,9 +370,10 @@ a new issue. ROBot runs no service on the internet for this (000).
   that order. A step is an agent step (an agent and a prompt), a wait for approval (a message), or
   a notify step (a title). The workflow has the trigger "manual", no owner, and the other starting
   values of the dialog of a new workflow. If the name is in use, the app adds a number, as for a
-  starter. If a workflow takes the name between the card and the Allow, the number is added then. A step that names an agent that does not exist or is archived, an unknown kind, or more
-  than the limit of steps fails the check at once and makes no request. The user adds conditions,
-  places and triggers on the canvas.
+  starter. If a workflow takes the name between the card and the Allow, the number is added then.
+  A step that names an agent that does not exist or is archived, an unknown kind, or more than the
+  limit of steps fails the check at once and makes no request. The user adds conditions and
+  triggers on the canvas.
 - When the user asks an agent for a workflow, the agent makes a ROBot workflow with this tool. A
   workflow feature of a vendor program (006) is not for this. The app turns such a feature off for
   the agents of this app.
@@ -392,10 +382,9 @@ a new issue. ROBot runs no service on the internet for this (000).
   changed since, the app refuses the batch and the agent reads again. A batch can add, edit and
   remove nodes and connections and can clear a field. It can set the effort of an agent step.
 - A change may name only an agent that exists and is not archived.
-- The agent cannot set a schedule, a message trigger, a web hook, or a post-message place. It never
-  sees the address or the secret of a web hook. When the user asks
-  for one, the agent makes the rest of the change and tells the user to set that part on the
-  canvas.
+- The agent cannot set a schedule or a web hook. It never sees the address or the secret of a web
+  hook. When the user asks for one, the agent makes the rest of the change and tells the user to
+  set that part on the canvas.
 - A batch with a wrong shape is an error that the agent can read and correct. It is not a crash.
 - Before the app saves a change, it keeps the earlier graph as a version. The agent tells the
   user when it did.
@@ -405,8 +394,8 @@ a new issue. ROBot runs no service on the internet for this (000).
   starts one run. The state of a run holds the status, the error and the status of each step. It
   holds no step outputs.
 - These tools work only in a turn that the user started in the direct chat of the agent. A
-  routine run, a message of another agent, and a channel turn get a clear failure instead,
-  because a run can message people or change things elsewhere.
+  routine run and a message of another agent get a clear failure instead, because a run can
+  message people or change things elsewhere.
 
 ## Rules
 
@@ -445,23 +434,20 @@ a new issue. ROBot runs no service on the internet for this (000).
 
 ## Acceptance
 
-- A two-step workflow passes the first agent's result to the second and posts the final message.
-- Organization "Docs" has the lead Ada and the member Bo. Organization "Ops" has the lead Cy and
-  the member Dee. Eve is in no organization. Set the owner of the workflow "Weekly" to "Docs": the
-  agent list of a step shows Ada, Bo and Cy, and not Dee and not Eve. The card shows "Docs".
-- A step of "Weekly" names Dee. Run it: the run fails at that step with "Not a participant", no
-  task starts, and the node of the step shows "Not a participant". Make Dee the lead of "Ops"
-  and run again: the step works.
-- Remove Bo from "Docs" while a step names Bo: the node shows "Not a participant". Add Bo again: it
-  shows no problem, and the step was not edited.
-- Set the owner of "Weekly" to the agent Ada: the agent list shows Ada only. Archive Ada: no agent
-  is in the list, and a run fails at the agent step. Restore Ada: it works again.
-- Open "Weekly" as the user: it opens, edits and runs although the user is no agent. Pick Eve as
+- A two-step workflow passes the first agent's result to the second.
+- Set the owner of the workflow "Weekly" to the agent Ada: the agent list of a step shows Ada
+  only. The card shows "Ada".
+- A step of "Weekly" names Bo. Run it: the run fails at that step with "Not a participant", no
+  task starts, and the node of the step shows "Not a participant". Set the owner to "None" and
+  run again: the step works, and the step was not edited.
+- Set the owner of "Weekly" to Ada again. Archive Ada: no agent is in the list, and a run fails at
+  the agent step. Restore Ada: it works again.
+- Open "Weekly" as the user: it opens, edits and runs although the user is no agent. Pick Bo as
   the assistant of "Weekly": the panel works.
-- Delete "Docs" from its form: the confirm says that one workflow then has no owner. After the
-  delete, "Weekly" shows no owner, its runs stay, and its agent list shows every agent.
-- Filter the page by the owner "Docs": only the workflows of "Docs" show. Open the form of
-  "Docs": the row "Workflows" lists them, and a click shows the card of one on the page.
+- Filter the page by the owner "Ada": only the workflows of Ada show. Open the profile of Ada: the
+  row "Workflows" lists them, and a click shows the card of one on the page.
+- Delete Ada: the confirm says that one workflow then has no owner. After the delete, "Weekly"
+  shows no owner, its runs stay, and its agent list shows every agent.
 - Export "Weekly" to a file and import it: the new workflow is off and has no owner.
 - Sync two computers: the owner of "Weekly" shows on both. A linked client without the switch
   "Can create and change agents" sees the field "Owner" read-only.

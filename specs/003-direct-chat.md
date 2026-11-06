@@ -7,8 +7,7 @@ The user gives an agent work in plain language and sees what the agent does whil
 ## Message rows
 
 - A row starts with the sender's avatar at the left (see 002, "Avatars"): the face of an agent, or
-  the mark of the user. Then comes a header line: name (an agent
-  shows its organization prefix before the name, see 036), a small "BOT" tag for agents, and the
+  the mark of the user. Then comes a header line: name, a small "BOT" tag for agents, and the
   time. Rows from the same sender within 5 minutes join under one header.
 - Day changes show as a centred date line.
 - Agent replies render Markdown: headings, lists, tables, code blocks with copy buttons, links,
@@ -48,7 +47,7 @@ A long run of tool steps fills the chat. The user can fold it away.
   the line of a run.
 - A line that the user opened stays open when the run takes another step, and when the chat draws
   it again, for example after a change of the theme.
-- The switch changes the chat at once, in direct chats, threads and channels.
+- The switch changes the chat at once, in direct chats and threads.
 - Find in the chat (flow 10) does not look at the folded line, as it does not look at tool cards
   or thinking.
 - Ways in: the switch is the only way to turn folding on or off. The user opens and closes a line
@@ -91,8 +90,8 @@ A long run of tool steps fills the chat. The user can fold it away.
    summary, to free room in the context. A failure shows in the normal error line above the box.
    See "Compact". The app can also do this by itself (see "Automatic compact").
 9. Continue after a restart: see "Rules".
-10. Find in the chat: Cmd+F opens a find bar over the chat that is open (a direct chat, a thread or
-    a channel). The user types a text. The bar shows "n of m" and the buttons Previous and Next.
+10. Find in the chat: Cmd+F opens a find bar over the chat that is open (a direct chat or a
+    thread). The user types a text. The bar shows "n of m" and the buttons Previous and Next.
     Enter goes to the next match and Shift+Enter to the previous one. The chat scrolls to the
     match and marks it. Escape closes the bar and takes the marks away. The find looks at the text
     of the messages of that chat only, not at tool cards or thinking. It ignores letter case.
@@ -131,8 +130,7 @@ The user can change the course of a turn without stopping it.
   accepts input during a turn. When it does not, the message waits in the queue, whatever the
   setting says, and one muted line above the queue says why. "Send now" is off there, with the
   same reason.
-- This applies to direct chats and threads. In a channel (see 004), a message always starts new
-  work, as before.
+- This applies to direct chats and threads.
 - The message queue of a thread holds at most 10 messages. The message over the limit is not
   queued. The box keeps its text and the line above it says "10 messages wait. Remove one or wait."
 
@@ -141,16 +139,11 @@ The user can change the course of a turn without stopping it.
 The user can name another agent in a direct chat or in one of its threads. The named agent
 answers in that same chat.
 
-- Typing `@` in the message box opens a list of the other agents that are not archived. The list
-  follows the rules of the mention list of a channel (004), and it has no `@all`.
-- The agents that share an organization with the chat's own agent (030) come first in the list. An
-  agent shares one when both are members of at least one same organization. In each of the two
-  groups, the order is the order of the rules of 004. A chat's own agent in no organization gets
-  the order of 004 only.
+- Typing `@` in the message box opens a list of the other agents that are not archived. A pick puts
+  `@Name` in the box.
 - A name that the list can insert is a mention: `@Name`, in any letter case, where the `@` opens
   the text or follows a character that is no letter, no digit and no underscore. The chat's own
-  agent, an archived agent, and a name of no agent are plain text. `@all` is plain text unless an
-  agent has that name.
+  agent, an archived agent, and a name of no agent are plain text.
 - A message that holds one or more mentions still goes to the chat's own agent. It also starts
   work for each named agent, with the same text. A file on that message is in the named agent's
   workspace too, so that agent can read it. Each named agent answers with their own
@@ -163,9 +156,8 @@ answers in that same chat.
 - A mention in a thread stays in that thread.
 - Stop in that chat ends the turn of the chat's own agent and any mention that is still writing
   into that chat.
-- This is work that the user gives. The hand-off rule (030) does not block it. When the named
-  agent then uses "send message", the rules of that tool apply, including the chain depth (005,
-  007).
+- This is work that the user gives. When the named agent then uses "send message", the rules of
+  that tool apply, including the chain depth (005, 007).
 - The reply makes the same notice as a reply in a direct chat (015). The notice names the agent
   who answered and opens this chat.
 - The phone has the same list and shows the same reply (011).
@@ -188,21 +180,6 @@ answers in that same chat.
   spec: the history of the chat does not change, and the chat shows the muted line "Compacted for
   this turn", not the line "Compacted". The ring stays empty until the next reply, as after any
   compact.
-
-## Team chip
-
-- The header of the direct chat of a lead shows a chip with the name of the organization and the
-  number of its members. An agent that leads more than one organization shows one chip for each.
-  The chat of an agent that is not a lead shows no chip. A channel header shows no chip.
-- A click on the chip opens a list. It shows the name of the parent organization on top, when
-  there is one. Under it, the members: face, name, the mark "Lead" for the lead, and the state.
-  The lead is first. An archived member is muted.
-- A click on a member opens the direct chat of that member. The link "Show on the org chart" at
-  the end opens the org chart (029) with that organization in view.
-- The list only shows. It cannot change members, the lead or the parent organization.
-- The list changes within 1 second when the members change. When the organization has no member
-  but the lead, the list shows only the lead.
-- Escape or a click outside closes the list. Tab reaches the chip, and Enter opens the list.
 
 ## Compact
 
@@ -254,9 +231,8 @@ the app can run it (see "Automatic compact").
   While less than 1 hour has passed since the last reply, this rule does not compact. Codex, Muse
   Code, pi, opencode, Cursor, an OpenAI account and a custom account do not get this compact.
 - The 85 percent rule and the limit of 400000 tokens do not run when the size of the context is
-  not known, or when the provider compacts by itself (see "Context meter"). They do not run in a
-  channel, which has its own rule (004). The 1 hour cache rule for Claude Code is the one
-  exception for a provider that compacts by itself.
+  not known, or when the provider compacts by itself (see "Context meter"). The 1 hour cache rule
+  for Claude Code is the one exception for a provider that compacts by itself.
 - After a compact the use is not known until the next reply (see "Context meter"). So a second
   compact cannot follow at once.
 - An automatic compact is part of the task of the turn. Its tokens add to the usage of that task
@@ -325,8 +301,8 @@ data: an agent that read a secret, or that obeyed an order in a web page, can wr
 the address. A device that loads the picture then sends the data to the host of the address, and
 the user does not click. So a picture from the web loads only when the user asks.
 
-- This holds for every Markdown text that the app shows: messages in direct chats, threads and
-  channels, and articles of knowledge (016).
+- This holds for every Markdown text that the app shows: messages in direct chats and threads,
+  and articles of knowledge (016).
 - An image with an address that starts with `https` shows as a box. The box shows the alt text
   (cut at 80 characters, or the word "Image" when the alt text is empty), the address (cut at 100
   characters), and the button "Load image".
@@ -418,7 +394,7 @@ commands and then files, oldest first, and then it cuts the last reply.
   (011) do not show it in this version. They show the main thread only (see "Threads"), so they
   show the muted line "Handed over to <name>" when the first chat is a main thread, and they do
   not show the new thread or its card.
-- Hand over works for a direct chat and for its threads. It does not work for a channel.
+- Hand over works for a direct chat and for its threads.
 
 ## Empty state
 
@@ -437,7 +413,7 @@ and its role line. Nothing moves.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
   the line names the routine, and for a turn of a follow-up it says that the agent looks again
   (005). The stop button shows whenever this line shows, in every place where the agent works
-  (chat, channel, routine, workflow).
+  (chat, routine, workflow).
 - Quiet: when the turn shows no sign of life for the quiet time, the working line reads "No
   answer from <name> for <time>" (see 005, "Quiet line"). The stop button stays. The quiet line
   does not animate, and the light of its badge is still. The elapsed time of the turn stays where
@@ -480,10 +456,6 @@ and its role line. Nothing moves.
 
 ## Acceptance
 
-- Agent "Ada" leads "Docs" with two other members. Open the chat of Ada: the chip shows "Docs · 3".
-  Open it: the lead is first with "Lead", then the two members. Click a member: its direct chat
-  opens. The chat of a member that is not a lead shows no chip. A channel shows no chip.
-- Archive a member while the list is open: its row is muted within 1 second.
 - Send, stop mid-reply, send again: both turns are stored and the first is marked stopped.
 - With "Wait in a queue", a queued message is sent automatically when the turn ends.
 - With "Join the current turn" and an API provider: the agent runs a tool step that takes 3
@@ -501,11 +473,11 @@ and its role line. Nothing moves.
   the original has eight. Fork at a message of a running turn: the app refuses.
 - Restart the app while an agent works on a request: the chat shows the notice. Continue sends a
   short message and the notice leaves.
-- An agent works on a part of a channel job. This is another place, so the turn is not the turn of
-  the direct chat. The user sends a message in its direct chat. The message starts its own task,
-  and the task waits as queued, because an agent runs one task at a time (005). End the app at
-  once and start it again: the request had not reached the model. The notice says so and has "Send again". The button sends the same text, and the
-  agent answers it.
+- An agent works on a task that a routine started. This turn is not the turn of the direct chat.
+  The user sends a message in its direct chat. The message starts its own task, and the task
+  waits as queued, because an agent runs one task at a time (005). End the app at once and start
+  it again: the request had not reached the model. The notice says so and has "Send again". The
+  button sends the same text, and the agent answers it.
 - A chat of 200 messages opens at the latest message and stays there for the first 3 seconds.
 - Run "compact" in a chat of six turns: the model gets a summary and the newest 2 turns. The chat
   still shows all six turns, with the line "Compacted" between turn 4 and turn 5. Open the line:

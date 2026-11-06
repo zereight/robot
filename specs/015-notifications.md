@@ -6,14 +6,12 @@ The user knows when an agent needs them or finishes, without watching the window
 
 ## System notifications
 
-- Kinds: reply in a direct chat while the window is not focused, mention in a channel, approval
-  request, question, task failed, routine failed, part in review (see 004), workflow notice (a
-  notify step, see 010), and Teams link needs you (the link is signed out or paused, see 028). A
-  task that ends as Blocked (see 005) is a failed task for this list,
-  and a routine run that ends as Blocked is a failed run. A question of a member that is with the
-  lead (004) makes no notification. It makes one only when it passes to the user.
-- Each kind can be turned off. A server or a channel can be muted for 1 hour, 8 hours, 1 day, or
-  until turned back on.
+- Kinds: reply in a direct chat while the window is not focused, approval request, question,
+  task failed, routine failed, workflow notice (a notify step, see 010), and Teams link needs you
+  (the link is signed out or paused, see 028). A task that ends as Blocked (see 005) is a failed
+  task for this list, and a routine run that ends as Blocked is a failed run.
+- Each kind can be turned off. A server can be muted for 1 hour, 8 hours, 1 day, or until turned
+  back on.
 - Clicking a notification opens the place and scrolls to the message.
 - A computer that has a linked server open (012) shows the same kinds for that server while the
   link is online. The notification names the server. Mutes work per server, so the user can mute
@@ -57,17 +55,15 @@ The user knows when an agent needs them or finishes, without watching the window
 - The card has one row for each working agent, at most 5. If more agents work, a last line says
   how many more.
 - The rows are in the order in which the agents began to work.
-- A row shows: the face, the name, the place where the agent works (a channel name, or a note
-  that it is a direct chat), what the agent does now, and the time the current task has run.
+- A row shows: the face, the name, the place where the agent works (a note that it is a direct
+  chat), what the agent does now, and the time the current task has run.
   For an agent that waits for its turn and has no running task, the time is the time since the
   agent began to work.
-- A routine that posts in a channel has that channel as its place. A routine in the chat of an
-  agent, and a step of a workflow, have the direct chat as their place.
+- A routine and a step of a workflow have the direct chat as their place.
 - "What the agent does now" is, in this order:
-  1. the label of the plan step that runs (see 004);
-  2. the kind of step that the agent runs: file work, a command, the web, the browser, a
+  1. the kind of step that the agent runs: file work, a command, the web, the browser, a
      connection, another agent, or the computer (see 007);
-  3. "Working…".
+  2. "Working…".
   When the turn is quiet (see 005, "Quiet line"), the row shows the quiet line in place of these.
 - The kinds follow the tools. File work is the file tools, the tools for articles (see 016) and
   the file edits of vendor programs. A command is the shell tools. The web is page fetch and
@@ -106,16 +102,13 @@ The user knows when an agent needs them or finishes, without watching the window
 - In the mode "always", the island shows a result card when a system notification of the kind
   reply, task failed or routine failed is due (see "System notifications"). The same rules
   apply: the kind is on, the place is not muted, and no window of the app has the focus. A
-  notification of another kind, for example a mention in a channel, makes no result card. A
-  failed task or routine in a channel does.
+  notification of another kind, for example a workflow notice, makes no result card.
 - The card shows the face, the name, the place, one line, and "Open app". The line is the first
   line of the reply, or the reason for the failure. It has at most 90 characters, and a longer
   line ends with "…". The first line of the reply is the first line that has text, as it is,
   with the spaces at both ends removed. The reason for a failure is the error text in the
   language of the interface, the same text as on the Tasks page.
 - A blocked task makes a result card like a failed task. Its line is the reason of the block.
-  A part in review makes no result card, and the island does not show it. Its notification opens
-  the part.
 - The bar stays above the result card, so the faces and the count stay in view.
 - The card stays for 6 seconds, and as long as the pointer is on it. A newer result replaces it.
   A request for attention replaces it at once. When the user has answered all requests, the
@@ -154,7 +147,8 @@ The user knows when an agent needs them or finishes, without watching the window
   badge when something waits for the user.
 - A click opens a menu. It has one row for each working agent (face, name, place, and the time, as
   in the detail card), at most 5, and a last line for the rest. It has the line "N waiting for
-  you", which opens the Today page (021), and the items "Open ROBot", "Settings" and "Quit".
+  you", which opens the place of the oldest request, and the items "Open ROBot", "Settings" and
+  "Quit".
   "Quit" follows the rule of 001.
 - The menu shows no command, path or file content, as the detail card does not.
 - Only the open profile shows here (022). The menu shows no work of a linked server, as the island
@@ -174,7 +168,7 @@ The user knows when an agent needs them or finishes, without watching the window
 - It plays on this computer for the work of this computer. A phone uses its own sound of the
   system.
 - The system notice has no sound of its own while the app plays this sound. Do-not-disturb of the
-  system, and the mute of a server or a channel, silence it. The quiet line makes no sound (005).
+  system, and the mute of a server, silence it. The quiet line makes no sound (005).
 - The sounds are new files made for ROBot.
 
 ## Rules
@@ -230,9 +224,9 @@ The user knows when an agent needs them or finishes, without watching the window
   last one.
 - A result card shows, and then an approval request comes. The attention card replaces the
   result card. The user answers: the island does not show the result card again.
-- A task fails in a channel while the window is hidden, in the mode "always". A result card
-  shows the name of the channel and the error text. A mention in a channel makes a system
-  notification and no result card.
+- A task fails in a direct chat while the window is hidden, in the mode "always". A result card
+  shows the name of the agent and the error text. A workflow notice makes a system notification
+  and no result card.
 - No agent works. The user points at the island: nothing opens.
 - The island is open and the user changes the language to Korean: the text of the island
   changes at once.

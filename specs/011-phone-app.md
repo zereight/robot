@@ -18,7 +18,7 @@ The user follows and directs agents from an iPhone or Android phone while away f
 
 1. **Servers**: list of paired servers with the connection state of 012 and the total unread
    count of each. Add server opens the pairing camera.
-2. **Places**: the server's sections, agents and channels, with unread counts and working dots,
+2. **Places**: the server's sections and agents, with unread counts and working dots,
    as on desktop, including "Unassigned" at the bottom of Agents (001). The dot breathes as it
    does on the desktop (001), and the breath follows the
    setting "Reduce Motion" of the system. This includes the user sections, with the same order and
@@ -26,8 +26,7 @@ The user follows and directs agents from an iPhone or Android phone while away f
    phone remembers this for itself. In this version the phone cannot make, rename, order or
    delete a section, and it cannot move a place to a section, and it cannot pin or unpin a place, and it cannot change the order of places.
    The user does this on the computer. The phone shows the group "Pinned" and the sections inside
-   sections (001). The phone has no view "By organization" of Agents in this version. It shows the
-   user sections, also when the computer shows that view (001, "Agents by organization").
+   sections (001).
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply. When the switch "Show tool steps"
    in Settings is off, each run of plain tool steps shows as one muted line with the count, and a
@@ -35,25 +34,16 @@ The user follows and directs agents from an iPhone or Android phone while away f
    while the turn goes on. A step that waits, failed, was refused, or carries a note shows as its
    own card (003, "Folded tool steps").
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
-   notification. A question card shows the look of the lead, its pass line and "Answered by
-   <lead>" with the reason (004). The button "Correct" is on the computer only in this version.
-5. **Needs you**: one list of what waits for the user on a server: approval cards, question cards,
-   and failed channel parts. A failed part has "Retry" and "End the request", as on the computer
-   (see 004). A question of a member that is with the lead (004) joins the list only when it
-   passes to the user. A card for browser control that is no longer valid leaves the list.
+   notification.
+5. **Needs you**: one list of what waits for the user on a server: approval cards and question
+   cards. A card for browser control that is no longer valid leaves the list.
 6. **Workflows**: the workflows of a server. The user sees them as numbered step lists, runs one,
    reads the runs, edits steps, and asks the assistant, as on the computer (see 010). Running a
    workflow and reading its runs need only the link. Editing steps and asking the assistant need
    the switch "Can create and change agents" of that computer (012). The diagram of a workflow
    (010) is on the computer only in this version.
 7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
-   switch "Show tool steps", on at first, and the switch "Show the organization before an agent
-   name" (036), on at first.
-8. **Org chart**: a read-only list of the main agent, the organizations with their members and
-   leads (a sub-organization indented under its parent, 030), the state of each agent, and the work
-   that agents handed to each other in the last 7 days. It is a list, not a canvas (see 029,
-   "Phone"). A tap on an agent opens its chat. A tap on an organization header does nothing, because
-   the phone has no form of an organization. It needs only the link.
+   switch "Show tool steps", on at first.
 
 ## First start
 
@@ -83,24 +73,21 @@ camera.
 
 | Version | Content |
 | --- | --- |
-| Phone 1 | First start, pairing, Servers, Places, Conversation (read, streamed replies, send, stop, reply, attach photos and files, open files), approval and question cards in the conversation, Needs you (approvals and questions only), offline cache, notifications while the app is open, Settings. |
-| Phone 2 | Needs you with failed channel parts, Workflows, and the list in "Same as the computer". |
+| Phone 1 | First start, pairing, Servers, Places, Conversation (read, streamed replies, send, stop, reply, attach photos and files, open files), approval and question cards in the conversation, Needs you, offline cache, notifications while the app is open, Settings. |
+| Phone 2 | Workflows, and the list in "Same as the computer". |
 | Phone 3 | The group "Pinned" and sections inside sections, the list in "More on the phone", and voice (027). |
-| Phone 4 | The screen "Org chart" as a read-only list (029). |
 
 Until a screen comes, the phone does not show it. Phone 1 is a complete app: every screen it
 shows works.
 
 ## Same as the computer
 
-The phone follows the computer in these points: the `@all` mention in channels (004), the mention
-list of a direct chat (003), the random name button and the role list for agents (002, 013), the
-role badge on the row of an agent (001), the organization prefix of an agent (036),
-the word "archived" for channels (004), the context meter (003), "Mark as unread" (003), the
-command list (003), the main agent switch (002), the end of a request (004), the search of messages (001), and the
-line that tells how far a failed turn went, with the button "Send again" (003, 005), the box
-and the button "Load image" for a picture from the web (003), and the picture of a channel
-(004). The phone shows no marketplace. In this version the phone shows the main thread of a
+The phone follows the computer in these points: the mention list of a direct chat (003), the
+random name button and the role list for agents (002, 013), the role badge on the row of an agent
+(001), the context meter (003), "Mark as unread" (003), the command list (003), the main agent
+switch (002), the search of messages (001), the line that tells how far a failed turn went, with
+the button "Send again" (003, 005), and the box and the button "Load image" for a picture from
+the web (003). The phone shows no marketplace. In this version the phone shows the main thread of a
 direct chat only. It has no Compact control, no fork and no "Run next" (003, 005). It does not
 start a handover (003) and does not make a skill from work (017). It shows the muted line
 "Handed over to <name>" in a main thread, and it does not review the tools of a connection
@@ -115,12 +102,12 @@ start a handover (003) and does not make a skill from work (017). It shows the m
   as an attachment, with the message. The limits of 003 apply. "Cancel" closes the sheet and
   sends nothing. The phone keeps no copy of the shared item. If the server is offline, the sheet
   says so and sends nothing.
-- **Avatars**: the phone draws the avatars of 002 (faces, pictures, the mark of the user and the
-  mark of a channel) with the same drawing and colours as the desktop in the same theme. They
-  follow the theme of the phone. A change of the theme changes every avatar at once, with no
+- **Avatars**: the phone draws the avatars of 002 (faces, pictures and the mark of the user) with
+  the same drawing and colours as the desktop in the same theme. They follow the theme of the
+  phone. A change of the theme changes every avatar at once, with no
   motion. The choice "system" works as it does for the rest of the phone app. A long list of
   messages stays smooth.
-- **Face in a notice**: a notice of a reply, a mention, an approval or a failed task shows the face
+- **Face in a notice**: a notice of a reply, an approval or a failed task shows the face
   or the picture of the agent when the system allows an image in a notice. If not, it shows the
   mark of the app.
 - **Thinking sheet**: the row of thinking in a reply opens a sheet that lists all thoughts of that
@@ -148,7 +135,7 @@ start a handover (003) and does not make a skill from work (017). It shows the m
   shows "Update the app" and says which side must update.
 - The phone keeps a cache of recent messages for each server so the last view opens offline,
   marked "Offline". Unpairing a server deletes its cache.
-- Notifications: a reply in a direct chat, a mention, an approval request, a failed task. Each
+- Notifications: a reply in a direct chat, an approval request, a failed task. Each
   kind can be turned off.
   They show while the app runs and is linked to the server. A closed app gets none (012). On
   iPhone this means in practice while the app is open or was open a moment ago. The settings
@@ -184,9 +171,6 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - Open the thinking row of a reply: the sheet lists every thought of the turn.
 - Change the theme of the phone from dark to light: every avatar changes at once, with no motion.
   A face has a light disc, dark features and no glow. A picture does not change.
-- Open the screen "Org chart": it lists the main agent, each organization with its members and
-  lead, and the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer
-  off, the screen says so and shows no list (029).
 - Turn off "Show tool steps" in Settings: a reply with plain steps shows one folded line per run,
   and a tap opens the cards. A step that waits still shows as its own card. A step that runs
   joins its run, and the line keeps its place while the turn goes on. A reply that thinks before

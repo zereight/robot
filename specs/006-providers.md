@@ -80,7 +80,7 @@ The row of each agent runtime shows one state, as a tag with text. Colour alone 
   do.
 - An agent keeps its runtime when the state is Needs repair or Not installed. Its message box is
   disabled, as for "Provider not connected" (003), with a button: "Repair" or "Providers". A task
-  of that agent from a channel, a routine or a workflow fails at once with the state in words.
+  of that agent from a routine or a workflow fails at once with the state in words.
   After the repair, Retry works.
 - Needs sign-in works as before.
 - A client of a linked server sees the state and has no buttons on the row (012). Sync does not
@@ -108,10 +108,10 @@ limit is spent.
      (005). The app does not send the request again, so no side effect repeats.
   3. The chat shows a muted line: "<main model> reached its limit. <backup model> goes on." The
      line gives the reset time when it is known.
-- While the hold lasts, every turn of the agent uses the backup model: a chat, a part of a channel
-  job, a message of another agent, a routine that follows the agent, and an agent step of a
-  workflow. A routine with its own model (009) keeps it. A model step and a condition in "Ask a
-  model" mode name their own provider (010), so they keep it and get no backup.
+- While the hold lasts, every turn of the agent uses the backup model: a chat, a message of
+  another agent, a routine that follows the agent, and an agent step of a workflow. A routine
+  with its own model (009) keeps it. A model step and a condition in "Ask a model" mode name their
+  own provider (010), so they keep it and get no backup.
 - The header of the chat shows the backup model and "Backup until <time>". A button "Use <main
   model> now" ends the hold. The next turn then tries the main model. If that turn fails with a
   limit reason again, the hold starts again and the chat shows no second line.
@@ -245,8 +245,7 @@ not sign in for it. The sign-in stays in the program on this computer.
 
 - Keys and tokens are stored in the system keychain, never in the database or logs.
 - The app shows usage that the provider reports (tokens, cost if known, plan limits) on the usage
-  page, per agent and per day. For each organization with a daily token limit (030), it also shows the
-  tokens used today and the limit.
+  page, per agent and per day.
 - A runtime that has skills (named sets of instructions) can report them, and the command list
   of the chat shows them (see 003).
 - A runtime that can report the size of the context at the end of a turn does so, so the context
@@ -257,7 +256,7 @@ not sign in for it. The sign-in stays in the program on this computer.
 - When a provider says a usage limit is reached, the turn fails with that reason and the time it
   resets, if known. An agent with a backup model that is ready goes on with it first (see "Backup
   model"). When a provider says the sign-in or key is not valid, the turn fails with that
-  reason. The page Today (021) uses these two reasons.
+  reason.
 - **Leftover programs**: when the app starts, it ends the vendor programs that it started in an
   earlier run and that still run, for example after a crash. It ends only programs that it
   started itself. It never ends a program that the user started.

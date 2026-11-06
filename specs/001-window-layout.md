@@ -12,28 +12,21 @@ new user knows where to look.
   the open profile on this computer (see 022). Tiles of linked computers (012) follow in the
   order of pairing. A linked tile shows the first letter of the computer's name and the
   connection state (012).
-- **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
-  (see 021), workflows (see 010), routines (see 009), tasks, the board (see 024), the org chart
-  (see 029), test devices (see 032), usage. The workflows button opens the workflow list. The
-  routines button opens the routines list. Each page shows only its own list. The Tasks page holds
-  the tabs "Tasks" and "Events" (005, 038); the Tasks button opens the first tab. At the bottom:
-  help and settings, then the profile button
-  when the computer has two or more profiles (see 022). The Today button shows a badge with the
-  number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
-  above 99. It hides when a linked server is on the screen.
-- **Place list**: a column beside the rail. A search field at the top, then sections. A section has
-  a name and its places. A place is an agent (direct chat) or a channel. The search field also
-  searches messages (see "Message search").
-- **Built-in sections**: Channels, then Agents. They always exist. The user cannot rename,
-  delete or move them.
-- **User section**: a group that the user makes inside Channels or inside Agents. It holds places
-  of that one kind. See "User sections".
-- **Organization section**: a group of the view "By organization" of Agents. It holds the agents
-  whose deepest organization (036) is one organization. The app makes it. The user does not. See
-  "Agents by organization".
+- **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, workflows
+  (see 010), routines (see 009), tasks, test devices (see 032), usage. The workflows button opens
+  the workflow list. The routines button opens the routines list. Each page shows only its own list.
+  The Tasks page holds the tabs "Tasks" and "Events" (005, 038); the Tasks button opens the first
+  tab. At the bottom: help and settings, then the profile button when the computer has two or more
+  profiles (see 022).
+- **Place list**: the list of agents, in a column beside the rail. A search field at the top,
+  then sections. A section has a name and its places. A place is an agent and its direct chat.
+  The search field also searches messages (see "Message search").
+- **Agents section**: the built-in section of the place list. It always exists. The user cannot
+  rename, delete or move it.
+- **User section**: a group of agents that the user makes inside Agents. See "User sections".
 - **Conversation**: the main area. A header line, the messages, and the message box at the bottom.
-- **Activity panel**: a panel that shows who works on what in a channel, and the running tasks of a
-  direct chat. It uses the panel column.
+- **Activity panel**: a panel that shows the running tasks of a direct chat. It uses the panel
+  column.
 - **Panel column**: an optional column at the right of the window, used by one panel at a time: the
   activity panel, or the panel of the test devices connection (032). Each panel keeps its own width
   and its own open state. The user drags the left edge of the column to change its width, between 320
@@ -48,9 +41,8 @@ new user knows where to look.
    On a linked computer, the places and the pages work as 012 says. The plus buttons on the
    sections show only when that computer lets this device create and change agents.
 2. The user clicks a place. The conversation opens it. The place row shows as selected.
-3. The user types in search. The list shows only the places whose name matches, the agents whose
-   role line or whose organization (036) matches, and a group of matching messages (see "Message search"). Escape clears
-   it.
+3. The user types in search. The list shows only the agents whose name or role line matches, and
+   a group of matching messages (see "Message search"). Escape clears it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
 5. The user hides or shows the panel column with a header button. The app remembers this, and which
    panel it holds.
@@ -60,12 +52,10 @@ new user knows where to look.
 
 ## User sections
 
-The Channels section holds channel sections. The Agents section holds agent sections.
+The Agents section holds the user sections.
 
 ### Layout
 
-- Inside Channels, the places that are in no user section come first. The user sections follow,
-  in the order the user set.
 - Inside Agents, the user sections come first, in the order the user set. After them, the section
   "Unassigned" holds the agents that are in no user section. It is always last. It shows when
   Agents holds a place or a user section. When Agents holds neither, the list shows the empty
@@ -80,13 +70,13 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - An empty user section shows a short muted line that tells how to put a place in it.
 - A collapsed section (built-in or user) shows its header only. The header then shows the sum of
   the unread counts of its places, as a badge, and the working dot when one of its places works.
-  The dot breathes as the dot of a place does (see "Place rows"). The sum of a built-in section
+  The dot breathes as the dot of a place does (see "Place rows"). The sum of the Agents section
   includes the places of its user sections.
 
 ### Flows
 
-1. Make: the user opens the menu of the Channels header or of the Agents header and picks "New
-   section". A name box opens in the list. Enter saves. Escape cancels.
+1. Make: the user opens the menu of the Agents header and picks "New section". A name box opens in
+   the list. Enter saves. Escape cancels.
 2. Rename, order, delete: the user opens the menu of a user section header (a button on hover,
    or right click, or a long press). It lists "Rename", "Move up", "Move down" and "Delete
    section". "Move up" is off for the first section, and "Move down" for the last.
@@ -94,24 +84,21 @@ The Channels section holds channel sections. The Agents section holds agent sect
    section and that nothing else is deleted. The buttons read "Delete section" and "Back". A
    section with no place is deleted at once.
 4. Move a place: the menu of a place (right click, or a long press) has "Move to section". It
-   lists the user sections of the kind of that place, and "No section". The current one is
+   lists the user sections and "No section". The current one is
    marked.
-5. Drag a place: the user drags a place row onto a header of its kind: a user section, or the
-   built-in header (which means no section). The header under the pointer shows as selected.
-   A drag never opens the place. Escape cancels the drag. A header of the other kind does not
-   accept the row.
-6. Choose in a form: the form of a new agent or channel, and the profile or settings of an
-   existing one, have a "Section" choice (see 002 and 004).
+5. Drag a place: the user drags a place row onto a header: a user section, or the Agents header
+   (which means no section). The header under the pointer shows as selected. A drag never opens
+   the place. Escape cancels the drag.
+6. Choose in a form: the form of a new agent, and the profile of an existing one, have a
+   "Section" choice (see 002).
 
 ### Rules
 
-- A section name has 1 to 40 characters, after spaces at both ends are removed. In one built-in
-  section, no two user sections have one name, ignoring case. A channel section and an agent
-  section may have one name.
-- One built-in section holds at most 20 user sections, at all levels (see "Sections inside
+- A section name has 1 to 40 characters, after spaces at both ends are removed. No two user
+  sections have one name, ignoring case.
+- The Agents section holds at most 20 user sections, at all levels (see "Sections inside
   sections").
-- A place is in at most one section. A channel with no section shows in Channels, before the
-  user sections. An agent with no section shows in "Unassigned".
+- A place is in at most one section. An agent with no section shows in "Unassigned".
 - Delete of a section moves its places to no section. It deletes no place.
 - The order of the places inside a section is the order that the user set (see "Order of places").
   A place that the user has not ordered comes after the ordered ones, by name.
@@ -119,11 +106,9 @@ The Channels section holds channel sections. The Agents section holds agent sect
   same ones. The open or closed state of a section belongs to the device (step 4 of "Flows"
   above).
 - Section names are text of the user. They are not translated.
-- The filter of places (step 3 of "Flows" above) looks at the names of places, at the role
-  line of agents, and at the name of the deepest organization of agents (036). A place matches when
-  the typed text is a part of its name, or of its role line, or of that organization name, ignoring
-  case. A channel has no role line, so only its name counts, also when a member has a
-  role that matches. Cmd+K focuses the same field. The order of the places does not change.
+- The filter of places (step 3 of "Flows" above) looks at the names and the role lines of
+  agents. An agent matches when the typed text is a part of its name or of its role line,
+  ignoring case. Cmd+K focuses the same field. The order of the places does not change.
   Messages have their own group (see "Message search"), and it does not look at role lines. A
   section with no match hides, and a section with a match opens, also when it is collapsed.
 - Up and down in the list move through the places that show, in the order shown. A collapsed
@@ -131,12 +116,12 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 ### Sections inside sections
 
-- A user section can hold user sections of the same kind. The depth is at most 3 levels of user
+- A user section can hold user sections. The depth is at most 3 levels of user
   sections.
 - A header, and the places under it, sit 12 px further in for each level.
 - The menu of a user section header also has "New section inside". "Move up" and "Move down" order
   a section among the sections of its own level. "Move to section" on a place lists the user
-  sections of its kind as a tree. A section cannot move into itself or into a section inside
+  sections as a tree. A section cannot move into itself or into a section inside
   itself.
 - A collapsed section shows one sum of the unread counts. The sum covers its places and the places
   of the sections inside it. The working dot shows when one of these places works.
@@ -144,59 +129,17 @@ The Channels section holds channel sections. The Agents section holds agent sect
   (014).
 - Delete of a section that holds places or sections asks to confirm. The text says that the places
   and the sections inside move up one level and that nothing else is deleted. For a section of the
-  first level, they move to the built-in section.
-- The rule for names holds across all levels of one built-in section. The limit of 20 counts all
+  first level, they move to no section.
+- The rule for names holds across all levels. The limit of 20 counts all
   levels.
 - The phone shows the tree and cannot change it, as for sections (011).
-
-### Agents by organization
-
-The menu of the Agents header has a choice of view: "My sections" and "By organization". The
-choice that is on shows a mark. "My sections" is the view that "User sections" above describes. It
-is on at first.
-
-- **By organization**: Agents holds one organization section for each organization that is the
-  deepest organization (036) of at least one agent that shows in Agents. The sections are flat: no
-  section holds another. An agent shows once, in the section of its deepest organization. A pinned
-  agent shows in "Pinned" and not in its section (see "Pinned places"). An organization that is
-  the deepest organization of no agent that shows has no section.
-- **Order**: the organization sections follow the names of the organizations, ignoring case. After
-  them, the section "No organization" holds the agents that are in no organization. It is always
-  last. It shows when Agents holds an agent. When none of them shows in it, it shows a short muted
-  line. When Agents holds no agent, the list shows the empty line and no section. The user cannot
-  rename it, and the user can collapse it. The agents inside a section keep the order that
-  "My sections" shows them in: the agents of the user sections first, then the agents of
-  "Unassigned".
-- **Header**: it looks like the header of a user section: a chevron and the name, muted, 12 px
-  further in, and the places 12 px further in too. The name of an organization section is the name
-  of the organization. It is text of the user and is not translated. A long name is cut with "…",
-  and the whole name shows in a note when the pointer rests on it. A collapsed header shows the
-  unread sum and the working dot, as a user section does (see "Layout").
-- **Read only**: the app makes and keeps these sections from the organizations (030). A header has
-  no menu, and it does not accept a drag. "New section" in the menu of the Agents header and "Move
-  to section" in the menu of an agent are off in this view, with the reason "Switch to My sections
-  to change sections." The user sections do not change, and they show again when the user picks
-  "My sections".
-- **At once**: the sections change when an agent joins or leaves an organization, when an
-  organization is renamed or deleted, and when the deepest organization of an agent changes.
-- **Prefix**: a row of an agent under an organization section shows no organization prefix (036),
-  because the header names the organization. A row in "Pinned" shows it.
-- **Filter**: the filter of places works as "Rules" below says. The organization name of an agent
-  is one of the texts it matches. A section with a match opens, also when it is collapsed.
-- **What belongs to the device**: the choice of view, and the open or closed state of each
-  organization section. They belong to the open profile (022) on this computer. They do not sync.
-- **Linked computer**: the view groups the agents by the organizations of that computer (012). The
-  menu of the Agents header shows on a linked computer too, and it holds only the choice of view.
-- **Phone**: the phone has no choice of view in this version. It shows "My sections" (011).
-- **Cost**: the sections come from data that the app has. They add no request to a model, no task
-  and no sync.
 
 ## Pinned places
 
 - "Pin" in the menu of a place (right click, or a long press) puts the place in a group "Pinned"
-  at the top of the place list, above Channels. "Unpin" is in the same menu. A pinned place shows
+  at the top of the place list, above Agents. "Unpin" is in the same menu. A pinned place shows
   in this group and not in its section. After "Unpin" it shows in its section again.
-- The group holds agents and channels, in the order that the user set. A place that is just pinned
+- The group holds agents, in the order that the user set. A place that is just pinned
   comes after the others. It holds at most
   10 places. At 10, "Pin" is off, with the reason in words. A place that is archived or deleted
   leaves the group.
@@ -210,8 +153,8 @@ is on at first.
 
 ## Order of places
 
-- The user sets the order of the places inside one list: a user section, "Unassigned", the places of
-  Channels that are in no section, and the group "Pinned". The order of the sections is set as
+- The user sets the order of the places inside one list: a user section, "Unassigned", and the
+  group "Pinned". The order of the sections is set as
   before (see "Flows" of "User sections").
 - Drag: the user drags a place row to a spot between two rows of the same list. A line shows the
   spot. The row drops there. A drop on a row of another list, or on a header, has the meaning that
@@ -219,9 +162,7 @@ is on at first.
 - Menu: the menu of a place has "Move up" and "Move down". "Move up" is off for the first place of
   its list, and "Move down" for the last. The two entries are the way for the keyboard.
 - A place that moves to another list (a section, "No section", "Pinned") comes last in that list.
-- The order is not set while the filter of places has a text, and not in the view "By
-  organization" of Agents (the order there comes from the organizations). The two menu entries are
-  off then.
+- The order is not set while the filter of places has a text. The two menu entries are off then.
 - The order belongs to the server and to the profile (022). The phone and a linked computer show
   it. They cannot change it: the menu there has no "Move up" and no "Move down" (011, 012).
 - Two computers that sync (019) do not sync the order. It is part of the layout of one computer. An
@@ -233,7 +174,7 @@ is on at first.
   lists the messages that match. The group shows only when the text has at least 2 characters
   and at least one message matches.
 - The search covers the text of sent messages of the user and of agents, in direct chats (every
-  thread) and in channels, on the server on screen. It does not cover tool cards, thinking,
+  thread), on the server on screen. It does not cover tool cards, thinking,
   files, memory, queued messages, or places that are archived.
 - A message matches when it holds every word of the text. A word matches as a part of a word, so
   "bud" finds "budget", and the last word matches while the user still types it. The order of
@@ -243,7 +184,7 @@ is on at first.
 - Hits come newest first, 20 at a time. While more hits exist, the last row of the group is
   "Show more". The app finds at most 200 hits. If more messages match, the group ends with a line
   that asks the user to type more words.
-- A hit row shows the face, the picture or the `#` mark and the name of the place, the time, and a short
+- A hit row shows the face or the picture and the name of the agent, the time, and a short
   piece of the message around the first matching word, at most 120 characters, with "…" at a cut
   end. The matching words are marked. The piece is plain text. The app does not read Markdown or HTML in it.
 - A click on a hit opens the place, and the thread that holds the message. The chat scrolls to
@@ -258,13 +199,9 @@ is on at first.
 
 ## Place rows
 
-- One line, 34 px high: a 24 px avatar (see 002, "Avatars"): the face for an agent, or the
-  picture or the `#` mark for a channel, then the name.
-- An agent that is in an organization shows the organization prefix before the name (036), for
-  example "[Docs] Ada". It is a part of the name for the cut below: the prefix is cut last. Under
-  an organization section it does not show (see "Agents by organization").
+- One line, 34 px high: a 24 px avatar of the agent (see 002, "Avatars"), then the name.
 - An agent with a role line shows it as a **role badge** after the name: a small, muted label with
-  the role line on one line. An agent with no role line, and a channel, show no badge. The badge
+  the role line on one line. An agent with no role line shows no badge. The badge
   is text of the user and is not translated.
   - The name comes first: the badge is cut before the name is. When the row is too narrow, the
     badge is cut with "…" at its end. When the room is less than the width of 4 letters of the
@@ -278,7 +215,7 @@ is on at first.
   messages.
 - An unread count shows as a small badge at the right end.
 - A working agent has a small success-colour dot on its face, with a thin soft ring of the same
-  colour. A channel with work running has the same dot on its `#` mark. The dot breathes while
+  colour. The dot breathes while
   the work runs, as 000 says: the dot and its ring grow and fade, without end. With reduce motion,
   the dot is still. A dot shows only while a place works, and it goes at once when the work ends.
 - The row's accessible name includes the last message, but the row does not show it.
@@ -307,7 +244,6 @@ is on at first.
 
 - Direct chat: the agent's face, name, model, the context meter (see 003), the list of threads, and
   the "Device" button (see 032).
-- Channel: `#`, the name, a thin divider, then the topic in muted text. The topic truncates.
 - A conversation on a linked computer (012) shows no "Device" button.
 
 ## States
@@ -348,12 +284,9 @@ is on at first.
   under "Research" and not among the other agents. The other agents show in "Unassigned", and
   "Unassigned" is under "Research". The header of "Unassigned" has no menu. After a restart, the
   agent is still under "Research".
-- Make the agent section "Research" again, with another case ("research"): the app refuses it. Make
-  a channel section "Research": the app accepts it.
+- Make the agent section "Research" again, with another case ("research"): the app refuses it.
 - Collapse a user section that holds an agent with 2 unread messages: its header shows the badge
   2. Open the section: the badge leaves the header and shows on the agent.
-- Drag a channel onto the header of an agent section: the channel does not move. Drag it onto a
-  channel section: it moves.
 - Delete a section that holds two agents, and confirm: both agents show in "Unassigned", under any
   user section that remains. No agent is deleted.
 - Type part of an agent name that is in a collapsed user section: the section opens and shows the
@@ -362,9 +295,9 @@ is on at first.
   agent shows. Type "writ": only the second shows. Type the name of the second agent: it shows.
   Press Escape: both show.
 - Give an agent in a collapsed section the role "Researcher". Type "researcher": the section
-  opens and shows the agent. A channel with a member of that role does not show.
+  opens and shows the agent.
 - An agent with the role "Qa tester" shows the badge "Qa tester" after its name. Remove the role:
-  the badge leaves. A channel row never shows a badge.
+  the badge leaves.
 - Set the place list to its narrowest width. An agent with a short name, a long role and unread
   messages shows the whole name, a badge cut with "…", and the unread count at the right end. An
   agent with a name of 40 characters shows its name cut with "…" and no badge.
@@ -380,9 +313,9 @@ is on at first.
   agent shows under "Papers", 24 px in. Collapse "Research": its header shows the unread count of
   the agent. Delete "Papers" and confirm: the agent shows under "Research". A fourth level is
   refused: "New section inside" is off on a section of the third level, with the reason.
-- Pin an agent and a channel: the group "Pinned" shows both above Channels, oldest pin first, and
-  neither shows in its section. Pin the 11th place: "Pin" is off with the reason. Unpin the agent:
-  it shows in its section again. The phone shows the same group.
+- Pin two agents: the group "Pinned" shows both above Agents, oldest pin first, and neither shows
+  in its section. Pin the 11th place: "Pin" is off with the reason. Unpin one agent: it shows in
+  its section again. The phone shows the same group.
 - Open the menu of a place and pick "Mark as unread": the place shows the count 1.
 - Press Cmd+Q while a stand-in agent works: the note shows and the app stays. Press it again
   within 3 seconds: the app quits. With nothing running, the first press quits.
@@ -391,24 +324,8 @@ is on at first.
 - Pin an agent and archive it: it leaves the group. Type part of the name of a pinned agent in the
   search field: the agent shows in the filtered list.
 - On a stand-in phone and a stand-in linked computer, the menu of a place has no "Pin".
-- Give the agent Ada the organization "Docs". Give the agent Bob the organizations "Docs" and
-  "API" ("API" is under "Docs"), and leave the agent Cy in no organization. Pick "By
-  organization" in the menu of the Agents header: the sections are "API" with Bob, "Docs" with Ada,
-  and "No organization" with Cy, in this order, and no section is inside another. No row shows a
-  prefix. After a restart the view is still "By organization". Pick "My sections": the user
-  sections and "Unassigned" show as before.
-- In "By organization", an organization with no agent has no section. Pin Ada: "Docs" has no
-  section, and the row of Ada in "Pinned" shows "[Docs] Ada". Unpin Ada: "Docs" shows again.
-- In "By organization", the headers have no menu, a drag of an agent onto a header does nothing,
-  "New section" in the menu of the Agents header is off with its reason, and "Move to section" in
-  the menu of Ada is off with its reason.
-- In "By organization", rename "Docs" to "Manuals": the section shows the new name at once, in its
-  new place in the order. Remove Ada from the organization: she moves to "No organization".
-- In "By organization", collapse "Docs" while Ada has 2 unread messages: the header shows the badge
-  2. Type "api" in the search field: the section "API" opens and shows Bob, and "Docs" hides.
-- On a stand-in phone, the Places list shows the user sections and has no choice of view.
-- Press Cmd+F on the Today page: nothing happens. Hold Cmd+Q for 1 second while an agent works: the
-  app quits. Close the window while an agent works: the agent goes on, and the Dock icon opens the
-  window again.
+- Press Cmd+F on the Settings page: nothing happens. Hold Cmd+Q for 1 second while an agent works:
+  the app quits. Close the window while an agent works: the agent goes on, and the Dock icon opens
+  the window again.
 - "Back" and "Forward" move through the servers, pages and places that the user opened, and a
   button with no step is disabled.

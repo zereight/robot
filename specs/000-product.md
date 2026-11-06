@@ -2,10 +2,10 @@
 
 ## Purpose
 
-ROBot lets one person run a small team of AI agents on their own computer. The interface follows a
-chat server: servers on the far left, a list of places beside them, the conversation in the
-middle, and an activity panel on the right. Agents appear as members with a face, a name and a bot
-tag, so the user reads their work as they read messages from colleagues.
+ROBot lets one person run AI agents on their own computer. Each agent does one role. The
+interface follows a chat server: servers on the far left, the list of agents beside them, the
+direct chat in the middle, and an activity panel on the right. Agents appear with a face, a name
+and a bot tag, so the user reads their work as they read messages from colleagues.
 
 ## Concepts
 
@@ -15,16 +15,14 @@ tag, so the user reads their work as they read messages from colleagues.
 - **Profile**: a separate space on one computer, with its own agents, chats, accounts, settings
   and linked devices (see 022). A server is one profile on one computer. A computer with one
   profile works as this spec says everywhere.
-- **Agent**: a member that does work. One agent can be the main agent that splits work across the
-  others. It has a face, a name, a short role line, a model, a
-  workspace folder, and a memory. An agent keeps its identity and history when the user changes
-  its model or restarts the app.
+- **Agent**: does one role for the user. One agent can be the main agent that hands work to the
+  others. It has a face, a name, a short role line, a model, a workspace folder, and a memory. An
+  agent keeps its identity and history when the user changes its model or restarts the app.
 - **Direct chat**: a conversation between the user and one agent. It can have more threads, and a
   thread can be forked from a message.
-- **Channel**: a conversation with a name and a topic, where the user and several agents work on
-  one job. One agent can be the lead; it can split a job into parts for other agents.
-- **Task**: one piece of work that an agent does. A task can have child tasks. Tasks have a state:
-  queued, running, waiting for the user, done, failed, or cancelled.
+- **Task**: one piece of work that an agent does. A task can have child tasks, when an agent
+  hands work to another agent (007). Tasks have a state: queued, running, waiting for the user,
+  done, failed, or cancelled.
 - **Routine**: a task that runs on a schedule.
 - **Workflow**: a set of connected steps that runs when a trigger fires.
 
@@ -43,16 +41,12 @@ tag, so the user reads their work as they read messages from colleagues.
    creates or picks a first agent.
 2. Direct chat: the user opens an agent and sends a message. The reply streams in. Tool use shows
    as compact cards inside the reply. The user can stop the agent at any time.
-3. Channel work: the user writes a job in a channel. The lead agent posts a plan. Each part shows
-   as a step in the activity panel, and replies to a part are reachable from a small chip under
-   the message that started it. When the parts end, the lead checks each result against the done
-   test that it wrote for the part, and then posts one summary (see 004).
-4. Phone: the user pairs the phone with a computer, then reads and sends messages and answers
+3. Phone: the user pairs the phone with a computer, then reads and sends messages and answers
    approval requests from the phone. The phone can pair with more than one computer.
-5. Other computers: the user pairs a second computer with the first. Each computer then shows the
+4. Other computers: the user pairs a second computer with the first. Each computer then shows the
    other as a server and directs its agents. Each computer keeps its own agents and data, unless
    the user turns on sync (019).
-6. Sync: the user sets two computers to sync. Both then hold the same agents, chats, memory,
+5. Sync: the user sets two computers to sync. Both then hold the same agents, chats, memory,
    routines and workflows, and the user can work on either one.
 
 ## Rules
@@ -86,8 +80,8 @@ tag, so the user reads their work as they read messages from colleagues.
 - The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
   settings. The look follows `DESIGN.md`: three lights carry meaning and nothing else does. The
-  accent violet shows where the user is and what can be pressed. The mint glow shows an agent, a
-  channel or a task that works now. The rose neon shows that the app answers the user (see the
+  accent violet shows where the user is and what can be pressed. The mint glow shows an agent or a
+  task that works now. The rose neon shows that the app answers the user (see the
   light rule below). The surfaces of the window are told apart by their lightness,
   so a panel shows as its own plane and not as a box with a line around it. A sentence that the
   user reads is set at the body text size, never at the size of a label. A code block, an error
@@ -96,7 +90,7 @@ tag, so the user reads their work as they read messages from colleagues.
 - A block shows what kind it is by the tint of its surface or by a mark at its start. It does not
   carry a stripe of colour on its side.
 - A **danger button** deletes or removes something that exists: a workflow or a step of one, a
-  routine, an agent, a channel, a thread, a skill, a connection, an account, a linked device, a
+  routine, an agent, a thread, a skill, a connection, an account, a linked device, a
   saved secret, a browser profile, an article or a source of knowledge, a rule, or a memory item.
   It shows in the colour of danger, and the text on it reads on that colour in both themes. A menu
   item with the same result shows its text in the colour of danger.
@@ -123,7 +117,7 @@ tag, so the user reads their work as they read messages from colleagues.
   that work goes on. It has one of two shapes. A **breath** is a mark that glows, grows a little
   and fades, in 1.4 s: the light of the badge of a working agent (003, "States") and the working
   dot of a place (001, "Place rows"). A **turn** is a mark that goes round: the spinner of a
-  running step and of the look of the lead (004). A breath has no direction. No other part
+  running step. A breath has no direction. No other part
   repeats a motion. With reduce motion, nothing moves.
 
 ## Out of scope
@@ -143,6 +137,5 @@ tag, so the user reads their work as they read messages from colleagues.
 - The same Mac pairs with an iPhone and with an Android phone, and both work the same way (011).
 - Two profiles on one Mac keep their agents, chats and accounts apart, and a phone that is paired
   with one of them sees only that one (022).
-- A channel job with two parts shows two plan steps, and both reply chips open the right replies.
 - With the network off except for the model provider, all features in this spec still work. The
   connections of 018 that use a web address are the exception: they need their address.

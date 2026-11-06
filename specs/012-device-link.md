@@ -50,8 +50,8 @@ client shows it and sends commands.
    one. The dialog has a switch, "Let <device name> create and change agents". It is on by
    default for a computer and off by default for a phone, because the phone app has no screens
    for it in this version (011).
-   When it is on, the text also says that the device can make and change agents, channels,
-   memory and workflows on this computer (see "Create and change agents" and "Workflows").
+   When it is on, the text also says that the device can make and change agents, memory and
+   workflows on this computer (see "Create and change agents" and "Workflows").
 5. On Allow, both sides store each other's identity. Later connections need no code. The new
    server appears in the client; the client opens it at once.
 
@@ -59,11 +59,11 @@ client shows it and sends commands.
 
 1. The user clicks the server tile of a linked computer. The place list and the conversation
    change to that server (001).
-2. The user works as in a direct chat or a channel: read, send, stop, attach files, reply,
-   answer approvals and questions (003, 004, 007).
+2. The user works as in a direct chat: read, send, stop, attach files, reply, answer approvals
+   and questions (003, 007).
 3. Another device that uses the same server sees the same messages at once.
-4. If the server lets this device change agents, the user can also create and change agents and
-   channels of that server (see "Create and change agents").
+4. If the server lets this device change agents, the user can also create and change agents of
+   that server (see "Create and change agents").
 5. The user opens the Workflows page of that server, runs and stops workflows, and sees their
    runs (see "Workflows").
 
@@ -92,19 +92,19 @@ client shows it and sends commands.
 
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
-| See places in the sections of the server, unread counts, working dots; see the org chart (029); see the organization prefix of agents (036) | Delete or restore agents and channels |
+| See places in the sections of the server, unread counts, working dots | Delete or restore agents |
 | Read messages, search places and messages | Change model accounts, skills, connections and settings. Review the tools of a connection (018). Make a skill from work (017). Hand over a chat (003) |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
-| See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004); the Today page (021); memory proposals and memory history (008) |
+| See the task list and task details; stop a task | Browser "Take control"; memory proposals and memory history (008) |
 | See the workflow list, open a canvas, see run history, run details and live run state; run and stop a workflow; answer an approval step of a run | The workflow assistant panel; export and import of workflow files; the workflows log (014) |
-| Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; make, edit and delete organizations, also the parent organization, the hand-off range and the daily token limit (030), and edits on the org chart (029); edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
+| Only with "Can create and change agents": create, edit, duplicate and archive agents; edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
 A client sees the user sections and the pinned places of the server (001). It cannot make,
 rename, order or delete a section, move a place into another section, pin or unpin a place, or change the order of places.
 A client can mark a place or a message as read or as unread (001, 003). The read state follows
-the server. The Today, Board, Routines and usage page buttons and pages, and the
+the server. The Routines and usage page buttons and pages, and the
 other parts in the right column, show a muted line on a client: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
@@ -116,14 +116,13 @@ answered a card, in the same entry.
 ### Create and change agents
 
 A client with the switch "Can create and change agents" (see "Remove access") works with the
-agents and channels of the server in the same screens as on the server (002, 004, 008): the plus
-button on a section, the agent profile, the channel settings, the memory list.
+agents of the server in the same screens as on the server (002, 008): the plus button on a
+section, the agent profile, the memory list.
 
 - **Fields a client can set:** name, face (shape and hue; no uploaded image), role line,
   instructions, model, effort, backup model and the switch "Read the handbook". The section of an agent is not
-  offered. For a channel: name, topic, instructions, picture, members and lead. A client can also read and
-  change the handbook (002), and turn the memory check of an agent on or off (008). A client does
-  not archive, delete or restore channels.
+  offered. A client can also read and change the handbook (002), and turn the memory check of an
+  agent on or off (008).
 - **Outside content:** a client shows the line "Holds outside content" in the header of a place
   (007). It cannot clear the mark.
 - **Memory:** a client does the same four things as the profile of an agent on the server (008):
@@ -138,7 +137,7 @@ button on a section, the agent profile, the channel settings, the memory list.
   the strictest, the levels are "Full access", "Ask when unsure", "Ask for risky steps", "Ask
   for everything" and "Read only" (007). A client cannot set a looser level, and it cannot add an "Always allow"
   rule.
-- **Names:** the rules of 002 and 004 hold on the server. A name that is taken gives a plain
+- **Names:** the rules of 002 hold on the server. A name that is taken gives a plain
   error on the client.
 - **Working agents:** a client cannot archive an agent while it works. It stops the agent first.
 - **Record:** the profile of an agent, on the server and on clients, shows "Last changed by
@@ -168,7 +167,7 @@ A client opens the Workflows page of the server (010) in the same screens as on 
   participants"), that is, from the agents of the server that are not archived when the workflow
   has no owner. The field "Owner" follows "Change". A
   model step and a condition in "Ask a model" mode pick from the model accounts of the server. A
-  post step picks a place of the server. A client never sees a key or a path.
+  client never sees a key or a path.
 - **Web hook:** a client sees the kind of trigger and, for a web hook, the name of the computer
   that listens. It sees neither the address nor the secret (010).
 - **On the server only:** the assistant panel, because it can change many things at once, and
@@ -220,20 +219,17 @@ means a profile on a computer.
   send message, stop, edit, retry, mark a place as read, approve, answer question, upload
   attachment, download attachment, task list, task details, stop a task, workflow list, one
   workflow, run history, run details, create, update, delete and turn on or off a workflow, run a
-  workflow, stop a run, the org chart (029), and the changes of the org chart: a new organization, and its members, lead
-  and parent (029, 030). A client reads the part "Hand-off rules" and the tools of an organization
-  (030), and does not change them.
-- The phone app (011) may ask for more: end a request (see 004). The aim of 011 is that the phone
-  can do whatever the user can do in a conversation on the computer. Start and fork a thread,
-  compact a conversation and "Run next" are on no client in this version (003, 005), and each of
-  them needs its own slice.
+  workflow and stop a run.
+- The aim of the phone app (011) is that the phone can do whatever the user can do in a
+  conversation on the computer. Start and fork a thread, compact a conversation and "Run next" are
+  on no client in this version (003, 005), and each of them needs its own slice.
 - The rules of "Create and change agents" and "Workflows" apply to every client, the phone too:
   running and stopping a workflow need only the right to send messages, and a change to a
   workflow needs the switch "Can create and change agents".
 - A server pushes: new and changed messages, task state changes, agent state changes, approval
   requests and questions, unread counts, changes to the sections or to the section of a place,
   changes to the name or to the role line of an agent, changes to workflows, changes to the state
-  of a run, and changes to the org chart (029).
+  of a run.
 - A server pushes the start and the end of a quiet turn (005, "Quiet line"), with the name and
   the seconds on the quiet clock at the time of the push. The client counts on from that value.
   It does not get a push each second. A client that connects while a turn is quiet gets the quiet
@@ -284,7 +280,6 @@ accept connections, this is the same computer.
 ## Out of scope
 
 - Sync of agents and data between computers. See 019. A link alone copies nothing.
-- An agent on one computer that joins a channel of another computer.
 - A server that is not a Mac with Apple silicon: an Intel Mac, a Windows or Linux computer, a
   phone, or a service on the internet. So a phone with no such Mac has no server to open (000).
 - A relay or a connection service that links devices which share no network. The user uses a
@@ -330,12 +325,6 @@ accept connections, this is the same computer.
   The assistant panel and workflow export and import show "Open this on MacBook 2."
 - A workflow of MacBook 2 that runs on a third computer through sync shows "Runs on <name>" on
   MacBook 1, and Run is off.
-- On MacBook 1, open the Org chart page of MacBook 2 with the switch off. The chart of MacBook 2
-  shows with no edit control. An agent of MacBook 2 starts a task: its node shows "working" on
-  MacBook 1 within 1 second. Turn MacBook 2 off: the page shows "MacBook 2 is offline." and no
-  chart (029).
-- Turn the switch on and drag an agent of MacBook 2 to another organization on MacBook 1: the member
-  moves on MacBook 2, and the line with "Undo" shows on MacBook 1 (029).
 - Type a wrong code 5 times: the code ends. Wait 5 minutes: the code ends.
 - Pair a computer with itself: a plain error shows.
 - A Mac has two profiles. Pair one phone with each. Each phone lists one server and shows nothing

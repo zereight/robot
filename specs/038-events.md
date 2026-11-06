@@ -19,6 +19,8 @@ when the place did nothing.
     finds a call that comes again;
   - a **summary line** of at most 200 characters, the **detail**, and a **link**;
   - the time that it arrived, and a **result**.
+- **Place**: what took the event: a routine (009), a workflow (010), or the direct chat (003) of
+  the agent that a message of an outside program or of Teams goes to.
 - **Result**: what the app did with the event. The result is one of these.
   - **Routed**: a task started, or a run of a routine (009) or of a workflow (010) started. The
     result names the place and the task.
@@ -93,9 +95,9 @@ when the place did nothing.
   of two short lines that stand for a change; for a schedule, the planned time.
 - The result names the place, and the first step of the workflow or the prompt of the routine, in
   words. It also names the agent.
-- A form whose workflow step has no agent, or whose post step has no place, says so: "This step has
-  no agent yet." or "This step has no place yet." (010). A form of a routine that is paused says
-  "The routine is paused." A form of a workflow that is off says "The workflow is off."
+- A form whose workflow step has no agent says so: "This step has no agent yet." (010). A form of a
+  routine that is paused says "The routine is paused." A form of a workflow that is off says "The
+  workflow is off."
 - The test event stays on the page with the source "Test". It counts in the limit of 2000 events.
   It shows for 1 day, then leaves.
 
@@ -138,7 +140,7 @@ when the place did nothing.
 - The app hides a text that looks like a secret before it cuts the detail, so a cut never shows the
   start of a secret (014).
 - An event of a source that the app cannot read keeps its row and shows the line "Could not read
-  this event." in place of the detail, as the Today page does (021).
+  this event." in place of the detail.
 - The page reads 200 rows at most for one look, in groups of 50.
 
 ## Rules

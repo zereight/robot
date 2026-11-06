@@ -14,17 +14,14 @@ and short notes of its skills, and loads the full text of one only when the task
     start of the typed name is removed.
   - The description holds up to 140 characters. It may be empty.
   - The instructions hold 1 to 20000 characters of plain text.
-  - The agents: "All agents" (the default), or a list that the user picks. The list can hold
-    agents and organizations. An organization in the list has the value "On" or "Off", and it gives
-    or takes away the skill for its members and for the members of its lower organizations (030,
-    "Tools").
+  - The agents: "All agents" (the default), or a list of agents that the user picks.
 - **Skill chip**: a small tag with the name of a skill. It sits in the message box, and later in
   the message row.
 - A **runtime skill** is a skill that an agent runtime reports (see 006). The user cannot edit
   it here. It is not a skill of this spec.
 - **Skill list for the agent**: the names and descriptions of the usable skills that have a
-  description. "Usable" means on, and for this agent (by agent or by organization, as the
-  slash list). A skill with an empty description stays for slash use only.
+  description. "Usable" means on, and for this agent (as the slash list). A skill with an empty
+  description stays for slash use only.
 
 ## Flows
 
@@ -166,8 +163,8 @@ The user can turn work that went well into a skill, and does not write the instr
 - A starter (see 002) can make skills for its new agent. They are for that agent only, they are
   on, and they count in the limit of 100. They are shortcuts for the chat. They do not run in a
   routine (see the next rule).
-- Skills work in direct chats and threads. They do not work in channels, routines or workflows in
-  this version.
+- Skills work in direct chats and threads. They do not work in routines or workflows in this
+  version.
 - Skills are stored in the local database. An export holds them (see 014). An agent file (see
   002) holds them only when the user ticks "Skills of these agents". An imported skill is off. It
   counts in the limit of 100. A skill over the limit is not made, and the review screen lists it
@@ -196,7 +193,7 @@ The user can turn work that went well into a skill, and does not write the instr
 ## Out of scope
 
 - Parameters in a skill, such as a blank to fill in.
-- Skills in channels, routines and workflows.
+- Skills in routines and workflows.
 - Share or import of skills as files.
 - Editing the skills of a runtime.
 

@@ -116,7 +116,7 @@ absent otherwise.
 ## Out of scope
 
 - A command that runs when a thread ends, a preview address, and an icon for each action.
-- Making the own copy. The copy is 025. This spec only runs the actions when a turn starts in one.
+- Making the own copy. This spec only runs the actions when a turn starts in one.
 - Running the actions on a linked computer or on the phone.
 
 ## Acceptance

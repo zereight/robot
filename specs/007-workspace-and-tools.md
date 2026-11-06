@@ -48,7 +48,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
 ## Permission levels
 
 - **Read only**: the agent can read, list and search files, fetch web pages, ask the user a
-  question, save memory, list agents and use the board tools (024). These steps are refused: writing or deleting a file, a
+  question, save memory and list agents. These steps are refused: writing or deleting a file, a
   shell command, a tool of a connection, the browser, computer use, "send message", the manage
   tools (037), and running a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
   as a failed step, and the turn goes on. The action log has the step with the result Refused and
@@ -115,16 +115,12 @@ the user gets a card only when the check is sure that the user asked for the ste
     for example `make` or `npm run`, also runs a script file. A short command can start a long
     script that any turn wrote, by a file step or by a command.
 - **Words of the user**: the messages of the user that started the turn or joined it (003), or the
-  prompt of a routine (009), or the title and description of a card that the user wrote and
-  started (024). The prompt of a routine from an agent file (002) counts only after the
-  user saves the routine form once. For a part of a channel job (004), the words of the user are
-  the job message, when the user posted the job and the turn of the lead held no outside content
-  before it made the part. For a new part after "Request changes" (004), the text of the request
-  counts too. A message of another agent, of an outside program (023), of Teams (028) or of a watch
-  is not words of the user. The handover card (003) is not words of the user. The text that the
-  user typed in the dialog of the handover is. An answer of the lead to a question of a member
-  (004) and the shared folder note (025) are not words of the user. A step of a workflow has no
-  words of the user, because the assistant of a workflow can write the prompt of a step (010).
+  prompt of a routine (009). The prompt of a routine from an agent file (002) counts only after the
+  user saves the routine form once. A message of another agent, of an outside program (023), of
+  Teams (028) or of a watch is not words of the user. The handover card (003) is not words of the
+  user. The text that the user typed in the dialog of the handover is. The shared folder note
+  (025) is not words of the user. A step of a workflow has no words of the user, because the
+  assistant of a workflow can write the prompt of a step (010).
 - For a checked step, the app asks the decision model one question: does the user ask for this
   step? The two options are "The user asked for this" and "The user did not ask for this".
   - The step runs with no card when "The user asked for this" has a probability of 0.9 or more.
@@ -154,12 +150,9 @@ the user gets a card only when the check is sure that the user asked for the ste
 ## Working with other agents
 
 - The tool "list agents" gives the agent a list of the other agents on the server that are not
-  archived: name, role line and state. With the hand-off rule "Along the organizations" (030), it gives
-  only the agents that the sender may send to.
+  archived: name, role line and state.
 - The tool "send message" sends a text to one of them. This makes a task for that agent (see 005)
   with the source "another agent". An agent cannot send a message to itself or to an archived agent.
-  With the hand-off rule "Along the organizations" (030), a send that the rule does not allow fails
-  with the reason of 030, and no task starts.
 - "Send message" fails when the chain of agent messages is at its limit (see 005, "Limits of a
   task"). The sender gets the reason as a failed step. The main agent is told: when a send fails
   for this reason, do not look for another way to pass the same work on. Tell the user what
@@ -170,8 +163,7 @@ the user gets a card only when the check is sure that the user asked for the ste
   without a Stop by the user, the sender gets a message at once with the reason, in a later turn.
   The sender may send the receiver one more instruction. After 3 chases of one send, or when the
   receiver refuses a second time, the sender is told to tell the user what stopped and why, and
-  not to look for another way. A send that the user stopped, a send that is Blocked by a usage
-  limit (030) and a send that the hand-off rule refused get no chase.
+  not to look for another way. A send that the user stopped gets no chase.
 - The reply of the receiver comes back to the sender as a new message in a later turn. The sender
   can end its turn after it sends, and it does not wait in a running turn.
 - Every agent is told to look for a teammate early when work needs a skill, a service or an
@@ -179,24 +171,6 @@ the user gets a card only when the check is sure that the user asked for the ste
   again only when a new kind of work appears.
 - A message from another agent is input from a colleague. The receiver does not treat it as an
   order that overrides its own instructions or the rules of the app.
-- **Order of a lead**: a message that comes with "send message" from the lead of an organization
-  (030), where the receiver is a member of that organization or of a lower one, is an order of a
-  lead, not input from a colleague. The app knows the sender from the send, not from the words of
-  the text. A text that says "the lead agreed" or "the user approved" makes no order, and it gives
-  no right beyond the order. The order itself is enough: the receiver does not ask for proof that
-  the user approved it, and it does not refuse because the text holds such words. The receiver
-  does the work of the order. It does not refuse because the sender is an agent and not the user, or
-  because the work changes a shared branch, a pull request or another shared thing. The receiver
-  is told this in the message.
-  - **What still holds**: the permission level of the receiver and its rules (this spec), the
-    hand-off rule and the daily token limit (030), and the rules about secrets (020). At "All
-    permissions" the app asks nothing. The receiver does not read an order of a lead as a change
-    of any of these.
-  - **When the receiver cannot do it**: it can do so only for a reason that one of those rules
-    gives, or because the order conflicts with its own handbook (002). It does the part that it
-    can, and it replies with the name of the rule and the reason. The reply goes to the lead as
-    any reply does. A refusal with no such reason is not allowed. The lead then chases (see 004,
-    "Chase by the lead", and "Chase" above).
 - The **main agent** (see 002) is told this: answer a quick request yourself. For other work,
   list the agents, split the request into parts, and send every independent part to its best
   teammate in the same turn, so that they work in parallel. Send a part that needs the result of
@@ -229,9 +203,8 @@ the text around one message.
 
 ### Search chats
 
-- The tool "search chats" searches the messages that the agent took part in: its direct chats,
-  its threads, and the channels where it is a member. It skips archived places, as the search
-  of the user does.
+- The tool "search chats" searches the messages that the agent took part in: its direct chats and
+  its threads. It skips archived places, as the search of the user does.
 - The agent gives up to 12 words. The tool ignores a word of one character and a word that
   repeats. As in message search (001), a word matches as a part of a word, and the case of the
   letters does not matter. If no word is left, the tool tells the agent in plain words.
@@ -440,10 +413,7 @@ text is in the turn.
   - the result of a tool of a connection (018),
   - the answer of a request with a saved secret (020),
   - the change that starts a routine with a watch trigger (009),
-  - a message from another agent (a message that it sends with "send message"; the messages of a
-    channel that a member reads under 004, "What a member reads", are not this, because the mark
-    of a place, below, already follows outside text through a channel),
-  - the text that an agent wrote on a card of the board (024),
+  - a message from another agent (a message that it sends with "send message"),
   - a message of an outside program (023),
   - a message from Teams (028),
   - the text that a test device shows or logs (032 to 034), such as a screen snapshot, a log line or a
@@ -456,19 +426,14 @@ text is in the turn.
   until the turn ends. A turn that a watch routine, a message from another agent, a message of
   an outside program or a message from Teams starts holds outside content from its start. A
   message of an outside program or from Teams never joins a running turn (023, 028).
-- A turn also holds outside content from its start when an earlier turn that the agent still sees
-  held it, because the outside text is still in front of the agent:
-  - in a direct chat or thread: an earlier turn of that chat or thread. A compact (003) keeps the
-    mark. A new thread starts with no mark. A fork keeps the mark when its copy holds a turn with
-    outside content.
-  - in a channel: an earlier turn of any agent in that channel. The summary of older messages
-    (004) keeps the mark.
-- A part of a channel job (004) holds outside content from its start when the job came from an
-  outside program, or when the turn of the lead held outside content before it made the part.
+- A turn also holds outside content from its start when an earlier turn of the same direct chat
+  or thread held it, because the outside text is still in front of the agent. A compact (003) keeps
+  the mark. A new thread starts with no mark. A fork keeps the mark when its copy holds a turn with
+  outside content.
 - A handover (003) gives the new thread the marks of the place it came from.
 - A result that a token saving set aside (026) keeps its mark. When the agent reads it again,
   the turn holds outside content.
-- **The mark of a place**: a chat, thread or channel whose next turn will hold outside content
+- **The mark of a place**: a chat or thread whose next turn will hold outside content
   shows a muted line in its header, "Holds outside content", with the first source. "Clear"
   removes the mark for the next turns, after a confirm that says that the agent still sees the
   text and that guarded and checked steps will no longer ask because of it. A new outside source
@@ -491,9 +456,8 @@ text is in the turn.
   "Permission levels"). A save to memory follows the rule above.
 - **Program mark**: outside content holds the program mark when one of its sources is an outside
   program (023) or a message from Teams (028). The mark goes with the outside content: to later
-  turns and forks that hold it
-  (see above), to the parts of a job, and to a message that an agent sends from a turn that holds
-  the program mark. The turn that such a message starts holds the program mark too. A hit of
+  turns and forks that hold it (see above), and to a message that an agent sends from a turn that
+  holds the program mark. The turn that such a message starts holds the program mark too. A hit of
   "search chats", or a result of "read chat", that holds a message of an outside program or from
   Teams, or a message from a turn that held the program mark, gives the program mark to the turn
   that gets it.
@@ -560,10 +524,10 @@ name these places. The app compares real paths, as for rules (see "Permission ru
   writes.
 - A turn **holds a sensitive read** from the first such step until the turn ends. A later turn
   holds it by the same rules as outside content: an earlier turn that the agent still sees, a
-  compact, a fork, a channel, a part of a job, and "The mark of a place" with "Clear" (see "Outside
-  content"). The header line of the place reads "Holds a sensitive read" with the label of the
-  first place. When a place holds both marks, the line shows both. "Clear" clears both marks, and
-  its confirm text names both.
+  compact, a fork, and "The mark of a place" with "Clear" (see "Outside content"). The header
+  line of the place reads "Holds a sensitive read" with the label of the first place. When a
+  place holds both marks, the line shows both. "Clear" clears both marks, and its confirm text
+  names both.
 - In a turn that holds a sensitive read:
   - A step that sends data out asks the user with an approval card, also when an Allow rule
     matches. This holds at "Read only", "Ask for everything", "Ask for risky steps" and "Ask when
@@ -660,7 +624,7 @@ steer the agent to an address that only this computer or its network can reach.
   the code name is: the agent calls "search chats", a tool card "Searched past chats" shows, and
   the answer names "Falcon". Turn memory off for the agent: neither "search chats" nor "read chat"
   is offered.
-- Ask an agent to search for a word that only a channel without that agent holds: it gets no hit.
+- Ask an agent to search for a word that only a direct chat of another agent holds: it gets no hit.
 - A chat holds "The budget is 4200 euros" and "Budget review is on Friday". The agent searches
   "budget euros limit total": only the first message is a hit. The agent searches "budget euros":
   both are hits, the first one comes first, and it says that it holds 2 of 2 words. The user
@@ -753,12 +717,8 @@ steer the agent to an address that only this computer or its network can reach.
   The user then writes "hi", and the agent saves a fact with "Save at once": an approval card shows
   with "This turn holds outside content". The header of the chat shows "Holds outside content".
   After "Clear" and its confirm, the next save runs with no card.
-- In a channel, a member fetches a page in its part. In the next job, the lead changes its own
-  instructions: an approval card shows.
 - "Ask when unsure": the agent writes a script with a command, then runs it with a short command.
   The step asks the user, and the decision model gets no request.
-- An outside program posts a job in a channel with a lead. A member saves a fact to memory with
-  "Save at once" in its part: an approval card shows with "This turn holds outside content".
 - "Full access": an outside program sends a message to agent A. A sends a message to agent B. B
   changes its own instructions: an approval card shows. The same change in a turn of B that the
   user started in a new thread runs with no card.
