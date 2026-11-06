@@ -143,6 +143,8 @@ export const READ_ONLY_GUARDED_TOOLS: readonly string[] = [
   "secret_request",
   "settings",
   "make_agent",
+  "make_team_member",
+  "change_team_member",
   "make_workflow",
 ]
 

@@ -229,6 +229,9 @@ plan and the channel. Then the user does not need to stop for it.
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
   Two members can still have one folder as workspace. Then the rules of 025 apply.
+- The lead can make a new member and change the role line and the instructions of a member with the
+  team tools (037, "Team tools"). Each is a request that the user allows. The new member joins this
+  channel when the user allows.
 - A channel that the main agent or an outside program makes or changes (037) follows a request
   that the user allows. The request cannot set the instructions or the settings "Review parts", "The
   lead answers questions" and "Own copies for parts" of the channel.
