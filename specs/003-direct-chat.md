@@ -143,6 +143,10 @@ answers in that same chat.
 
 - Typing `@` in the message box opens a list of the other agents that are not archived. The list
   follows the rules of the mention list of a channel (004), and it has no `@all`.
+- The agents that share an organization with the chat's own agent (030) come first in the list. An
+  agent shares one when both are members of at least one same organization. In each of the two
+  groups, the order is the order of the rules of 004. A chat's own agent in no organization gets
+  the order of 004 only.
 - A name that the list can insert is a mention: `@Name`, in any letter case, where the `@` opens
   the text or follows a character that is no letter, no digit and no underscore. The chat's own
   agent, an archived agent, and a name of no agent are plain text. `@all` is plain text unless an
