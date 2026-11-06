@@ -263,6 +263,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** Changes the width of the workflow side column on screen only. Save it when the drag ends. */
     previewWorkflowSideWidth: (workflowSideWidth: number) => setUi({ workflowSideWidth }),
     saveWorkflowSideWidth: () => update({ workflowSideWidth: ui.workflowSideWidth }),
+    /** Keeps the starters that the user made (spec 031). They stay on this computer. */
+    saveStarters: (savedStarters: UiState["savedStarters"]) => update({ savedStarters }),
   }
 }
 

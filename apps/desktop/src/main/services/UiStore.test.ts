@@ -78,4 +78,23 @@ describe("UiStore (spec 001)", () => {
     expect(state.placeListWidth).toBe(300)
     expect(state.activityPanel).toBe(false)
   })
+
+  test("saved starters are kept and read back (spec 031)", () => {
+    const starter = {
+      id: "s1",
+      name: "Mobile squad",
+      topic: "Ship the app",
+      lead: 0,
+      agents: [
+        { name: "PM", role: "Plans.", instructions: "" },
+        { name: "QA", role: "Tests.", instructions: "" },
+      ],
+    }
+    const state = run((_, store) => {
+      Effect.runSync(store.update({ savedStarters: [starter] }))
+      return Effect.runSync(store.get)
+    })
+    expect(state.savedStarters).toEqual([starter])
+    expect(defaultUiState.savedStarters).toEqual([])
+  })
 })

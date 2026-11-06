@@ -111,6 +111,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Not a participant | The reason on a step and on a failed run when the agent of the step is no participant (010). | 참석자 아님 (proposed) | no access, forbidden |
 | Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (031). | — (proposed: 스타터) | template, preset |
 | Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (031). | — (proposed: 채널 스타터) | team starter, team, squad |
+| Saved starter | A channel starter that the user made. It stays on this computer and in this profile (031). | — (proposed: 내 스타터) | team template, squad template, preset |
 | CC Workflow Studio file | A JSON file of the public tool CC Workflow Studio. ROBot imports it as a workflow and writes a workflow to it (010). The name of the tool stays in English. | CC Workflow Studio 파일 (proposed) | workflow file (that name is the ROBot file), project file |
 | Not exported | The list after an export to CC Workflow Studio: what the file does not hold (010). The list "Not imported" is its pair (014). | 내보내지 않는 항목 (proposed) | skipped, ignored |
 | Goal text | The words that the user types in the goal dialog. They stay on this computer and are not kept (031). | — (proposed: 목표 글) | prompt, task description |

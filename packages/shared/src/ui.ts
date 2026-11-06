@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { SAVED_STARTER_MAX, SavedStarter } from "./goalStarters.ts"
 import type { LinkState } from "./link.ts"
 import { orgNameMatches } from "./orgPrefix.ts"
 
@@ -79,6 +80,8 @@ export const UiState = Schema.Struct({
   ),
   /** The open tab of the Tasks page: the tasks, or the events (spec 038). */
   tasksTab: Schema.Literals(["tasks", "events"]),
+  /** The starters that the user made (spec 031). They stay on this computer and are not synced. */
+  savedStarters: Schema.Array(SavedStarter).check(Schema.isMaxLength(SAVED_STARTER_MAX)),
 })
 export type UiState = typeof UiState.Type
 
@@ -97,6 +100,7 @@ export const defaultUiState: UiState = {
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
   tasksTab: "tasks",
+  savedStarters: [],
 }
 
 export const clampPlaceListWidth = (width: number) =>

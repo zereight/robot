@@ -3,16 +3,17 @@
 ## Purpose
 
 The user says what they want to do in a few words. The app shows the starters that fit those words.
-A starter is either an agent starter (see 002) or a channel starter. A channel starter makes a
-channel and its agents in one step.
+A starter is an agent starter (see 002), a channel starter, or a saved starter. A channel starter
+makes a channel and its agents in one step. A saved starter is a channel starter that the user made
+(see "Saved starters").
 
 The app does not write a role line, instructions or a channel from the words of the user. It picks
-only from a fixed list. Nothing is made until the user presses Create.
+only from a fixed list and from the saved starters of the user. Nothing is made until the user presses Create.
 
 ## Concepts
 
 - **Goal dialog**: a dialog with a text box, "What do you want to do?", and two lists: "Recommended"
-  and "All starters". Each row shows the name, one line that says what the starter does, and a muted
+  and "All starters", and a third list, "My starters", when the user has one. Each row shows the name, one line that says what the starter does, and a muted
   line. For an agent starter, the muted line says what else the starter makes (see 002). For a
   channel starter, it says how many agents the channel makes.
 - **Goal text**: the words that the user types in the goal dialog. It holds up to 300 characters and
@@ -20,7 +21,9 @@ only from a fixed list. Nothing is made until the user presses Create.
 - **Keyword**: a fixed word of one starter, in English or in Korean. The app compares keywords with
   the goal text (see "Matching").
 - **Channel starter**: a ready channel with a name, a topic, a lead and members. Each member is a
-  new agent. This version has three channel starters (see below).
+  new agent. This version has four channel starters (see below).
+- **Saved starter**: a channel starter that the user made. It has a name, a topic, a lead and
+  members, and each member has a name, a role line and instructions (see "Saved starters").
 - **Recommended**: up to three starters that fit the goal text, best fit first.
 
 ### Keywords
@@ -38,8 +41,9 @@ a part of a text: "파일" matches "파일을", and "이름 바" matches "이름
 | Research | investigat, report, survey, literat | 보고서, 연구, 자료 |
 | Code review | review, diff, commit | 리뷰, 풀 리퀘스트, 변경 검토 |
 | Files | desktop, download, folder, tidy | 바탕화면, 다운로드, 폴더, 정리 |
+| Product | product, feature, sprint, ship, release, roadmap, design | 제품, 기획, 개발, 기능, 출시, 스프린트, 디자인 |
 
-The keywords are fixed. The user cannot change them.
+The keywords are fixed. The user cannot change them. A saved starter has no keywords.
 
 ### Channel starters
 
@@ -55,17 +59,35 @@ proposals. The translation catalogue holds the final text (see 013).
   what moved." (Korean: "폴더 하나의 파일을 정리하고 옮긴 목록을 짧게 씀.") Lead: Organizer. Member:
   Assistant.
 
-Each agent in a channel starter takes the name, the role line and the instructions of the agent
-starter with the same job. The language follows the interface at the moment of the pick (see 002).
+- **Product** (Korean: "제품 개발"). Topic: "Takes a feature from idea to release: plan, design,
+  build, test and review." (Korean: "기능을 아이디어에서 출시까지 기획, 디자인, 개발, 테스트, 리뷰함.")
+  Lead: PM. Members: Planner, Designer, Developer, QA and Reviewer.
+
+The roles of the Product starter have a name, a role line and instructions of their own, in English
+and in Korean. The Korean texts are proposals (see 013).
+
+| Role | Role line |
+| --- | --- |
+| PM | Keeps the goal, splits the work among the members, and tells the user what is done. |
+| Planner | Turns the goal into clear requirements and a short list of steps. |
+| Designer | Shapes how the feature looks and works, and describes it so that a developer can build it. |
+| Developer | Builds the feature from the requirements and the design. |
+| QA | Tests the feature against the requirements and reports each problem with the steps to repeat it. |
+
+The Reviewer of the Product starter takes the name, the role line and the instructions of the
+Reviewer agent starter (see 002).
+
+Each other agent in a channel starter takes the name, the role line and the instructions of the agent
+starter with the same job (the five roles above are the exception). The language follows the interface at the moment of the pick (see 002).
 
 ## Flows
 
 1. Open: in the New agent form (see 002), the user opens "Start from" and picks "From a goal…". The
-   goal dialog opens with an empty text box, and "All starters" lists the eight starters in the order
+   goal dialog opens with an empty text box, and "All starters" lists the nine starters in the order
    given in "Matching". The form does not change.
 2. Type: while the user types, "Recommended" shows the starters that fit. It updates at each change
    of the text. "All starters" does not change.
-   It always lists all eight starters, the recommended ones too.
+   It always lists all nine starters, the recommended ones too.
 3. Pick an agent starter: the dialog closes. The New agent form fills in the name, the role line
    and the instructions of that starter, as in 002 (flow 3). The goal text is cleared.
 4. Pick a channel starter: the dialog shows a preview of the channel. The preview has a field for
@@ -82,7 +104,7 @@ starter with the same job. The language follows the interface at the moment of t
 
 ## States
 
-- **Empty goal text**: "Recommended" is not shown. "All starters" shows the eight starters.
+- **Empty goal text**: "Recommended" is not shown. "All starters" shows the nine starters.
 - **No fitting starter**: "Recommended" shows the line "No starter fits this goal." "All starters"
   stays as it is.
 - **Preview**: the fields hold the values of the starter, or what the user typed. "Create" is off
@@ -113,7 +135,7 @@ starter with the same job. The language follows the interface at the moment of t
 - "Recommended" shows up to three fitting starters, highest score first. Starters with equal scores
   keep the order of "All starters".
 - The order of "All starters" is: Assistant, Briefer, Researcher, Reviewer, Organizer, Research,
-  Code review, Files.
+  Code review, Files, Product.
 - With an empty goal text, "Recommended" is not shown. A goal text with only spaces is empty.
 
 ### Agent starters from the dialog
@@ -139,6 +161,29 @@ starter with the same job. The language follows the interface at the moment of t
 - The channel name has 1 to 60 characters (see 004). An agent name has 1 to 40 characters (see 002).
   A text box takes no more characters than its limit. A paste over the limit is cut at the limit.
 
+### Saved starters
+
+- The goal dialog has a button "New starter". It opens a form with: a name (1 to 60 characters), a
+  topic (as in 004), and a list of agents. Each agent has a name (1 to 40 characters), a role line
+  (up to 120 characters) and instructions (as in 002). One agent is the lead. The user can add and
+  remove agents (2 to 9 in all) and pick the lead. "Save" is off while a name is empty or has only
+  spaces, or while there are fewer than 2 agents.
+- A saved starter shows only in "My starters", never in "Recommended" and never in "All starters".
+  Each row has the name, the topic as the one line, and the number of agents as the muted line.
+  "My starters" shows only when the user has at least one saved starter, and it follows the order of
+  saving, oldest first.
+- Pick a saved starter: the preview opens as for a channel starter (flows 4 to 6). The role lines and
+  the instructions come from the saved starter and cannot change in the preview.
+- Each row has "Edit" and "Delete". Edit opens the form of "New starter" with the saved values.
+  Delete asks to confirm. Neither changes a channel or an agent that was made from the starter.
+- The 20th saved starter is the last: at 20, "New starter" is off, with the reason "You have 20
+  saved starters."
+- A saved starter stays on this computer and in this profile. It is not synced (see 019), not
+  exported (see 014) and not kept in an agent file. It is not sent to a model or a service.
+- A saved starter has no keywords, so the text box does not filter it.
+- At Create, the same rules apply as for a channel starter (see "Channel starters" above), and each
+  agent takes its name, role line and instructions from the saved starter.
+
 ### Keyboard
 
 - The text box has the focus when the dialog opens.
@@ -148,7 +193,8 @@ starter with the same job. The language follows the interface at the moment of t
 
 ### Limits
 
-- This version has three channel starters. Each makes two or three agents, with one lead.
+- This version has four channel starters. Each makes two to six agents, with one lead.
+- A user can keep up to 20 saved starters. A saved starter makes 2 to 9 agents, with one lead.
 - "Recommended" shows at most three starters.
 
 ## Surfaces
@@ -198,17 +244,17 @@ starter with the same job. The language follows the interface at the moment of t
 
 ### Words
 
-- The glossary holds two new words: "Channel starter" and "Goal text". The word "Starter" also covers
+- The glossary holds three new words: "Channel starter", "Saved starter" and "Goal text". The word "Starter" also covers
   channel starters.
-- The feature does not use the words "hire", "employee", "team" or "manager" for an agent or a
+- The feature does not use the words "hire", "employee", "team", "squad", "template" or "manager" for an agent or a
   channel.
 
 ## Out of scope
 
-- Starters that the user makes or edits.
+- Keywords, a place in "Recommended", sync or export for saved starters, and a "Save as starter" button on a channel.
 - Matching by a model, or by any service outside the computer.
 - A reason for each fit, and a saved list or history of goals.
-- More than three channel starters, and channel starters with other settings, instructions, or a
+- More than four fixed channel starters, and channel starters with other settings, instructions, or a
   lead that the user picks.
 - Routines and skills for the agents of a channel starter.
 - A role line, instructions or a channel written from the words of the user.
@@ -220,7 +266,7 @@ starter with the same job. The language follows the interface at the moment of t
 
 1. In a new profile with no agent, the "Start from" list of the New agent form shows "From a goal…"
    first. Pick it: the goal dialog opens with an empty text box, "Recommended" is not shown, and "All
-   starters" lists the eight starters in the order given in "Matching".
+   starters" lists the nine starters in the order given in "Matching".
 2. Type "compare sources for my report": "Researcher" is the first recommended starter (2 keywords),
    and "Research" is second (1 keyword).
 3. Type "review my code changes": "Reviewer" is first (2 keywords), and "Code review" is second (1
@@ -229,7 +275,7 @@ starter with the same job. The language follows the interface at the moment of t
    order in "Matching" decides.
 5. Type "다운로드 폴더 정리": "Files" is first (3 keywords), and "Organizer" is second (2 keywords).
 6. Type "encode a video": "Recommended" shows "No starter fits this goal." "All starters" still
-   shows the eight starters.
+   shows the nine starters.
 7. Type 300 characters, then one more: the text box does not take the last character.
 8. Pick "Briefer": the dialog closes, the form fills in with the Briefer starter, and reopening the
    dialog shows an empty text box. Create makes the paused routine and the skill, as in 002.
@@ -256,10 +302,24 @@ starter with the same job. The language follows the interface at the moment of t
     With the Korean interface, "review my code" still ranks "Reviewer" first.
 19. Export a profile with a channel made from "Files", then import the file into an empty profile:
     the channel and its agents come in as an ordinary channel and ordinary agents (see 002 and 004).
-20. Type "review code file folder compare sources": "Recommended" shows three starters, Researcher, Reviewer and Organizer, in that order, with 2 keywords each. Code review and Files, with 1 keyword each, are not shown there. "All starters" still shows all eight starters.
+20. Type "review code file folder compare sources": "Recommended" shows three starters, Researcher, Reviewer and Organizer, in that order, with 2 keywords each. Code review and Files, with 1 keyword each, are not shown there. "All starters" still shows all nine starters.
 21. With the goal text empty, open the goal dialog with the keyboard: the text box has the focus. Press Tab: the focus moves to the first row, Assistant. Press Enter: the Assistant starter is picked, as with a click. Open the dialog again, type a goal, and press Escape: the dialog closes, and the goal text is cleared.
-22. Paste 320 characters into the goal text: it keeps the first 300. Type only spaces: "Recommended" is not shown, and "All starters" lists the eight starters. Paste 70 characters into a channel name: the field keeps the first 60.
+22. Paste 320 characters into the goal text: it keeps the first 300. Type only spaces: "Recommended" is not shown, and "All starters" lists the nine starters. Paste 70 characters into a channel name: the field keeps the first 60.
 23. Pick "Files" and press Enter in the preview: nothing is made. Press Tab until Create has the focus, then press Enter: the channel is made, as in item 9.
+24. Press "New starter". Save with the name "Mobile squad", the topic "Ship the app", and agents "PM"
+    (lead), "Planner", "Designer", "Developer" and "QA", each with a role line. "My starters" shows
+    "Mobile squad" with "5 agents". "Recommended" and "All starters" do not show it.
+25. Pick "Mobile squad" and press Create: a channel "Mobile squad" opens with "PM" marked "Lead" and
+    four members. The role line and the instructions of each agent match the saved starter.
+26. Edit "Mobile squad" and change the topic. Delete it and confirm: "My starters" no longer shows
+    it, and the channel and the agents made earlier stay.
+27. Open "New starter" with one agent, or an empty name: "Save" is off. Save 20 starters: "New
+    starter" is off with the reason.
+28. Restart the app: the saved starters show again. Export the profile and sync to a second
+    computer: neither holds a saved starter.
+29. Pick "Product" and press Create: a channel "Product" opens with "PM" marked "Lead" and members
+    "Planner", "Designer", "Developer", "QA" and "Reviewer". Type "ship the new feature" and
+    "기능 출시 기획": "Product" is among the recommended starters.
 
 ### Keyword check
 
@@ -287,5 +347,7 @@ Each keyword counts once.
 | 사진 이름 바꿔줘 | Organizer (1) | "이름 바" matches the verb in another ending. |
 | 메일 답장 써줘 | Assistant (2) | "메일" (email) and "답장" (reply) match. |
 | 여행 계획 짜줘 | No starter fits | No keyword matches. Travel planning is not covered. |
+| ship the new feature next sprint | Product (3) | Three keywords match in one starter. |
+| 기능 출시 일정 기획 | Product (3) | Three Korean keywords match in one starter. |
 | 번역해줘 | No starter fits | No keyword matches. Translation is not covered. |
 
