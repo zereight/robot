@@ -356,9 +356,15 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await page.keyboard.press("0")
   await expect.poll(async () => (await view(page)).x).toBeCloseTo(fitted.x, 0)
 
-  // The wheel zooms around the pointer.
+  // The wheel moves the view. A pinch (the wheel with the control key) zooms around the pointer.
   await page.mouse.move(canvasBox.x + 300, canvasBox.y + 200)
+  await page.mouse.wheel(0, 50)
+  await expect.poll(async () => Math.round((await view(page)).y - fitted.y)).toBe(-50)
+  expect((await view(page)).zoom).toBeCloseTo(fitted.zoom, 5)
+  await page.getByTestId("org-fit").click()
+  await page.keyboard.down("Control")
   await page.mouse.wheel(0, -200)
+  await page.keyboard.up("Control")
   await expect.poll(async () => (await view(page)).zoom).toBeGreaterThan(fitted.zoom)
   await page.getByTestId("org-fit").click()
   await expect.poll(async () => (await view(page)).zoom).toBeCloseTo(fitted.zoom, 2)

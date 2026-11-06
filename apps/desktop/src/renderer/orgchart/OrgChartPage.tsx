@@ -294,8 +294,9 @@ export const OrgChartPage = () => {
     onCleanup(() => observer.disconnect())
   })
 
-  // The wheel and a pinch on a trackpad zoom around the pointer. A listener that is not passive
-  // can keep the page from scrolling.
+  // A pinch on a trackpad (the wheel with the control key down) zooms around the pointer. Two
+  // fingers on a trackpad, and the wheel, move the view. A listener that is not passive can keep
+  // the page from scrolling.
   createEffect(() => {
     const el = canvas()
     if (!el) return
@@ -303,6 +304,12 @@ export const OrgChartPage = () => {
       event.preventDefault()
       const rect = el.getBoundingClientRect()
       own = true
+      if (!event.ctrlKey) {
+        const lines = event.deltaMode === 1 ? 16 : 1
+        const v = untrack(view)
+        setView({ ...v, x: v.x - event.deltaX * lines, y: v.y - event.deltaY * lines }, false)
+        return
+      }
       setView(
         zoomAt(untrack(view), wheelFactor(event), {
           x: event.clientX - rect.left,
