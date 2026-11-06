@@ -9,6 +9,8 @@ import { blockedReasonForAgent, type TaskState } from "./task.ts"
 export const DONE_TEST_MAX = 200
 /** The reason of a verdict "Not met" is up to 160 characters. */
 export const VERDICT_REASON_MAX = 160
+/** One piece of work is chased at most this many times (spec 004, "Chase by the lead"). */
+export const CHASE_MAX = 3
 /** The lead looks at a channel at most this many times after a message of the user. */
 export const LOOKS_MAX = 3
 /** The last messages of the channel that the lead reads, and the cut of each one. */
@@ -406,3 +408,10 @@ export const chaseAskText = (part: {
       ? blockedReasonForAgent(part.error) || "none given"
       : (part.error?.code ?? "unknown")
   }`
+
+/**
+ * What the giver of a piece of work says to its worker when the work has stayed quiet for the
+ * chase time (spec 004, 007).
+ */
+export const CHASE_WORDS =
+  "Nothing has happened in your work for a while. Reply in one short line: the state of the work and your next step. Then go on with the work."

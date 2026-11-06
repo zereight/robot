@@ -13,6 +13,7 @@ import {
   BLOCKED_RULE,
   blockedReasonForAgent,
   CHAIN_LIMIT_RULE,
+  CHASE_WORDS,
   type ChatHistory,
   type ChatMessage,
   type ChatMeter,
@@ -49,8 +50,8 @@ import {
   joinWords,
   KEEP_GOING_MAX,
   keepGoingMessage,
-  LEAD_ORDER_WORDS,
   type ListedStep,
+  leadOrderMessage,
   levelOnRuntime,
   type MarkPlace,
   type MessagePart,
@@ -1082,7 +1083,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return sender &&
           receiver &&
           isLeadOrder(organization.model(receiver.server_id), sender.id, receiver.id)
-          ? `Message from your lead, the agent ${name}. ${LEAD_ORDER_WORDS}\n\n${text}`
+          ? leadOrderMessage(name, text)
           : colleague("Message", name, text)
       }
 
@@ -1369,6 +1370,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             () => accountName(running.model_account_id, running.model_name),
           ),
           userHoldsBrowser: () => tools.browserState(agentId).control,
+          // The agent that gave this work asks for its state when it stays quiet (spec 007, "Chase").
+          chaseMinutes: (yield* settings.get).chaseInterval,
+          onChase: () => {
+            if (!origin?.requester) return
+            Effect.runSync(
+              joinNote(place, turn, agentMessage(origin.requester, agentId, CHASE_WORDS)),
+            )
+          },
         })
         let lastEmit = 0
         let lastSave = 0

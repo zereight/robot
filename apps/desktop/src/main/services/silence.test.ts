@@ -504,3 +504,69 @@ describe("the watch of a turn and the quiet line", () => {
     expect(quiet).toEqual([90, null])
   })
 })
+
+describe("the chase clock (spec 004, 007)", () => {
+  const chaser = (chaseMinutes: number) => {
+    const fake = fakeClock()
+    const chases: number[] = []
+    const held = { browser: false }
+    const t = new SilenceTimer({
+      limitMs: Number.POSITIVE_INFINITY,
+      quietMs: MINUTE,
+      clock: fake.clock,
+      onSilent: () => {},
+      chaseMs: chaseMinutes * MINUTE,
+      onChase: (n) => chases.push(n),
+      userHoldsBrowser: () => held.browser,
+    })
+    return { fake, chases, t, held }
+  }
+
+  test("a turn with no step for the chase time is chased, then again after each chase time, 3 times at most", () => {
+    const { fake, chases, t } = chaser(5)
+    t.start()
+    fake.advance(5 * MINUTE - TICK_MS)
+    expect(chases).toEqual([])
+    fake.advance(TICK_MS)
+    expect(chases).toEqual([1])
+    fake.advance(5 * MINUTE)
+    expect(chases).toEqual([1, 2])
+    fake.advance(60 * MINUTE)
+    expect(chases).toEqual([1, 2, 3])
+  })
+
+  test("a sign of life, or a tool step that starts or ends, starts the count again", () => {
+    const { fake, chases, t } = chaser(5)
+    t.start()
+    fake.advance(4 * MINUTE)
+    t.alive()
+    fake.advance(4 * MINUTE)
+    t.hold("tool:a")
+    fake.advance(4 * MINUTE)
+    expect(chases).toEqual([])
+    // The tool runs on with no sign for 5 minutes: nothing happened, so the turn is chased.
+    fake.advance(MINUTE)
+    expect(chases).toEqual([1])
+  })
+
+  test("the wait for the user and the hold of the browser do not count", () => {
+    const { fake, chases, t, held } = chaser(5)
+    t.start()
+    t.hold("user")
+    fake.advance(30 * MINUTE)
+    t.release("user")
+    held.browser = true
+    fake.advance(30 * MINUTE)
+    held.browser = false
+    expect(chases).toEqual([])
+    fake.advance(5 * MINUTE)
+    expect(chases).toEqual([1])
+  })
+
+  test("with no chase time there is no chase", () => {
+    const { fake, chases, t } = chaser(0)
+    t.start()
+    fake.advance(60 * MINUTE)
+    expect(chases).toEqual([])
+  })
+})

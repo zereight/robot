@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  CHASE_WORDS,
   type ChatMessage,
   HAND_OFF_HINT,
   HAND_OFF_LIST_EMPTY,
@@ -21,6 +22,9 @@ import { OrgChart } from "./OrgChart.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
+import { fakeClock } from "./silence.testing.ts"
+import { useClockForTests } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
@@ -89,6 +93,7 @@ const server = Bun.serve({
     // A turn that starts with "SLOW" stays open for a short time, so a test can change the rule
     // while it works.
     if (/SLOW/.test(String(last?.content ?? ""))) await Bun.sleep(600)
+    if (/^Message from[\s\S]*HANGME/.test(String(last?.content ?? ""))) await Bun.sleep(3000)
     if (/^Message from[\s\S]*BLOCKME/.test(String(last?.content ?? "")))
       return text("I tried.\nBlocked: no access to the repository")
     if (last?.role === "tool") return text("done")
@@ -715,5 +720,36 @@ describe("an order of a lead (spec 007)", () => {
       .find((t) => t.startsWith("Reply from the agent D"))
     expect(back).toContain("could not do this message")
     expect(back).toContain("no access to the repository")
+  })
+
+  test("the sender chases a send that stays quiet, 3 times at most (spec 007, chase)", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    try {
+      const s = await setup()
+      await s.run(SettingsStore.use((x) => x.update({ chaseInterval: 5, silentLimit: 0 })))
+      const before = (await s.tasks()).length
+      await s.send(
+        "P",
+        `CALLS ${JSON.stringify([{ name: "send_message", args: { to: "D", text: "HANGME push the fix" } }])}`,
+      )
+      await until(async () => (await s.received("D")).some((x) => x.state === "running"))
+      expect(before).toBeLessThan((await s.tasks()).length)
+      const chased = async () =>
+        (await s.run(Chat.use((c) => c.history(s.agent("D").id)))).messages
+          .map(textOf)
+          .filter((t) => t.includes(CHASE_WORDS))
+      fake.advance(4 * 60_000)
+      expect(await chased()).toHaveLength(0)
+      fake.advance(60_000)
+      const first = await chased()
+      expect(first).toHaveLength(1)
+      // The sender leads the receiver: the chase is an order of a lead.
+      expect(first[0]).toContain(LEAD_ORDER_WORDS)
+      fake.advance(60 * 60_000)
+      expect(await chased()).toHaveLength(3)
+    } finally {
+      useClockForTests(undefined)
+    }
   })
 })
