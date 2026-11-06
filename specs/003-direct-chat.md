@@ -189,6 +189,21 @@ answers in that same chat.
   this turn", not the line "Compacted". The ring stays empty until the next reply, as after any
   compact.
 
+## Team chip
+
+- The header of the direct chat of a lead shows a chip with the name of the organization and the
+  number of its members. An agent that leads more than one organization shows one chip for each.
+  The chat of an agent that is not a lead shows no chip. A channel header shows no chip.
+- A click on the chip opens a list. It shows the name of the parent organization on top, when
+  there is one. Under it, the members: face, name, the mark "Lead" for the lead, and the state.
+  The lead is first. An archived member is muted.
+- A click on a member opens the direct chat of that member. The link "Show on the org chart" at
+  the end opens the org chart (029) with that organization in view.
+- The list only shows. It cannot change members, the lead or the parent organization.
+- The list changes within 1 second when the members change. When the organization has no member
+  but the lead, the list shows only the lead.
+- Escape or a click outside closes the list. Tab reaches the chip, and Enter opens the list.
+
 ## Compact
 
 A long conversation fills the context of the model. Compact frees room. The user can run it, and
@@ -465,6 +480,10 @@ and its role line. Nothing moves.
 
 ## Acceptance
 
+- Agent "Ada" leads "Docs" with two other members. Open the chat of Ada: the chip shows "Docs · 3".
+  Open it: the lead is first with "Lead", then the two members. Click a member: its direct chat
+  opens. The chat of a member that is not a lead shows no chip. A channel shows no chip.
+- Archive a member while the list is open: its row is muted within 1 second.
 - Send, stop mid-reply, send again: both turns are stored and the first is marked stopped.
 - With "Wait in a queue", a queued message is sent automatically when the turn ends.
 - With "Join the current turn" and an API provider: the agent runs a tool step that takes 3

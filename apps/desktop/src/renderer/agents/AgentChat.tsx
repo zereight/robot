@@ -6,6 +6,7 @@ import { ContextMeter } from "../chat/ContextMeter.tsx"
 import { formatUntil } from "../chat/format.ts"
 import { createHandoverState, HandoverDialog, offKey } from "../chat/Handover.tsx"
 import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
+import { TeamChip } from "../chat/TeamChip.tsx"
 import { ThreadList } from "../chat/ThreadList.tsx"
 import { createThreads, openThreadOf } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -185,6 +186,7 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
       {/* The Teams link serves this agent: a muted mark, with the state word if it is not On. */}
       <TeamsMark kind="agent" id={props.agent.id} />
       {/* A linked computer and the phone show the main thread only (spec 003, 011, 012). */}
+      <TeamChip agentId={props.agent.id} />
       <Show when={!ui.linked()}>
         <ThreadList agentId={props.agent.id} />
         <ContextMeter agentId={props.agent.id} threadId={openThreadOf(props.agent.id)} />

@@ -408,3 +408,9 @@ S133 needs the permission rules and approval cards of S30 and the main agent of 
   choose from.
 - A run of a CC Workflow Studio file by ROBot without an import, and a write of its skills and
   agents (`.claude/`, `.codex/`) from a ROBot workflow. Not in this version (010).
+
+## Team chip in the chat of a lead
+
+| Spec | Before | Now |
+| --- | --- | --- |
+| 003 | The header of the chat of a lead shows no organization. | A chip shows the organization and its member count. It opens a read-only list of the members, with a link to the org chart. |

@@ -32,6 +32,7 @@ import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useOrgChart } from "../state/orgChart.tsx"
+import { orgChartTarget, setOrgChartTarget } from "../state/orgChartTarget.ts"
 import { takeOrgFilter } from "../state/orgFilter.ts"
 import { setProfileTarget } from "../state/profileTarget.ts"
 import { useUi } from "../state/ui.tsx"
@@ -427,6 +428,21 @@ export const OrgChartPage = () => {
     if (!key || !nodeKeys().includes(key)) return
     setBorn(undefined)
     edit.dropKept()
+    queueMicrotask(() =>
+      page
+        ?.querySelector<HTMLElement>(`[data-node][data-key="${CSS.escape(key)}"]`)
+        ?.focus({ preventScroll: true }),
+    )
+  })
+
+  // The team chip of a lead asks to show one organization (spec 003, "Team chip"). The chart is
+  // framed whole, so the node is in view; it takes the focus once it is on the page.
+  createEffect(() => {
+    const id = orgChartTarget()
+    if (!id) return
+    const key = `o:${id}`
+    if (!orgNodes().has(key) || !nodeKeys().includes(key)) return
+    setOrgChartTarget(undefined)
     queueMicrotask(() =>
       page
         ?.querySelector<HTMLElement>(`[data-node][data-key="${CSS.escape(key)}"]`)
