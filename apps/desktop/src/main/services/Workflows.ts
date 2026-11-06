@@ -46,6 +46,7 @@ import {
   readVerdict,
   withTries,
 } from "./workflowAsk.ts"
+import { insertWorkflow } from "./workflowInsert.ts"
 import { readWorkflowOwner } from "./workflowOwner.ts"
 
 export interface WorkflowsService {
@@ -739,26 +740,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           Effect.gen(function* () {
             yield* checkGraph(input.steps as Step[], input.edges as Edge[], { needSteps: false })
             yield* checkOwner(input.serverId, input.owner)
-            const id = randomUUID()
-            const now = Date.now()
-            db.run(
-              `INSERT INTO workflow (id, server_id, name, trigger, steps, edges, notes, enabled, last_checked_at, created_at, updated_at, owner_kind, owner_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              id,
-              input.serverId,
-              input.name.trim(),
-              JSON.stringify(input.trigger),
-              JSON.stringify(input.steps),
-              JSON.stringify(input.edges),
-              JSON.stringify(input.notes ?? []),
-              options?.enabled === false ? 0 : 1,
-              now,
-              now,
-              now,
-              input.owner?.kind ?? null,
-              input.owner?.id ?? null,
-            )
-            changed(input.serverId)
+            const id = insertWorkflow(db, bus, input, options)
             return toWorkflow(row(id) as WorkflowRow)
           }),
         update: (id, patch) =>

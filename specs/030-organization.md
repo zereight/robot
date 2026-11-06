@@ -391,6 +391,13 @@ More rules:
     ignoring case (002), so the order of names is complete.
   - **No chain**: when S has no chain to R, the reason is "<R> is not on your path, and no agent
     can pass it on. Tell the user."
+  - **The hint**: the step text has a second line after the reason: "The user can change this in
+    Settings, Hand-off rules, or put both agents in one organization." The sender gets it with the
+    reason, so that it can tell the user where to change the rule. The line is the same for both
+    reasons.
+  - **The button**: on the computer, the tool card of a refused send has the button "Open Hand-off
+    rules". It opens the settings part "Hand-off rules" (013). On the phone and on a linked
+    computer the card has no button, only the text (011, 012).
 - A refused send is not a hand-off of the org chart (029). It counts for no limit of 005.
 - The reply of a receiver always comes back to the sender (007). A reply is not a send.
 - The rule does not touch the work that the user gives: a direct chat, a channel job, a mention
@@ -652,6 +659,9 @@ The first start of this version changes the data of each profile once.
   - A sends to M: a task starts.
   - A sends to P: the step fails with "P is not on your path. Send it to D." No task starts, and the
     chart draws no hand-off line.
+  - The text of that step has the second line of "The hint". The card on the computer has the button
+    "Open Hand-off rules", and a click on it opens the settings part "Hand-off rules". The card on
+    the phone has the text and no button.
   - D sends to P: a task starts. P sends to D: a task starts.
   - M sends to A: a task starts.
   - X, in no organization, sends to A: the step fails with "A is not on your path. Send it to M."

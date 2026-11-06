@@ -1639,7 +1639,13 @@ export const handlers: Handlers = {
       done,
     ),
   "island.fit": (input) =>
-    decode(Schema.Struct({ width: Schema.Number, height: Schema.Number }))(input).pipe(
+    decode(
+      Schema.Struct({
+        width: Schema.Number,
+        height: Schema.Number,
+        animate: Schema.optional(Schema.Boolean),
+      }),
+    )(input).pipe(
       Effect.flatMap((size) => Platform.use((p) => Effect.sync(() => p.fitIsland(size)))),
       done,
     ),

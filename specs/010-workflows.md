@@ -375,6 +375,18 @@ a new issue. ROBot runs no service on the internet for this (000).
 
 - The agent has tools to read and to change the open workflow, and tools to list workflows,
   run one, and read the state of a run (see 007, "Tools").
+- **Make a workflow** is a manage tool (037). The main agent and an outside program with the access
+  "Read, send work and manage" have it. It makes a change request, and the user allows it on a
+  card (037). It takes a name and, optionally, a list of steps that the app joins in a line, in
+  that order. A step is an agent step (an agent and a prompt), a wait for approval (a message), or
+  a notify step (a title). The workflow has the trigger "manual", no owner, and the other starting
+  values of the dialog of a new workflow. If the name is in use, the app adds a number, as for a
+  starter. If a workflow takes the name between the card and the Allow, the number is added then. A step that names an agent that does not exist or is archived, an unknown kind, or more
+  than the limit of steps fails the check at once and makes no request. The user adds conditions,
+  places and triggers on the canvas.
+- When the user asks an agent for a workflow, the agent makes a ROBot workflow with this tool. A
+  workflow feature of a vendor program (006) is not for this. The app turns such a feature off for
+  the agents of this app.
 - Read gives the nodes with their numbers, the connections, the triggers and a revision number.
 - Change takes one batch. The batch names the revision that the agent read. If the workflow
   changed since, the app refuses the batch and the agent reads again. A batch can add, edit and
@@ -456,6 +468,12 @@ a new issue. ROBot runs no service on the internet for this (000).
 - Ask the assistant to add a step after step 2: the canvas shows a new node 3, and the version
   list holds the graph from before.
 - Ask the assistant to run the workflow: one run starts, and the assistant reports its status.
+- Ask the main agent, on each runtime, to make a workflow "Daily" with two agent steps: a card
+  shows the name and every step in full. Press Allow: one workflow "Daily" with the trigger
+  "manual" and the two steps, joined in a line, shows on the Workflows page, and no vendor workflow
+  exists. Press Deny: nothing is made. Ask again for the same name after an Allow: the second
+  workflow is named "Daily 2". Name an agent that does not exist: no card shows, and the agent gets
+  the reason. Set the agent to "Read only": the step is refused.
 - Ask the assistant for a schedule: it tells the user to set the schedule on the canvas.
 - Export a workflow with an agent step, a condition in "Ask a model" mode, a notify step and a
   note. Make an agent with the same name in an empty app, and import the file: the workflow

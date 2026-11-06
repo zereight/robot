@@ -17,6 +17,8 @@ An agent has:
   "Role label"). It shows under the name in profiles and as a badge in the place list (see 001,
   "Place rows"). Settings list all role lines (see 013).
 - **Instructions**: free text that the agent always follows.
+- **Role instructions**: one text for each role line, shared by all agents that have that role line.
+  See "Role instructions".
 - **Read the handbook**: a switch, on by default. See "Handbook".
 - **Model**: the provider and model it uses (see 006), and an effort level when the model has one.
 - **Backup model**: optional. The model that takes the turns of the agent while its main model is
@@ -126,7 +128,8 @@ The field "Role" of the form of a new agent and of the profile works like a labe
   the role line as a badge in the place list (001) and follows the computer for the role list
   (011).
 - **What the model reads**: a direct chat and a thread do not give the role line to the model. The
-  text of a turn holds the handbook and the instructions of the agent. The role line is not in it.
+  text of a turn holds the handbook, the role instructions and the instructions of the agent. The
+  role line is not in it.
   - A model reads the role line in three places only: the check of the lead (004), the fast pick
     (004), and the answer of the settings tool (002, "Changes from the chat"), which lists it among
     the values of the agent.
@@ -280,8 +283,9 @@ agent.
   (019) and an export holds it (014). It holds 0 to 20000 characters. It is empty at the
   start. An empty handbook gives nothing to any agent.
 - Before each turn, an agent with "Read the handbook" on gets the handbook before its own
-  instructions. The goal of each organization of the agent comes after the handbook and before its
-  own instructions (030, "Goal"). In a channel, the instructions of the channel come after the
+  instructions. The goal of each organization of the agent comes after the handbook. The role
+  instructions come after the goal, and before its own instructions (030, "Goal"; "Role
+  instructions"). In a channel, the instructions of the channel come after the
   instructions of the agent (004). When two texts say different things, the later text wins. The app
   tells the agent this order. The rules of the app (007, 014) always win over all of these texts.
 - The switch "Read the handbook" is in the profile of the agent, under the instructions. The user
@@ -293,6 +297,31 @@ agent.
   and change agents".
 - Text that looks like a secret is refused on save, with the reason. The handbook is sent to the
   model provider of each agent that reads it, and the page says so.
+
+## Role instructions
+
+Agents that do the same job often need the same rules. The user writes those rules once for the
+role line, and every agent with that role line follows them.
+
+- Role instructions are free text of 0 to 5000 characters. A role starts with none. A role with no
+  text gives nothing to its agents.
+- The user writes them on the Roles page (013). The profile of an agent shows them under the
+  field "Instructions", read only, with a link to the Roles page. The text does not change the
+  own instructions of the agent.
+- Before each turn, an agent that has the role line gets the role instructions after the
+  handbook and the goal of its organization, and before its own instructions. The app tells the
+  agent this order, as for the handbook. When two texts say different things, the later text wins.
+  The rules of the app (007, 014) always win.
+- Lines that differ only in case are one role, and share one text (013, "Roles").
+- A change counts from the next turn. A turn that runs keeps the text that it had.
+- A role keeps its text while any agent, archived or not, has the role line. When no agent has it,
+  the text is deleted.
+- No agent can change role instructions, from the chat or with any tool.
+- A linked device (012) can read them, and can change them only with the switch "Can create and
+  change agents".
+- Text that looks like a secret is refused on save, with the reason. The text goes to the model
+  provider of each agent that has the role, and the page says so.
+- The text syncs (019). In this version an agent file (014) holds no role instructions.
 
 ## Avatars
 
@@ -411,6 +440,13 @@ It does not change with the theme.
   all" opens the Tasks page for this agent.
 - Write a handbook "Answer in Korean." An agent with "Read the handbook" on answers in Korean. Turn
   the switch off for that agent: its next turn does not get the handbook.
+- Write role instructions "Answer in Korean." for the role "Reviewer". Two agents with that role
+  answer in Korean from their next turn. An agent with another role does not. Change the role of
+  one agent: its next turn does not get the text.
+- Give an agent own instructions that say "Answer in English." and its role instructions say
+  "Answer in Korean.": the agent answers in English, because its own instructions come later.
+- Ask an agent in the chat to change its role instructions: nothing changes, and the agent says
+  where the user can change them.
 - Ask an agent in the chat to change the handbook: nothing changes, and the agent says where the
   user can change it.
 - Change the handbook three times, and restore the first version: the handbook has the first text,

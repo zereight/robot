@@ -24,6 +24,7 @@ service holds it.
 | Item | Notes |
 | --- | --- |
 | Agents | Face, name, role line, instructions, the switch "Read the handbook", the switch "Main agent", model choice, backup model choice, archive state. |
+| Role instructions | The text of each role (002). It is data of the agents, like the handbook. The later change wins. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
 | Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state. |

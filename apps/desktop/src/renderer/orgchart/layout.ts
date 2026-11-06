@@ -55,7 +55,20 @@ export interface ChartLayout {
   readonly bounds: Rect
   /** The box of each row of organization nodes, for the limit of the width of a row. */
   readonly rows: readonly Rect[]
+  /** The area of each team: its organization node, its agent nodes and its sub-teams. */
+  readonly areas: readonly PlacedArea[]
 }
+
+export interface PlacedArea {
+  /** The key of the organization node of the team. */
+  readonly key: string
+  /** 0 for a top team, 1 for a team in it, and so on. */
+  readonly depth: number
+  readonly rect: Rect
+}
+
+/** The room, in cells, between the area of a team and what is inside it. */
+const AREA_PAD = 2
 
 export const moreKey = (orgKey: string) => `${orgKey}/+more`
 
@@ -134,9 +147,8 @@ const placeGroup = (org: ChartOrg, m: Metrics, rowMaxCells: number): Group => {
   const others = org.nodes.filter((n) => n !== lead)
   const slots = others.length + (org.more.length > 0 ? 1 : 0)
   const widest = Math.max(1, Math.floor((rowMaxCells - m.gutter) / (m.agentW + m.gutter)))
-  // A small team stands in one or two columns, so that a chart of a few agents is not wide and
-  // "Fit to view" keeps the text large enough to read. A full organization node (12 and the tile) has 4.
-  const cols = Math.min(widest, slots <= 2 ? 1 : slots <= 6 ? 2 : slots <= 12 ? 3 : 4)
+  // The agents of one level stand side by side in one row. Only a row wider than the limit wraps.
+  const cols = Math.max(1, Math.min(widest, slots))
   const gridW = m.gutter + cols * (m.agentW + m.gutter)
   let w = Math.max(gridW, m.headW + 2)
   // An odd width puts the middle of the header and of the lead on the middle of a cell.
@@ -514,7 +526,18 @@ const px = (c: number) => c * CELL
 export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   const m = metrics(unit)
   const rowMaxCells = Math.floor(ROW_MAX_PX / CELL)
-  const groups = model.orgs.map((c) => placeGroup(c, m, rowMaxCells))
+  // A team area wraps what is inside it with room (`AREA_PAD`), so each level in a team has less
+  // width. A row of any level is still at most `ROW_MAX_PX` wide with its areas.
+  const byOrg = new Map(model.orgs.map((c) => [c.key, c]))
+  const depthOfOrg = (c: ChartOrg): number => {
+    let depth = 0
+    for (let up = c.parentKey; up !== null && depth <= model.orgs.length; depth++)
+      up = byOrg.get(up)?.parentKey ?? null
+    return depth
+  }
+  const groups = model.orgs.map((c) =>
+    placeGroup(c, m, rowMaxCells - 2 * AREA_PAD * (depthOfOrg(c) + 1)),
+  )
 
   // A block is a organization node with the blocks of its sub-organizations (spec 030) in rows under it, one
   // level lower. The top blocks sit in rows under the root. Rows go left to right, then the next
@@ -533,14 +556,11 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     readonly w: number
     readonly h: number
   }
-  const packRows = (blocks: readonly Block[]): Row[] => {
+  const packRows = (blocks: readonly Block[], limit: number): Row[] => {
     const rows: Row[] = []
     let current: Row | undefined
     for (const block of blocks) {
-      if (
-        !current ||
-        (current.blocks.length > 0 && current.w + m.groupGap + block.w > rowMaxCells)
-      ) {
+      if (!current || (current.blocks.length > 0 && current.w + m.groupGap + block.w > limit)) {
         current = { blocks: [], w: 0, h: 0 }
         rows.push(current)
       }
@@ -556,20 +576,23 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
     const up = group.org.parentKey
     children.set(up, [...(children.get(up) ?? []), group])
   }
-  const blockOf = (group: Group): Block => {
-    const rows = packRows((children.get(group.org.key) ?? []).map(blockOf))
-    const rowsW = Math.max(0, ...rows.map((r) => r.w))
-    const w = Math.max(group.w, rowsW)
-    let y = group.h
-    const placedRows = rows.map((row) => {
-      y += m.rowGap
-      const at = { row, x: Math.floor((w - row.w) / 2), y }
-      y += row.h
-      return at
-    })
-    return { group, rows: placedRows, gx: Math.floor((w - group.w) / 2), w, h: y }
-  }
-  const rows = packRows((children.get(null) ?? []).map(blockOf))
+  const blockOf =
+    (limit: number) =>
+    (group: Group): Block => {
+      const inner = limit - 2 * AREA_PAD
+      const rows = packRows((children.get(group.org.key) ?? []).map(blockOf(inner)), inner)
+      const rowsW = Math.max(0, ...rows.map((r) => r.w))
+      const w = Math.max(group.w, rowsW) + 2 * AREA_PAD
+      let y = AREA_PAD + group.h
+      const placedRows = rows.map((row) => {
+        y += m.rowGap
+        const at = { row, x: Math.floor((w - row.w) / 2), y }
+        y += row.h
+        return at
+      })
+      return { group, rows: placedRows, gx: Math.floor((w - group.w) / 2), w, h: y + AREA_PAD }
+    }
+  const rows = packRows((children.get(null) ?? []).map(blockOf(rowMaxCells)), rowMaxCells)
   const chartW = Math.max(m.agentW, ...rows.map((r) => r.w))
 
   // Absolute boxes in cells, with the margin around, in the order of the page: a organization node,
@@ -587,19 +610,26 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   boxes.push(root)
   const placed: { group: Group; x: number; y: number }[] = []
   const rowRects: Rect[] = []
-  const placeRow = (row: Row, x0: number, y0: number) => {
+  const areas: PlacedArea[] = []
+  const placeRow = (row: Row, x0: number, y0: number, depth: number) => {
     rowRects.push({ x: px(x0), y: px(y0), w: px(row.w), h: px(row.h) })
-    for (const { block, x } of row.blocks) placeBlock(block, x0 + x, y0)
+    for (const { block, x } of row.blocks) placeBlock(block, x0 + x, y0, depth)
   }
-  const placeBlock = (block: Block, x0: number, y0: number) => {
+  const placeBlock = (block: Block, x0: number, y0: number, depth: number) => {
     const gx = x0 + block.gx
-    placed.push({ group: block.group, x: gx, y: y0 })
-    for (const b of block.group.boxes) boxes.push({ ...b, x: gx + b.x, y: y0 + b.y })
-    for (const r of block.rows) placeRow(r.row, x0 + r.x, y0 + r.y)
+    const gy = y0 + AREA_PAD
+    areas.push({
+      key: block.group.org.key,
+      depth,
+      rect: { x: px(x0), y: px(y0), w: px(block.w), h: px(block.h) },
+    })
+    placed.push({ group: block.group, x: gx, y: gy })
+    for (const b of block.group.boxes) boxes.push({ ...b, x: gx + b.x, y: gy + b.y })
+    for (const r of block.rows) placeRow(r.row, x0 + r.x, y0 + r.y, depth + 1)
   }
   let y = m.margin + m.agentH + m.rootGap
   for (const row of rows) {
-    placeRow(row, m.margin + Math.floor((chartW - row.w) / 2), y)
+    placeRow(row, m.margin + Math.floor((chartW - row.w) / 2), y, 0)
     y += row.h + m.rowGap
   }
   const totalW = chartW + 2 * m.margin
@@ -757,7 +787,7 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   }))
   // The page order: the root, then each organization node followed by its agents and its tile.
   const bounds = union(placedNodes.map((n) => n.rect))
-  return { nodes: placedNodes, lines: placedLines, bounds, rows: rowRects }
+  return { nodes: placedNodes, lines: placedLines, bounds, rows: rowRects, areas }
 }
 
 /** The corners of a routed line, from the border of the first node to the border of the second. */

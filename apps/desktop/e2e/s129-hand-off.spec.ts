@@ -298,6 +298,10 @@ test("hand-off: along the organizations, each send is checked with the reason, t
     )
     await expect(refused.getByTestId("tool-reason")).toHaveAttribute("data-code", "hand_off_path")
     await expect(refused).toContainText("Failed")
+    // The card has the button that opens the settings part "Hand-off rules" (spec 030, "The button").
+    await refused.getByTestId("hand-off-open").click()
+    await expect(page.getByTestId("organization-hand-off-row")).toBeVisible()
+    await page.getByTestId("settings-close").click()
     expect((await received(page, "Pia")).length).toBe(forPia)
     expect(await tasksBefore()).toBe(total)
     // The turn of Ann went on to its end.

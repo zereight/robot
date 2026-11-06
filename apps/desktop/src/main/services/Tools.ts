@@ -9,6 +9,7 @@ import {
   CHAIN_LIMIT,
   CHAIN_LIMIT_TEXT,
   type CheckTarget,
+  CLIENT_CHANNEL_MEMBERS_MAX,
   type ConnectionNote,
   chainAtLimit,
   changeSummary,
@@ -29,7 +30,7 @@ import {
   HAND_OFF_LIST_EMPTY,
   HAND_OFF_LIST_RULE,
   handOffLink,
-  handOffRefusalText,
+  handOffRefusalOutput,
   holdOutside,
   holdProgram,
   holdSensitive,
@@ -49,11 +50,13 @@ import {
   MEMORY_TEXT_MAX,
   type MemoryNote,
   makePlaces,
+  nameKey,
   noCheckReason,
   type PermissionLevel,
   type PlaceEnv,
   parseOrigin,
   parseSecretAuth,
+  planMakeWorkflow,
   REPEATED_READ_TEXT,
   type ReadGuard,
   type RefusalReason,
@@ -83,6 +86,7 @@ import {
   sendsData,
   skillNameKey,
   skillPickSource,
+  starterWorkflowName,
   type TaskSource,
   type ToolAsk,
   type TurnMark,
@@ -121,6 +125,7 @@ import { SavedSecrets } from "./SavedSecrets.ts"
 import { Search } from "./Search.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
+import { insertWorkflow } from "./workflowInsert.ts"
 
 export interface ToolContext {
   readonly agentId: string
@@ -288,6 +293,10 @@ export interface ToolsService {
     knowledge: boolean
     settings?: boolean
     manage?: boolean
+    /** The team tools of the lead of a channel (spec 037). */
+    team?: boolean
+    /** Only the team tools: the plan turn of a lead has no other tool. */
+    teamOnly?: boolean
     skills?: boolean
   }): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
@@ -738,7 +747,76 @@ const MANAGE_DEFS: readonly ToolDef[] = [
       ["name", "model"],
     ),
   },
+  {
+    name: "make_workflow",
+    description:
+      'Ask the user to make a new ROBot workflow: a graph of steps that runs on a trigger. Use it when the user asks for a workflow; do not use any other workflow feature. The user reads the whole change and allows or denies it; nothing is made before that. The workflow has the trigger "manual" and no owner, and the steps are joined in a line in the order you give. The user adds conditions, places and triggers on the canvas. When the user denies it, do not ask again for the same workflow.',
+    schema: object(
+      {
+        name: str("The name, 1 to 60 characters. A name in use gets a number."),
+        steps: {
+          type: "array",
+          description:
+            "The steps in order, 30 at most. An agent step runs an agent with a prompt; use {{input}} for the result of the step before. An approval step waits for the user. A notify step shows a system notification.",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["agent", "approval", "notify"] },
+              name: str("The name of the step. Default: the agent name or the kind."),
+              agent: str("For an agent step: the name of an agent that is not archived."),
+              prompt: str("For an agent step: the prompt."),
+              message: str("For an approval step: what the user is asked."),
+              title: str("For a notify step: the title of the notification."),
+            },
+            required: ["kind"],
+          },
+        },
+      },
+      ["name"],
+    ),
+  },
 ]
+
+/** The team tools of the lead of a channel (spec 037, "Team tools"). */
+const CHANNEL_ARG = str("The name of the channel. Only needed when you lead more than one channel.")
+const TEAM_DEFS: readonly ToolDef[] = [
+  {
+    name: "make_team_member",
+    description:
+      "Ask the user to make a new agent and add it to your channel as a member. The user reads the whole change and allows or denies it; nothing is made before that. Make a member only when the job needs one. You cannot set its permission level or its workspace. When the user denies it, do not ask again for the same agent.",
+    schema: object(
+      {
+        channel: CHANNEL_ARG,
+        name: str("The name, 1 to 40 characters. No other agent may have it."),
+        role: str("The role line, up to 120 characters: what this member is for."),
+        instructions: str("The whole instructions of the new member."),
+        face_shape: { type: "integer", description: "The shape of the face, 1 to 6." },
+        face_hue: { type: "integer", description: "The colour of the face, 1 to 10." },
+        account: str("The name of a connected model account."),
+        model: str('The model, in loose words if needed, for example "Sonnet".'),
+        effort: str("An effort level that the model takes. Default: the middle level."),
+      },
+      ["name", "model"],
+    ),
+  },
+  {
+    name: "change_team_member",
+    description:
+      "Ask the user to change the role line or the instructions of one member of your channel. You cannot change yourself, the main agent, or a member that leads another channel. The user reads the change and allows or denies it.",
+    schema: object(
+      {
+        channel: CHANNEL_ARG,
+        name: str("The name of the member."),
+        role: str("The new role line, up to 120 characters."),
+        instructions: str("The whole new instructions."),
+      },
+      ["name"],
+    ),
+  },
+]
+
+/** A channel holds at most this many members that one lead made (spec 037, "Team tools"). */
+const TEAM_MADE_MAX = 5
 
 const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
 
@@ -2180,6 +2258,226 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /** The channels that this agent leads and is a member of, by name. */
+      const ledChannels = (agentId: string) =>
+        db.all<{ id: string; name: string }>(
+          `SELECT c.id, c.name FROM channel c
+           JOIN channel_member m ON m.channel_id = c.id AND m.agent_id = c.lead_agent_id
+           WHERE c.lead_agent_id = ? ORDER BY c.name_key`,
+          agentId,
+        )
+
+      /** The channel a team call names, or the reason that it names none (spec 037). */
+      const teamChannel = (
+        agentId: string,
+        args: Record<string, unknown>,
+      ): { id: string; name: string } | string => {
+        const led = ledChannels(agentId)
+        if (led.length === 0) return "unknown"
+        const wanted = text(args, "channel").trim().toLowerCase()
+        const only = led[0]
+        if (!wanted) {
+          return led.length === 1 && only
+            ? only
+            : `Name the channel. You lead: ${led.map((c) => c.name).join(", ")}.`
+        }
+        return (
+          led.find((c) => c.name.toLowerCase() === wanted) ??
+          `You do not lead a channel named "${text(args, "channel")}". You lead: ${led.map((c) => c.name).join(", ")}.`
+        )
+      }
+
+      /** "Make a team member" (spec 037, "Team tools"): a made agent that joins the channel. */
+      const makeTeamMemberTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const channel = teamChannel(ctx.agentId, args)
+        if (channel === "unknown") return { output: `Unknown tool: ${call.name}`, failed: true }
+        if (typeof channel === "string") return { output: channel, failed: true }
+        const { channel: _channel, ...fields } = args
+        const caller = db.get<{ server_id: string; name: string }>(
+          "SELECT server_id, name FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const made = db.get<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM channel_member m JOIN agent a ON a.id = m.agent_id
+           WHERE m.channel_id = ? AND a.made_by = ?`,
+          channel.id,
+          caller.name,
+        )?.n
+        if ((made ?? 0) >= TEAM_MADE_MAX)
+          return { output: "Too many team members. Ask the user.", failed: true }
+        const members =
+          db.get<{ n: number }>(
+            "SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = ?",
+            channel.id,
+          )?.n ?? 0
+        if (members >= CLIENT_CHANNEL_MEMBERS_MAX)
+          return {
+            output: "Nothing made. The channel has the most members it can hold.",
+            failed: true,
+          }
+        const plan = await settle(agentSettings.planNew(ctx.agentId, fields))
+        if (plan.kind === "refused") return { output: plan.reason, failed: true }
+        const made1 = await guarded(ctx, call.id, {
+          step: MANAGE_STEP,
+          target: `Make team member: ${plan.create.name}`,
+          card: `Requested by the lead "${caller.name}" for the channel "${channel.name}".\n${plan.detail}`,
+          work: async () => {
+            const agent = await settle(
+              agents.create(
+                { serverId: caller.server_id, ...plan.create },
+                { madeBy: caller.name },
+              ),
+            ).catch((error) => {
+              if (error instanceof AppError && error.code === "agent_name_taken")
+                throw new Error("Nothing made. Another agent on this server has this name.")
+              throw error
+            })
+            const position =
+              db.get<{ n: number }>(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM channel_member WHERE channel_id = ?",
+                channel.id,
+              )?.n ?? 0
+            db.run(
+              "INSERT INTO channel_member (channel_id, agent_id, position) VALUES (?, ?, ?)",
+              channel.id,
+              agent.id,
+              position,
+            )
+            bus.emit("channels.changed", { channelId: channel.id })
+            return agent
+          },
+        })
+        return {
+          output: `Made the agent "${made1.name}" and added it to the channel "${channel.name}". Give it a part in your plan.`,
+          failed: false,
+        }
+      }
+
+      /** "Change a team member" (spec 037, "Team tools"): the role line and instructions only. */
+      const changeTeamMemberTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const channel = teamChannel(ctx.agentId, args)
+        if (channel === "unknown") return { output: `Unknown tool: ${call.name}`, failed: true }
+        if (typeof channel === "string") return { output: channel, failed: true }
+        const extra = Object.keys(args).filter(
+          (k) => !["channel", "name", "role", "instructions"].includes(k),
+        )
+        if (extra.length > 0)
+          return {
+            output: `Nothing changed. A team member has no field ${extra.join(", ")} here. You may change role and instructions.`,
+            failed: true,
+          }
+        const name = text(args, "name").trim()
+        const target = db.get<{ id: string; name: string }>(
+          `SELECT a.id, a.name FROM channel_member m JOIN agent a ON a.id = m.agent_id
+           WHERE m.channel_id = ? AND a.name_key = ? AND a.archived_at IS NULL`,
+          channel.id,
+          nameKey(name),
+        )
+        if (!target)
+          return {
+            output: `Nothing changed. "${name}" is not a member of the channel "${channel.name}" that is not archived.`,
+            failed: true,
+          }
+        const caller = db.get<{ server_id: string; name: string }>(
+          "SELECT server_id, name FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
+        if (
+          target.id === ctx.agentId ||
+          organization.mainAgent(caller.server_id) === target.id ||
+          ledChannels(target.id).length > 0
+        )
+          return {
+            output:
+              "Nothing changed. You cannot change yourself, the main agent, or a member that leads a channel.",
+            failed: true,
+          }
+        const { plan } = await settle(
+          agentSettings.plan(target.id, {
+            ...(args.role !== undefined ? { role: args.role } : {}),
+            ...(args.instructions !== undefined ? { instructions: args.instructions } : {}),
+          }),
+        )
+        if (plan.kind === "read")
+          return { output: "Nothing changed. Give a role or instructions.", failed: true }
+        if (plan.kind === "unchanged")
+          return { output: "Nothing changed: these values are set already.", failed: false }
+        if (plan.kind === "refused") return { output: plan.reason, failed: true }
+        await guarded(ctx, call.id, {
+          step: MANAGE_STEP,
+          target: `Change team member: ${target.name}`,
+          card: `Requested by the lead "${caller.name}" for the channel "${channel.name}".\n${changeSummary(plan.changes)}`,
+          work: () => settle(agentSettings.apply(target.id, plan.changes, "chat")),
+        })
+        return {
+          output: `Changed "${target.name}": ${changeSummary(plan.changes.map((c) => (c.field === "instructions" ? { ...c, after: "(new text)" } : c)))}. It counts from its next turn.`,
+          failed: false,
+        }
+      }
+
+      /**
+       * "Make a workflow" (spec 037, 010). A call that fails a check makes no card. Otherwise the
+       * user reads the whole workflow on a card and allows or denies it, at every level but "Read
+       * only", which refuses it.
+       */
+      const makeWorkflowTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        if (!isMainAgent(ctx.agentId)) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const caller = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const serverId = caller.server_id
+        const plan = planMakeWorkflow(
+          args,
+          db.all<{ id: string; name: string }>(
+            "SELECT id, name FROM agent WHERE server_id = ? AND archived_at IS NULL ORDER BY name_key",
+            serverId,
+          ),
+          db
+            .all<{ name: string }>("SELECT name FROM workflow WHERE server_id = ?", serverId)
+            .map((r) => r.name),
+        )
+        if (plan.kind === "refused") return { output: plan.reason, failed: true }
+        const made = await guarded(ctx, call.id, {
+          step: MANAGE_STEP,
+          target: `Make workflow: ${plan.create.name}`,
+          card: plan.detail,
+          work: async () => {
+            const taken = db
+              .all<{ name: string }>("SELECT name FROM workflow WHERE server_id = ?", serverId)
+              .map((r) => r.name)
+            const name = starterWorkflowName(plan.create.name, taken)
+            insertWorkflow(db, bus, {
+              serverId,
+              name,
+              trigger: { kind: "manual" },
+              steps: plan.create.steps,
+              edges: plan.create.edges,
+            })
+            return name
+          },
+        })
+        return {
+          output: `Made the workflow "${made}". It has the trigger "manual". The user can set a trigger, conditions and places on the canvas of the Workflows page.`,
+          failed: false,
+        }
+      }
+
       /**
        * A read of a file or a page that gives the same result as the two reads before it, in the
        * same turn, is refused with a short text (spec 005, "Repeated reads").
@@ -2291,7 +2589,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               to: receiver,
             })
             return {
-              output: handOffRefusalText(receiver, refusal.next?.name ?? null),
+              output: handOffRefusalOutput(receiver, refusal.next?.name ?? null),
               failed: true,
             }
           }
@@ -2586,6 +2884,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await readAgentTool(ctx, call, args)
           case "make_agent":
             return await makeAgentTool(ctx, call, args)
+          case "make_team_member":
+            return await makeTeamMemberTool(ctx, call, args)
+          case "change_team_member":
+            return await changeTeamMemberTool(ctx, call, args)
+          case "make_workflow":
+            return await makeWorkflowTool(ctx, call, args)
           case "read_article":
             return await readTool(ctx, call, args)
           case "write_article":
@@ -2657,16 +2961,20 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         setMessenger: (m) => {
           messenger = m
         },
-        defs: (options) => [
-          ...Object.values(DEFS).filter(
-            (d) =>
-              (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
-              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)) &&
-              (options.skills || d.name !== READ_SKILL_TOOL_NAME),
-          ),
-          ...(options.settings ? [SETTINGS_DEF] : []),
-          ...(options.manage ? MANAGE_DEFS : []),
-        ],
+        defs: (options) =>
+          options.teamOnly
+            ? [...TEAM_DEFS]
+            : [
+                ...Object.values(DEFS).filter(
+                  (d) =>
+                    (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
+                    (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)) &&
+                    (options.skills || d.name !== READ_SKILL_TOOL_NAME),
+                ),
+                ...(options.settings ? [SETTINGS_DEF] : []),
+                ...(options.manage ? MANAGE_DEFS : []),
+                ...(options.team ? TEAM_DEFS : []),
+              ],
         execute,
         guarded,
         bridge: (ctx, show) => {
@@ -2680,6 +2988,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               ),
               // The main agent gets the manage tools on every runtime (spec 037).
               ...(isMainAgent(ctx.agentId) ? MANAGE_DEFS : []),
+              // The lead of a channel gets the team tools (spec 037).
+              ...(ledChannels(ctx.agentId).length > 0 ? TEAM_DEFS : []),
             ],
             call: async (name, args) => {
               const call: ToolCall = { id: `app-${++count}`, name, input: JSON.stringify(args) }

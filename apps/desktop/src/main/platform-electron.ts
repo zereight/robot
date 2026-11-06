@@ -894,9 +894,54 @@ const setIslandWidth = (width: IslandWidth) => {
 const islandAllowed = () =>
   isTestRun ? Boolean(process.env.ROBOT_FORCE_ISLAND) : process.platform === "darwin"
 
+/** How long the island window takes to move from one size to the next (spec 015). */
+const ISLAND_MOVE_MS = 240
+let islandMove: ReturnType<typeof setInterval> | undefined
+
+const stopIslandMove = () => {
+  if (islandMove) clearInterval(islandMove)
+  islandMove = undefined
+}
+
+/** The same curve as `--ease-out` of the motion tokens. */
+const easeOut = (t: number) => 1 - (1 - t) ** 4
+
+/**
+ * Takes the window to its next bounds in small steps, so that the shape does not jump in one
+ * frame. The page draws the round corners, and the window is always the size of the shape.
+ */
+const moveIsland = (win: BrowserWindow, next: Electron.Rectangle) => {
+  stopIslandMove()
+  const from = win.getBounds()
+  const started = Date.now()
+  islandMove = setInterval(() => {
+    if (win.isDestroyed()) return stopIslandMove()
+    const t = Math.min(1, (Date.now() - started) / ISLAND_MOVE_MS)
+    const k = easeOut(t)
+    const at = (a: number, b: number) => Math.round(a + (b - a) * k)
+    win.setBounds(
+      t === 1
+        ? next
+        : {
+            x: at(from.x, next.x),
+            y: at(from.y, next.y),
+            width: at(from.width, next.width),
+            height: at(from.height, next.height),
+          },
+    )
+    if (t === 1) stopIslandMove()
+  }, 16)
+}
+
 /** Puts the island window at the top centre of the screen, with the size of its content. */
-const placeIsland = (win: BrowserWindow, size: { width: number; height: number }) => {
+const placeIsland = (
+  win: BrowserWindow,
+  size: { width: number; height: number },
+  animate = false,
+) => {
   const next = islandBounds(screen.getPrimaryDisplay(), islandNotch, size)
+  if (animate && win.isVisible()) return moveIsland(win, next)
+  stopIslandMove()
   const now = win.getBounds()
   if (
     now.x !== next.x ||
@@ -1013,17 +1058,21 @@ const setIslandShape = (shape: IslandShape) => {
   })
 }
 
-const fitIsland = (size: { width: number; height: number }) => {
+const fitIsland = (size: { width: number; height: number; animate?: boolean | undefined }) => {
   if (!island || island.isDestroyed() || islandShapeNow === "hidden") return
   const clamp = (value: number, [min, max]: readonly [number, number]) =>
     Math.min(max, Math.max(min, Math.ceil(Number.isFinite(value) ? value : min)))
   // The bar never gets narrower than the notch needs, whatever the page measures (spec 015). A
   // card is wider than that, so it keeps the width of its content.
   const width = islandShapeNow === "bar" ? Math.max(size.width, islandBarWidthNow()) : size.width
-  placeIsland(island, {
-    width: clamp(width, ISLAND_LIMIT.width),
-    height: clamp(size.height, ISLAND_LIMIT.height),
-  })
+  placeIsland(
+    island,
+    {
+      width: clamp(width, ISLAND_LIMIT.width),
+      height: clamp(size.height, ISLAND_LIMIT.height),
+    },
+    size.animate === true,
+  )
 }
 
 export const electronPlatform = (): PlatformService => {
