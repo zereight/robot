@@ -1039,7 +1039,7 @@ export const ko: Record<MessageKey, string> = {
   "handbook.hint":
     "이 서버의 모든 에이전트가 자기 지침보다 먼저 읽는 글이에요. 내가 누구인지, 일이 무엇을 위한 것인지, 모든 에이전트가 따르는 작업 방식을 적어 주세요.",
   "handbook.order":
-    "에이전트는 핸드북, 자기 지침, 채널에서는 채널 지침 순서로 글을 받아요. 두 글이 서로 다르게 말하면 나중 글이 이겨요. 앱의 규칙은 세 글보다 우선해요.",
+    "에이전트는 핸드북, 역할 지침, 자기 지침 순서로 글을 받아요. 두 글이 서로 다르게 말하면 나중 글이 이겨요. 앱의 규칙은 세 글보다 우선해요.",
   "handbook.sent":
     "핸드북은 이를 읽는 모든 에이전트의 모델 제공자에게 전송돼요. 키나 비밀번호는 적지 마세요.",
   "handbook.label": "핸드북 내용",
@@ -1074,7 +1074,7 @@ export const ko: Record<MessageKey, string> = {
     "켜면 이 에이전트의 모든 턴이 지침보다 먼저 핸드북으로 시작해요. 핸드북을 받으면 안 되는 에이전트는 꺼 주세요.",
   "agents.field.main": "메인 에이전트",
   "agents.field.main.hint":
-    "메인 에이전트는 하나뿐이에요. 조직도의 맨 위에 와요. 전달 규칙이 일을 보낼 수 있는 상대를 제한해도, 모든 에이전트는 메인 에이전트에게 일을 보낼 수 있고 메인 에이전트는 모든 에이전트에게 일을 보낼 수 있어요. 여기서 켜면 이전 메인 에이전트는 꺼져요.",
+    "메인 에이전트는 하나뿐이에요. 전달 규칙이 일을 보낼 수 있는 상대를 제한해도, 모든 에이전트는 메인 에이전트에게 일을 보낼 수 있고 메인 에이전트는 모든 에이전트에게 일을 보낼 수 있어요. 여기서 켜면 이전 메인 에이전트는 꺼져요.",
   "agents.field.main.on": "켜짐",
   "agents.field.main.off": "꺼짐",
   "agents.field.main.server": "{name}에서 바꿔 주세요.",
@@ -1335,7 +1335,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.owner.card": "소유자: {name}",
   "workflows.owner.filter": "소유자별 워크플로우 보기",
   "workflows.owner.hint":
-    "조직의 워크플로우 단계에는 그 조직의 멤버와 다른 조직의 리드만 참석할 수 있어요. 에이전트가 소유한 워크플로우에는 그 에이전트만 참석해요.",
+    "에이전트가 소유한 워크플로우에는 그 에이전트만 참석해요. 소유자가 없는 워크플로우에는 모든 에이전트가 참석해요.",
   "workflows.step.notParticipant": "참석자 아님",
   "workflows.owner.row": "워크플로우",
   "workflows.owner.open": "{name} 열기",
@@ -1558,7 +1558,7 @@ export const ko: Record<MessageKey, string> = {
   "join.body.twoWay": "이 컴퓨터도 {name}을(를) 열 수 있게 돼요.",
   "join.canChange": "{name}이(가) 에이전트를 만들고 바꿀 수 있게 하기",
   "join.canChange.body":
-    "그러면 {name}이(가) 이 컴퓨터의 에이전트, 채널, 메모리를 만들고 바꿀 수 있어요.",
+    "그러면 {name}이(가) 이 컴퓨터의 에이전트와 메모리를 만들고 바꿀 수 있어요.",
   "join.allow": "허용",
   "join.deny": "거부",
   "error.wrong_code": "코드가 맞지 않아요. 다른 컴퓨터에 표시된 코드를 확인해 주세요.",
@@ -1609,7 +1609,7 @@ export const ko: Record<MessageKey, string> = {
   "connect.nearby.pick": "{name} 선택",
 
   "sync.title": "동기화",
-  "sync.hint": "두 컴퓨터에서 같은 에이전트, 대화, 채널, 메모리, 루틴, 워크플로가 보이게 해요.",
+  "sync.hint": "두 컴퓨터에서 같은 에이전트, 대화, 메모리, 루틴, 워크플로가 보이게 해요.",
   "sync.start": "이 컴퓨터와 동기화",
   "sync.start.offline": "동기화를 시작하려면 {name}이(가) 온라인이어야 해요.",
   "sync.busy": "이 컴퓨터는 이미 {name}과(와) 동기화하고 있어요.",

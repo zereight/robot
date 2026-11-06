@@ -1052,7 +1052,7 @@ export const en = {
   "handbook.hint":
     "One text that every agent of this server reads before its own instructions. Write who you are, what the work is for, and the ways of work that every agent follows.",
   "handbook.order":
-    "An agent gets the texts in this order: the handbook, its own instructions, and in a channel the instructions of the channel. When two texts say different things, the later text wins. The rules of the app win over all three.",
+    "An agent gets the texts in this order: the handbook, its role instructions, and its own instructions. When two texts say different things, the later text wins. The rules of the app win over all three.",
   "handbook.sent":
     "The handbook is sent to the model provider of every agent that reads it. Do not write keys or passwords here.",
   "handbook.label": "Handbook text",
@@ -1088,7 +1088,7 @@ export const en = {
     "On: each turn of this agent starts with the handbook, before its instructions. Turn it off for an agent that must not get it.",
   "agents.field.main": "Main agent",
   "agents.field.main.hint":
-    "Only one agent is the main agent. It is the top of the org chart. When the hand-off rule limits who may send work to whom, every agent can still send work to the main agent, and the main agent can send work to every agent. Turn it on here, and the old main agent loses it.",
+    "Only one agent is the main agent. When the hand-off rule limits who may send work to whom, every agent can still send work to the main agent, and the main agent can send work to every agent. Turn it on here, and the old main agent loses it.",
   "agents.field.main.on": "On",
   "agents.field.main.off": "Off",
   "agents.field.main.server": "Change this on {name}.",
@@ -1350,7 +1350,7 @@ export const en = {
   "workflows.owner.card": "Owner: {name}",
   "workflows.owner.filter": "Show workflows by owner",
   "workflows.owner.hint":
-    "Only the members of an organization and the leads of the other organizations can work in a step of its workflow. An agent that owns a workflow is its only participant.",
+    "An agent that owns a workflow is its only participant. A workflow with no owner has every agent as a participant.",
   "workflows.step.notParticipant": "Not a participant",
   "workflows.owner.row": "Workflows",
   "workflows.owner.open": "Open {name}",
@@ -1573,8 +1573,7 @@ export const en = {
     "{name} ({kind}) wants to open this computer. It can direct the agents of this computer, including steps that change files and run commands.",
   "join.body.twoWay": "This computer will also be able to open {name}.",
   "join.canChange": "Let {name} create and change agents",
-  "join.canChange.body":
-    "{name} can then make and change agents, channels and memory on this computer.",
+  "join.canChange.body": "{name} can then make and change agents and memory on this computer.",
   "join.allow": "Allow",
   "join.deny": "Deny",
   "error.wrong_code": "The code is not right. Check the code on the other computer.",
@@ -1627,8 +1626,7 @@ export const en = {
   "connect.nearby.pick": "Use {name}",
 
   "sync.title": "Sync",
-  "sync.hint":
-    "Keep the same agents, chats, channels, memory, routines and workflows on both computers.",
+  "sync.hint": "Keep the same agents, chats, memory, routines and workflows on both computers.",
   "sync.start": "Sync with this computer",
   "sync.start.offline": "{name} must be online to start a sync.",
   "sync.busy": "This computer already syncs with {name}.",
