@@ -5,8 +5,10 @@ import { type QueueSource, queueRank } from "@robot/shared"
  * no time: it only decides which waiting task starts, so a test can drive it with plain calls.
  *
  * - At most `capacity()` tasks run at the same time. A task that waits for the user uses no slot.
- * - One workflow runs one task at a time. A workflow is held from the start of a task to its end,
- *   also while the task waits for the user.
+ * - One workflow runs one task at a time, and one run at a time. A workflow is held by a run from
+ *   the start of its first task to the end of the run: also while a task waits for the user, and
+ *   between two nodes of the run. So the runs of one workflow do not interleave. The slot is per
+ *   task, as before: a run between two nodes uses no slot.
  * - The tasks that wait start in this order: a task that went on after a wait for the user, the
  *   picks of "Run next" (the latest first), the runs of the user (the oldest first), the runs of
  *   a trigger (the oldest first), a memory check. A task whose workflow is held keeps its place.
@@ -43,8 +45,11 @@ export type WaitReason =
 export class TaskScheduler {
   private readonly waiting: Waiting[] = []
   private readonly running = new Set<string>()
-  /** The workflow that each held task keeps busy. */
-  private readonly held = new Map<string, string>()
+  /**
+   * The run that holds each workflow, and the last task of that run that started (the line "Waits
+   * behind <node>" names it). A hold lasts until `endRun`.
+   */
+  private readonly held = new Map<string, { readonly runId: string; ticket: TaskTicket }>()
   private readonly known = new Map<string, TaskTicket>()
   private counter = 0
   private pumping = false
@@ -109,13 +114,29 @@ export class TaskScheduler {
     return this.queue(ticket, true, signal)
   }
 
-  /** The task ended (or was removed before it started): its slot and its workflow are free. */
+  /**
+   * The task ended (or was removed before it started): its slot is free. Its run keeps the
+   * workflow held until `endRun`, because the run may enter its next node.
+   */
   release(taskId: string) {
     this.remove(taskId)
     this.running.delete(taskId)
-    for (const [workflowId, holder] of this.held)
-      if (holder === taskId) this.held.delete(workflowId)
     this.known.delete(taskId)
+    this.pump()
+  }
+
+  /**
+   * The run ended, in any way (done, failed, stopped or crashed): its workflow is free. The tasks
+   * of the run that still wait are removed too.
+   */
+  endRun(runId: string) {
+    for (const w of this.waiting.filter((o) => o.ticket.runId === runId)) {
+      this.remove(w.ticket.taskId)
+      this.known.delete(w.ticket.taskId)
+      w.fail(new Error("stopped"))
+    }
+    for (const [workflowId, holder] of this.held)
+      if (holder.runId === runId) this.held.delete(workflowId)
     this.pump()
   }
 
@@ -176,8 +197,8 @@ export class TaskScheduler {
   reasons(): Map<string, WaitReason> {
     const out = new Map<string, WaitReason>()
     for (const w of this.waiting) {
-      const holderId = this.held.get(w.ticket.workflowId)
-      const holder = holderId && holderId !== w.ticket.taskId ? this.known.get(holderId) : undefined
+      const hold = this.held.get(w.ticket.workflowId)
+      const holder = hold && hold.runId !== w.ticket.runId ? hold.ticket : undefined
       out.set(w.ticket.taskId, holder ? { kind: "behind", holder } : { kind: "slot" })
     }
     return out
@@ -211,8 +232,9 @@ export class TaskScheduler {
       for (;;) {
         if (this.running.size >= this.capacity()) break
         const next = this.ordered().find((w) => {
-          const holder = this.held.get(w.ticket.workflowId)
-          if (holder !== undefined && holder !== w.ticket.taskId) return false
+          // Another run holds the workflow: this task keeps its place and waits.
+          const hold = this.held.get(w.ticket.workflowId)
+          if (hold !== undefined && hold.runId !== w.ticket.runId) return false
           // A memory check starts only when its workflow has no other task that runs or waits.
           if (w.ticket.source === "memory")
             return !this.waiting.some((o) => o !== w && o.ticket.workflowId === w.ticket.workflowId)
@@ -221,7 +243,7 @@ export class TaskScheduler {
         if (!next) break
         this.remove(next.ticket.taskId)
         this.running.add(next.ticket.taskId)
-        this.held.set(next.ticket.workflowId, next.ticket.taskId)
+        this.held.set(next.ticket.workflowId, { runId: next.ticket.runId, ticket: next.ticket })
         next.grant()
       }
     } finally {

@@ -37,7 +37,8 @@ export interface TasksService {
   readonly quiet: () => readonly QuietTurn[]
 }
 
-interface Row {
+/** The columns that a row of the list needs. The input and the result can be large. */
+interface ListRow {
   id: string
   run_id: string
   workflow_id: string
@@ -53,16 +54,19 @@ interface Row {
   error_detail: string | null
   retry_of: string | null
   progress: "not_sent" | "sent" | "started"
+  created_at: number
+  started_at: number | null
+  finished_at: number | null
+}
+
+interface Row extends ListRow {
   input: string
   result: string
   steps: number
   kept_going: number
-  created_at: number
-  started_at: number | null
   first_reply_at: number | null
   ended_at: number | null
   ended_as: string | null
-  finished_at: number | null
   input_tokens: number | null
   output_tokens: number | null
   cached_tokens: number | null
@@ -72,10 +76,16 @@ interface Row {
 /** The most rows that the page reads. */
 const LIST_MAX = 1000
 
-const SELECT = `SELECT t.*, w.name AS workflow_name, r.source AS source, r.state AS run_state,
+const FROM = `FROM task t JOIN run r ON r.id = t.run_id JOIN workflow w ON w.id = t.workflow_id`
+const JOINED = `w.name AS workflow_name, r.source AS source, r.state AS run_state,
     r.started_at AS run_started_at,
-    (SELECT n.kind FROM workflow_node n WHERE n.id = t.node_id) AS kind
-  FROM task t JOIN run r ON r.id = t.run_id JOIN workflow w ON w.id = t.workflow_id`
+    (SELECT n.kind FROM workflow_node n WHERE n.id = t.node_id) AS kind`
+/** One task, whole: for the view of a task. */
+const SELECT = `SELECT t.*, ${JOINED} ${FROM}`
+/** The rows of the list: no input, no result, no usage. */
+const SELECT_LIST = `SELECT t.id, t.run_id, t.workflow_id, t.node_name, t.node_number, t.state,
+    t.error_code, t.error_detail, t.retry_of, t.progress, t.created_at, t.started_at,
+    t.finished_at, ${JOINED} ${FROM}`
 
 export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Tasks") {
   static readonly layer = Layer.effect(
@@ -86,7 +96,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const queue = yield* TaskQueue
       const log = yield* ActionLog
 
-      const item = (r: Row, reasons: ReturnType<typeof queue.scheduler.reasons>): TaskItem => {
+      const item = (r: ListRow, reasons: ReturnType<typeof queue.scheduler.reasons>): TaskItem => {
         const why = reasons.get(r.id)
         const quiet = queue.quiet.get(r.id)
         const queued = r.state === "queued"
@@ -140,8 +150,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             where.push("r.source = ?")
             params.push(filter.source)
           }
-          const rows = db.all<Row>(
-            `${SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+          const rows = db.all<ListRow>(
+            `${SELECT_LIST} ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
              ORDER BY t.created_at DESC, t.rowid DESC LIMIT ${LIST_MAX}`,
             ...params,
           )

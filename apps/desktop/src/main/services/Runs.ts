@@ -51,6 +51,7 @@ import { Proposals } from "./Proposals.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { RunFacts } from "./RunFacts.ts"
+import { readyNode, stalled } from "./runGraph.ts"
 import {
   feedbackBlock,
   nodeInput,
@@ -212,6 +213,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         readonly nodeNumber: number
         readonly input: string
         readonly retryOf: string
+        /** The marks of the task that is tried again: the retry holds them too (spec 007). */
+        readonly marks: TaskMarks
       }
       const active = new Map<
         string,
@@ -517,9 +520,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
         for (;;) {
           if (runSignal.aborted) break
-          const ready = order.find(
-            (n) => !ended.has(n.id) && (incoming.get(n.id) ?? []).every((c) => ended.has(c.from)),
-          )
+          const ready = readyNode(order, incoming, ended)
           if (!ready) break
           const inputs = (incoming.get(ready.id) ?? []).flatMap((c) => {
             const p = passes(c)
@@ -531,7 +532,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             continue
           }
           const results = [...new Map(inputs.map((i) => [i.taskId, i])).values()]
-          const marks = mergeMarks(results)
+          // A retry has no input tasks: it takes over the marks of the task that it tries again.
+          const marks = only ? { ...only.marks } : mergeMarks(results)
           const done = await runNode({
             run: r,
             detail,
@@ -563,7 +565,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           stop = { state: "cancelled", text: "Stopped by you", code: "user" }
         // No node is ready, and nodes that never ran remain: the run did not do its work. It must
         // not end as "done" (a loop that came through, a graph that changed during the run).
-        if (stop === null && order.some((n) => !ended.has(n.id)))
+        if (stop === null && stalled(order, incoming, ended))
           stop = {
             state: "failed",
             text: "No node could start, and some nodes did not run",
@@ -641,6 +643,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         changed(n.run.workflow_id, n.run.id)
         return id
       }
+
+      /** The marks that a task row holds (spec 007). */
+      const marksOf = (t: TaskRow): TaskMarks => ({
+        outside: parseOutsideSource(t.outside_mark),
+        program: t.program_mark === 1,
+        sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
+      })
 
       const saveMarks = (taskId: string, marks: TaskMarks) => {
         db.run(
@@ -748,11 +757,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 }
               })()
         }
-        saveMarks(taskId, marks)
-        finishTask(taskId, end)
-        // The slot and the workflow are free for the next task in the order.
-        queue.scheduler.release(taskId)
-        stoppedTasks.delete(taskId)
+        try {
+          saveMarks(taskId, marks)
+          finishTask(taskId, end)
+        } finally {
+          // The slot is free for the next task in the order, also when a write fails. The run keeps
+          // the workflow until it ends (`endRun`).
+          queue.scheduler.release(taskId)
+          stoppedTasks.delete(taskId)
+        }
         changed(n.run.workflow_id, n.run.id)
         const done: Done = {
           node: n.node,
@@ -1298,6 +1311,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           })
           .finally(() => {
             active.delete(runId)
+            // The workflow is free for the next run, whatever way this run ended.
+            queue.scheduler.endRun(runId)
             for (const listener of endListeners) {
               try {
                 listener(r.workflow_id, runId)
@@ -1360,19 +1375,28 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         return { ok: true as const, id }
       }
 
-      const start = (input: RunStart, source: RunSource = "hand") =>
+      /**
+       * The checks before a run starts, for a start and for a Retry alike (a retry is a run): the
+       * workflow has a node, its graph has no loop, and the check finds no problem.
+       */
+      const preflight = (workflowId: string) =>
         Effect.gen(function* () {
-          const detail = yield* workflows.get(input.workflowId)
-          const nodes = detail.graph.nodes
-          if (nodes.length === 0) return yield* new AppError({ code: "run_empty" })
+          const detail = yield* workflows.get(workflowId)
+          if (detail.graph.nodes.length === 0) return yield* new AppError({ code: "run_empty" })
           // A loop never starts, whatever the checker says: this test does not use the checker,
           // so a check that stopped or failed cannot let a loop through.
           if (hasLoop(detail)) return yield* new AppError({ code: "run_loop" })
           // A run does not start when the check finds a problem (spec 010, "Check"). A check that
           // stopped at a limit or could not read the form does not hold back a graph with no loop
           // (docs/spec-questions.md, W1: the rows for the check before a run).
-          const outcome = yield* check.check(input.workflowId)
+          const outcome = yield* check.check(workflowId)
           if (outcome.state === "problem") return yield* new AppError({ code: "run_check_problem" })
+          return detail
+        })
+
+      const start = (input: RunStart, source: RunSource = "hand") =>
+        Effect.gen(function* () {
+          const detail = yield* preflight(input.workflowId)
           const made = launch(input.workflowId, detail.name, source, input.trigger ?? "")
           if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
           return summaryOf(runRow(made.id) as RunRow)
@@ -1440,14 +1464,16 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             return yield* new AppError({ code: "cannot_retry_task" })
           const r = runRow(t.run_id)
           if (!r) return yield* new AppError({ code: "run_not_found" })
-          const detail = yield* workflows.get(r.workflow_id)
+          const detail = yield* preflight(r.workflow_id)
           if (!detail.graph.nodes.some((node) => node.number === t.node_number))
             return yield* new AppError({ code: "cannot_retry_task" })
-          // Retry follows the rule of the source of the run (spec 005, "Queue").
+          // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the
+          // marks of the task that it tries again (spec 007, "Outside content").
           const made = launch(r.workflow_id, detail.name, r.source as RunSource, r.trigger_text, {
             nodeNumber: t.node_number,
             input: t.input,
             retryOf: t.id,
+            marks: marksOf(t),
           })
           if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
           return made.id

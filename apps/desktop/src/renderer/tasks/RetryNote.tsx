@@ -1,9 +1,11 @@
 import type { MessageKey, RetryNote, RetryResult } from "@robot/shared"
 import { createSignal, For, type JSX, Show } from "solid-js"
+import { describeError } from "../lib/errors.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { showToast } from "../ui/toast.ts"
 import styles from "./retry.module.css"
 
 /** The note that shows before a task is tried again (spec 005, "Retry note"). */
@@ -52,9 +54,10 @@ type Run = (confirmed: boolean) => Promise<RetryResult>
 /**
  * Starts a retry. When the first try ran steps that may have changed things, the main process
  * answers with the note instead. The note holds the dialog until the user picks "Retry anyway",
- * which asks again with `confirmed`, or "Back", which changes nothing.
+ * which asks again with `confirmed`, or "Back", which changes nothing. A "Retry anyway" that fails
+ * shows the error. `onDone` runs after it, whatever the result, so the page can read its data again.
  */
-export const useRetry = () => {
+export const useRetry = (options: { onDone?: () => void } = {}) => {
   const [pending, setPending] = createSignal<{ note: RetryNote; run: Run }>()
   const start = async (run: Run) => {
     const result = await run(false)
@@ -68,7 +71,13 @@ export const useRetry = () => {
           onBack={() => setPending(undefined)}
           onRetry={() => {
             setPending(undefined)
-            void p.run(true).catch(() => undefined)
+            void p
+              .run(true)
+              .catch((error: unknown) => {
+                const text = describeError(error)
+                showToast("error", text.key, text.params)
+              })
+              .finally(() => options.onDone?.())
           }}
         />
       )}

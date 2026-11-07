@@ -1277,6 +1277,7 @@ export const en = {
   "tasks.stop": "Stop",
   "tasks.retry": "Retry",
   "tasks.runNext": "Run next",
+  "tasks.runNext.for": "Run next: {workflow}, node {number} “{name}”",
   "tasks.openRun": "Open the run",
   "tasks.retryOf": "This task tries an earlier task again.",
   "tasks.progress.not_sent": "The request did not reach the model. It is safe to try again.",

@@ -1267,6 +1267,7 @@ export const ko: Record<MessageKey, string> = {
   "tasks.stop": "중지",
   "tasks.retry": "다시 시도",
   "tasks.runNext": "먼저 실행",
+  "tasks.runNext.for": "먼저 실행: {workflow}, 노드 {number} “{name}”",
   "tasks.openRun": "실행 열기",
   "tasks.retryOf": "이전 작업을 다시 시도한 작업이에요.",
   "tasks.progress.not_sent": "요청이 모델에 가지 않았어요. 다시 시도해도 안전해요.",

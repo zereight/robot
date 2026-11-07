@@ -23,7 +23,9 @@ import { openRun } from "../state/runTarget.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { tabKeyDown } from "../ui/tabKeys.ts"
 import { showToast } from "../ui/toast.ts"
 import { useRetry } from "./RetryNote.tsx"
 import styles from "./tasks.module.css"
@@ -69,9 +71,10 @@ const Reason = (props: { task: TaskItem; testid: string; class?: string | undefi
   )
 }
 
-const duration = (task: TaskItem) => {
+/** The duration of a task. A time that is not known is "—", never 0 (spec 005, "Times"). */
+const duration = (task: TaskItem, unknown: string) => {
   const ms = taskDuration(task)
-  return ms === null ? "–" : formatElapsed(ms)
+  return ms === null ? unknown : formatElapsed(ms)
 }
 
 /** The three times of a task (spec 005). A time that is not known shows as a dash, never as 0. */
@@ -164,8 +167,13 @@ const Usage = (props: { view: TaskView }) => {
 const TaskDetail = (props: { id: string; onClose: () => void; onChanged: () => void }) => {
   const { t, locale } = useApp()
   const ui = useUi()
-  const retry = useRetry()
   const [view, { refetch }] = createResource(() => call("tasks.get", { taskId: props.id }))
+  const retry = useRetry({
+    onDone: () => {
+      void refetch()
+      props.onChanged()
+    },
+  })
   onCleanup(window.robot.on("runs.changed", () => void refetch()))
   const act = (run: () => Promise<unknown>) =>
     run()
@@ -353,7 +361,9 @@ const TasksTab = () => {
           value={filter().workflowId ?? ""}
           onChange={(v) => set("workflowId", v)}
         >
-          <For each={workflows()}>{([id, name]) => <option value={id}>{name}</option>}</For>
+          <Keyed each={workflows()} by={([id]) => id}>
+            {(entry) => <option value={entry()[0]}>{entry()[1]}</option>}
+          </Keyed>
         </FilterSelect>
         <FilterSelect
           label={t("tasks.filter.source")}
@@ -395,32 +405,37 @@ const TasksTab = () => {
               </tr>
             </thead>
             <tbody>
-              <For each={shown()}>
+              <Keyed each={shown()} by={(task) => task.id}>
                 {(task) => (
-                  <tr data-testid="task-row" data-state={task.state} data-id={task.id}>
-                    <td>{task.workflowName}</td>
+                  <tr data-testid="task-row" data-state={task().state} data-id={task().id}>
+                    <td>{task().workflowName}</td>
                     <th scope="row">
                       <button
                         type="button"
                         class={styles.rowButton}
-                        onClick={() => setOpenId(task.id)}
+                        onClick={() => setOpenId(task().id)}
                         data-testid="task-open"
                       >
-                        {t("tasks.node", { number: task.nodeNumber, name: task.nodeName })}
+                        {t("tasks.node", { number: task().nodeNumber, name: task().nodeName })}
                       </button>
                     </th>
                     <td data-testid="task-source">
-                      {t(`tasks.source.${task.source}` as MessageKey)}
+                      {t(`tasks.source.${task().source}` as MessageKey)}
                     </td>
                     <td>
-                      <StateText task={task} />
-                      <Reason task={task} testid="task-reason" class={styles.muted} />
-                      <Show when={task.canRunNext}>
+                      <StateText task={task()} />
+                      <Reason task={task()} testid="task-reason" class={styles.muted} />
+                      <Show when={task().canRunNext}>
                         <button
                           type="button"
                           class={styles.rowButton}
+                          aria-label={t("tasks.runNext.for", {
+                            workflow: task().workflowName,
+                            number: task().nodeNumber,
+                            name: task().nodeName,
+                          })}
                           onClick={() =>
-                            void call("tasks.runNext", { taskId: task.id }).catch(toastError)
+                            void call("tasks.runNext", { taskId: task().id }).catch(toastError)
                           }
                           data-testid="task-run-next"
                         >
@@ -428,10 +443,10 @@ const TasksTab = () => {
                         </button>
                       </Show>
                     </td>
-                    <td class={styles.num}>{duration(task)}</td>
+                    <td class={styles.num}>{duration(task(), t("time.unknown"))}</td>
                   </tr>
                 )}
-              </For>
+              </Keyed>
             </tbody>
           </table>
         </Show>
@@ -481,10 +496,14 @@ export const TasksPage = () => {
               <button
                 type="button"
                 role="tab"
+                id={`tasks-page-tab-${name}`}
                 class={styles.tab}
                 aria-selected={tab() === name}
+                aria-controls={`tasks-page-panel-${name}`}
+                tabIndex={tab() === name ? 0 : -1}
                 data-selected={tab() === name}
                 onClick={() => pick(name)}
+                onKeyDown={(e) => tabKeyDown(e, tabs, tab(), pick)}
                 data-testid={`${name}-tab`}
               >
                 {t(`tasks.tab.${name}` as MessageKey)}
@@ -493,7 +512,13 @@ export const TasksPage = () => {
           </For>
         </div>
       </header>
-      <div class={`${shell.page} ${styles.page}`} data-testid="tasks-page">
+      <div
+        class={`${shell.page} ${styles.page}`}
+        role="tabpanel"
+        id={`tasks-page-panel-${tab()}`}
+        aria-labelledby={`tasks-page-tab-${tab()}`}
+        data-testid="tasks-page"
+      >
         <Show when={tab() === "events"} fallback={<TasksTab />}>
           <EventsTab />
         </Show>

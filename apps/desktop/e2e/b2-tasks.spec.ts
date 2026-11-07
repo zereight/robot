@@ -142,16 +142,40 @@ test("tasks page: the button opens it with the tabs Tasks and Events; the tab st
   await expect(page.getByTestId("run-view")).toBeVisible()
   expect(runId).toBeTruthy()
 
-  // The tab "Events" shows its list; the choice stays after a restart.
+  // The tab strip is a tab list: the arrow keys move between the tabs, the tab panel is named by
+  // its tab.
   await openTasks(page)
+  await expect(page.getByTestId("tasks-tab")).toHaveAttribute("tabindex", "0")
+  await expect(page.getByTestId("events-tab")).toHaveAttribute("tabindex", "-1")
+  await expect(page.getByTestId("tasks-page")).toHaveAttribute("role", "tabpanel")
+  await expect(page.getByTestId("tasks-page")).toHaveAttribute(
+    "aria-labelledby",
+    "tasks-page-tab-tasks",
+  )
+  await page.getByTestId("tasks-tab").focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(page.getByTestId("events-tab")).toBeFocused()
+  await expect(page.getByTestId("events-tab")).toHaveAttribute("aria-selected", "true")
+  await page.keyboard.press("ArrowLeft")
+  await expect(page.getByTestId("tasks-tab")).toBeFocused()
+  await expect(page.getByTestId("tasks-tab")).toHaveAttribute("aria-selected", "true")
+
+  // The tab "Events" shows its list; a restart restores the last tab, and the button opens "Tasks".
   await page.getByTestId("events-tab").click()
   await expect(page.getByTestId("events-empty")).toHaveText("No event yet.")
   await app.close()
   const again = await launch(userData, env)
   await again.page.getByTestId("page-tasks").click()
-  await expect(again.page.getByTestId("events-tab")).toHaveAttribute("aria-selected", "true")
-  await expect(again.page.getByTestId("events-empty")).toBeVisible()
+  await expect(again.page.getByTestId("tasks-tab")).toHaveAttribute("aria-selected", "true")
+  await again.page.getByTestId("events-tab").click()
   await again.app.close()
+  const third = await launch(userData, env)
+  await expect(third.page.getByTestId("events-tab")).toHaveAttribute("aria-selected", "true")
+  await expect(third.page.getByTestId("events-empty")).toBeVisible()
+  await third.page.getByTestId("page-workflows").click()
+  await third.page.getByTestId("page-tasks").click()
+  await expect(third.page.getByTestId("tasks-tab")).toHaveAttribute("aria-selected", "true")
+  await third.app.close()
   await mock.close()
 })
 
@@ -265,12 +289,56 @@ test("run next: the picked task starts first; the page says what a queued task w
   await expect(
     row(page, (await taskOfRun(page, r1))?.id ?? "").getByTestId("task-run-next"),
   ).toHaveCount(0)
+  // The two buttons "Run next" have names of their own.
+  await expect(
+    row(page, id2).getByRole("button", { name: "Run next: Alpha, node 1 “Step 1”" }),
+  ).toHaveCount(1)
+  const names = await page
+    .getByTestId("task-run-next")
+    .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")))
+  expect(names).toHaveLength(2)
+  expect(names[0]).toBeTruthy()
   await row(page, id3).getByTestId("task-run-next").click()
   await shot(page, "b2-06-run-next")
   // The running task ends (Stop): the third starts first, the second keeps waiting.
   await invokeCall(page, "runs.stop", { runId: r1 })
   await expect(row(page, id3).getByTestId("task-state")).toHaveText("Running")
   await expect(row(page, id2).getByTestId("task-state")).toHaveText("Queued")
+  await app.close()
+  await mock.close()
+})
+
+test("a background refetch of the list keeps the rows: the focus on a row stays", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(undefined, env)
+  await resizeWindow(app, 900, 640)
+  const [a] = await makeFlows(page, mock.openaiUrl, [{ name: "Alpha", prompts: [HANG] }])
+  const r1 = await startRunCall(page, a ?? "")
+  await expect.poll(async () => (await taskOfRun(page, r1))?.state).toBe("running")
+  await openTasks(page)
+  const id1 = (await taskOfRun(page, r1))?.id ?? ""
+  await expect(page.getByTestId("task-row")).toHaveCount(1)
+  // Mark the node of the button and the filter option, and put the focus on the button.
+  const button = row(page, id1).getByTestId("task-open")
+  await button.focus()
+  await button.evaluate((el) => {
+    el.setAttribute("data-mounted-once", "yes")
+  })
+  await page
+    .getByTestId("tasks-filter-workflow")
+    .locator("option", { hasText: "Alpha" })
+    .evaluate((el) => el.setAttribute("data-mounted-once", "yes"))
+  // A second run changes the list: the page reads it again in the background.
+  const r2 = await startRunCall(page, a ?? "")
+  await expect(page.getByTestId("task-row")).toHaveCount(2)
+  await expect.poll(async () => (await taskOfRun(page, r2))?.state).toBe("queued")
+  await expect(button).toBeFocused()
+  await expect(button).toHaveAttribute("data-mounted-once", "yes")
+  await expect(
+    page.getByTestId("tasks-filter-workflow").locator("option", { hasText: "Alpha" }),
+  ).toHaveAttribute("data-mounted-once", "yes")
+  await invokeCall(page, "runs.stop", { runId: r1 })
+  await invokeCall(page, "runs.stop", { runId: r2 })
   await app.close()
   await mock.close()
 })

@@ -1,4 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { RunSource, RunSummary, TaskItem, WorkflowNode } from "@robot/shared"
 import { Effect } from "effect"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
@@ -43,8 +46,8 @@ const until = async (ok: () => boolean | Promise<boolean>, what: string, ms = 60
 /** A prompt that the stand-in never answers, until the task is stopped. */
 const HANG = "[[hang]] hold"
 
-const setup = async () => {
-  const t = testRuntime({})
+const setup = async (options: { databaseFile?: string } = {}) => {
+  const t = testRuntime({ ...(options.databaseFile ? { databaseFile: options.databaseFile } : {}) })
   const run = t.runtime.runPromise
   const server = await run(Servers.use((s) => s.local))
   await run(
@@ -91,6 +94,9 @@ const setup = async () => {
     return found
   }
   const stateOf = async (runId: string, node = 1) => (await taskOf(runId, node)).state
+  /** The state of the task of a node, or null while the run has made no task for it. */
+  const nodeState = async (runId: string, node: number) =>
+    (await tasks()).find((x) => x.runId === runId && x.nodeNumber === node)?.state ?? null
   const stop = (runId: string) => run(Runs.use((r) => r.stop(runId)))
   const setSlots = (tasksAtOnce: number) => run(SettingsStore.use((s) => s.update({ tasksAtOnce })))
   const sql = <R>(statement: string, ...params: (string | number | null)[]) =>
@@ -125,6 +131,7 @@ const setup = async () => {
     tasks,
     taskOf,
     stateOf,
+    nodeState,
     stop,
     setSlots,
     sql,
@@ -355,6 +362,104 @@ describe("the order of the queue (spec 005, Queue)", () => {
   })
 })
 
+describe("runs of a workflow with more than one node (spec 005, Rules; 010)", () => {
+  for (const slots of [1, 2]) {
+    test(`${slots} slot${slots === 1 ? "" : "s"}: two runs do not interleave; the second run waits for the end of the first, and starts when the first is stopped`, async () => {
+      const t = await setup()
+      await t.setSlots(slots)
+      const a = await t.flow("A", ["hello", HANG])
+      const r1 = await t.start(a.id)
+      const r2 = await t.start(a.id)
+      expect(r2.state).toBe("queued")
+      await until(async () => (await t.nodeState(r1.id, 2)) === "running", "node 2 of run 1 runs")
+      // The order is node 1 and 2 of run 1, then node 1 and 2 of run 2. Never node 1 of run 2 in between.
+      expect(await t.nodeState(r1.id, 1)).toBe("done")
+      expect(await t.nodeState(r2.id, 1)).toBe("queued")
+      expect(await t.nodeState(r2.id, 2)).toBeNull()
+      await t.stop(r1.id)
+      const d1 = await t.ended(r1.id)
+      await until(async () => (await t.nodeState(r2.id, 2)) === "running", "node 2 of run 2 runs")
+      expect(await t.nodeState(r2.id, 1)).toBe("done")
+      const startedAt = await t.sql<{ started_at: number }>(
+        "SELECT started_at FROM task WHERE run_id = ? AND node_number = 1",
+        r2.id,
+      )
+      expect(startedAt[0]?.started_at).toBeGreaterThanOrEqual(d1.finishedAt ?? Number.MAX_VALUE)
+      await t.stop(r2.id)
+    })
+  }
+
+  test("a node that fails ends its run and frees the workflow for the second run", async () => {
+    const t = await setup()
+    const a = await t.flow("A", ["hello", "[[fail]] x"])
+    const r1 = await t.start(a.id)
+    const r2 = await t.start(a.id)
+    const d1 = await t.ended(r1.id)
+    const d2 = await t.ended(r2.id)
+    expect(d1.state).toBe("failed")
+    expect(d2.state).toBe("failed")
+    expect(d2.nodes.map((n) => n.state)).toEqual(["done", "failed"])
+    const first = await t.sql<{ started_at: number }>(
+      "SELECT started_at FROM task WHERE run_id = ? AND node_number = 1",
+      r2.id,
+    )
+    expect(first[0]?.started_at).toBeGreaterThanOrEqual(d1.finishedAt ?? Number.MAX_VALUE)
+  })
+
+  test("a run that waits for an approval between its nodes keeps its place: the second run waits", async () => {
+    const t = await setup()
+    const a = await t.flow("A", ['tool run_command {"command":"echo held"}', "second"], "ask_all")
+    const r1 = await t.start(a.id)
+    const r2 = await t.start(a.id)
+    const card = await t.waitCard(a.id)
+    expect(await t.nodeState(r1.id, 1)).toBe("waiting")
+    expect(await t.nodeState(r2.id, 1)).toBe("queued")
+    await t.run(Cards.use((c) => c.answer(card.id, { kind: "approval", answer: "allow" })))
+    // The first run goes through its second node; only then does the second run start.
+    const d1 = await t.ended(r1.id)
+    expect(d1.nodes.map((n) => n.state)).toEqual(["done", "done"])
+    await until(async () => (await t.nodeState(r2.id, 1)) === "waiting", "run 2 asks")
+    expect(await t.nodeState(r2.id, 2)).toBeNull()
+    await t.stop(r2.id)
+  })
+
+  test("Run next on a task of the second run does not start it between the nodes of the first run", async () => {
+    const t = await setup()
+    const a = await t.flow("A", ["hello", HANG])
+    const r1 = await t.start(a.id)
+    const r2 = await t.start(a.id)
+    const queued = await t.taskOf(r2.id)
+    await t.run(Tasks.use((x) => x.runNext(queued.id)))
+    await until(async () => (await t.nodeState(r1.id, 2)) === "running", "node 2 of run 1 runs")
+    expect(await t.nodeState(r2.id, 1)).toBe("queued")
+    await t.stop(r1.id)
+    await until(async () => (await t.nodeState(r2.id, 2)) === "running", "run 2 goes on")
+    await t.stop(r2.id)
+  })
+
+  test("after a restart the new queue holds nothing: both runs failed, and a new run of the workflow starts at once", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-tasks-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    const a = await t.flow("A", ["hello", HANG])
+    const r1 = await t.start(a.id)
+    const r2 = await t.start(a.id)
+    await until(async () => (await t.nodeState(r1.id, 2)) === "running", "node 2 of run 1 runs")
+    const again = testRuntime({ databaseFile: file })
+    const go = again.runtime.runPromise
+    for (const id of [r1.id, r2.id]) {
+      const d = await go(Runs.use((r) => r.get(id)))
+      expect(d.state).toBe("failed")
+      expect(d.reasonText).toBe("The app stopped")
+    }
+    const tasksAfter = await go(Tasks.use((x) => x.list({})))
+    expect(tasksAfter.filter((x) => x.runId === r2.id).map((x) => x.state)).toEqual(["failed"])
+    const fresh = await go(Runs.use((r) => r.start({ workflowId: a.id })))
+    expect(fresh.state).toBe("running")
+    await go(Runs.use((r) => r.stop(fresh.id)))
+    await t.stop(r1.id)
+  })
+})
+
 describe("the limit of 20 queued tasks (spec 005, Queue)", () => {
   test("the 21st queued start by hand makes no run and names the workflow; a schedule run is Failed with that reason", async () => {
     const t = await setup()
@@ -577,6 +682,107 @@ describe("the retry note and Retry (spec 005, Retry note)", () => {
     expect((await t.failure(t.run(Tasks.use((x) => x.retry(okTask.id))))).code).toBe(
       "cannot_retry_task",
     )
+  })
+
+  const MARKS = [
+    {
+      mark: "outside",
+      column: "outside_mark",
+      value: JSON.stringify({ kind: "page", host: "evil.example" }),
+    },
+    { mark: "program", column: "program_mark", value: 1 },
+    { mark: "sensitive", column: "sensitive_mark", value: "keys" },
+  ] as const
+  for (const m of MARKS) {
+    test(`Retry holds the ${m.mark} mark of the task that it tries again (spec 007)`, async () => {
+      const t = await setup()
+      const a = await t.flow("A", ["[[fail]] x"])
+      const r = await t.start(a.id)
+      await t.ended(r.id)
+      const task = await t.taskOf(r.id)
+      await t.sql(`UPDATE task SET ${m.column} = ? WHERE id = ?`, m.value, task.id)
+      const result = await t.run(Tasks.use((x) => x.retry(task.id)))
+      if (!result.started) throw new Error("note")
+      await t.ended(result.runId)
+      const marks = (runId: string) =>
+        t.sql<{ outside_mark: string | null; program_mark: number; sensitive_mark: string | null }>(
+          "SELECT outside_mark, program_mark, sensitive_mark FROM task WHERE run_id = ?",
+          runId,
+        )
+      const again = (await marks(result.runId))[0]
+      const before = (await marks(r.id))[0]
+      expect(before?.[m.column]).toBe(m.value)
+      expect(again).toEqual(before)
+      // Only the mark that was set is held: a retry takes over no mark that the task did not hold.
+      for (const other of MARKS)
+        if (other.mark !== m.mark)
+          expect(again?.[other.column]).toBe(other.column === "program_mark" ? 0 : null)
+    })
+  }
+
+  test("a guarded step of the retry asks again, with the marks of the task that it tries again", async () => {
+    const t = await setup()
+    const a = await t.flow("A", ['tool run_command {"command":"echo again"}'], "ask_all")
+    const r = await t.start(a.id)
+    await t.waitCard(a.id)
+    await t.stop(r.id)
+    await t.ended(r.id)
+    const task = await t.taskOf(r.id)
+    await t.sql(
+      "UPDATE task SET outside_mark = ?, sensitive_mark = 'keys' WHERE id = ?",
+      JSON.stringify({ kind: "page", host: "evil.example" }),
+      task.id,
+    )
+    const result = await t.run(Tasks.use((x) => x.retry(task.id, true)))
+    if (!result.started) throw new Error("note")
+    const card = await t.waitCard(a.id)
+    expect(card).toMatchObject({
+      kind: "approval",
+      step: "shell",
+      outside: { kind: "page", host: "evil.example" },
+      sensitive: "keys",
+    })
+    await t.stop(result.runId)
+  })
+
+  test("Retry runs the checks of a start: no node, a loop, or a problem of the check stops it", async () => {
+    const t = await setup()
+    const a = await t.flow("A", ["[[fail]] x", "second"])
+    const r = await t.start(a.id)
+    await t.ended(r.id)
+    const task = await t.taskOf(r.id)
+    const runs = () => t.sql<{ n: number }>("SELECT COUNT(*) AS n FROM run")
+    const before = (await runs())[0]?.n
+    // A decision option with no connection is a problem of the shape: the check finds it.
+    const decision = await t.run(
+      Workflows.use((w) =>
+        w.addNode(a.id, {
+          kind: "decision",
+          name: "Choose",
+          question: "Which?",
+          threshold: 0.9,
+          options: ["Yes", "No"],
+        }),
+      ),
+    )
+    expect((await t.failure(t.run(Tasks.use((x) => x.retry(task.id))))).code).toBe(
+      "run_check_problem",
+    )
+    await t.run(Workflows.use((w) => w.removeNode(decision.id)))
+    // A loop never starts, whatever the check says.
+    const [n1, n2] = a.nodes
+    await t.sql(
+      "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id) VALUES ('loop', ?, ?, ?)",
+      a.id,
+      n2?.id ?? "",
+      n1?.id ?? "",
+    )
+    expect((await t.failure(t.run(Tasks.use((x) => x.retry(task.id))))).code).toBe("run_loop")
+    await t.sql("DELETE FROM workflow_connection WHERE id = 'loop'")
+    // A workflow with no node.
+    for (const n of a.nodes) await t.run(Workflows.use((w) => w.removeNode(n.id)))
+    expect((await t.failure(t.run(Tasks.use((x) => x.retry(task.id))))).code).toBe("run_empty")
+    expect((await runs())[0]?.n).toBe(before)
   })
 
   test("Retry of a task of a retry does not run the nodes after it", async () => {
