@@ -1241,7 +1241,8 @@ describe("file claims of a run in a shared folder (spec 025)", () => {
     const refused = await t.get(second.id)
     const task = refused.nodes[0]?.task
     expect(refused.state).toBe("done")
-    expect(task?.result).toContain("Refused: in use by Report")
+    expect(task?.result).toContain("Refused: another workflow holds this file.")
+    expect(task?.result).toContain('Workflow: "Report"')
     expect(task?.refusals).toEqual([{ path: join(folder, "notes.md"), holder: "Report" }])
     expect(readFileSync(join(folder, "notes.md"), "utf8")).toBe("from Report")
     expect(await t.run(Cards.use((c) => Effect.sync(() => c.open(other.id))))).toEqual([])

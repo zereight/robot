@@ -152,8 +152,9 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
     `Refused: in use by Weekly report: ${join(folder, "notes.md")}`,
   )
   await expect(page.getByTestId("run-node-result-1")).toContainText(
-    "Refused: in use by Weekly report",
+    "Refused: another workflow holds this file.",
   )
+  await expect(page.getByTestId("run-node-result-1")).toContainText('Workflow: "Weekly report"')
   await expect(page.getByTestId("run-node-result-1")).toContainText('"Write notes"')
   await expect(page.getByTestId("card-approval")).toHaveCount(0)
   expect(readFileSync(join(folder, "notes.md"), "utf8")).toBe("from Weekly report")
