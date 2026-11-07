@@ -1,4 +1,12 @@
-import type { LicenseEntry, MessageKey } from "@robot/shared"
+import {
+  isStepLimit,
+  type LicenseEntry,
+  type MessageKey,
+  SILENT_LIMITS,
+  type SilentLimit,
+  STEP_LIMIT_MAX,
+  STEP_LIMIT_MIN,
+} from "@robot/shared"
 import { X } from "lucide-solid"
 import {
   createResource,
@@ -65,6 +73,45 @@ const Row = (
   </div>
 )
 
+/** The step limit of a task: a whole number from 20 to 2000 (spec 013). */
+const StepLimit = () => {
+  const app = useApp()
+  const { t } = app
+  const [draft, setDraft] = createSignal<string>()
+  const shown = () => draft() ?? String(app.settings.stepLimit)
+  const parsed = () => (/^\d+$/.test(shown().trim()) ? Number(shown().trim()) : Number.NaN)
+  const invalid = () => draft() !== undefined && !isStepLimit(parsed())
+  /** Saves a valid number when the user leaves the field or presses Enter. */
+  const commit = () => {
+    const value = parsed()
+    if (isStepLimit(value) && value !== app.settings.stepLimit) app.update({ stepLimit: value })
+    setDraft(undefined)
+  }
+  return (
+    <Row
+      label={t("settings.stepLimit")}
+      hint={invalid() ? t("settings.stepLimit.invalid") : t("settings.stepLimit.hint")}
+      testId="setting-step-limit-row"
+    >
+      <input
+        class={styles.number}
+        type="number"
+        inputMode="numeric"
+        min={STEP_LIMIT_MIN}
+        max={STEP_LIMIT_MAX}
+        step={1}
+        value={shown()}
+        aria-label={t("settings.stepLimit")}
+        aria-invalid={invalid()}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        data-testid="setting-step-limit"
+      />
+    </Row>
+  )
+}
+
 const General = () => {
   const app = useApp()
   const { t } = app
@@ -101,6 +148,38 @@ const General = () => {
             { value: "join", label: t("settings.duringTurn.join") },
             { value: "queue", label: t("settings.duringTurn.queue") },
           ]}
+        />
+      </Row>
+      <StepLimit />
+      <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
+        <Segmented
+          label={t("settings.silentLimit")}
+          testId="setting-silent-limit"
+          value={String(app.settings.silentLimit)}
+          onChange={(value) => app.update({ silentLimit: Number(value) as SilentLimit })}
+          options={SILENT_LIMITS.map((minutes) => ({
+            value: String(minutes),
+            label:
+              minutes === 0
+                ? t("settings.silentLimit.never")
+                : t("settings.silentLimit.option", { count: minutes }),
+          }))}
+        />
+      </Row>
+      <Row label={t("settings.keepGoing")} hint={t("settings.keepGoing.hint")}>
+        <Switch
+          label={t("settings.keepGoing")}
+          testId="setting-keep-going"
+          checked={app.settings.keepGoing}
+          onChange={(keepGoing) => app.update({ keepGoing })}
+        />
+      </Row>
+      <Row label={t("settings.autoCompact")} hint={t("settings.autoCompact.hint")}>
+        <Switch
+          label={t("settings.autoCompact")}
+          testId="setting-auto-compact"
+          checked={app.settings.autoCompact}
+          onChange={(autoCompact) => app.update({ autoCompact })}
         />
       </Row>
       <Row

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
-import { freshUserData, launch, shot } from "./harness.ts"
+import { freshUserData, launch, shot, startHangingRun } from "./harness.ts"
+import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 002: the editor of the responsible document, its limits, and its history.
 
@@ -75,26 +76,15 @@ test("document: edit and save, the limits, the history, restore", async () => {
 })
 
 test("document: the editor is read-only while a run works", async () => {
+  const mock = await startMockProvider()
   const userData = freshUserData()
-  let { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
   await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-text")).toBeVisible()
-  await app.close()
-
-  // A run that works is a row in the database. The test writes it while no app has the file open.
-  const { DatabaseSync } = await import("node:sqlite")
-  const { join } = await import("node:path")
-  const db = new DatabaseSync(join(userData, "robot.db"))
-  const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
-  db.prepare(
-    "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', ?)",
-  ).run(flow.id, Date.now())
-  db.close()
-
-  ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-readonly")).toBeVisible()
   await expect(page.getByTestId("document-text")).toHaveAttribute("readonly", "")
@@ -103,4 +93,5 @@ test("document: the editor is read-only while a run works", async () => {
   await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("Last run: Running")
   await app.close()
+  await mock.close()
 })

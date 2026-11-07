@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import { makeFakeRuntimes } from "./fake-runtimes.ts"
-import { connectMock, freshUserData, killAtOnce, launch, shot } from "./harness.ts"
+import { connectMock, freshUserData, killAtOnce, launch, shot, startHangingRun } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 003: the chat of a workflow.
@@ -297,21 +297,10 @@ test("chat: the tool card of feedback says 'Added feedback to the run'", async (
   const mock = await startMockProvider()
   const env = { ROBOT_SYSTEM_LOCALE: "en-US" }
   const userData = freshUserData()
-  let { app, page } = await launch(userData, env)
+  const { app, page } = await launch(userData, env)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await newWorkflow(page, "Weekly report")
-  await app.close()
-
-  const { DatabaseSync } = await import("node:sqlite")
-  const { join } = await import("node:path")
-  const db = new DatabaseSync(join(userData, "robot.db"))
-  const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
-  db.prepare(
-    "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', ?)",
-  ).run(flow.id, Date.now())
-  db.close()
-
-  ;({ app, page } = await launch(userData, env))
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await say(page, 'tool add_run_feedback {"text":"Too long. Keep it short."}')
   await expect(page.getByTestId("tool-card")).toContainText("Added feedback to the run")
   await expect(page.getByTestId("tool-card")).not.toContainText("add_run_feedback")

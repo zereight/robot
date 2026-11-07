@@ -1,20 +1,24 @@
 import type { WorkflowDetail } from "@robot/shared"
-import { ArrowLeft, Trash2 } from "lucide-solid"
+import { ArrowLeft, Play, Square, Trash2 } from "lucide-solid"
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { ChatPanel } from "../chat/ChatPanel.tsx"
+import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
-import { IconButton } from "../ui/controls.tsx"
+import { Button, IconButton } from "../ui/controls.tsx"
+import { showToast } from "../ui/toast.ts"
 import { DocumentEditor } from "./DocumentEditor.tsx"
 import { GraphEditor } from "./GraphEditor.tsx"
 import graph from "./graph.module.css"
+import { RunsPanel } from "./RunsPanel.tsx"
+import { createRunsState } from "./runsState.ts"
 import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
 
-const TABS = ["graph", "document", "settings"] as const
+const TABS = ["graph", "runs", "document", "settings"] as const
 type Tab = (typeof TABS)[number]
 
 /** The workflow that is open: its name, and the editor of its responsible document. */
@@ -29,6 +33,27 @@ export const WorkflowView = (props: { id: string }) => {
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
   const [asking, setAsking] = createSignal(false)
   const [tab, setTab] = createSignal<Tab>("graph")
+  const runs = createRunsState(() => props.id)
+  const [selected, setSelected] = createSignal<string>()
+  const [trigger, setTrigger] = createSignal("")
+  const toastError = (e: unknown) => {
+    const text = describeError(e)
+    showToast("error", text.key, text.params)
+  }
+  /** Starts a run by hand and shows it (spec 010). */
+  const start = () =>
+    void call("runs.start", { workflowId: props.id, ...(trigger() ? { trigger: trigger() } : {}) })
+      .then((run) => {
+        setSelected(run.id)
+        setTab("runs")
+        void runs.refetch()
+      })
+      .catch(toastError)
+  /** Stops the run that works now. A run that waits in the queue has its own Stop. */
+  const stop = () => {
+    const current = runs.active()[0]
+    if (current) void call("runs.stop", { runId: current.id }).catch(toastError)
+  }
   return (
     <>
       <header class={shell.header} data-testid="workflow-header">
@@ -38,6 +63,14 @@ export const WorkflowView = (props: { id: string }) => {
         <span class={shell.headerTitle}>{detail()?.name}</span>
         <span class={shell.headerSpacer} />
         <Show when={detail()}>
+          <Show when={runs.active().length > 0}>
+            <Button variant="danger" onClick={stop} data-testid="workflow-stop">
+              <Square size={14} /> {t("runs.stop")}
+            </Button>
+          </Show>
+          <Button variant="primary" onClick={start} data-testid="workflow-run">
+            <Play size={14} /> {t("runs.start")}
+          </Button>
           <IconButton
             label={t("workflows.delete")}
             disabled={detail()?.running}
@@ -93,6 +126,16 @@ export const WorkflowView = (props: { id: string }) => {
                 <Switch>
                   <Match when={tab() === "graph"}>
                     <GraphEditor workflow={flow()} />
+                  </Match>
+                  <Match when={tab() === "runs"}>
+                    <RunsPanel
+                      workflowId={flow().id}
+                      runs={runs.runs() ?? []}
+                      selected={selected()}
+                      onSelect={setSelected}
+                      trigger={trigger()}
+                      onTrigger={setTrigger}
+                    />
                   </Match>
                   <Match when={tab() === "document"}>
                     <DocumentEditor workflow={flow()} />

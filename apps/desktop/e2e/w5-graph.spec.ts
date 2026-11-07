@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, freshUserData, launch, shot } from "./harness.ts"
+import { connectMock, freshUserData, launch, shot, startHangingRun } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 010: the graph and node editor.
@@ -177,24 +177,14 @@ test("workflow settings: the permission level and the folder, in Korean words to
 })
 
 test("workflow settings: the folder and the level are read-only while a run works", async () => {
+  const mock = await startMockProvider()
   const userData = freshUserData()
-  let { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
   await expect(page.getByTestId("tab-settings")).toBeVisible()
-  await app.close()
-
-  const { DatabaseSync } = await import("node:sqlite")
-  const { join } = await import("node:path")
-  const db = new DatabaseSync(join(userData, "robot.db"))
-  const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
-  db.prepare(
-    "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', ?)",
-  ).run(flow.id, Date.now())
-  db.close()
-
-  ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await page.getByTestId("tab-settings").click()
   await expect(page.getByTestId("workflow-settings-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-permission")).toBeDisabled()
@@ -207,4 +197,5 @@ test("workflow settings: the folder and the level are read-only while a run work
   await expect(page.getByTestId("workflow-card-delete")).toBeDisabled()
   await shot(page, "w5-27-card-running")
   await app.close()
+  await mock.close()
 })
