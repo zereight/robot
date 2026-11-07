@@ -24,6 +24,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { Spinner } from "../ui/Spinner.tsx"
 import { CheckPanel } from "./CheckPanel.tsx"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
@@ -114,7 +115,11 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
  * check shows the result of the check (spec 010, "Check"), and the canvas marks the nodes of the
  * problem and of its path.
  */
-export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
+export const GraphEditor = (props: {
+  workflow: WorkflowDetail
+  /** The numbers of the nodes that work now: each shows a spinner (specs/039). */
+  runningNodes?: ReadonlySet<number>
+}) => {
   const { t } = useApp()
   const ui = useUi()
   const [selected, setSelected] = createSignal<string>()
@@ -223,6 +228,7 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
   }
 
   const hasProblem = (n: WorkflowNode) => marks().faults.has(n.id)
+  const working = (n: WorkflowNode) => props.runningNodes?.has(n.number) === true
   /** What a screen reader says for a node: the node, and its mark when the check marks it. */
   const nodeLabel = (n: WorkflowNode) => {
     const line = marks().lines.get(n.id)
@@ -364,6 +370,7 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
                     class={styles.node}
                     data-kind={node().kind}
                     data-problem={hasProblem(node())}
+                    data-running={working(node())}
                     data-testid="graph-node"
                     aria-label={nodeLabel(node())}
                     aria-pressed={selected() === node().id}
@@ -396,6 +403,11 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
                     <span class={styles.nodeName}>
                       {node().number}. {node().name}
                     </span>
+                    <Show when={working(node())}>
+                      <span class={styles.nodeSpin} data-testid="graph-node-running">
+                        <Spinner />
+                      </span>
+                    </Show>
                     <span class={styles.nodeKind}>
                       {t(node().kind === "text" ? "graph.kind.text" : "graph.kind.decision")}
                     </span>

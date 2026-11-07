@@ -353,6 +353,11 @@ halo of the same mint at 30%. While the work runs it breathes in 1.4 s: opacity 
 scale 0.8 to 1. It has no direction and no second motion. With reduce motion it is a still mint
 dot. It means "working", never "done" and never "good".
 
+The one other endless motion is the spinner of a running node, a step or a task: a ring with one
+lit arc that turns in 1 s, at a steady speed (`--motion-spin`). Every spinner turns with this
+period, and every breath uses 1.4 s (`--motion-pulse`), so a breath is slower than a turn. With
+reduce motion the ring stays, still and visible (specs/039).
+
 ## 6. Do's and Don'ts
 
 ### Do:

@@ -245,3 +245,80 @@ rule(
     ),
   [],
 )
+
+// specs/039 (Looping motion). A mark that shows "work runs" moves with one period in every place:
+// every spinner uses --motion-spin, every pulse uses --motion-pulse, and a pulse is slower than a
+// spinner. No other animation repeats. Each looping rule has a rule that stops it with reduce
+// motion, and the mark stays in its place (the rule sets `animation: none` and nothing that hides).
+describe("looping motion (specs/039)", () => {
+  type Block = { file: string; selector: string; body: string }
+
+  function blocks(): Block[] {
+    const found: Block[] = []
+    for (const path of sheets(root)) {
+      const text = readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, " ")
+      for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        found.push({
+          file: relative(root, path),
+          selector: (m[1] as string).replace(/\s+/g, " ").trim(),
+          body: (m[2] as string).replace(/\s+/g, " ").trim(),
+        })
+      }
+    }
+    return found
+  }
+
+  const all = blocks()
+  const loops = all.filter((b) => /(?:^|[;\s])animation\s*:[^;]*\binfinite\b/.test(b.body))
+  const period = (name: string) => {
+    const css = readFileSync(join(root, "styles/motion.css"), "utf8")
+    const found = css.match(new RegExp(`${name}:\\s*([0-9.]+)ms`))
+    if (!found) throw new Error(`${name} is missing from motion.css`)
+    return Number.parseFloat(found[1] as string)
+  }
+
+  test("the page has at least one spinner and one pulse", () => {
+    expect(loops.some((b) => b.body.includes("var(--motion-spin)"))).toBe(true)
+    expect(loops.some((b) => b.body.includes("var(--motion-pulse)"))).toBe(true)
+  })
+
+  test("a looping animation uses the period of the spinner or of the pulse, and no other", () => {
+    const bad = loops
+      .filter((b) => !/var\(--motion-(?:spin|pulse)\)/.test(b.body))
+      .map((b) => `${b.file} ${b.selector}`)
+    expect(bad).toEqual([])
+  })
+
+  test("a spinner turns, a pulse does not, and a pulse is slower than a spinner", () => {
+    for (const b of loops) {
+      if (b.body.includes("var(--motion-spin)")) expect(b.body).toMatch(/\blinear\b/)
+    }
+    expect(period("--motion-pulse")).toBeGreaterThan(period("--motion-spin"))
+  })
+
+  test("reduce motion makes the durations of the ending motions zero, not the loops", () => {
+    // The loops are not under these tokens; the next test stops them one by one.
+    const css = readFileSync(join(root, "styles/global.css"), "utf8")
+    const reduced = css.match(/:root\[data-reduce-motion="true"\]\s*\{([^}]*)\}/)
+    expect(reduced?.[1]).toBeDefined()
+    expect(reduced?.[1]).not.toContain("--motion-spin")
+    expect(reduced?.[1]).not.toContain("--motion-pulse")
+  })
+
+  test("every looping rule has a rule that stops it with reduce motion and leaves it in place", () => {
+    const missing: string[] = []
+    for (const loop of loops) {
+      // A rule like `.a .b` is stopped by `:root[data-reduce-motion="true"] .a .b`.
+      const stop = all.find(
+        (b) =>
+          b.file === loop.file &&
+          b.selector === `:root[data-reduce-motion="true"] ${loop.selector}` &&
+          /\banimation\s*:\s*none\b/.test(b.body),
+      )
+      if (!stop) missing.push(`${loop.file} ${loop.selector}`)
+      else
+        expect(stop.body).not.toMatch(/\b(?:display|visibility|opacity)\s*:\s*(?:none|hidden|0)\b/)
+    }
+    expect(missing).toEqual([])
+  })
+})

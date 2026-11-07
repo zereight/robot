@@ -155,7 +155,7 @@ export const WorkflowView = (props: { id: string }) => {
                 </div>
                 <Switch>
                   <Match when={tab() === "graph"}>
-                    <GraphEditor workflow={flow()} />
+                    <GraphEditor workflow={flow()} runningNodes={runs.runningNodes()} />
                   </Match>
                   <Match when={tab() === "runs"}>
                     <RunsPanel
@@ -197,7 +197,7 @@ export const WorkflowView = (props: { id: string }) => {
             not take the focus out of the box of the chat. */}
         <Show when={loaded()}>
           <aside class={styles.chatColumn}>
-            <ChatPanel workflowId={props.id} />
+            <ChatPanel workflowId={props.id} running={runs.active().length > 0} />
           </aside>
         </Show>
       </div>

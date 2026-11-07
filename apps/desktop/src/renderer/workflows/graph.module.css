@@ -83,6 +83,15 @@
   border-color: var(--c-danger);
 }
 
+/* The spinner of a node that works sits at the top right corner of its box (specs/039). */
+.nodeSpin {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  display: inline-flex;
+  font-size: var(--text-s);
+}
+
 .nodeName {
   font-weight: 600;
   max-width: 100%;

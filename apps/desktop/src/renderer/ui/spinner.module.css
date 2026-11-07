@@ -1,0 +1,23 @@
+/* The one turning mark (specs/039). A ring with one lit arc. The size follows the text around it. */
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-success);
+  border-radius: 50%;
+  animation: spin var(--motion-spin) linear infinite;
+}
+
+/* The ring stays and the arc stays lit, so a still mark still says that work runs. */
+:root[data-reduce-motion="true"] .spinner {
+  animation: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
