@@ -183,6 +183,34 @@ describe("a program on this computer", () => {
     ])
   })
 
+  test("close ends the program and every process that it started (its whole group)", async () => {
+    // A launcher such as `npx` starts the real server as a child. This one starts a child that
+    // sleeps for a long time, writes its number to a file, and then becomes the test server.
+    const pidFile = join(work, `child-${Date.now()}.pid`)
+    const s = await open({
+      kind: "program",
+      command: "/bin/sh",
+      args: ["-c", `sleep 300 & echo $! > "${pidFile}"; exec "${process.execPath}" "${SERVER}"`],
+      cwd: process.cwd(),
+      env: { PATH: process.env.PATH },
+    })
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    const pid = Number(readFileSync(pidFile, "utf8").trim())
+    expect(pid).toBeGreaterThan(1)
+    expect(alive(pid)).toBe(true)
+    s.close()
+    const end = Date.now() + 5_000
+    while (alive(pid) && Date.now() < end) await Bun.sleep(25)
+    expect(alive(pid)).toBe(false)
+  })
+
   test("a tool list with more than 1000 tools says that it holds more", async () => {
     const s = await open(program({ MCP_TEST_TOOLS: "1100" }))
     const { tools, more } = await s.listTools(10_000)

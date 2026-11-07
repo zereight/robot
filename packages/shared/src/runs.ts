@@ -80,7 +80,59 @@ export interface RunTask {
   readonly claims: TaskClaims
   /** The steps that a file claim of another workflow refused, oldest first (spec 025). */
   readonly refusals: readonly TaskRefusal[]
+  /** The notice lines and the tool cards of the connections that this task used (spec 018). */
+  readonly connections: TaskConnections
 }
+
+/** The most tool lines of connections that one task keeps (spec 018). */
+export const TASK_CONNECTION_STEPS_MAX = 100
+
+/**
+ * Why a call of a tool of a connection ran or did not run, as the tool card says it (spec 018,
+ * "Rules"; spec 007). `mark`: the connection says that the tool only reads and the user trusts the
+ * mark. `rule`: an Allow rule. `denied_rule`: a Deny rule. `level`: the permission level.
+ * `read_only_level`: the level "Read only" refuses a tool of a connection. `user`: the user
+ * answered a card. `denied`: the user denied the card. `unknown`: the node named a tool that it
+ * may not call.
+ */
+export type ConnectionStepHow =
+  | "mark"
+  | "rule"
+  | "denied_rule"
+  | "level"
+  | "read_only_level"
+  | "user"
+  | "denied"
+  | "unknown"
+
+/** One tool line of a task: a call of a tool of a connection, or the step "Search tools". */
+export type TaskConnectionStep =
+  | {
+      readonly kind: "call"
+      readonly connection: string
+      readonly tool: string
+      readonly result: "ran" | "failed" | "refused" | "stopped"
+      readonly how: ConnectionStepHow
+    }
+  | {
+      readonly kind: "search"
+      /** The words of the node, as one plain line. */
+      readonly words: string
+      readonly found: number
+    }
+
+/**
+ * What a task shows about the connections of its workflow (spec 018, "States"): the connections
+ * that were down when it started, the connections with tools that wait for review, and the tool
+ * lines. The names are plain lines.
+ */
+export interface TaskConnections {
+  readonly down: readonly string[]
+  readonly held: readonly string[]
+  readonly steps: readonly TaskConnectionStep[]
+}
+
+export const NO_TASK_CONNECTIONS: TaskConnections = { down: [], held: [], steps: [] }
 
 /** The claims of a task: how many it holds, and the newest paths (at most 50). */
 export interface TaskClaims {
@@ -161,7 +213,17 @@ export interface RunCard {
   /** What the node wants to do: the command, the path, the host, the question, the feedback text. */
   readonly summary: string
   /** The kind of step of an approval card, for the rules; "feedback" for the chat. */
-  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | "run" | null
+  readonly step:
+    | "file"
+    | "shell"
+    | "web"
+    | "connection"
+    | "feedback"
+    | "ask"
+    | "memory"
+    | "change"
+    | "run"
+    | null
   /** True when the card has Allow once and Deny only (no "Always allow"). */
   readonly once: boolean
   /** The first source of outside content, when the card says that the turn or task holds it. */

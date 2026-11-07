@@ -175,6 +175,17 @@ const limited = <T>(
 // A program on this computer: one JSON message on each line, in both directions.
 // ---------------------------------------------------------------------------------------------
 
+/** The groups of processes that the app started and that still run: all end when the app ends. */
+const groups = new Set<number>()
+let exitHooked = false
+const killGroup = (pid: number, signal: NodeJS.Signals) => {
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    // The group is gone already.
+  }
+}
+
 const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport => {
   if (!existsSync(spec.cwd)) throw new McpError("not_found", "The working folder is missing.")
   const child: ChildProcessWithoutNullStreams = spawn(spec.command, [...spec.args], {
@@ -182,10 +193,24 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     env: spec.env,
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
+    // The program leads its own group of processes, so the end of the connection ends the program
+    // and every process that it started (a launcher such as `npx` starts the real server).
+    detached: process.platform !== "win32",
   })
+  const group = process.platform !== "win32" && child.pid ? child.pid : null
+  if (group !== null) {
+    groups.add(group)
+    if (!exitHooked) {
+      exitHooked = true
+      process.once("exit", () => {
+        for (const g of groups) killGroup(g, "SIGKILL")
+      })
+    }
+  }
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   let nextId = 1
   let ended = false
+  let closing = false
   let spawnError: McpError | null = null
   let resolveClosed: () => void = () => {}
   const closed = new Promise<void>((resolve) => {
@@ -199,6 +224,12 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
   const finish = () => {
     if (ended) return
     ended = true
+    // A program that ended by itself may leave processes of its group. They end now. When the app
+    // closed the connection, the timer of `close` ends the group for good.
+    if (group !== null && !closing) {
+      killGroup(group, "SIGTERM")
+      groups.delete(group)
+    }
     fail(spawnError ?? new McpError("ended", "The program ended."))
     resolveClosed()
   }
@@ -266,15 +297,23 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     notify: (method, params) =>
       send({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }),
     close: () => {
-      if (ended) return
+      if (closing || ended) return
+      closing = true
       child.stdin.end()
-      child.kill("SIGTERM")
-      // A program that ignores the end of its input and the first signal is stopped for good.
+      if (group !== null) killGroup(group, "SIGTERM")
+      else child.kill("SIGTERM")
+      // A program that ignores the end of its input and the first signal is stopped for good, with
+      // the processes of its group that outlive it.
       const hard = setTimeout(() => {
-        if (!ended) child.kill("SIGKILL")
+        if (group !== null) {
+          killGroup(group, "SIGKILL")
+          groups.delete(group)
+        } else if (!ended) child.kill("SIGKILL")
       }, 1_000)
       hard.unref()
-      void closed.then(() => clearTimeout(hard))
+      void closed.then(() => {
+        if (group === null) clearTimeout(hard)
+      })
     },
   }
 }

@@ -10,6 +10,7 @@ import {
   type ListedStep,
   MODEL_RETRY_WAIT_MS,
   MODEL_TRIES,
+  NO_TASK_CONNECTIONS,
   NO_USAGE,
   NOTE_NAME_CHARS,
   nextKeepGoing,
@@ -30,6 +31,9 @@ import {
   type RunTask,
   redactSecrets,
   type SensitiveLabel,
+  TASK_CONNECTION_STEPS_MAX,
+  type TaskConnectionStep,
+  type TaskConnections,
   type TaskState,
   type WorkflowDetail,
   type WorkflowNode,
@@ -40,6 +44,8 @@ import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Cards } from "./Cards.ts"
+import { Connections, type ConnectionTurn } from "./Connections.ts"
+import type { ConnectionTaskContext } from "./connectionTools.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -163,6 +169,8 @@ interface TaskRow {
   program_mark: number
   sensitive_mark: string | null
   steps: number
+  /** The notice lines and tool lines of the connections that the task used (spec 018). */
+  connection_notes: string | null
 }
 
 /** How a task ended. */
@@ -176,6 +184,23 @@ interface End {
 }
 
 const TASK_FINAL = ["done", "failed", "blocked", "cancelled"]
+
+/** The notes of a task as the row keeps them. Text that is not valid reads as no note. */
+const readConnectionNotes = (text: string | null): TaskConnections => {
+  if (!text) return NO_TASK_CONNECTIONS
+  try {
+    const v = JSON.parse(text) as Partial<TaskConnections>
+    const list = (x: unknown) =>
+      Array.isArray(x) ? x.filter((n): n is string => typeof n === "string") : []
+    return {
+      down: list(v.down),
+      held: list(v.held),
+      steps: Array.isArray(v.steps) ? (v.steps as TaskConnections["steps"]) : [],
+    }
+  } catch {
+    return NO_TASK_CONNECTIONS
+  }
+}
 
 export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs") {
   static readonly layer = Layer.effect(
@@ -194,6 +219,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const rules = yield* Rules
       const actionLog = yield* ActionLog
       const claims = yield* FileClaims
+      const connections = yield* Connections
       const memory = yield* Memory
       const proposals = yield* Proposals
       const queue = yield* TaskQueue
@@ -333,6 +359,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           memory: memory.ofTask(t.id),
           claims: claims.ofTask(t.id),
           refusals,
+          connections: readConnectionNotes(t.connection_notes),
         }
       }
 
@@ -1070,6 +1097,43 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           )
         }
 
+        // A text node on an API account gets the tools of the connections that its workflow may
+        // use, once for the task: the connections start now and the count is made now (spec 018,
+        // "Many tools"). A vendor program has none (spec 018, "Rules"). The wait is not silence.
+        const notes: { down: string[]; held: string[]; steps: TaskConnectionStep[] } = {
+          down: [],
+          held: [],
+          steps: [],
+        }
+        const saveNotes = () => {
+          db.run("UPDATE task SET connection_notes = ? WHERE id = ?", JSON.stringify(notes), taskId)
+          changed(n.run.workflow_id, n.run.id)
+        }
+        let connectionTurn: ConnectionTurn | null = null
+        if (!isProgram) {
+          pause()
+          try {
+            connectionTurn = await Effect.runPromise(connections.forTurn(n.run.workflow_id))
+          } finally {
+            resume()
+          }
+          notes.down = connectionTurn.down.map((name) => plainLine(name, NOTE_NAME_CHARS))
+          notes.held = connectionTurn.held.map((name) => plainLine(name, NOTE_NAME_CHARS))
+          if (notes.down.length > 0 || notes.held.length > 0) saveNotes()
+        }
+        const turnOfConnections = connectionTurn
+        const connectionsOf: ConnectionTaskContext | undefined =
+          turnOfConnections && turnOfConnections.count > 0
+            ? {
+                turn: turnOfConnections,
+                note: (line) => {
+                  if (notes.steps.length >= TASK_CONNECTION_STEPS_MAX) return
+                  notes.steps.push(line)
+                  saveNotes()
+                },
+              }
+            : undefined
+
         const ctx = {
           workflowId: n.run.workflow_id,
           workspace: n.detail.folder,
@@ -1077,6 +1141,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           signal,
           taskId,
           marks,
+          ...(connectionsOf ? { connections: connectionsOf } : {}),
           onMarks: () => saveMarks(taskId, marks),
           ask: (card: NodeCard) =>
             askCard(
@@ -1118,6 +1183,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             tools: true,
             memory: memoryOn,
             sharedFolderNote: claims.note(n.run.workflow_id),
+            connectionRule: connectionsOf ? connectionsOf.turn.rule() : "",
           })
         const prompt = renderPrompt(node.prompt, input, n.trigger)
         const turns: Turn[] = [
@@ -1156,6 +1222,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                           tools: memoryOn
                             ? [...NODE_TOOL_DEFS, ...MEMORY_TOOL_DEFS]
                             : NODE_TOOL_DEFS,
+                          // The tools of the connections can grow during the task: a tool that
+                          // the node found by search opens to it (spec 018, "Many tools").
+                          ...(connectionsOf ? { moreTools: () => connectionsOf.turn.defs() } : {}),
                         }),
                     useTools: true,
                     busy: {

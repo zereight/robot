@@ -185,7 +185,7 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT id FROM memory")).toEqual([])
   })
 
-  test("a database built from the first 11 migrations opens at version 12, keeps its rows and gets the claims, the holder and the device", () => {
+  test("a database built from the first 11 migrations opens at the newest version, keeps its rows and gets the claims, the holder and the device", () => {
     const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-11-")), "robot.db")
     const old = new DatabaseSync(file)
     old.exec("PRAGMA foreign_keys = ON")
@@ -207,8 +207,10 @@ describe("the reset of a database from before the workflow model (owner decision
     old.close()
     expect(fileState(file)).toBe("current")
     const db = openDatabase(file)
-    expect(migrations).toHaveLength(12)
-    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(12)
+    expect(migrations.length).toBeGreaterThanOrEqual(12)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
     // The rows stay.
     expect(db.get<{ document: string }>("SELECT document FROM workflow")?.document).toBe("Doc.")
     expect(db.all("SELECT id FROM run")).toEqual([{ id: "r1" }])
@@ -224,5 +226,37 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT holder FROM action_log")).toEqual([{ holder: "Other" }])
     db.run("DELETE FROM workflow WHERE id = 'w1'")
     expect(db.all("SELECT task_id FROM file_claim")).toEqual([])
+  })
+  test("a database built from the first 12 migrations opens at version 13: the scope of a connection fails closed, and a deleted workflow leaves its list", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const before = migrations.slice(0, 12)
+    expect(before).toHaveLength(12)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO tool_connection (id, server_id, name, name_key, kind, created_at)
+        VALUES ('c1', 's1', 'Notes', 'notes', 'program', 1);
+    `)
+    old.close()
+    const db = openDatabase(file)
+    expect(migrations).toHaveLength(13)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(13)
+    // A connection from before has the scope "list", and the list is empty: no workflow uses it.
+    expect(db.all("SELECT scope FROM tool_connection")).toEqual([{ scope: "workflows" }])
+    expect(db.all("SELECT workflow_id FROM tool_connection_workflow")).toEqual([])
+    db.run("INSERT INTO tool_connection_workflow (connection_id, workflow_id) VALUES ('c1', 'w1')")
+    db.run("DELETE FROM workflow WHERE id = 'w1'")
+    expect(db.all("SELECT workflow_id FROM tool_connection_workflow")).toEqual([])
+    expect(db.all("SELECT id FROM tool_connection")).toEqual([{ id: "c1" }])
+    expect(
+      db.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM pragma_table_info('task') WHERE name = 'connection_notes'",
+      )?.n,
+    ).toBe(1)
   })
 })

@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path"
 import {
   CONNECTION_CALL_MS,
   CONNECTION_IDLE_MS,
+  CONNECTION_SCOPE_MAX,
   CONNECTION_TEST_MS,
   CONNECTIONS_MAX,
   type ConnectionEntryInput,
@@ -10,6 +11,7 @@ import {
   type ConnectionFailure,
   type ConnectionFormProblem,
   type ConnectionSaveInput,
+  type ConnectionScope,
   type ConnectionTestResult,
   type ConnectionToolView,
   checkConnection,
@@ -20,6 +22,7 @@ import {
   nameKey,
   needsToolSearch,
   parseReviewedTools,
+  plainLine,
   type ReviewedTool,
   reviewedToolOf,
   SEARCH_TOOLS_NAME,
@@ -84,6 +87,8 @@ interface Row {
   review_adopt: number
   /** 1 when the user turned on "Trust read-only marks" (spec 018, "Rules"). */
   trust_read_only: number
+  /** `all` (All workflows) or `workflows` (the list of `tool_connection_workflow`). */
+  scope: string
   created_at: number
 }
 
@@ -288,6 +293,50 @@ export class Connections extends Context.Service<Connections, ConnectionsService
         const rows = () =>
           db.all<Row>("SELECT * FROM tool_connection").sort((a, b) => a.name.localeCompare(b.name))
 
+        // -- The scope: the workflows that may use a connection (spec 018, "Concepts"). --
+
+        /**
+         * The scope of a row. A value that is not known reads as an empty list: no workflow uses
+         * the connection (fail closed).
+         */
+        const scopeOf = (row: Row): ConnectionScope =>
+          row.scope === "all"
+            ? { kind: "all" }
+            : {
+                kind: "workflows",
+                workflowIds:
+                  row.scope === "workflows"
+                    ? db
+                        .all<{ workflow_id: string }>(
+                          "SELECT workflow_id FROM tool_connection_workflow WHERE connection_id = ? ORDER BY workflow_id",
+                          row.id,
+                        )
+                        .map((r) => r.workflow_id)
+                    : [],
+              }
+        /** True when the workflow may use the connection of this row now. Read at each call. */
+        const usable = (row: Row, workflowId: string) =>
+          row.scope === "all"
+            ? true
+            : row.scope === "workflows" &&
+              db.get(
+                "SELECT 1 AS x FROM tool_connection_workflow WHERE connection_id = ? AND workflow_id = ?",
+                row.id,
+                workflowId,
+              ) !== undefined
+        /** Keeps a scope: the ids of workflows that exist, once each. */
+        const writeScope = (id: string, scope: ConnectionScope) => {
+          db.run("DELETE FROM tool_connection_workflow WHERE connection_id = ?", id)
+          if (scope.kind !== "workflows") return
+          for (const workflowId of new Set(scope.workflowIds))
+            db.run(
+              `INSERT OR IGNORE INTO tool_connection_workflow (connection_id, workflow_id)
+               SELECT ?, id FROM workflow WHERE id = ?`,
+              id,
+              workflowId,
+            )
+        }
+
         // -- The keychain. A failure to read gives no value; a failure to write is an error. --
 
         const readSecret = (key: string): string | null => {
@@ -379,6 +428,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             needReview: held.size,
             valueMissing: [...env, ...headers].some((e) => e.secret && e.saved !== true),
             trustReadOnly: row.trust_read_only === 1,
+            scope: scopeOf(row),
           }
         }
 
@@ -588,8 +638,10 @@ export class Connections extends Context.Service<Connections, ConnectionsService
           return { type: "object", properties: {}, additionalProperties: true }
         }
 
-        const forTurn = async (_workflowId: string): Promise<ConnectionTurn> => {
-          const mine = rows().filter((row) => row.enabled === 1)
+        const forTurn = async (workflowId: string): Promise<ConnectionTurn> => {
+          // Only a connection that is on and that this workflow may use is offered or started. A
+          // connection out of scope is not "down" either: the node does not know it (spec 018).
+          const mine = rows().filter((row) => row.enabled === 1 && usable(row, workflowId))
           const down: string[] = []
           const held: string[] = []
           const sources: { id: string; name: string; tools: McpTool[] }[] = []
@@ -637,6 +689,10 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             const source = byId.get(target.connectionId)
             const tool = source?.tools.find((t) => t.name === target.tool)
             if (!source || !tool) return undefined
+            // The scope is read again at each use: a connection that left the list of this
+            // workflow during the task, or that was removed, is not called (spec 018).
+            const now = rowOf(target.connectionId)
+            if (!now || !usable(now, workflowId)) return undefined
             return {
               target: {
                 ...target,
@@ -660,7 +716,9 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             const text = found.tool.description.trim()
             return {
               name: alias,
-              description: `[Connection "${found.target.connection}"] ${text || "No description."}`,
+              // The name is one plain line, so no name can start a line of its own in the text
+              // that the model reads (spec 018, 007).
+              description: `[Connection "${plainLine(found.target.connection, 40)}"] ${text || "No description."}`,
               schema: objectSchema(found.tool),
             }
           }
@@ -672,9 +730,11 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               return found
                 ? [
                     {
-                      connection: found.target.connection,
-                      tool: found.target.tool,
-                      description: found.tool.description,
+                      // The description of a tool is text of the connection: in the result of a
+                      // search it is one plain line, cut, so it cannot forge lines or a step.
+                      connection: plainLine(found.target.connection, 40),
+                      tool: plainLine(found.target.tool, 80),
+                      description: plainLine(found.tool.description, 500),
                       alias,
                     },
                   ]
@@ -694,7 +754,9 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                   return def ? [def] : []
                 })
               const names = [
-                ...new Set(sources.filter((s) => s.tools.length > 0).map((s) => s.name)),
+                ...new Set(
+                  sources.filter((s) => s.tools.length > 0).map((s) => plainLine(s.name, 40)),
+                ),
               ]
               const found = [...open].flatMap((alias) => {
                 const def = defOf(alias)
@@ -744,6 +806,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               const found = toolOf(alias)
               if (!found) return { ok: false, reason: "failed", message: UNKNOWN_TOOL_TEXT }
               let running: Live | undefined
+              let stopped = false
               try {
                 running = await ensure(found.target.connectionId)
                 running.active++
@@ -756,7 +819,10 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 return { ok: true, text: text.text, cut: text.cut, isError: result.isError }
               } catch (error) {
                 if (error instanceof McpCallStopped) {
-                  if (error.why === "stop") throw error
+                  if (error.why === "stop") {
+                    stopped = true
+                    throw error
+                  }
                   return { ok: false, reason: "timeout", message: "The call timed out." }
                 }
                 if (error instanceof McpCallError)
@@ -767,7 +833,13 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               } finally {
                 if (running) {
                   running.active = Math.max(0, running.active - 1)
-                  if (live.get(running.id) === running) armIdle(running)
+                  // Stop: the tool may still run in the program, and a program that does not obey
+                  // the cancel would hang. When no other call uses the connection, the program ends
+                  // with its whole group of processes. The next task starts it again.
+                  if (live.get(running.id) === running) {
+                    if (stopped && running.active === 0) stop(running.id)
+                    else armIdle(running)
+                  }
                 }
               }
             },
@@ -871,6 +943,11 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             if (form.kind === "program" && !input.confirmed)
               return yield* new AppError({ code: "connection_confirm", detail: "confirm" })
 
+            if (
+              input.scope?.kind === "workflows" &&
+              input.scope.workflowIds.length > CONNECTION_SCOPE_MAX
+            )
+              return yield* new AppError({ code: "connection_scope", detail: "scope" })
             const id = before?.id ?? randomUUID()
             const isProgram = form.kind === "program"
             let env: ReturnType<typeof saveEntries>
@@ -918,8 +995,8 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
                     enabled, state, failure, tools, tools_more, tools_off,
-                    reviewed, review_adopt, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?)`,
+                    reviewed, review_adopt, scope, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?, ?)`,
                 id,
                 serverId(),
                 next.name,
@@ -938,8 +1015,11 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 // With no Test, the connection has none, and all its tools are held at its first
                 // start (spec 018, "Flows", "Tool review").
                 JSON.stringify(probeResult ? toStored(probeResult.tools) : []),
+                // A new connection is for all workflows unless the form chose a list.
+                input.scope?.kind === "workflows" ? "workflows" : "all",
                 Date.now(),
               )
+              if (input.scope?.kind === "workflows") writeScope(id, input.scope)
               tested.delete(mark)
             } else {
               const reach = reachOf({ ...before, ...next })
@@ -993,6 +1073,15 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 before.id,
               )
               for (const key of [...env.drops, ...headers.drops]) dropSecret(key)
+              // A change of the scope does not clear the reviewed tools (spec 018, "Tool review").
+              if (input.scope) {
+                db.run(
+                  "UPDATE tool_connection SET scope = ? WHERE id = ?",
+                  input.scope.kind === "all" ? "all" : "workflows",
+                  before.id,
+                )
+                writeScope(before.id, input.scope)
+              }
               if (before.name !== next.name) rules.renameConnection(before.name, next.name)
             }
             changed()
