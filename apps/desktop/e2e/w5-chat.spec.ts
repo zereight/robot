@@ -249,16 +249,16 @@ test("chat: Reply and Copy are reachable with the keyboard", async () => {
 })
 
 test("chat: the header names the model; a program answers in text only and the chat says so", async () => {
+  // opencode has no bridge in this version, so it answers in text only (spec 006).
   const mock = await startMockProvider()
   const fake = makeFakeRuntimes()
-  fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
   const { app, page } = await launch(freshUserData(), {
     ROBOT_SYSTEM_LOCALE: "en-US",
-    ROBOT_CLAUDE_BIN: fake.claude,
+    ROBOT_OPENCODE_BIN: fake.opencode,
   })
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await page.evaluate(async () => {
-    await window.robot.invoke("providers.connect", { kind: "claude_code", name: "Claude" })
+    await window.robot.invoke("providers.connect", { kind: "opencode", name: "Opencode" })
   })
   await newWorkflow(page, "Weekly report")
   await expect(page.getByTestId("chat-model")).toHaveValue(/mock-fast/)
@@ -269,21 +269,23 @@ test("chat: the header names the model; a program answers in text only and the c
 
   // The user picks the program: the chat says that feedback is not there, and the program gets
   // no tools and does not run in the folder of the workflow.
-  await page.getByTestId("chat-model").selectOption({ label: "Claude · opus" })
+  await page.getByTestId("chat-model").selectOption({ label: "Opencode · opencode/fake-free" })
   await expect(page.getByTestId("chat-no-feedback")).toContainText("You cannot give feedback")
   await shot(page, "w5-38-chat-program")
   await say(page, "hello program")
   await expect(page.getByTestId("working-line")).toHaveCount(0)
   await expect
-    .poll(() => fake.claudeCalls().filter((c) => "prompt" in c).length, { timeout: 10_000 })
+    .poll(() => fake.opencodeCalls().filter((c) => "prompt" in c).length, { timeout: 10_000 })
     .toBe(1)
-  const turn = fake.claudeCalls().find((c) => "prompt" in c) as { args: string[] }
-  expect(turn.args[turn.args.indexOf("--tools") + 1]).toBe("")
+  const turn = fake.opencodeCalls().find((c) => "prompt" in c) as {
+    config: { permission: Record<string, string> }
+  }
+  expect(turn.config.permission).toEqual({ "*": "deny" })
 
   // The choice stays: another message goes to the same program.
   await say(page, "and again")
   await expect
-    .poll(() => fake.claudeCalls().filter((c) => "prompt" in c).length, { timeout: 10_000 })
+    .poll(() => fake.opencodeCalls().filter((c) => "prompt" in c).length, { timeout: 10_000 })
     .toBe(2)
   await expect(mock.requests).toHaveLength(0)
 

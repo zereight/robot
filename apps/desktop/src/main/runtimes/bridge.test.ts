@@ -322,4 +322,12 @@ describe("names of the tools", () => {
     expect(bridgeToolName("my_browser_open")).toBeNull()
     expect(bridgeToolName("")).toBeNull()
   })
+
+  test("a turn whose bridge holds other tools gives its own names (spec 006)", () => {
+    const chat = ["list_workflows", "create_workflow"]
+    expect(bridgeToolName("create_workflow", chat)).toBe("create_workflow")
+    expect(bridgeToolName("mcp__robot__create_workflow", chat)).toBe("create_workflow")
+    expect(bridgeToolName("mcp__robot__browser_open", chat)).toBeNull()
+    expect(bridgeToolName("bash", chat)).toBeNull()
+  })
 })

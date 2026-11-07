@@ -60,6 +60,12 @@ export interface Driver {
    * A program that is not proven here is false.
    */
   readonly chatSafe: boolean
+  /**
+   * True when the chat may give the program its tools through the bridge, with the own tools
+   * of the program off (spec 006, "Chat tools on a vendor runtime"). Only a program that is
+   * also `chatSafe` is asked. A program that is not proven here is false.
+   */
+  readonly chatBridge: boolean
   run(run: RuntimeRun): AsyncGenerator<AgentEvent>
 }
 
@@ -73,6 +79,8 @@ export const drivers: Record<RuntimeKind, Driver> = {
     // `--tools ""` removes every built-in tool; `--strict-mcp-config` with no file removes the
     // servers of the user (claudeArgs).
     chatSafe: true,
+    // `--tools` with the `mcp__robot__` names, and no other tool, plus `--mcp-config`.
+    chatBridge: true,
     run: runClaude,
   },
   codex: {
@@ -81,6 +89,7 @@ export const drivers: Record<RuntimeKind, Driver> = {
     signIn: (bin, signal) => codexSignIn(bin, signal),
     // `-s read-only` still runs shell and reads any file, and the servers of the user stay on.
     chatSafe: false,
+    chatBridge: false,
     run: runCodex,
   },
   muse: {
@@ -90,14 +99,28 @@ export const drivers: Record<RuntimeKind, Driver> = {
     signInHosts: MUSE_SIGN_IN_HOSTS,
     // The flags switch off write, shell and web, not the tools that read.
     chatSafe: false,
+    chatBridge: false,
     run: runMuse,
   },
   // `--no-tools` and `--no-mcp` (piArgs).
-  pi: { probe: piProbe, login: piLogin, chatSafe: true, run: runPi },
+  pi: { probe: piProbe, login: piLogin, chatSafe: true, chatBridge: true, run: runPi },
   // The rules `{"*": "deny"}` take every tool away from the model (opencodePermission).
-  opencode: { probe: opencodeProbe, login: opencodeLogin, chatSafe: true, run: runOpencode },
+  opencode: {
+    probe: opencodeProbe,
+    login: opencodeLogin,
+    chatSafe: true,
+    // No bridge in this version (spec 006): the chat answers in text only.
+    chatBridge: false,
+    run: runOpencode,
+  },
   // `--mode ask` can still read and search files.
-  cursor: { probe: cursorProbe, login: cursorLogin, chatSafe: false, run: runCursor },
+  cursor: {
+    probe: cursorProbe,
+    login: cursorLogin,
+    chatSafe: false,
+    chatBridge: false,
+    run: runCursor,
+  },
 }
 
 /** True for an API account (`null`), and for a program that the chat may use (`chatSafe`). */

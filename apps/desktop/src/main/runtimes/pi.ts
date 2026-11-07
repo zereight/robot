@@ -185,7 +185,9 @@ export const piTools = (
   useTools: boolean,
   extra: readonly string[] = [],
 ): string[] => {
-  if (!useTools) return ["--no-tools"]
+  // The tools of the app with no tool of the program (spec 006, "Chat tools on a vendor
+  // runtime"): `--no-builtin-tools` keeps the extension tools on.
+  if (!useTools) return extra.length > 0 ? ["--no-builtin-tools"] : ["--no-tools"]
   if (level === "read_only" || level === "ask_all")
     return ["--tools", ["read", "grep", "find", "ls", ...extra].join(",")]
   if (level === "ask_risky")

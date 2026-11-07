@@ -392,6 +392,29 @@ describe("claude run", () => {
     expect(args).toContain("Be brief.")
   })
 
+  test("the tools of the app with no tool of the program: only the MCP names (spec 006)", () => {
+    // A turn of the chat on Claude Code: `--tools` names the tools of the bridge, and the
+    // built-ins stay off.
+    const bridge = {
+      url: "http://127.0.0.1:1/mcp",
+      token: "token",
+      tools: [
+        { name: "list_workflows", description: "d", schema: {} },
+        { name: "create_workflow", description: "d", schema: {} },
+      ],
+    }
+    const args = claudeArgs(run({ useTools: false, bridge }), "/tmp/claude.json")
+    expect(args.slice(args.indexOf("--tools"), args.indexOf("--tools") + 2)).toEqual([
+      "--tools",
+      "mcp__robot__list_workflows,mcp__robot__create_workflow",
+    ])
+    expect(args.slice(args.indexOf("--mcp-config"), args.indexOf("--mcp-config") + 2)).toEqual([
+      "--mcp-config",
+      "/tmp/claude.json",
+    ])
+    expect(args).not.toContain("--disallowedTools")
+  })
+
   test("an error result becomes a failure that the user can act on", () => {
     expect(claudeFailure("You've hit your limit ∙ resets 3pm", 5000)).toMatchObject({
       code: "provider_limit",

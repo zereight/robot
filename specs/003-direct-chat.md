@@ -473,6 +473,9 @@ moves.
 - If the cut request had reached the model ("Sent" or "Started"), the notice shows the line of 005
   for that progress, and keeps "Continue".
 - Scrolling up stops auto-scroll. A "Jump to latest" button brings it back.
+- When the answering model comes from pi or Claude Code, the chat has the same tools as with an
+  API account (006, "Chat tools on a vendor runtime"). With opencode the chat answers in text
+  only. Codex, Muse Code and Cursor cannot answer in the chat.
 - For 3 seconds after a chat opens, an upward scroll that the reader did not cause (no wheel,
   touch, drag or key) returns the chat to the latest message, as long as the chat follows the
   latest message. Later scrolls are left alone. The app never fights the reader.

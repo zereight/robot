@@ -147,6 +147,11 @@ export const chatSystem = (input: {
    * at the call, so this states what the turn may do instead of trying first.
    */
   cannotChange?: { reason: "device"; server: string } | { reason: "read_only" }
+  /**
+   * True when the tools reach the model through the MCP bridge of Claude Code, which puts
+   * `mcp__robot__` before each name (spec 006, "Chat tools on a vendor runtime").
+   */
+  mcpTools?: boolean
 }): string =>
   [
     `You are the responsible document of the workflow "${input.name}". The user talks to you in the chat of this workflow. Answer in the language of the user. Be short and plain.`,
@@ -181,7 +186,7 @@ export const chatSystem = (input: {
           "- You have no tools in this chat. You cannot add feedback to a run. When the message is feedback, say that this account cannot add feedback to a run, and that the user can pick another account in the header of the chat. Do not say that the feedback was added.",
         ]),
     "- Feedback never changes the graph, a node prompt, the document or the memory.",
-    ...(input.assistant ? assistantRules(input.graph, input.cannotChange) : []),
+    ...(input.assistant ? assistantRules(input.graph, input.cannotChange, input.mcpTools) : []),
     ...(input.may
       ? improvementRules(input.may, input.graph, input.assistant === true, input.cannotChange)
       : []),
@@ -207,10 +212,16 @@ const disciplineRules = [
 const assistantRules = (
   graph: WorkflowGraph | undefined,
   cannotChange: { reason: "device"; server: string } | { reason: "read_only" } | undefined,
+  mcpTools?: boolean,
 ): string[] => [
   "",
   "Rules for the tools of the workflow:",
   "- You work on this workflow only. list_workflows gives names and counts of the workflows on this server. You cannot read the graph of another workflow.",
+  ...(mcpTools
+    ? [
+        "- The tools above reach you as MCP tools named mcp__robot__<name>. Call them by those names.",
+      ]
+    : []),
   ...(cannotChange ? cannotChangeRules(cannotChange) : changeRules),
   "- To tell how a run is going, call read_run. To tell the result of a node, call read_run_result. A node that has not ended has no result.",
   ...(graph
