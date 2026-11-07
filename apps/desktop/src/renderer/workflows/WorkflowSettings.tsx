@@ -22,6 +22,11 @@ export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
   return (
     <div class={styles.settings} data-testid="workflow-settings">
       <p class={styles.hintText}>{t("workflow.settings.hint")}</p>
+      <Show when={props.workflow.running}>
+        <p class={styles.hintText} role="status" data-testid="workflow-settings-readonly">
+          {t("graph.readonly")}
+        </p>
+      </Show>
       <div class={styles.field}>
         <span class={styles.fieldLabel}>{t("workflow.folder")}</span>
         <span class={styles.path} data-testid="workflow-folder">
@@ -29,6 +34,7 @@ export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
         </span>
         <div>
           <Button
+            disabled={props.workflow.running}
             onClick={() => guard(() => call("workflows.pickFolder", { id: props.workflow.id }))}
             data-testid="workflow-folder-pick"
           >
@@ -41,6 +47,7 @@ export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
         <select
           class={styles.control}
           data-testid="workflow-permission"
+          disabled={props.workflow.running}
           value={props.workflow.permission}
           onChange={(e) =>
             guard(() =>

@@ -289,6 +289,34 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           ? new AppError({ code: "node_permission_looser", detail: "permission" })
           : null
 
+      /** A decision node uses no model, no reasoning level and no tools (spec 010). */
+      const checkDecisionFields = (patch: {
+        accountId?: string | null
+        model?: string | null
+        effort?: string | null
+        permission?: PermissionLevel | null
+      }) => {
+        if (patch.effort !== undefined && patch.effort !== null)
+          return new AppError({ code: "decision_effort", detail: "effort" })
+        if (
+          (patch.accountId !== undefined && patch.accountId !== null) ||
+          (patch.model !== undefined && patch.model !== null)
+        )
+          return new AppError({ code: "decision_model", detail: "model" })
+        if (patch.permission !== undefined && patch.permission !== null)
+          return new AppError({ code: "decision_permission", detail: "permission" })
+        return null
+      }
+
+      /** True when a text node of the graph holds a level that is looser than the given level. */
+      const loosestNode = (
+        nodes: readonly { kind: string; permission: PermissionLevel | null }[],
+        level: PermissionLevel,
+      ) =>
+        nodes.some(
+          (n) => n.kind === "text" && n.permission !== null && isLooser(n.permission, level),
+        )
+
       const create = (input: WorkflowCreate) =>
         Effect.gen(function* () {
           if (!db.get("SELECT 1 FROM server WHERE id = ?", input.serverId))
@@ -430,6 +458,15 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         setPermission: (id, level) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
+            // Spec 010 says a node is never looser than its workflow, and does not say what a
+            // tighter workflow does to a looser node. The app refuses and names no node.
+            if (loosestNode(readGraph(db, id).nodes, level))
+              return yield* new AppError({
+                code: "workflow_permission_nodes",
+                detail: "permission",
+              })
             db.run(
               "UPDATE workflow SET permission = ?, updated_at = ? WHERE id = ?",
               level,
@@ -442,6 +479,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         setFolder: (id, folder) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
             if (folder.trim() === "")
               return yield* new AppError({ code: "workflow_folder_empty", detail: "folder" })
             db.run(
@@ -508,6 +547,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               return yield* new AppError({ code: "node_name_empty", detail: "name" })
             const level = checkLevel(row, input.permission)
             if (level) return yield* level
+            if (input.kind === "decision") {
+              const fields = checkDecisionFields(input)
+              if (fields) return yield* fields
+            }
             const options = input.options ?? []
             if (input.kind === "decision" && options.length < OPTIONS_MIN)
               return yield* new AppError({ code: "decision_options", detail: "options" })
@@ -565,9 +608,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (level) return yield* level
             if (patch.threshold !== undefined && !(patch.threshold >= 0 && patch.threshold <= 1))
               return yield* new AppError({ code: "decision_threshold", detail: "threshold" })
-            // A decision node has no reasoning level and no tools (spec 010).
-            if (node.kind === "decision" && patch.effort !== undefined && patch.effort !== null)
-              return yield* new AppError({ code: "decision_effort", detail: "effort" })
+            if (node.kind === "decision") {
+              const fields = checkDecisionFields(patch)
+              if (fields) return yield* fields
+            }
             const pick = <T>(next: T | undefined, now: T) => (next === undefined ? now : next)
             db.transaction(() => {
               keepVersion(row.id, "editor")
@@ -796,6 +840,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const busy = checkIdle(id)
             if (busy) return yield* busy
             const graph = JSON.parse(version.graph) as WorkflowGraph
+            // The workflow level may be stricter now than when the version was saved.
+            if (loosestNode(graph.nodes, row.permission))
+              return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
             db.transaction(() => {
               // A restore keeps the graph as it is now as a version (spec 010).
               keepVersion(id, "restore")

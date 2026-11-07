@@ -175,3 +175,29 @@ test("workflow settings: the permission level and the folder, in Korean words to
   await shot(page, "w5-26-settings-ko")
   await app.close()
 })
+
+test("workflow settings: the folder and the level are read-only while a run works", async () => {
+  const userData = freshUserData()
+  let { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await page.getByTestId("new-workflow-empty").click()
+  await page.getByTestId("new-workflow-name").fill("Weekly")
+  await page.getByTestId("new-workflow-name").press("Enter")
+  await expect(page.getByTestId("tab-settings")).toBeVisible()
+  await app.close()
+
+  const { DatabaseSync } = await import("node:sqlite")
+  const { join } = await import("node:path")
+  const db = new DatabaseSync(join(userData, "robot.db"))
+  const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
+  db.prepare(
+    "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', ?)",
+  ).run(flow.id, Date.now())
+  db.close()
+
+  ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
+  await page.getByTestId("tab-settings").click()
+  await expect(page.getByTestId("workflow-settings-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-permission")).toBeDisabled()
+  await expect(page.getByTestId("workflow-folder-pick")).toBeDisabled()
+  await app.close()
+})

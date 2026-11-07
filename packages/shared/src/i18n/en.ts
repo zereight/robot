@@ -716,7 +716,11 @@ export const en = {
   "error.decision_options": "A decision node needs at least two options.",
   "error.text_node_options": "Only a decision node has options.",
   "error.decision_threshold": "Use a number from 0 to 1 for the threshold.",
-  "error.decision_effort": "Only a decision node has this effort setting.",
+  "error.decision_effort": "A decision node has no reasoning level.",
+  "error.decision_model": "A decision node takes its model from the settings.",
+  "error.decision_permission": "A decision node uses no tools, so it has no permission level.",
+  "error.workflow_permission_nodes":
+    "A node of this workflow is looser than this level. Make the node stricter first.",
   "error.connection_node_missing": "A node of this connection does not exist.",
   "error.connection_to_self": "A node cannot connect to itself.",
   "error.connection_exists":

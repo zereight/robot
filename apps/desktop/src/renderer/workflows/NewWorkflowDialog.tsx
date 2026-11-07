@@ -47,7 +47,8 @@ export const NewWorkflowDialog = (props: { serverId: string; onClose: () => void
           setProblem(undefined)
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") void create()
+          // Enter that ends a Korean IME composition is not a submit.
+          if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) void create()
         }}
       />
       <Show when={problem()}>
