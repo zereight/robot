@@ -7,10 +7,10 @@ when the user asks for less motion.
 
 ## Concepts
 
-- **Spinner**: a turning mark for a step or a task that is running. Examples: the turning mark in
-  the sidebar and at the head of a chat.
-- **Pulse**: a mark that grows and fades again and again to show that an agent works. Examples:
-  the working dot of the sidebar and the glow of the brand mark.
+- **Spinner**: a turning mark for a node, a step or a task that is running. Examples: the turning
+  mark of a running node on the canvas (000, "turn") and at the head of the chat of a workflow.
+- **Pulse**: a mark that grows and fades again and again to show that a task works (000,
+  "breath"). Examples: the working mark of a task and the glow of the brand mark.
 
 ## Rules
 
@@ -24,8 +24,8 @@ when the user asks for less motion.
 
 ## Surfaces
 
-The sidebar and its header, the chat view and the brand mark. The status island
-keeps its own rules (015).
+The server rail and the workflow list, the workflow view with its canvas and its chat, and the
+brand mark. The status island keeps its own rules (015).
 
 ## Out of scope
 
@@ -34,7 +34,7 @@ island window.
 
 ## Acceptance
 
-- Two spinners on one screen, for example in a chat and in the sidebar, turn in step with the same
+- Two spinners on one screen, for example on the canvas and in the chat, turn in step with the same
   period.
 - Turn on "reduce motion": every spinner and every pulse is still, and each is still visible.
 - Turn it off: they move again with no restart.
