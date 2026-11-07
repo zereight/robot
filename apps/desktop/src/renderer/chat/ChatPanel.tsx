@@ -1,6 +1,22 @@
-import { sameChatDay, startsChatGroup, type WorkflowChatMessage } from "@robot/shared"
+import {
+  type ChatAnswer,
+  type ModelChoice,
+  sameChatDay,
+  startsChatGroup,
+  type WorkflowChatMessage,
+} from "@robot/shared"
 import { ChevronDown, ChevronUp, X } from "lucide-solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -36,6 +52,76 @@ const WorkingLine = (props: { since: number }) => {
       <span>{phrase()}</span>
       <span class={styles.elapsed}>{t("chat.elapsed", { seconds: seconds() })}</span>
     </div>
+  )
+}
+
+/**
+ * The header of the chat: the account and the model that answer now, and a list to pick another
+ * one. The list is read when the chat opens and when an account changes, not for every message.
+ */
+const AnswerHeader = (props: { workflowId: string; answer: ChatAnswer }) => {
+  const { t } = useApp()
+  const [choices, { refetch }] = createResource(
+    (): Promise<readonly ModelChoice[]> => call("models.available").catch(() => []),
+  )
+  onCleanup(window.robot.on("providers.changed", () => void refetch()))
+  const key = (accountId: string, model: string) => `${accountId}\u0000${model}`
+  const options = () => {
+    const now = props.answer
+    const out: { value: string; label: string }[] = []
+    for (const c of choices() ?? [])
+      for (const m of c.models)
+        if (m.hidden !== true || (c.accountId === now.accountId && m.id === now.model))
+          out.push({
+            value: key(c.accountId, m.id),
+            label: t("chat.model.option", { account: c.accountName, model: m.id }),
+          })
+    const current = key(now.accountId, now.model)
+    // The list may not be read yet, or may not hold the model that answers: it always shows it.
+    if (!out.some((o) => o.value === current))
+      out.unshift({
+        value: current,
+        label: t("chat.model.option", { account: now.accountName, model: now.model }),
+      })
+    return out
+  }
+  const pick = (value: string) => {
+    const [accountId = "", model = ""] = value.split("\u0000")
+    call("chat.setModel", { workflowId: props.workflowId, accountId, model }).catch(
+      (e: unknown) => {
+        const text = describeError(e)
+        showToast("error", text.key, text.params)
+      },
+    )
+  }
+  return (
+    <>
+      <div class={styles.head}>
+        <label for="chat-model">{t("chat.model.label")}</label>
+        <select
+          id="chat-model"
+          class={styles.modelPick}
+          data-testid="chat-model"
+          onChange={(e) => pick(e.currentTarget.value)}
+        >
+          <For each={options()}>
+            {(o) => (
+              <option
+                value={o.value}
+                selected={o.value === key(props.answer.accountId, props.answer.model)}
+              >
+                {o.label}
+              </option>
+            )}
+          </For>
+        </select>
+      </div>
+      <Show when={!props.answer.feedback}>
+        <p class={styles.noFeedback} role="status" data-testid="chat-no-feedback">
+          {t("chat.noFeedback", { account: props.answer.accountName })}
+        </p>
+      </Show>
+    </>
   )
 }
 
@@ -245,6 +331,9 @@ export const ChatPanel = (props: { workflowId: string }) => {
       >
         {(h) => (
           <>
+            <Show when={h().answer}>
+              {(answer) => <AnswerHeader workflowId={props.workflowId} answer={answer()} />}
+            </Show>
             <div
               class={styles.scroll}
               ref={(el) => {

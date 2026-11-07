@@ -137,12 +137,17 @@
   font-size: var(--text-xs);
 }
 
-.tool summary {
+.tool summary,
+.toolSummary {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   cursor: pointer;
+}
+
+.toolText {
+  color: var(--c-text);
 }
 
 .toolName {
@@ -214,11 +219,14 @@
   font-size: var(--text-s);
 }
 
+/* The buttons stay in the tab order. They show on hover and when a button in the row has focus. */
 .actions {
   position: absolute;
   top: 0;
   inset-inline-end: var(--spacing-md);
-  display: none;
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--c-border);
@@ -228,7 +236,8 @@
 
 .row:hover .actions,
 .row:focus-within .actions {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .action {
@@ -632,4 +641,36 @@
 
 .pictureLoad {
   margin-top: 2px;
+}
+
+/* The model that answers, in the header of the chat. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.modelPick {
+  min-width: 0;
+  flex: 1;
+  max-width: 100%;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  color: var(--c-text);
+  font-size: var(--text-s);
+  text-overflow: ellipsis;
+}
+
+.noFeedback {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
 }

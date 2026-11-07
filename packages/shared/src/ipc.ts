@@ -308,6 +308,11 @@ export interface RpcMethods {
   /** The one chat of a workflow (spec 003). */
   "chat.history": { input: { workflowId: string }; output: WorkflowChatHistory }
   "chat.send": { input: WorkflowChatSend; output: WorkflowChatMessage }
+  /** The user picks the account and the model that answer in the chat. It takes effect at the next turn. */
+  "chat.setModel": {
+    input: { workflowId: string; accountId: string; model: string }
+    output: undefined
+  }
   /** Stops the turn of the chat. It does not stop a run (spec 003, flow 2). */
   "chat.stop": { input: { workflowId: string }; output: undefined }
   /** Deletes a message that no turn has read, or a queued message. Gives back its text. */

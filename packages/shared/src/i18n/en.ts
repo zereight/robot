@@ -208,6 +208,7 @@ export const en = {
   "error.provider_limit": "The usage limit of this account is reached.",
   "error.provider_not_found": "This account does not exist any more.",
   "error.provider_not_connected": "This account is not connected.",
+  "error.chat_model_unknown": "This account does not offer this model.",
   "error.runtime_missing":
     "Not installed: the program is not on this computer. Open Providers to install it.",
   "error.runtime_repair_gone":
@@ -868,6 +869,12 @@ export const en = {
   "chat.copied": "Copied",
   "picture.alt.empty": "Image",
   "picture.load": "Load image",
+  "chat.model.label": "Answers with",
+  "chat.model.option": "{account} · {model}",
+  "chat.noFeedback":
+    "You cannot give feedback on a run with {account}. A program answers there, with no tools. Pick another model account to give feedback.",
+  "chat.tool.feedback": "Added feedback to the run",
+  "workflows.run.unknown": "Last run: state not known",
   "chat.title": "Chat",
   "chat.loading": "Loading the chat…",
   "chat.you": "You",

@@ -43,6 +43,17 @@ const NoteLine = (props: { note: Note }) => {
 /** A tool step as a compact card: its name and its state. A click opens the details. */
 const ToolCard = (props: { part: Tool }) => {
   const { t } = useApp()
+  // The tool that adds feedback shows the line of the spec, not its name and its arguments.
+  if (props.part.name === "add_run_feedback")
+    return (
+      <div class={styles.tool} data-testid="tool-card" data-state={props.part.state}>
+        <span class={styles.toolSummary}>
+          <Wrench size={14} aria-hidden="true" />
+          <span class={styles.toolText}>{t("chat.tool.feedback")}</span>
+          <span class={styles.toolState}>{t(`chat.tool.${props.part.state}`)}</span>
+        </span>
+      </div>
+    )
   return (
     <details class={styles.tool} data-testid="tool-card" data-state={props.part.state}>
       <summary>
@@ -229,7 +240,7 @@ export const MessageRow = (props: MessageRowProps) => {
           </div>
         )}
       </Show>
-      <div class={styles.actions}>
+      <div class={styles.actions} data-testid="message-actions">
         <button
           type="button"
           class={styles.action}

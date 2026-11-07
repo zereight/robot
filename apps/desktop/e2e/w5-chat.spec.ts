@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { makeFakeRuntimes } from "./fake-runtimes.ts"
 import { connectMock, freshUserData, killAtOnce, launch, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
@@ -209,6 +210,114 @@ test("chat: no provider blocks the box, and a restart cuts a request with a noti
   await expect(
     page.getByTestId("message").filter({ hasText: "Please go on" }).first(),
   ).toBeVisible()
+  await app.close()
+  await mock.close()
+})
+
+test("chat: Reply and Copy are reachable with the keyboard", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await newWorkflow(page, "Weekly report")
+  await say(page, "hello keys")
+  await expect(page.getByTestId("message").nth(1)).toContainText("You said: hello keys")
+  await expect(page.getByTestId("working-line")).toHaveCount(0)
+  await page.mouse.move(0, 0)
+
+  const reply = page.getByTestId("message").nth(1)
+  const actions = reply.getByTestId("message-actions")
+  await expect(actions).toHaveCSS("opacity", "0")
+
+  // Tab backwards from the box until the focus reaches the buttons of the last row.
+  await page.getByTestId("chat-input").focus()
+  const focused = () =>
+    page.evaluate(() => document.activeElement?.getAttribute("data-testid") ?? "")
+  let at = ""
+  for (let i = 0; i < 12 && at !== "message-copy"; i++) {
+    await page.keyboard.press("Shift+Tab")
+    at = await focused()
+  }
+  expect(at).toBe("message-copy")
+  await expect(actions).toHaveCSS("opacity", "1")
+  await shot(page, "w5-37-chat-actions-keyboard")
+  await page.keyboard.press("Shift+Tab")
+  expect(await focused()).toBe("message-reply")
+  await page.keyboard.press("Enter")
+  await expect(page.getByTestId("reply-line")).toContainText("You said: hello keys")
+  await app.close()
+  await mock.close()
+})
+
+test("chat: the header names the model; a program answers in text only and the chat says so", async () => {
+  const mock = await startMockProvider()
+  const fake = makeFakeRuntimes()
+  fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+    ROBOT_CLAUDE_BIN: fake.claude,
+  })
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await page.evaluate(async () => {
+    await window.robot.invoke("providers.connect", { kind: "claude_code", name: "Claude" })
+  })
+  await newWorkflow(page, "Weekly report")
+  await expect(page.getByTestId("chat-model")).toHaveValue(/mock-fast/)
+  await expect(page.getByTestId("chat-model").locator("option:checked")).toHaveText(
+    "Mock · mock-fast",
+  )
+  await expect(page.getByTestId("chat-no-feedback")).toHaveCount(0)
+
+  // The user picks the program: the chat says that feedback is not there, and the program gets
+  // no tools and does not run in the folder of the workflow.
+  await page.getByTestId("chat-model").selectOption({ label: "Claude · opus" })
+  await expect(page.getByTestId("chat-no-feedback")).toContainText("You cannot give feedback")
+  await shot(page, "w5-38-chat-program")
+  await say(page, "hello program")
+  await expect(page.getByTestId("working-line")).toHaveCount(0)
+  await expect
+    .poll(() => fake.claudeCalls().filter((c) => "prompt" in c).length, { timeout: 10_000 })
+    .toBe(1)
+  const turn = fake.claudeCalls().find((c) => "prompt" in c) as { args: string[] }
+  expect(turn.args[turn.args.indexOf("--tools") + 1]).toBe("")
+
+  // The choice stays: another message goes to the same program.
+  await say(page, "and again")
+  await expect
+    .poll(() => fake.claudeCalls().filter((c) => "prompt" in c).length, { timeout: 10_000 })
+    .toBe(2)
+  await expect(mock.requests).toHaveLength(0)
+
+  await page.getByTestId("chat-model").selectOption({ label: "Mock · mock-fast" })
+  await expect(page.getByTestId("chat-no-feedback")).toHaveCount(0)
+  await app.close()
+  await mock.close()
+})
+
+test("chat: the tool card of feedback says 'Added feedback to the run'", async () => {
+  const mock = await startMockProvider()
+  const env = { ROBOT_SYSTEM_LOCALE: "en-US" }
+  const userData = freshUserData()
+  let { app, page } = await launch(userData, env)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await newWorkflow(page, "Weekly report")
+  await app.close()
+
+  const { DatabaseSync } = await import("node:sqlite")
+  const { join } = await import("node:path")
+  const db = new DatabaseSync(join(userData, "robot.db"))
+  const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
+  db.prepare(
+    "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', ?)",
+  ).run(flow.id, Date.now())
+  db.close()
+
+  ;({ app, page } = await launch(userData, env))
+  await say(page, 'tool add_run_feedback {"text":"Too long. Keep it short."}')
+  await expect(page.getByTestId("tool-card")).toContainText("Added feedback to the run")
+  await expect(page.getByTestId("tool-card")).not.toContainText("add_run_feedback")
+  await expect(page.getByTestId("tool-card")).not.toContainText("Too long")
+  await expect(page.getByTestId("note-feedback_added")).toBeVisible()
+  await shot(page, "w5-39-chat-feedback-card")
   await app.close()
   await mock.close()
 })

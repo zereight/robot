@@ -69,3 +69,45 @@ test("workflow list in Korean: the words 워크플로우 and 담당 문서", asy
   await shot(page, "w5-06-list-ko")
   await app.close()
 })
+
+test("new workflow: Enter during an IME composition does not submit", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  await page.getByTestId("new-workflow-empty").click()
+  const name = page.getByTestId("new-workflow-name")
+  await name.fill("주간 보고")
+  // The Enter key that ends a Korean composition has isComposing set (and keyCode 229).
+  await name.evaluate((el) => {
+    el.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }),
+    )
+  })
+  await expect(page.getByTestId("new-workflow-dialog")).toBeVisible()
+  await expect(page.getByTestId("workflow-view")).toHaveCount(0)
+  await name.press("Enter")
+  await expect(page.getByTestId("workflow-view")).toBeVisible()
+  await app.close()
+})
+
+test("workflow list: a state that this version does not know is not shown as 'No run yet'", async () => {
+  const userData = freshUserData()
+  let { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await page.getByTestId("new-workflow-empty").click()
+  await page.getByTestId("new-workflow-name").fill("Weekly")
+  await page.getByTestId("new-workflow-name").press("Enter")
+  await expect(page.getByTestId("workflow-view")).toBeVisible()
+  await app.close()
+
+  const { DatabaseSync } = await import("node:sqlite")
+  const { join } = await import("node:path")
+  const db = new DatabaseSync(join(userData, "robot.db"))
+  const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
+  db.prepare(
+    "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r1', ?, 'from_a_later_version', 'hand', 1, 2)",
+  ).run(flow.id)
+  db.close()
+
+  ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
+  await page.getByTestId("workflow-back").click()
+  await expect(page.getByTestId("workflow-last-run")).toHaveText("Last run: state not known")
+  await app.close()
+})

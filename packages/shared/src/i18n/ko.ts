@@ -209,6 +209,7 @@ export const ko: Record<MessageKey, string> = {
   "error.provider_limit": "이 계정의 사용 한도에 도달했어요.",
   "error.provider_not_found": "이 계정은 더 이상 없어요.",
   "error.provider_not_connected": "이 계정은 연결되어 있지 않아요.",
+  "error.chat_model_unknown": "이 계정에서는 이 모델을 쓸 수 없어요.",
   "error.runtime_missing":
     "설치되지 않음: 이 컴퓨터에 프로그램이 없어요. 모델 제공자를 열어 설치하세요.",
   "error.runtime_repair_gone":
@@ -863,6 +864,12 @@ export const ko: Record<MessageKey, string> = {
   "chat.copied": "복사했어요",
   "picture.alt.empty": "이미지",
   "picture.load": "이미지 불러오기",
+  "chat.model.label": "답변 모델",
+  "chat.model.option": "{account} · {model}",
+  "chat.noFeedback":
+    "{account} 계정으로는 실행에 피드백을 남길 수 없어요. 이 계정에서는 프로그램이 도구 없이 글로만 답해요. 피드백을 남기려면 다른 모델 계정을 골라 주세요.",
+  "chat.tool.feedback": "실행에 피드백을 더했어요",
+  "workflows.run.unknown": "마지막 실행: 상태를 알 수 없어요",
   "chat.title": "채팅",
   "chat.loading": "채팅을 불러오는 중이에요…",
   "chat.you": "나",

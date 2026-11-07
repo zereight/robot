@@ -437,4 +437,15 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX run_feedback_run ON run_feedback (run_id, created_at);
   `,
+  `
+  -- The account and the model that answer in the chat of a workflow. The choice stays between
+  -- turns. It changes when the account or the model is gone, or when the user picks another one.
+  -- It is local to this computer and is not part of the file of the workflow.
+  CREATE TABLE workflow_chat_model (
+    workflow_id TEXT PRIMARY KEY REFERENCES workflow (id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    effort TEXT
+  );
+  `,
 ]

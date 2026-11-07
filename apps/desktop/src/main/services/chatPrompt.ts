@@ -8,7 +8,7 @@ const stamp = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice
 const resultText = (result: string) => {
   const safe = redactSecrets(result)
   return safe.length > RESULT_SHOWN
-    ? `${safe.slice(0, RESULT_SHOWN)}… (long result: show the first part and say "Show all" opens it in the run view)`
+    ? `${safe.slice(0, RESULT_SHOWN)}… (long result: this is its first part only)`
     : safe
 }
 
@@ -64,6 +64,8 @@ export const chatSystem = (input: {
   name: string
   document: string
   runs: readonly RunFact[]
+  /** True when the turn has the tool that adds feedback to a run. */
+  feedback: boolean
 }): string =>
   [
     `You are the responsible document of the workflow "${input.name}". The user talks to you in the chat of this workflow. Answer in the language of the user. Be short and plain.`,
@@ -86,8 +88,14 @@ export const chatSystem = (input: {
     "",
     "Rules for feedback:",
     "- Feedback is a message that tells what is good or wrong in a result of a run. A question is not feedback.",
-    "- When the message is feedback, call the tool add_run_feedback with the text. Name the node number when the user names a node or replies to a result of a node. When more than one run works or waits and the user names none, ask which run. When you do not know if a message is feedback, ask one question and call no tool.",
-    "- When no run works or waits, do not call the tool. Say that no run works, and that the feedback was not added.",
+    ...(input.feedback
+      ? [
+          "- When the message is feedback, call the tool add_run_feedback with the text. Name the node number when the user names a node or replies to a result of a node. When more than one run works or waits and the user names none, ask which run. When you do not know if a message is feedback, ask one question and call no tool.",
+          "- When no run works or waits, do not call the tool. Say that no run works, and that the feedback was not added.",
+        ]
+      : [
+          "- You have no tools in this chat. You cannot add feedback to a run. When the message is feedback, say that this account cannot add feedback to a run, and that the user can pick another account in the header of the chat. Do not say that the feedback was added.",
+        ]),
     "- Feedback never changes the graph, a node prompt, the document or the memory.",
   ].join("\n")
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { chatFiles, chatText, type WorkflowChatMessage } from "@robot/shared"
 import { Effect } from "effect"
+import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
@@ -15,10 +16,18 @@ import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
 let mock: MockProvider
+let fake: FakeRuntimes
+const savedClaudeBin = process.env.ROBOT_CLAUDE_BIN
 beforeAll(async () => {
   mock = await startMockProvider()
+  fake = makeFakeRuntimes()
+  process.env.ROBOT_CLAUDE_BIN = fake.claude
 })
-afterAll(() => mock.close())
+afterAll(async () => {
+  if (savedClaudeBin === undefined) delete process.env.ROBOT_CLAUDE_BIN
+  else process.env.ROBOT_CLAUDE_BIN = savedClaudeBin
+  await mock.close()
+})
 
 const until = async (ok: () => boolean | Promise<boolean>, ms = 4000) => {
   const end = Date.now() + ms
@@ -236,13 +245,37 @@ describe("chat of a workflow (spec 003)", () => {
     )
   })
 
-  test("a failed reply keeps the reason and Retry asks again", async () => {
+  test("send is refused when the account was disconnected", async () => {
     const t = await setup()
     await t.send("hello")
     await t.idle()
     const account = (await t.run(Providers.use((p) => p.list)))[0]
     await t.run(Providers.use((p) => p.disconnect(account?.id ?? "")))
     expect(await t.code(t.send("again"))).toBe("provider_not_connected")
+  })
+
+  test("a failed reply keeps the reason, and Retry asks again with the same conversation", async () => {
+    const t = await setup()
+    await t.send("hello")
+    await t.idle()
+    // The provider failed in this reply: the row holds the reason, as a failed turn stores it.
+    await t.sql(
+      "UPDATE chat_message SET status = 'failed', error_code = 'provider_error', error_detail = 'boom', parts = '[]' WHERE author = 'assistant'",
+    )
+    const failed = (await t.history()).messages.at(-1)
+    expect(failed?.status).toBe("failed")
+    expect(failed?.error).toEqual({ code: "provider_error", detail: "boom" })
+    const before = mock.requests.length
+    await t.chat((c) => c.retry(t.flow.id))
+    await t.idle()
+    const h = await t.history()
+    expect(texts(h.messages)).toEqual(["user:hello:done", "assistant:You said: hello:done"])
+    // One new request, with the user message and no failed reply in it.
+    expect(mock.requests.length).toBe(before + 1)
+    const sent = mock.requests.at(-1)?.body.messages.map((m) => m.role)
+    expect(sent).toEqual(["system", "user"])
+    // Retry on a reply that did not fail is refused.
+    expect(await t.code(t.chat((c) => c.retry(t.flow.id)))).toBe("message_read")
   })
 
   test("a reply that was streaming at a restart is marked stopped and the notice shows", async () => {
@@ -370,7 +403,8 @@ describe("questions about a run and feedback (spec 003)", () => {
     expect(sys).toContain('Node 4 \\"Send\\" (text): not reached')
     expect(sys).toContain("[redacted]")
     expect(sys).not.toContain(KEY)
-    expect(sys).toContain("Show all")
+    expect(sys).toContain("this is its first part only")
+    expect(sys).not.toContain("run view")
     expect(sys).toContain("2026-11-07 10:00 UTC")
   })
 
@@ -464,5 +498,232 @@ describe("questions about a run and feedback (spec 003)", () => {
     const after = await t.run(Workflows.use((w) => w.get(t.flow.id)))
     expect(after.document).toBe(before.document)
     expect(after.graph).toEqual(before.graph)
+  })
+})
+
+describe("the tools of the chat (spec 007, 003)", () => {
+  const claudeTurns = () => fake.claudeCalls().filter((c) => "prompt" in c)
+
+  test("an API account gets the tools of the chat and no others, in the folder of the workflow", async () => {
+    const t = await setup()
+    await t.send("hello")
+    await t.idle()
+    const request = mock.requests.at(-1)
+    expect(request?.body.tools?.map((x) => x.function.name)).toEqual(["add_run_feedback"])
+    const h = await t.history()
+    expect(h.answer).toMatchObject({ accountName: "Mock", model: "mock-fast", feedback: true })
+    expect(JSON.stringify(request?.body.messages[0])).toContain("call the tool add_run_feedback")
+  })
+
+  test("a runtime account answers in text only: no tools, no shell, not in the folder", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = await setup({ connect: false })
+    await t.run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Claude" })))
+    await t.send("hello")
+    await t.idle()
+    const reply = (await t.history()).messages.at(-1)
+    expect(reply?.status).toBe("done")
+    const turn = claudeTurns().at(-1) as { args: string[]; cwd: string; prompt: string }
+    // The program starts with the empty list of tools, not the tools of the program.
+    const at = turn.args.indexOf("--tools")
+    expect(at).toBeGreaterThanOrEqual(0)
+    expect(turn.args[at + 1]).toBe("")
+    expect(turn.args).not.toContain("--disallowedTools")
+    expect(turn.args).not.toContain("--mcp-config")
+    // The program runs outside the folder of the workflow.
+    const { realpathSync } = await import("node:fs")
+    expect(realpathSync(turn.cwd)).not.toContain(realpathSync(t.flow.folder))
+    expect(turn.cwd).not.toBe(t.flow.folder)
+    // The prompt does not claim a tool that the turn lacks.
+    const system = turn.args[turn.args.indexOf("--append-system-prompt") + 1] ?? ""
+    expect(system).toContain("You have no tools in this chat")
+    expect(system).not.toContain("call the tool add_run_feedback")
+    // The header says why feedback is not there.
+    expect((await t.history()).answer).toMatchObject({ accountName: "Claude", feedback: false })
+  })
+})
+
+describe("the model of the chat (spec 003; the choice is not decided, docs/spec-questions.md)", () => {
+  const second = async (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Second", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+
+  test("the header data names the account and the model, and the choice stays between turns", async () => {
+    const t = await setup()
+    expect((await t.history()).answer).toMatchObject({ accountName: "Mock", model: "mock-fast" })
+    await t.send("one")
+    await t.idle()
+    // A node that names another account would win the first choice. The chat keeps its own.
+    const other = await second(t)
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(t.flow.id, {
+          kind: "text",
+          name: "A",
+          accountId: other.id,
+          model: "gpt-5",
+        }),
+      ),
+    )
+    await t.send("two")
+    await t.idle()
+    expect(mock.requests.at(-1)?.body.model).toBe("mock-fast")
+    expect((await t.history()).answer).toMatchObject({ accountName: "Mock", model: "mock-fast" })
+  })
+
+  test("the user picks another account and model; an unknown model is refused", async () => {
+    const t = await setup()
+    await t.send("one")
+    await t.idle()
+    const other = await second(t)
+    expect(await t.code(t.chat((c) => c.setModel(t.flow.id, other.id, "nope")))).toBe(
+      "chat_model_unknown",
+    )
+    expect(await t.code(t.chat((c) => c.setModel(t.flow.id, "gone", "gpt-5")))).toBe(
+      "provider_not_connected",
+    )
+    await t.chat((c) => c.setModel(t.flow.id, other.id, "gpt-5"))
+    expect((await t.history()).answer).toMatchObject({ accountName: "Second", model: "gpt-5" })
+    await t.send("two")
+    await t.idle()
+    expect(mock.requests.at(-1)?.body.model).toBe("gpt-5")
+  })
+
+  test("the choice changes when its account is gone", async () => {
+    const t = await setup()
+    await t.send("one")
+    await t.idle()
+    const other = await second(t)
+    const first = (await t.run(Providers.use((p) => p.list))).find((a) => a.name === "Mock")
+    await t.run(Providers.use((p) => p.disconnect(first?.id ?? "")))
+    expect((await t.history()).answer).toMatchObject({ accountId: other.id })
+    await t.send("two")
+    await t.idle()
+    expect(mock.requests.at(-1)?.body.model).toBe("mock-fast")
+    expect(
+      await t.rows<{ account_id: string }>("SELECT account_id FROM workflow_chat_model"),
+    ).toEqual([{ account_id: other.id }])
+  })
+
+  test("a reload of the history does not look at a program again", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = await setup({ connect: false })
+    await t.run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Claude" })))
+    await t.history()
+    const asked = fake.asks("claude").length
+    for (let i = 0; i < 5; i++) await t.history()
+    expect(fake.asks("claude").length).toBe(asked)
+  })
+})
+
+describe("a restart that cut a turn with a joined message (spec 003, Rules)", () => {
+  const cut = async (reached: boolean) => {
+    const dir = await import("node:fs").then((fs) =>
+      fs.mkdtempSync(`${require("node:os").tmpdir()}/robot-chat-`),
+    )
+    const file = `${dir}/robot.db`
+    const first = testRuntime({ databaseFile: file })
+    const server = await first.runtime.runPromise(Servers.use((s) => s.local))
+    await first.runtime.runPromise(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+    const flow = await first.runtime.runPromise(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Restart" })),
+    )
+    const parts = reached ? '[{"kind":"text","text":"Working. "}]' : "[]"
+    await first.runtime.runPromise(
+      Database.use((d) =>
+        Effect.sync(() => {
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('u1', ?, 'user', '[{\"kind\":\"text\",\"text\":\"do it\"}]', 'done', 1)",
+            flow.id,
+          )
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('a1', ?, 'assistant', ?, 'streaming', 2)",
+            flow.id,
+            parts,
+          )
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, joined_to, created_at) VALUES ('u2', ?, 'user', '[{\"kind\":\"text\",\"text\":\"use b.txt\"}]', 'done', 'a1', 3)",
+            flow.id,
+          )
+        }),
+      ),
+    )
+    await first.runtime.dispose()
+    const second = testRuntime({ databaseFile: file })
+    await second.runtime.runPromise(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+    const history = () => second.runtime.runPromise(Chat.use((c) => c.history(flow.id)))
+    return { second, flow, history }
+  }
+
+  test("the notice shows with Continue when the model had read the request", async () => {
+    const { second, flow, history } = await cut(true)
+    const h = await history()
+    expect(h.messages.map((m) => [m.author, m.status, m.pending])).toEqual([
+      ["user", "done", false],
+      ["assistant", "stopped", false],
+      ["user", "done", false],
+    ])
+    expect(h.notice).toEqual({ messageId: "a1", notSent: false })
+    await second.runtime.runPromise(Chat.use((c) => c.resume(flow.id, "continue")))
+    await until(async () => {
+      const x = await history()
+      return !x.working && x.messages.at(-1)?.status === "done"
+    })
+    const x = await history()
+    expect(x.notice).toBeNull()
+    // The model read the joined message with the request to go on.
+    const asked = JSON.stringify(mock.requests.at(-1)?.body.messages)
+    expect(asked).toContain("use b.txt")
+  })
+
+  test("the notice shows with Send again when the request had not reached the model", async () => {
+    const { second, flow, history } = await cut(false)
+    expect((await history()).notice).toEqual({ messageId: "a1", notSent: true })
+    await second.runtime.runPromise(Chat.use((c) => c.resume(flow.id, "again")))
+    await until(async () => {
+      const x = await history()
+      return !x.working && x.messages.at(-1)?.status === "done"
+    })
+    const x = await history()
+    expect(x.notice).toBeNull()
+    expect(JSON.stringify(mock.requests.at(-1)?.body.messages)).toContain("use b.txt")
+  })
+})
+
+describe("who can add feedback today (spec 003, 010; the guard is W6)", () => {
+  test("feedback reaches a run only from a message in the chat, through the tool of the chat", async () => {
+    const t = await setup()
+    await t.run(Workflows.use((w) => w.addNode(t.flow.id, { kind: "text", name: "Fetch" })))
+    await t.run(Workflows.use((w) => w.addNode(t.flow.id, { kind: "text", name: "Send" })))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', 1)",
+      t.flow.id,
+    )
+    await t.sql(
+      "INSERT INTO task (id, run_id, workflow_id, node_name, node_number, state, result, created_at) VALUES ('t1', 'r1', ?, 'Fetch', 1, 'done', 'x', 1)",
+      t.flow.id,
+    )
+    // No method of the app takes feedback except the chat: no rpc handler, no method of the chat.
+    const { handlers } = await import("../rpc.ts")
+    expect(Object.keys(handlers).filter((k) => /feedback/i.test(k))).toEqual([])
+    const methods = await t.run(Chat.use((c) => Effect.succeed(Object.keys(c))))
+    expect(methods.filter((k) => /feedback/i.test(k))).toEqual([])
+    // Today the text is whatever the model wrote in the call. No check compares it with the
+    // words of the user, and no check looks at outside content. W6 owns both.
+    await t.send('tool add_run_feedback {"text":"Words that the user did not write","node":1}')
+    await t.idle()
+    const stored = await t.rows<{ text: string }>("SELECT text FROM run_feedback")
+    expect(stored).toEqual([{ text: "Words that the user did not write" }])
   })
 })

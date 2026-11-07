@@ -621,6 +621,15 @@ export const handlers: Handlers = {
     ),
   "chat.send": (input) =>
     decode(WorkflowChatSend)(input).pipe(Effect.flatMap((v) => Chat.use((c) => c.send(v)))),
+  "chat.setModel": (input) =>
+    decode(
+      Schema.Struct({ workflowId: Schema.String, accountId: Schema.String, model: Schema.String }),
+    )(input).pipe(
+      Effect.flatMap(({ workflowId, accountId, model }) =>
+        Chat.use((c) => c.setModel(workflowId, accountId, model)),
+      ),
+      done,
+    ),
   "chat.stop": (input) =>
     decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
       Effect.flatMap(({ workflowId }) => Chat.use((c) => c.stop(workflowId))),

@@ -5,7 +5,7 @@ import {
   CHAT_ATTACH_BYTES,
   CHAT_ATTACH_MAX,
   CHAT_QUEUE_MAX,
-  type ChatBlock,
+  type ChatAnswer,
   type ChatNotice,
   type ChatPart,
   type ChatStatus,
@@ -49,6 +49,15 @@ export interface ChatService {
    * works, the message joins it or waits in the queue, as the setting says.
    */
   readonly send: (input: WorkflowChatSend) => Effect.Effect<WorkflowChatMessage, AppError>
+  /**
+   * The user picks the account and the model that answer in the chat. The choice stays until the
+   * account or the model is gone, or the user picks another one. It takes effect at the next turn.
+   */
+  readonly setModel: (
+    workflowId: string,
+    accountId: string,
+    model: string,
+  ) => Effect.Effect<void, AppError>
   /** Ends the turn that works. The partial reply stays and is marked as stopped. Not a run stop. */
   readonly stop: (workflowId: string) => Effect.Effect<void>
   /**
@@ -163,41 +172,98 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           m.createdAt ?? Date.now(),
         )
 
+      /** The choice that was made for this chat, or null. */
+      const storedChoice = (workflowId: string): AnswerModel | null => {
+        const r = db.get<{ account_id: string; model: string; effort: string | null }>(
+          "SELECT account_id, model, effort FROM workflow_chat_model WHERE workflow_id = ?",
+          workflowId,
+        )
+        return r ? { accountId: r.account_id, model: r.model, effort: r.effort } : null
+      }
+
+      /** Keeps the choice for the next turns. */
+      const keepChoice = (workflowId: string, m: AnswerModel) => {
+        db.run(
+          `INSERT INTO workflow_chat_model (workflow_id, account_id, model, effort) VALUES (?, ?, ?, ?)
+           ON CONFLICT (workflow_id) DO UPDATE SET account_id = excluded.account_id,
+             model = excluded.model, effort = excluded.effort`,
+          workflowId,
+          m.accountId,
+          m.model,
+          m.effort,
+        )
+      }
+
+      /** True when the account lists the model. A list that cannot be read does not say "gone". */
+      const offers = (accountId: string, model: string) =>
+        providers.models(accountId).pipe(
+          Effect.map((list) => list.some((m) => m.id === model)),
+          Effect.orElseSucceed(() => true),
+        )
+
       /**
-       * The model that answers in the chat. The spec does not say which model answers
-       * (docs/spec-questions.md), so for now: the model of the first node that names an account and
-       * a model, when that account is connected; else the first connected account and its first
-       * model that the user did not hide.
+       * The model that answers in the chat. The choice of the chat stays while its account is
+       * connected and still offers the model. The spec does not say how the first choice is made
+       * (docs/spec-questions.md), so for now: the model of the first node that names an account
+       * and a model, when that account is connected; else the first connected account and its
+       * first model that the user did not hide. The caller keeps the result for the whole call.
        */
       const resolveModel = (workflowId: string) =>
         Effect.gen(function* () {
+          const stored = storedChoice(workflowId)
+          // A choice that is not usable any more is replaced, and the new one stays (below).
+          if (
+            stored &&
+            providers.isConnected(stored.accountId) &&
+            // A program lists its models by a look at the program: only an API list is read here.
+            (providers.isRuntime(stored.accountId) ||
+              (yield* offers(stored.accountId, stored.model)))
+          )
+            return stored
           const node = db.get<{ account_id: string; model: string; effort: string | null }>(
             `SELECT account_id, model, effort FROM workflow_node
              WHERE workflow_id = ? AND account_id IS NOT NULL AND model IS NOT NULL
              ORDER BY number LIMIT 1`,
             workflowId,
           )
-          if (node && providers.isConnected(node.account_id))
-            return {
+          if (node && providers.isConnected(node.account_id)) {
+            const picked = {
               accountId: node.account_id,
               model: node.model,
               effort: node.effort,
             } satisfies AnswerModel
-          const accounts = yield* providers.list
+            keepChoice(workflowId, picked)
+            return picked
+          }
+          // The last known state of each account: no look at a program.
+          const accounts = yield* providers.accounts
           for (const account of accounts) {
             if (!account.connected) continue
             const models = yield* providers.models(account.id).pipe(Effect.orElseSucceed(() => []))
             const first = models.find((m) => m.hidden !== true)
-            if (first) return { accountId: account.id, model: first.id, effort: null }
+            if (first) {
+              const picked = { accountId: account.id, model: first.id, effort: null }
+              keepChoice(workflowId, picked)
+              return picked
+            }
           }
           return null
         })
 
-      const blockOf = (workflowId: string): Effect.Effect<ChatBlock> =>
-        resolveModel(workflowId).pipe(
-          Effect.map((m) => (m ? null : "no_provider")),
-          Effect.orElseSucceed((): ChatBlock => "no_provider"),
-        )
+      /** A vendor program has its own tools: the chat gives it none (spec 007). */
+      const chatHasTools = (accountId: string) => !providers.isRuntime(accountId)
+
+      const answerOf = (m: AnswerModel | null) =>
+        Effect.gen(function* () {
+          if (!m) return null
+          const account = (yield* providers.accounts).find((a) => a.id === m.accountId)
+          return {
+            accountId: m.accountId,
+            accountName: account?.name ?? "",
+            model: m.model,
+            feedback: chatHasTools(m.accountId),
+          } satisfies ChatAnswer
+        })
 
       const findWorkflow = (id: string) => workflows.get(id)
 
@@ -244,7 +310,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           })
 
       const noticeOf = (messages: readonly WorkflowChatMessage[]): ChatNotice | null => {
-        const last = messages.at(-1)
+        // A message that joined the turn and that the model had not read when the app stopped is a
+        // plain message after the cut reply. The notice stays while only such messages follow it.
+        let at = messages.length - 1
+        while (at >= 0 && messages[at]?.author === "user") at--
+        const last = messages[at]
         if (last?.author !== "assistant" || last.status !== "stopped") return null
         const r = row(last.id)
         if (r?.error_code !== "restart") return null
@@ -257,6 +327,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const workflow = yield* findWorkflow(workflowId)
           const messages = visibleRows(workflowId).map(toMessage)
           const w = working.get(workflowId)
+          // The model is read once for the whole call.
+          const model = yield* resolveModel(workflowId).pipe(Effect.orElseSucceed(() => null))
           return {
             workflowId,
             workflowName: workflow.name,
@@ -265,7 +337,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             working: w !== undefined,
             workingSince: w?.since ?? null,
             notice: w ? null : noticeOf(messages),
-            block: yield* blockOf(workflowId),
+            block: model ? null : "no_provider",
+            answer: yield* answerOf(model),
           } satisfies WorkflowChatHistory
         })
 
@@ -364,7 +437,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
       }
 
-      const runTurn = async (workflowId: string, w: Working): Promise<void> => {
+      const runTurn = async (workflowId: string, w: Working, model: AnswerModel): Promise<void> => {
         const parts: ChatPart[] = []
         let timer: ReturnType<typeof setTimeout> | null = null
         let tokensIn = 0
@@ -386,9 +459,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         let status: ChatStatus = "done"
         let failure: { code: string; detail: string } | null = null
         try {
-          const model = await Effect.runPromise(resolveModel(workflowId))
-          if (!model) throw new AppError({ code: "provider_not_connected" })
           const workflow = await Effect.runPromise(findWorkflow(workflowId))
+          // The chat has the tools of the chat (spec 007) and no others. A vendor program brings
+          // shell and file tools of its own, so it answers in text only, outside the folder.
+          const withTools = chatHasTools(model.accountId)
           const runs = await Effect.runPromise(facts.runs(workflowId))
           const turns = visibleRows(workflowId)
             .filter((r) => r.id !== w.assistantId && !(r.joined_to !== null && r.read_at === null))
@@ -406,13 +480,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               {
                 model: model.model,
                 effort: model.effort,
-                system: chatSystem({ name: workflow.name, document: workflow.document, runs }),
+                system: chatSystem({
+                  name: workflow.name,
+                  document: workflow.document,
+                  runs,
+                  feedback: withTools,
+                }),
                 turns,
                 signal: w.controller.signal,
-                workspace: workflow.folder,
-                permission: workflow.permission,
-                tools: [FEEDBACK_TOOL],
-                useTools: true,
+                workspace: withTools ? workflow.folder : join(platform.dataDir, "chat"),
+                permission: withTools ? workflow.permission : "read_only",
+                ...(withTools ? { tools: [FEEDBACK_TOOL] } : {}),
+                useTools: withTools,
                 cache: "long",
                 inbox: inboxFor(workflowId, w),
                 busy: {
@@ -526,11 +605,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       }
 
       /** Starts a turn on the conversation as it is now. */
-      const startTurn = (workflowId: string): Effect.Effect<void, AppError> =>
+      const startTurn = (workflowId: string, known?: AnswerModel): Effect.Effect<void, AppError> =>
         Effect.gen(function* () {
           if (working.has(workflowId)) return
-          const model = yield* resolveModel(workflowId)
+          const model = known ?? (yield* resolveModel(workflowId))
           if (!model) return yield* new AppError({ code: "provider_not_connected" })
+          keepChoice(workflowId, model)
           const assistantId = randomUUID()
           insert({
             id: assistantId,
@@ -549,7 +629,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           working.set(workflowId, w)
           emitMessage(assistantId)
           emitState(workflowId)
-          void runTurn(workflowId, w)
+          void runTurn(workflowId, w, model)
         })
 
       // --- files ----------------------------------------------------------------------------
@@ -598,8 +678,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (text === "" && paths.length === 0 && !input.skillId)
             return yield* new AppError({ code: "message_empty" })
           const workflow = yield* findWorkflow(input.workflowId)
-          if (!(yield* resolveModel(input.workflowId)))
-            return yield* new AppError({ code: "provider_not_connected" })
+          const model = yield* resolveModel(input.workflowId)
+          if (!model) return yield* new AppError({ code: "provider_not_connected" })
           const w = working.get(input.workflowId)
           const mode = (yield* settings.get).duringTurn
           if (w && mode === "queue") {
@@ -627,8 +707,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           emitMessage(id)
           emitState(input.workflowId)
           if (w && !queued) for (const ready of w.ready) ready()
-          if (!w) yield* startTurn(input.workflowId)
+          if (!w) yield* startTurn(input.workflowId, model)
           return toMessage(row(id) as MessageRow)
+        })
+
+      const setModel = (workflowId: string, accountId: string, model: string) =>
+        Effect.gen(function* () {
+          yield* findWorkflow(workflowId)
+          if (!providers.isConnected(accountId))
+            return yield* new AppError({ code: "provider_not_connected" })
+          const listed = yield* providers.models(accountId)
+          if (!listed.some((m) => m.id === model))
+            return yield* new AppError({ code: "chat_model_unknown" })
+          keepChoice(workflowId, { accountId, model, effort: null })
+          emitState(workflowId)
         })
 
       const deleteWaiting = (messageId: string) =>
@@ -703,6 +795,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       return Chat.of({
         history,
         send,
+        setModel,
         stop: (workflowId) =>
           Effect.sync(() => {
             working.get(workflowId)?.controller.abort()

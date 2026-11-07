@@ -82,6 +82,18 @@ export interface ChatNotice {
 /** Why the message box cannot send now. `null`: it can. */
 export type ChatBlock = "no_provider" | "no_model" | null
 
+/**
+ * The account and the model that answer in the chat, shown in its header. `feedback` is false for
+ * an account that has no tools in this chat (a vendor program): the chat then cannot add feedback
+ * to a run.
+ */
+export interface ChatAnswer {
+  readonly accountId: string
+  readonly accountName: string
+  readonly model: string
+  readonly feedback: boolean
+}
+
 export interface WorkflowChatHistory {
   readonly workflowId: string
   readonly workflowName: string
@@ -95,6 +107,8 @@ export interface WorkflowChatHistory {
   /** The notice of a request that a restart cut off. */
   readonly notice: ChatNotice | null
   readonly block: ChatBlock
+  /** Who answers now. `null` when no account is connected. */
+  readonly answer: ChatAnswer | null
 }
 
 export const WorkflowChatSend = Schema.Struct({
