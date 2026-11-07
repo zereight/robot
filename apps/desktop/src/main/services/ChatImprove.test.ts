@@ -530,6 +530,82 @@ describe("the turn after a run (spec 002, 'Self-improvement')", () => {
     expect(mock.requests.length).toBe(before)
   })
 
+  const seedProposals = async (t: Awaited<ReturnType<typeof setup>>, sourceId: string[]) => {
+    for (const [i, id] of sourceId.entries())
+      await t.run(
+        Proposals.use((p) =>
+          p.propose({
+            workflowId: t.flow.id,
+            source: { kind: "chat", id },
+            outside: null,
+            reason: "A reason.",
+            change: { kind: "prompt", node: (i % 2) + 1, prompt: `Prompt ${i}.` },
+          }),
+        ),
+      )
+  }
+
+  test("3 proposals of the kinds that change the workflow in 24 hours: the turn offers no proposal tool", async () => {
+    const t = await setup()
+    await seedRun(t, "run-8", "Report.")
+    // Two prompts wait (one for each node); a document and the answers fill the limit of the day.
+    await seedProposals(t, ["a", "b"])
+    await t.run(
+      Proposals.use((p) =>
+        p.propose({
+          workflowId: t.flow.id,
+          source: { kind: "chat", id: "c" },
+          outside: null,
+          reason: "A reason.",
+          change: { kind: "document", text: "A new text." },
+        }),
+      ),
+    )
+    expect((await t.view()).waiting).toHaveLength(3)
+    await reflect(t, "run-8")
+    // The request is sent, because memory is on, but it has the memory tools only.
+    expect(toolRequests().at(-1)).toEqual(["memory_search", "memory_save"])
+  })
+
+  test("3 in 24 hours and memory off: no request is sent", async () => {
+    const t = await setup()
+    await seedRun(t, "run-9", "Report.")
+    await seedProposals(t, ["a", "b"])
+    await t.run(
+      Proposals.use((p) =>
+        p.propose({
+          workflowId: t.flow.id,
+          source: { kind: "chat", id: "c" },
+          outside: null,
+          reason: "A reason.",
+          change: { kind: "document", text: "A new text." },
+        }),
+      ),
+    )
+    await t.run(Memory.use((m) => m.setEnabled(t.flow.id, false)))
+    const before = mock.requests.length
+    await reflect(t, "run-9")
+    expect(mock.requests.length).toBe(before)
+  })
+
+  test("a proposal of this run exists already: the turn offers no proposal tool", async () => {
+    const t = await setup()
+    await seedRun(t, "run-10", "Report.")
+    await t.run(
+      Proposals.use((p) =>
+        p.propose({
+          workflowId: t.flow.id,
+          source: { kind: "run", id: "run-10" },
+          outside: null,
+          reason: "A reason.",
+          change: { kind: "document", text: "A new text." },
+        }),
+      ),
+    )
+    await reflect(t, "run-10")
+    expect(toolRequests().at(-1)).toEqual(["memory_search", "memory_save"])
+  })
+
   test("the ending of a real run starts the turn by itself", async () => {
     const t = await setup()
     await t.run(
@@ -585,6 +661,30 @@ describe("the window and a linked device (spec 002, 012)", () => {
       actor,
     )
     expect(add).toMatchObject({ ok: false, error: { code: "change_off" } })
+  })
+
+  test("a linked device sees no count of proposals, on the list of workflows and on the memory page", async () => {
+    const t = await setup()
+    const actor = { id: "dev-1", name: "Phone" }
+    await t.run(
+      Proposals.use((p) =>
+        p.propose({
+          workflowId: t.flow.id,
+          source: { kind: "chat", id: "m1" },
+          outside: null,
+          reason: "",
+          change: { kind: "memory", text: "A fact" },
+        }),
+      ),
+    )
+    const list = (as: typeof actor | null) =>
+      runRequest(t.runtime, "workflows.list", { serverId: t.flow.serverId }, as)
+    expect(await list(null)).toMatchObject({ ok: true, value: [{ proposals: 1 }] })
+    expect(await list(actor)).toMatchObject({ ok: true, value: [{ proposals: 0 }] })
+    const memory = (as: typeof actor | null) =>
+      runRequest(t.runtime, "memory.state", { workflowId: t.flow.id }, as)
+    expect(await memory(null)).toMatchObject({ ok: true, value: { proposals: 1 } })
+    expect(await memory(actor)).toMatchObject({ ok: true, value: { proposals: 0 } })
   })
 
   test("the window can set the switch and answer", async () => {

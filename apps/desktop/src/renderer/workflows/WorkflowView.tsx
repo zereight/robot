@@ -21,19 +21,20 @@ import { improveRequest, openImprovement } from "../state/improve.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
+import { tabKeyDown } from "../ui/tabKeys.ts"
 import { showToast } from "../ui/toast.ts"
 import { DocumentEditor } from "./DocumentEditor.tsx"
 import { GraphEditor } from "./GraphEditor.tsx"
 import graph from "./graph.module.css"
 import { ImprovementPanel } from "./ImprovementPanel.tsx"
+import { showsProposals, type WorkflowTab, workflowTabs } from "./improveView.ts"
 import { MemoryPanel } from "./MemoryPanel.tsx"
 import { RunsPanel } from "./RunsPanel.tsx"
 import { createRunsState } from "./runsState.ts"
 import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
 
-const TABS = ["graph", "runs", "document", "memory", "improvement", "settings"] as const
-type Tab = (typeof TABS)[number]
+type Tab = WorkflowTab
 
 /** The workflow that is open: its name, and the editor of its responsible document. */
 export const WorkflowView = (props: { id: string }) => {
@@ -48,6 +49,8 @@ export const WorkflowView = (props: { id: string }) => {
   const loaded = createMemo(() => detail() !== undefined)
   const [asking, setAsking] = createSignal(false)
   const [tab, setTab] = createSignal<Tab>("graph")
+  const local = () => showsProposals(ui.server()?.kind)
+  const tabs = createMemo(() => workflowTabs(local()))
   const runs = createRunsState(() => props.id)
   const [selected, setSelected] = createSignal<string>()
   // The link "Review" (chat, run view) and the link "Proposals (N)" open the page Self-improvement.
@@ -55,7 +58,7 @@ export const WorkflowView = (props: { id: string }) => {
     on(
       improveRequest,
       (r) => {
-        if (r && r.workflowId === props.id) setTab("improvement")
+        if (r && r.workflowId === props.id && local()) setTab("improvement")
       },
       { defer: true },
     ),
@@ -133,15 +136,17 @@ export const WorkflowView = (props: { id: string }) => {
             {(flow) => (
               <>
                 <div class={graph.tabs} role="tablist" aria-label={t("workflows.tabs")}>
-                  <For each={TABS}>
+                  <For each={tabs()}>
                     {(name) => (
                       <button
                         type="button"
                         role="tab"
                         class={graph.tab}
                         aria-selected={tab() === name}
+                        tabIndex={tab() === name ? 0 : -1}
                         data-testid={`tab-${name}`}
                         onClick={() => setTab(name)}
+                        onKeyDown={(e) => tabKeyDown(e, tabs(), tab(), setTab)}
                       >
                         {t(`workflows.tab.${name}`)}
                       </button>
@@ -171,7 +176,7 @@ export const WorkflowView = (props: { id: string }) => {
                       onOpenProposals={() => openImprovement(flow().id)}
                     />
                   </Match>
-                  <Match when={tab() === "improvement"}>
+                  <Match when={tab() === "improvement" && local()}>
                     <ImprovementPanel
                       workflow={flow()}
                       onOpenRun={(id) => {

@@ -69,6 +69,8 @@ interface Part {
   text?: string
   name?: string
   state?: string
+  /** Set when the app refused the call (a rule, a level, the user). */
+  refused?: unknown
 }
 
 /** The words that the user or the responsible document wrote in a message: no card, no thinking. */
@@ -89,7 +91,13 @@ const stepsOf = (r: Row): string[] => {
     return (JSON.parse(r.parts) as Part[])
       .filter((p) => p.kind === "tool")
       .map((p) => {
-        const result = p.state === "done" ? "Ran" : p.state === "failed" ? "Failed" : "Stopped"
+        const result = p.refused
+          ? "Refused"
+          : p.state === "done"
+            ? "Ran"
+            : p.state === "failed"
+              ? "Failed"
+              : "Stopped"
         return `[step: ${(p.name ?? "tool").replace(/[^a-z_]/gi, "")} — ${result}]`
       })
   } catch {
@@ -190,9 +198,15 @@ export const makeChatSearch = (db: DatabaseService) => {
     }
   }
 
-  const read = (workflowId: string, reference: unknown): ChatSearchResult => {
+  const read = (
+    workflowId: string,
+    reference: unknown,
+    skip: ReadonlySet<string>,
+  ): ChatSearchResult => {
     const notFound = { output: "Not found.", outside: null }
     if (typeof reference !== "string" || reference === "") return notFound
+    // The messages of the turn that reads are not the past (spec 007): same answer as for a miss.
+    if (skip.has(reference)) return notFound
     // A message of another workflow, or one that does not exist, gets the same answer.
     const at = db.get<Row>(
       `SELECT id, thread_id, author, parts, status, origin, created_at FROM chat_message
@@ -209,8 +223,9 @@ export const makeChatSearch = (db: DatabaseService) => {
       workflowId,
       ...(at.thread_id === null ? [] : [at.thread_id]),
     )
-    const i = all.findIndex((r) => r.id === at.id)
-    const slice = all.slice(Math.max(0, i - BEFORE_AFTER), i + BEFORE_AFTER + 1)
+    const past = all.filter((r) => !skip.has(r.id))
+    const i = past.findIndex((r) => r.id === at.id)
+    const slice = past.slice(Math.max(0, i - BEFORE_AFTER), i + BEFORE_AFTER + 1)
     const cut = (text: string, max: number) => {
       const chars = [...text]
       return chars.length > max ? `${chars.slice(0, max).join("")}…` : text
@@ -246,7 +261,7 @@ export const makeChatSearch = (db: DatabaseService) => {
       }
       return call.name === SEARCH_CHATS_TOOL
         ? search(workflowId, Array.isArray(args.words) ? args.words : [], skip)
-        : read(workflowId, args.reference)
+        : read(workflowId, args.reference, skip)
     },
   }
 }

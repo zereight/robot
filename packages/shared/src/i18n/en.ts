@@ -1093,7 +1093,7 @@ export const en = {
   "workflows.card.proposals.one": "1 proposal waits",
   "workflows.card.proposals.other": "{n} proposals wait",
   "memory.hint":
-    "A workflow gets better through its responsible document, the prompts of its nodes, its graph and its memory, and through the proposals that you accept. ROBot does not change the model. The workflow keeps what you can see and edit here.",
+    "A workflow gets better through its responsible document, the prompts of its nodes, its graph and its memory, and through the proposals that you accept. ROBot does not train or change a model. The workflow keeps what you can see and edit here.",
   "memory.enabled": "Use memory in this workflow",
   "memory.enabled.off":
     "Memory is off. The items stay, but no node and no turn of the chat uses them.",
@@ -1184,6 +1184,11 @@ export const en = {
   "improve.graph.field.threshold": "threshold",
   "improve.graph.field.options": "options",
   "improve.graph.field.number": "number",
+  "improve.graph.size": "Text of this change: {n} of {max} characters.",
+  "improve.graph.value.none": "(none)",
+  "improve.graph.value.change": "{old} → {now}",
+  "improve.graph.yes": "yes",
+  "improve.graph.no": "no",
   "improve.graph.connection": "{from} → {to}",
   "improve.graph.connection.option": "{from} → {to} (option “{option}”)",
   "improve.check.passed": "The check found no problem in the new graph.",

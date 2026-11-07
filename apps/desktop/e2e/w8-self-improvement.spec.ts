@@ -170,6 +170,51 @@ test("a graph change that fails the check cannot be accepted", async () => {
   await mock.close()
 })
 
+test("the card of a graph change shows the new text before Accept; a text over the limit is refused", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), env)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await newWorkflow(page, "Weekly report")
+  await buildFlow(page, {
+    provider: { openaiUrl: mock.openaiUrl, key: GOOD_KEY },
+    nodes: [
+      { name: "Draft", prompt: "Draft" },
+      { name: "Edit", prompt: "Edit" },
+    ],
+    edges: [[0, 1]],
+  })
+  await say(
+    page,
+    'tool propose_graph_change {"nodes":[{"keep":1,"kind":"text","name":"Draft"},{"keep":2,"kind":"text","name":"Edit"},{"kind":"text","name":"Send","prompt":"Send the <b>final</b> report to the team."}],"connections":[{"from":1,"to":2},{"from":2,"to":3}],"reason":"Send the result."}',
+  )
+  await page.getByTestId("note-review").click()
+  const card = page.getByTestId("proposal-card")
+  // The new text is on the card as text, before Accept, and so is the size.
+  await expect(card.getByTestId("proposal-graph-added")).toContainText(
+    "Send the <b>final</b> report to the team.",
+  )
+  await expect(card.getByTestId("proposal-graph-size")).toContainText("of 2000 characters")
+  await expect(card.locator("b")).toHaveCount(0)
+  await shot(page, "w8-03b-graph-new-text")
+  await expect(page.getByTestId("proposal-accept")).toBeEnabled()
+  await page.getByTestId("proposal-reject").click()
+  // A text over the limit is refused, and the card is not made.
+  await say(
+    page,
+    `tool propose_graph_change {"nodes":[{"keep":1,"kind":"text","name":"Draft"},{"keep":2,"kind":"text","name":"Edit"},{"kind":"text","name":"Send","prompt":"${"x".repeat(2100)}"}],"connections":[{"from":1,"to":2},{"from":2,"to":3}],"reason":"Send the result."}`,
+  )
+  // The turn ended (the answer of the model is the fourth message) and made no second card.
+  await expect(page.getByTestId("message")).toHaveCount(4)
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0)
+  await expect(page.getByTestId("note-proposal")).toHaveCount(1)
+  const id = await firstWorkflow(page)
+  expect(
+    (await rpc<{ waiting: unknown[] }>(page, "proposals.list", { workflowId: id })).waiting,
+  ).toHaveLength(0)
+  await app.close()
+  await mock.close()
+})
+
 test("a stale proposal is refused: the document changed after it", async () => {
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), env)
@@ -209,7 +254,9 @@ test("memory: a fact is a proposal, Accept makes the item, edit and restore, the
   await expect(page.getByTestId("note-proposal")).toContainText("Suggested for memory")
 
   await page.getByTestId("tab-memory").click()
-  await expect(page.getByTestId("memory-hint")).toContainText("ROBot does not change the model")
+  await expect(page.getByTestId("memory-hint")).toContainText(
+    "ROBot does not train or change a model.",
+  )
   await expect(page.getByTestId("memory-empty")).toBeVisible()
   await expect(page.getByTestId("memory-proposals-link")).toHaveText("Proposals (1)")
   await shot(page, "w8-04-memory-page")

@@ -12,9 +12,12 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { tabKeyDown } from "../ui/tabKeys.ts"
 import styles from "./improve.module.css"
+import { memoryTabs, showsProposals } from "./improveView.ts"
 
 const TABS = ["items", "history"] as const
 type Tab = (typeof TABS)[number]
@@ -150,6 +153,11 @@ const HistoryRowView = (props: { row: MemoryHistoryRow; onError: (e: unknown) =>
  */
 export const MemoryPanel = (props: { workflow: WorkflowDetail; onOpenProposals: () => void }) => {
   const { t } = useApp()
+  const ui = useUi()
+  // The history, the undo and the proposals stay on the computer that holds the memory: the link
+  // does not route them (spec 008, 012), so a linked device shows the items only.
+  const local = () => showsProposals(ui.server()?.kind)
+  const tabs = (): readonly Tab[] => memoryTabs(local())
   const [tab, setTab] = createSignal<Tab>("items")
   const [search, setSearch] = createSignal("")
   const [draft, setDraft] = createSignal("")
@@ -163,13 +171,13 @@ export const MemoryPanel = (props: { workflow: WorkflowDetail; onOpenProposals: 
       ),
   )
   const [history, { refetch: refetchHistory }] = createResource(
-    () => props.workflow.id,
+    () => (local() ? props.workflow.id : undefined),
     (id): Promise<readonly MemoryHistoryRow[]> =>
       call("memory.history", { workflowId: id }).catch(() => []),
   )
   const reread = () => {
     void refetch()
-    void refetchHistory()
+    if (local()) void refetchHistory()
   }
   onCleanup(window.robot.on("memory.changed", reread))
   onCleanup(window.robot.on("proposals.changed", reread))
@@ -233,7 +241,7 @@ export const MemoryPanel = (props: { workflow: WorkflowDetail; onOpenProposals: 
                 {t("memory.mode.needsImprovement")}
               </p>
             </Show>
-            <Show when={m().proposals > 0}>
+            <Show when={local() && m().proposals > 0}>
               <div>
                 <button
                   type="button"
@@ -255,23 +263,34 @@ export const MemoryPanel = (props: { workflow: WorkflowDetail; onOpenProposals: 
           </p>
         )}
       </Show>
-      <div class={styles.row} role="tablist" aria-label={t("memory.tabs")}>
-        <For each={TABS}>
-          {(name) => (
-            <Button
-              role="tab"
-              aria-selected={tab() === name}
-              data-testid={`memory-tab-${name}`}
-              variant={tab() === name ? "primary" : "default"}
-              onClick={() => setTab(name)}
-            >
-              {t(`memory.tab.${name}`)}
-            </Button>
-          )}
-        </For>
-      </div>
+      <Show when={tabs().length > 1}>
+        <div class={styles.row} role="tablist" aria-label={t("memory.tabs")}>
+          <For each={tabs()}>
+            {(name) => (
+              <Button
+                role="tab"
+                id={`memory-tab-${name}`}
+                aria-selected={tab() === name}
+                aria-controls={`memory-panel-${name}`}
+                tabIndex={tab() === name ? 0 : -1}
+                data-testid={`memory-tab-${name}`}
+                variant={tab() === name ? "primary" : "default"}
+                onClick={() => setTab(name)}
+                onKeyDown={(e) => tabKeyDown(e, tabs(), tab(), setTab)}
+              >
+                {t(`memory.tab.${name}`)}
+              </Button>
+            )}
+          </For>
+        </div>
+      </Show>
       <Show when={tab() === "items"}>
-        <div class={styles.page} role="tabpanel">
+        <div
+          class={styles.page}
+          role="tabpanel"
+          id="memory-panel-items"
+          aria-labelledby={tabs().length > 1 ? "memory-tab-items" : undefined}
+        >
           <input
             type="search"
             class={styles.input}
@@ -321,8 +340,13 @@ export const MemoryPanel = (props: { workflow: WorkflowDetail; onOpenProposals: 
           </Show>
         </div>
       </Show>
-      <Show when={tab() === "history"}>
-        <div class={styles.page} role="tabpanel">
+      <Show when={tab() === "history" && local()}>
+        <div
+          class={styles.page}
+          role="tabpanel"
+          id="memory-panel-history"
+          aria-labelledby="memory-tab-history"
+        >
           <Show
             when={(history.latest?.length ?? 0) > 0}
             fallback={

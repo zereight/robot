@@ -9,6 +9,7 @@ import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { showsProposals } from "./improveView.ts"
 import { checkStateKey, runStateKey } from "./labels.ts"
 import { NewWorkflowDialog } from "./NewWorkflowDialog.tsx"
 import styles from "./workflows.module.css"
@@ -67,7 +68,8 @@ const Card = (props: { flow: Workflow }) => {
             {t("workflows.check.line", { state: t(checkStateKey(props.flow)) })}
           </dd>
         </div>
-        <Show when={props.flow.proposals > 0}>
+        {/* The proposals stay on the computer that holds them: a linked server shows no line. */}
+        <Show when={showsProposals(ui.server()?.kind) && props.flow.proposals > 0}>
           <div>
             <dd data-testid="workflow-proposals">
               {t(

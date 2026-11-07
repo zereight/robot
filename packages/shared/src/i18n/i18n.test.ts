@@ -14,17 +14,45 @@ describe("translation catalogues", () => {
   }
 
   // Spec 000: interface text and documents do not say that a model or an agent learns, trains or
-  // evolves. The line that says ROBot does not train the model comes back with the chat (W5).
+  // evolves. One sentence is the exception, as in the README: spec 000 says "ROBot does not train
+  // or change a model.", and the line on the memory page (008) says it in the same words. The
+  // exception covers that sentence in that one key and nothing else.
   const english =
     /\b(learn|learns|learned|learning|learner|train|trains|trained|training|trainer|evolve|evolves|evolved|evolving|evolution)\b/i
   const korean = /학습|훈련|트레이닝|배우|배운|배워|익히|진화/
 
+  const NEGATED_KEY = "memory.hint"
+  const NEGATED = {
+    en: "ROBot does not train or change a model.",
+    ko: "ROBot은 모델을 학습시키거나 바꾸지 않습니다.",
+  } as const
+
+  /** The text without the one negated sentence, which only the key `memory.hint` may hold, once. */
+  const withoutNegated = (locale: "en" | "ko", key: string, text: string) => {
+    if (key !== NEGATED_KEY) return text
+    expect(text.split(NEGATED[locale]).length - 1).toBe(1)
+    return text.replace(NEGATED[locale], "")
+  }
+
   test("no text says that a model or an agent learns, trains or evolves", () => {
     for (const [key, text] of Object.entries(catalogues.en)) {
-      expect({ key, hit: english.test(text) }).toEqual({ key, hit: false })
+      const hit = english.test(withoutNegated("en", key, text))
+      expect({ key, hit }).toEqual({ key, hit: false })
     }
     for (const [key, text] of Object.entries(catalogues.ko)) {
-      expect({ key, hit: korean.test(text) }).toEqual({ key, hit: false })
+      const hit = korean.test(withoutNegated("ko", key, text))
+      expect({ key, hit }).toEqual({ key, hit: false })
+    }
+  })
+
+  test("only the key memory.hint holds the negated sentence", () => {
+    for (const locale of ["en", "ko"] as const) {
+      for (const [key, text] of Object.entries(catalogues[locale])) {
+        expect({ key, has: text.includes(NEGATED[locale]) }).toEqual({
+          key,
+          has: key === NEGATED_KEY,
+        })
+      }
     }
   })
 

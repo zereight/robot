@@ -8,13 +8,16 @@ import {
   compileGraph,
   DOCUMENT_MAX,
   factKey,
+  GRAPH_PROPOSAL_TEXT_MAX,
   type GraphProposalInput,
   graphChange,
+  graphChangeSize,
   graphFingerprint,
   isWorkflowChange,
   looksLikeSecret,
   MEMORY_TOOL_MAX,
   MEMORY_USER_MAX,
+  movesAccount,
   type OutsideSource,
   PROPOSAL_DIFF_MAX,
   PROPOSAL_EXPIRE_DAYS,
@@ -111,6 +114,15 @@ export interface ProposalsService {
   readonly accept: (id: string, text?: string) => Effect.Effect<void, AppError>
   readonly reject: (id: string) => Effect.Effect<void, AppError>
   readonly undo: (id: string) => Effect.Effect<void, AppError>
+  /**
+   * The limit that stops a proposal of the kinds that change the workflow now, for the work that
+   * has this source: one for each turn or run, and 3 in 24 hours (spec 002, "Limits"). Null when
+   * none stops it. The work after a run asks this before it sends a request to the model.
+   */
+  readonly workflowChangeLimit: (
+    workflowId: string,
+    source: ProposalSource,
+  ) => "per_turn" | "per_day" | null
   /** The number of proposals that wait for a workflow. */
   readonly waiting: (workflowId: string) => number
   /** True while 20 proposals wait for the workflow. */
@@ -252,7 +264,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
         return w ? readGraph(db, workflowId) : null
       }
 
-      const toProposal = (r: Row, busy: boolean): Proposal => {
+      const toProposal = (r: Row, busy: boolean, accountName: (id: string) => string): Proposal => {
         const outside = parseOutsideSource(r.outside)
         const newGraph = r.kind === "graph" ? parse<WorkflowGraph>(r.graph) : null
         const oldGraph = r.kind === "graph" ? parse<WorkflowGraph>(r.old_text) : null
@@ -301,7 +313,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
           oldText: r.kind === "graph" ? null : r.old_text,
           newText: r.kind === "graph" ? null : r.new_text,
           diff,
-          graph: newGraph && oldGraph ? graphChange(oldGraph, newGraph) : null,
+          graph: newGraph && oldGraph ? graphChange(oldGraph, newGraph, accountName) : null,
           graphNodes: (newGraph?.nodes ?? []).map((n) => ({
             id: n.id,
             number: n.number,
@@ -345,6 +357,8 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
           if (!w) return yield* new AppError({ code: "workflow_not_found" })
           sweep(workflowId)
           const busy = running(workflowId)
+          const accounts = new Map((yield* providers.accounts).map((a) => [a.id, a.name]))
+          const accountName = (id: string) => accounts.get(id) ?? id
           const rows = db.all<Row>(
             "SELECT * FROM proposal WHERE workflow_id = ? ORDER BY rowid",
             workflowId,
@@ -364,13 +378,36 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
           return {
             workflowId,
             enabled: w.self_improvement === 1,
-            waiting: waitingRows.map((r) => toProposal(r, busy)),
-            log: logRows.map((r) => toProposal(r, busy)),
+            waiting: waitingRows.map((r) => toProposal(r, busy, accountName)),
+            log: logRows.map((r) => toProposal(r, busy, accountName)),
             full: waitingRows.length >= PROPOSAL_WAIT_MAX,
           }
         })
 
       // --- propose --------------------------------------------------------------------------
+
+      const workflowChangeLimit = (
+        workflowId: string,
+        source: ProposalSource,
+      ): "per_turn" | "per_day" | null => {
+        // A proposal that was refused is not a row, so it does not count.
+        if (source.id !== null) {
+          const same = db.get<{ n: number }>(
+            `SELECT COUNT(*) AS n FROM proposal WHERE workflow_id = ? AND kind != 'memory'
+               AND source_kind = ? AND source_id = ?`,
+            workflowId,
+            source.kind,
+            source.id,
+          )?.n
+          if ((same ?? 0) >= 1) return "per_turn"
+        }
+        const day = db.get<{ n: number }>(
+          "SELECT COUNT(*) AS n FROM proposal WHERE workflow_id = ? AND kind != 'memory' AND created_at > ?",
+          workflowId,
+          Date.now() - DAY_MS,
+        )?.n
+        return (day ?? 0) >= PROPOSALS_PER_DAY ? "per_day" : null
+      }
 
       const refuse = (reason: Refusal, text: string): ProposeOutcome => ({
         ok: false,
@@ -443,6 +480,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
               input.workflowId,
               ...params,
             ) !== undefined
+          const graphWaits = () => waitingOf("kind = 'graph'")
           const secretText = "The text looks like a secret. Leave the secret out of the change."
 
           // What the kind needs, checked in the order of the spec: the form, the one for each
@@ -509,9 +547,17 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
               ...n.options.map((o) => o.label),
             ])
             if (texts.some((t) => looksLikeSecret(t))) return refuse("secret", secretText)
+            // The user reads all the text of the change on the card before "Accept", so the size
+            // has a limit (spec 002 names none for a graph change: see GRAPH_PROPOSAL_TEXT_MAX).
+            const size = graphChangeSize(graphChange(baseGraph, built.graph))
+            if (size > GRAPH_PROPOSAL_TEXT_MAX)
+              return refuse(
+                "too_long",
+                `The text of a graph change is at most ${GRAPH_PROPOSAL_TEXT_MAX} characters (names, prompts, questions and options, the removed text and the added text together). This change has ${size}. Propose a smaller change.`,
+              )
             const bad = yield* modelsOffered(baseGraph, built.graph)
             if (bad) return refuse("model", bad)
-            if (waitingOf("kind = 'graph'"))
+            if (graphWaits())
               return refuse(
                 "one_waits",
                 "A change of the graph waits for the user already. Wait for the answer.",
@@ -532,41 +578,58 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
             newText = text
           }
 
-          if (isWorkflowChange(kind)) {
-            // At most 1 for each turn or run, and 3 in 24 hours, of the kinds that change the workflow.
-            // A proposal that was refused is not a row, so it does not count.
-            if (input.source.id !== null) {
-              const same = db.get<{ n: number }>(
-                `SELECT COUNT(*) AS n FROM proposal WHERE workflow_id = ? AND kind != 'memory'
-                   AND source_kind = ? AND source_id = ?`,
-                input.workflowId,
-                input.source.kind,
-                input.source.id,
-              )?.n
-              if ((same ?? 0) >= 1)
+          // The limits of a turn, of a day and of how many wait. They are tested again after the
+          // check of a graph, which waits for a worker: another proposal can come in meanwhile.
+          const limitRefusal = (): ProposeOutcome | null => {
+            if (isWorkflowChange(kind)) {
+              // At most 1 for each turn or run, and 3 in 24 hours, of the kinds that change the workflow.
+              const limit = workflowChangeLimit(input.workflowId, input.source)
+              if (limit === "per_turn")
                 return refuse(
                   "per_turn",
                   "You made a proposal in this turn already. One proposal for each turn is the limit.",
                 )
+              if (limit === "per_day")
+                return refuse(
+                  "per_day",
+                  `The limit is ${PROPOSALS_PER_DAY} proposals in 24 hours for each workflow. Try again later.`,
+                )
             }
-            const day = db.get<{ n: number }>(
-              "SELECT COUNT(*) AS n FROM proposal WHERE workflow_id = ? AND kind != 'memory' AND created_at > ?",
-              input.workflowId,
-              Date.now() - DAY_MS,
-            )?.n
-            if ((day ?? 0) >= PROPOSALS_PER_DAY)
+            if (waiting(input.workflowId) >= PROPOSAL_WAIT_MAX)
               return refuse(
-                "per_day",
-                `The limit is ${PROPOSALS_PER_DAY} proposals in 24 hours for each workflow. Try again later.`,
+                "full",
+                `${PROPOSAL_WAIT_MAX} proposals wait. The user must answer some before you can propose more.`,
               )
+            return null
           }
-          if (waiting(input.workflowId) >= PROPOSAL_WAIT_MAX)
-            return refuse(
-              "full",
-              `${PROPOSAL_WAIT_MAX} proposals wait. The user must answer some before you can propose more.`,
-            )
+          const limited = limitRefusal()
+          if (limited) return limited
 
-          if (graph) outcome = yield* check.checkGraph(graph)
+          if (graph && baseKey !== null) {
+            outcome = yield* check.checkGraph(graph)
+            // The check waited. Read the state again and test everything again, in one synchronous
+            // section with the insert: a second proposal, a switch, or a change of the graph may
+            // have come in meanwhile.
+            const now = workflowRow(input.workflowId)
+            if (!now) return refuse("node", "This workflow does not exist any more.")
+            if (now.self_improvement !== 1)
+              return refuse(
+                "off",
+                'The switch "Self-improvement" is off for this workflow, so you cannot propose a change to the document, a prompt or the graph.',
+              )
+            if (graphFingerprint(readGraph(db, input.workflowId)) !== baseKey)
+              return refuse(
+                "graph",
+                "The graph changed while the app checked your proposal. Read the graph again.",
+              )
+            if (graphWaits())
+              return refuse(
+                "one_waits",
+                "A change of the graph waits for the user already. Wait for the answer.",
+              )
+            const late = limitRefusal()
+            if (late) return late
+          }
           const id = randomUUID()
           db.run(
             `INSERT INTO proposal (id, workflow_id, kind, node_id, node_number, node_name, reason, source_kind,
@@ -639,7 +702,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
         return Effect.succeed(r)
       }
 
-      const accept = (id: string, edited?: string) =>
+      const acceptNow = (id: string, edited?: string) =>
         Effect.gen(function* () {
           const r = yield* need(id, "waiting")
           const w = workflowRow(r.workflow_id)
@@ -684,20 +747,41 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
               return answer(id, "failed", { reason: "graph_changed" })
             const next = parse<WorkflowGraph>(r.graph)
             if (!next) return answer(id, "failed", { reason: "failed" })
+            // Spec 002: a graph change never moves a node to another account.
+            if (movesAccount(g, next) !== null) return answer(id, "failed", { reason: "failed" })
             // The check runs again at the moment of the accept: a graph that does not pass is never saved.
             const outcome = yield* check.checkGraph(next)
+            // The check waited. From here to the end of the apply there is no wait: read the state
+            // again and test again what the accept depends on (a Reject, an expiry, a run that
+            // started, a change of the graph).
+            const again = row(id)
+            if (again?.state !== "waiting")
+              return yield* new AppError({ code: "proposal_not_waiting" })
+            if (again.created_at < Date.now() - PROPOSAL_EXPIRE_DAYS * DAY_MS) {
+              sweep(again.workflow_id)
+              return yield* new AppError({ code: "proposal_not_waiting" })
+            }
+            if (!workflowRow(again.workflow_id))
+              return yield* new AppError({ code: "workflow_not_found" })
             db.run(
-              "UPDATE proposal SET check_outcome = ? WHERE id = ?",
+              "UPDATE proposal SET check_outcome = ? WHERE id = ? AND state = 'waiting'",
               JSON.stringify(outcome),
               id,
             )
+            if (running(again.workflow_id)) {
+              changed(again.workflow_id)
+              return yield* new AppError({ code: "proposal_run_working" })
+            }
+            const now = readGraph(db, again.workflow_id)
+            if (graphFingerprint(now) !== again.base_key)
+              return answer(id, "failed", { reason: "graph_changed" })
             if (outcome.state !== "passed") {
-              changed(r.workflow_id)
+              changed(again.workflow_id)
               return yield* new AppError({ code: "proposal_check_problem" })
             }
             const { versionId } = yield* workflows.applyGraph(r.workflow_id, next, "proposal")
             return answer(id, "applied", {
-              afterKey: graphFingerprint(yield* workflows.graph(r.workflow_id)),
+              afterKey: graphFingerprint(readGraph(db, r.workflow_id)),
               applied: { versionId },
             })
           }
@@ -716,6 +800,21 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
             newText: text,
             applied: { historyId: saved.historyId, memoryId: saved.item.id },
           })
+        })
+
+      /**
+       * The accept of a graph change waits for the check. The claim is made before any wait, in
+       * one synchronous step, so two Accepts of one proposal cannot both apply: the second one
+       * finds the claim and gets "not waiting".
+       */
+      const accepting = new Set<string>()
+      const accept = (id: string, edited?: string) =>
+        Effect.suspend(() => {
+          if (accepting.has(id)) return Effect.fail(new AppError({ code: "proposal_not_waiting" }))
+          accepting.add(id)
+          return acceptNow(id, edited).pipe(
+            Effect.ensuring(Effect.sync(() => accepting.delete(id))),
+          )
         })
 
       const reject = (id: string) =>
@@ -762,6 +861,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
         reject,
         undo,
         waiting,
+        workflowChangeLimit,
         full: (workflowId) => waiting(workflowId) >= PROPOSAL_WAIT_MAX,
         waitingFact: waitingFactOf,
       })

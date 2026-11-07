@@ -112,6 +112,17 @@ const done = Effect.as(undefined)
  * device never does (spec 002, "Surfaces"; spec 012). The link has no such method, and this check
  * holds even when a caller forgets the list.
  */
+/**
+ * A linked device (012) and the phone (011) do not show proposals: the page and the cards stay on
+ * the computer that holds them (spec 002, "Surfaces"). The count that the server sends to such a
+ * device is 0, so the device shows no line "N proposals wait".
+ */
+const countForActor = <A extends { proposals: number }>(value: A) =>
+  Effect.gen(function* () {
+    const actor = yield* CurrentActor
+    return actor ? { ...value, proposals: 0 } : value
+  })
+
 const ownerOnly = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const actor = yield* CurrentActor
@@ -533,6 +544,7 @@ export const handlers: Handlers = {
   "workflows.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Workflows.use((w) => w.list(serverId))),
+      Effect.flatMap((list) => Effect.forEach(list, (flow) => countForActor(flow))),
     ),
   "workflows.get": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.get(id)))),
@@ -731,6 +743,7 @@ export const handlers: Handlers = {
       input,
     ).pipe(
       Effect.flatMap(({ workflowId, search }) => Memory.use((m) => m.state(workflowId, search))),
+      Effect.flatMap(countForActor),
     ),
   "memory.history": (input) =>
     decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(

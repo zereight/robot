@@ -188,3 +188,27 @@ textarea.input {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.details {
+  margin: var(--spacing-xs) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detail dt,
+.detail dd {
+  margin: 0;
+}
+
+.detailValue {
+  overflow-wrap: anywhere;
+  user-select: text;
+}

@@ -1,3 +1,4 @@
+import { charLength } from "./chars.ts"
 import type { DiffSegment } from "./diff.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { CheckOutcome } from "./workflowCheck.ts"
@@ -34,6 +35,14 @@ export const PROPOSAL_REASON_MAX = 200
 export const PROPOSALS_PER_DAY = 3
 /** The removed text and the added text of a document change or a prompt change, together. */
 export const PROPOSAL_DIFF_MAX = 2000
+/**
+ * A graph change: the text of its added, changed and removed nodes (names, prompts, questions,
+ * option labels), counted as the removed text and the added text together. Spec 002 names no limit
+ * for the size of a graph change ("the rules of the graph", 010, hold the number of nodes only), so
+ * this is a constant of the app with the value of the limit of a prompt change. The user reads all
+ * of this text on the card before "Accept". The owner decides the value (docs/spec-questions.md).
+ */
+export const GRAPH_PROPOSAL_TEXT_MAX = 2000
 /** The change log keeps 90 days and at most 1000 rows for each workflow. */
 export const CHANGE_LOG_DAYS = 90
 export const CHANGE_LOG_ROWS = 1000
@@ -81,10 +90,31 @@ export interface GraphNodeRef {
   readonly id?: string
 }
 
+/**
+ * The values of a node that the card shows, so the user reads the new text before "Accept"
+ * (spec 002, "Card"). `account` is the name of the account when the caller knows it.
+ */
+export interface GraphNodeValues {
+  readonly name: string
+  readonly prompt: string
+  readonly question: string
+  /** The labels of the options of a decision node. */
+  readonly options: readonly string[]
+  readonly account: string | null
+  readonly model: string | null
+  readonly effort: string | null
+  readonly continueOnFailure: boolean
+  readonly threshold: number
+}
+
 /** A node of a graph change: the node, and the fields that changed (for a changed node). */
 export interface GraphNodeChange extends GraphNodeRef {
   readonly kind: NodeKind
   readonly fields: readonly string[]
+  /** The values of the node after the change; for a removed node, the values it had. */
+  readonly now: GraphNodeValues
+  /** For a changed node, the values before the change. */
+  readonly was: GraphNodeValues | null
 }
 
 export interface GraphConnectionChange {
@@ -234,6 +264,7 @@ export type GraphCompileError =
   | "keep_missing"
   | "keep_twice"
   | "keep_kind"
+  | "account_change"
   | "decision_options"
   | "text_options"
   | "decision_fields"
@@ -281,6 +312,10 @@ export const compileGraph = (
       if (!old) return fail("keep_missing", String(spec.keep))
       if (used.has(spec.keep)) return fail("keep_twice", String(spec.keep))
       if (old.kind !== spec.kind) return fail("keep_kind", String(spec.keep))
+      // Spec 002 lets a graph change set the model of a node only to a value that the account of
+      // the node offers. It does not let a graph change move a node to another account.
+      if (spec.kind === "text" && spec.accountId !== undefined && spec.accountId !== old.accountId)
+        return fail("account_change", String(spec.keep))
       used.add(spec.keep)
     }
     const threshold = spec.threshold ?? old?.threshold ?? 0.9
@@ -375,15 +410,50 @@ const NODE_FIELDS: readonly (readonly [string, (n: WorkflowNode) => string])[] =
   ["options", (n) => JSON.stringify(n.options.map((o) => o.label))],
 ]
 
-/** The nodes and the connections that a change adds, changes and removes (spec 002, "Card"). */
-export const graphChange = (before: WorkflowGraph, after: WorkflowGraph): GraphChange => {
+/** True when the new graph moves a node that it keeps to another account (not allowed, spec 002). */
+export const movesAccount = (before: WorkflowGraph, after: WorkflowGraph): number | null => {
+  const old = new Map(before.nodes.map((n) => [n.id, n]))
+  for (const n of after.nodes) {
+    const was = old.get(n.id)
+    if (was && was.kind === "text" && was.accountId !== n.accountId) return n.number
+  }
+  return null
+}
+
+/**
+ * The nodes and the connections that a change adds, changes and removes (spec 002, "Card"), with
+ * the values that the user reads. `accountName` turns an account id into the name that the window
+ * shows.
+ */
+export const graphChange = (
+  before: WorkflowGraph,
+  after: WorkflowGraph,
+  accountName: (id: string) => string = (id) => id,
+): GraphChange => {
   const old = new Map(before.nodes.map((n) => [n.id, n]))
   const next = new Map(after.nodes.map((n) => [n.id, n]))
-  const change = (n: WorkflowNode, fields: readonly string[] = []): GraphNodeChange => ({
+  const values = (n: WorkflowNode): GraphNodeValues => ({
+    name: n.name,
+    prompt: n.prompt,
+    question: n.question,
+    options: n.options.map((o) => o.label),
+    account: n.accountId === null ? null : accountName(n.accountId),
+    model: n.model,
+    effort: n.effort,
+    continueOnFailure: n.continueOnFailure,
+    threshold: n.threshold,
+  })
+  const change = (
+    n: WorkflowNode,
+    fields: readonly string[] = [],
+    was: WorkflowNode | null = null,
+  ): GraphNodeChange => ({
     number: n.number,
     name: n.name,
     kind: n.kind,
     fields,
+    now: values(n),
+    was: was ? values(was) : null,
   })
   const addedNodes = after.nodes.filter((n) => !old.has(n.id)).map((n) => change(n))
   const removedNodes = before.nodes.filter((n) => !next.has(n.id)).map((n) => change(n))
@@ -393,7 +463,7 @@ export const graphChange = (before: WorkflowGraph, after: WorkflowGraph): GraphC
     if (!was) continue
     const fields = NODE_FIELDS.filter(([, read]) => read(was) !== read(n)).map(([name]) => name)
     if (was.number !== n.number) fields.push("number")
-    if (fields.length > 0) changedNodes.push(change(n, fields))
+    if (fields.length > 0) changedNodes.push(change(n, fields, was))
   }
   const key = (c: WorkflowConnection) => `${c.from}|${c.to}|${c.optionId ?? ""}`
   const oldKeys = new Set(before.connections.map(key))
@@ -420,6 +490,34 @@ export const graphChange = (before: WorkflowGraph, after: WorkflowGraph): GraphC
   }
 }
 
+/**
+ * The size of a graph change: the characters of the text of the added and the removed nodes, and of
+ * the removed and the added text of the changed nodes (names, prompts, questions, option labels).
+ * The card shows this number, and the limit `GRAPH_PROPOSAL_TEXT_MAX` counts it.
+ */
+export const graphChangeSize = (c: GraphChange): number => {
+  const text = (v: GraphNodeValues) =>
+    charLength(v.name) +
+    charLength(v.prompt) +
+    charLength(v.question) +
+    v.options.reduce((sum, o) => sum + charLength(o), 0)
+  const field = (v: GraphNodeValues, f: string) =>
+    f === "name"
+      ? charLength(v.name)
+      : f === "prompt"
+        ? charLength(v.prompt)
+        : f === "question"
+          ? charLength(v.question)
+          : f === "options"
+            ? v.options.reduce((sum, o) => sum + charLength(o), 0)
+            : 0
+  let size = 0
+  for (const n of [...c.addedNodes, ...c.removedNodes]) size += text(n.now)
+  for (const n of c.changedNodes)
+    for (const f of n.fields) size += field(n.now, f) + (n.was ? field(n.was, f) : 0)
+  return size
+}
+
 /** True when a graph change holds no node and no connection change. */
 export const emptyGraphChange = (c: GraphChange): boolean =>
   c.addedNodes.length +
@@ -444,6 +542,8 @@ export const compileErrorText = (error: GraphCompileError, detail: string): stri
       return `"keep" names node ${detail} twice.`
     case "keep_kind":
       return `Node ${detail} cannot change its kind. Remove it and add a new node instead.`
+    case "account_change":
+      return `A graph change cannot move node ${detail} to another account. Leave out "accountId" for a node that you keep, or add a new node.`
     case "decision_options":
       return `A decision node needs at least two different options with a label (node ${detail}).`
     case "text_options":

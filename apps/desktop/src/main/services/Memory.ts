@@ -432,13 +432,27 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
             db.run("UPDATE memory_history SET undone_by = ? WHERE id = ?", undoRow, r.id)
             if (r.undo_of)
               db.run("UPDATE memory_history SET undone_by = NULL WHERE id = ?", r.undo_of)
-            // An item that a proposal made: the proposal is Undone too (spec 002, "Undo").
-            db.run(
-              `UPDATE proposal SET state = 'undone', undone_at = ?
-               WHERE kind = 'memory' AND state = 'applied' AND json_extract(applied, '$.historyId') = ?`,
-              Date.now(),
-              r.id,
+            // An item that a proposal made: the row of the proposal in the change log shows the
+            // same result (spec 002, "Undo"; each place shows the result of the other). The item
+            // is gone: the proposal is Undone. The item is back, after the undo of an undo: the
+            // proposal is Applied again.
+            const made = db.all<{ id: string; state: string; new_text: string | null }>(
+              `SELECT id, state, new_text FROM proposal
+               WHERE kind = 'memory' AND state IN ('applied', 'undone')
+                 AND json_extract(applied, '$.memoryId') = ?`,
+              r.memory_id,
             )
+            const item = itemRow(r.memory_id)
+            for (const p of made) {
+              if (item === undefined && p.state === "applied")
+                db.run(
+                  "UPDATE proposal SET state = 'undone', undone_at = ? WHERE id = ?",
+                  Date.now(),
+                  p.id,
+                )
+              else if (item !== undefined && p.state === "undone" && item.text === p.new_text)
+                db.run("UPDATE proposal SET state = 'applied', undone_at = NULL WHERE id = ?", p.id)
+            }
           })
           changed(r.workflow_id)
           bus.emit("proposals.changed", { workflowId: r.workflow_id })

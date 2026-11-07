@@ -377,6 +377,40 @@ describe("Undo of an applied change (spec 002, 'Undo')", () => {
     expect(history.find((h) => h.actor === "proposal")?.canUndo).toBe(false)
     expect((await t.view()).log[0]?.state).toBe("undone")
   })
+
+  test("the undo in the memory history and the change log show the same result, also for the undo of an undo", async () => {
+    const t = await setup()
+    const id = await t.ok({ kind: "memory", text: "Reports are in Korean." })
+    await t.p((x) => x.accept(id))
+    const history = () => t.run(Memory.use((m) => m.history(t.flow.id)))
+    const items = async () => (await t.run(Memory.use((m) => m.state(t.flow.id)))).items.length
+    const logRow = async () => (await t.view()).log.find((r) => r.id === id)
+    expect(await logRow()).toMatchObject({ state: "applied", canUndo: true })
+
+    // The user undoes the item in the memory history: the change log says Undone.
+    const added = (await history()).find((h) => h.actor === "proposal")
+    await t.run(Memory.use((m) => m.undo(added?.id as string)))
+    expect(await items()).toBe(0)
+    expect(await logRow()).toMatchObject({ state: "undone", canUndo: false })
+
+    // The user undoes that undo in the memory history: the item is back, and so is the row.
+    const undoRow = (await history()).find((h) => h.actor === "undo")
+    await t.run(Memory.use((m) => m.undo(undoRow?.id as string)))
+    expect(await items()).toBe(1)
+    expect(await logRow()).toMatchObject({ state: "applied", undoneAt: null, canUndo: true })
+
+    // And Undo in the change log works again, and the history agrees.
+    await t.p((x) => x.undo(id))
+    expect(await items()).toBe(0)
+    expect(await logRow()).toMatchObject({ state: "undone" })
+    expect((await history())[0]).toMatchObject({ actor: "undo", kind: "deleted" })
+
+    // A third round: undo the undo of the undo.
+    const last = (await history())[0]
+    await t.run(Memory.use((m) => m.undo(last?.id as string)))
+    expect(await items()).toBe(1)
+    expect(await logRow()).toMatchObject({ state: "applied" })
+  })
 })
 
 describe("the limits (spec 002, 008)", () => {

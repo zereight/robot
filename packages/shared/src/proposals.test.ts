@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test"
 import {
   compileGraph,
   emptyGraphChange,
+  GRAPH_PROPOSAL_TEXT_MAX,
   type GraphProposalInput,
   graphChange,
+  graphChangeSize,
   graphFingerprint,
+  movesAccount,
 } from "./proposals.ts"
 import type { WorkflowGraph, WorkflowNode } from "./workflows.ts"
 
@@ -192,12 +195,117 @@ describe("graphChange", () => {
     const change = graphChange(current, r.graph)
     expect(change.addedNodes.map((n) => n.name)).toEqual(["Third"])
     expect(change.removedNodes.map((n) => n.name)).toEqual(["Node 2"])
-    expect(change.changedNodes).toEqual([
-      { number: 1, name: "Node 1", kind: "text", fields: ["prompt"] },
-    ])
+    expect(change.changedNodes).toHaveLength(1)
+    expect(change.changedNodes[0]).toMatchObject({
+      number: 1,
+      name: "Node 1",
+      kind: "text",
+      fields: ["prompt"],
+      now: { prompt: "new prompt" },
+      was: { prompt: "prompt 1" },
+    })
     expect(change.removedConnections).toHaveLength(1)
     expect(change.addedConnections).toHaveLength(1)
     expect(emptyGraphChange(change)).toBe(false)
     expect(emptyGraphChange(graphChange(current, current))).toBe(true)
+  })
+})
+
+describe("the values of a graph change (spec 002, the card shows the new text)", () => {
+  test("an added node holds its text, its options and its account, model and effort", () => {
+    const r = compile({
+      nodes: [
+        { keep: 1, kind: "text", name: "Node 1" },
+        { keep: 2, kind: "text", name: "Node 2" },
+        {
+          kind: "text",
+          name: "Third",
+          prompt: "write it",
+          accountId: "acc",
+          model: "m",
+          effort: "low",
+        },
+        { kind: "decision", name: "Pick", question: "Good?", options: ["Yes", "No"] },
+      ],
+      connections: [{ from: 1, to: 2 }],
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const change = graphChange(current, r.graph, (id) => (id === "acc" ? "Mock" : id))
+    expect(change.addedNodes[0]?.now).toMatchObject({
+      prompt: "write it",
+      account: "Mock",
+      model: "m",
+      effort: "low",
+    })
+    expect(change.addedNodes[1]?.now).toMatchObject({ question: "Good?", options: ["Yes", "No"] })
+    expect(change.addedNodes[0]?.was).toBeNull()
+  })
+
+  test("a changed node holds the old and the new value of a model", () => {
+    const r = compile({
+      nodes: [
+        { keep: 1, kind: "text", name: "Node 1", model: "mock-slow", effort: "high" },
+        { keep: 2, kind: "text", name: "Node 2" },
+      ],
+      connections: [{ from: 1, to: 2 }],
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const node = graphChange(current, r.graph).changedNodes[0]
+    expect(node?.fields).toEqual(["model", "effort"])
+    expect(node?.was).toMatchObject({ model: "mock-fast", effort: null })
+    expect(node?.now).toMatchObject({ model: "mock-slow", effort: "high" })
+  })
+
+  test("the size counts the text of added, removed and changed nodes", () => {
+    const r = compile({
+      nodes: [{ keep: 1, kind: "text", name: "Node 1", prompt: "new prompt" }],
+      connections: [],
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // "prompt 1" (8) goes and "new prompt" (10) comes; node 2 is removed: "Node 2" (6) + "prompt 2" (8).
+    expect(graphChangeSize(graphChange(current, r.graph))).toBe(8 + 10 + 6 + 8)
+    expect(GRAPH_PROPOSAL_TEXT_MAX).toBe(2000)
+  })
+})
+
+describe("the account of a node (spec 002: only a model that the account offers)", () => {
+  test("a graph change does not move a kept node to another account", () => {
+    expect(
+      compile({
+        nodes: [
+          { keep: 1, kind: "text", name: "Node 1", accountId: "other" },
+          { keep: 2, kind: "text", name: "Node 2" },
+        ],
+        connections: [{ from: 1, to: 2 }],
+      }),
+    ).toMatchObject({ ok: false, error: "account_change" })
+    expect(
+      compile({
+        nodes: [
+          { keep: 1, kind: "text", name: "Node 1", accountId: null },
+          { keep: 2, kind: "text", name: "Node 2" },
+        ],
+        connections: [{ from: 1, to: 2 }],
+      }),
+    ).toMatchObject({ ok: false, error: "account_change" })
+  })
+
+  test("the same account is no move, and a new node may name its account", () => {
+    const r = compile({
+      nodes: [
+        { keep: 1, kind: "text", name: "Node 1", accountId: "acc", model: "mock-slow" },
+        { keep: 2, kind: "text", name: "Node 2" },
+        { kind: "text", name: "New", accountId: "other", model: "x" },
+      ],
+      connections: [{ from: 1, to: 2 }],
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(movesAccount(current, r.graph)).toBeNull()
+    const moved: WorkflowGraph = { ...current, nodes: [node(1, { accountId: "other" }), node(2)] }
+    expect(movesAccount(current, moved)).toBe(1)
   })
 })

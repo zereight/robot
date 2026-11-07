@@ -1086,7 +1086,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.card.proposals.one": "제안 1개가 대기 중",
   "workflows.card.proposals.other": "제안 {n}개가 대기 중",
   "memory.hint":
-    "워크플로우는 담당 문서, 노드의 프롬프트, 그래프, 메모리를 통해, 그리고 사용자가 수락하는 제안을 통해 나아집니다. ROBot은 모델을 바꾸지 않습니다. 워크플로우는 여기서 보고 수정할 수 있는 내용만 간직합니다.",
+    "워크플로우는 담당 문서, 노드의 프롬프트, 그래프, 메모리를 통해, 그리고 사용자가 수락하는 제안을 통해 나아집니다. ROBot은 모델을 학습시키거나 바꾸지 않습니다. 워크플로우는 여기서 보고 수정할 수 있는 내용만 간직합니다.",
   "memory.enabled": "이 워크플로우에서 메모리 사용",
   "memory.enabled.off":
     "메모리가 꺼져 있습니다. 항목은 남아 있지만 어떤 노드도, 채팅의 어떤 턴도 사용하지 않습니다.",
@@ -1175,6 +1175,11 @@ export const ko: Record<MessageKey, string> = {
   "improve.graph.field.threshold": "임계값",
   "improve.graph.field.options": "옵션",
   "improve.graph.field.number": "번호",
+  "improve.graph.size": "이 변경의 텍스트: {max}자 중 {n}자.",
+  "improve.graph.value.none": "(없음)",
+  "improve.graph.value.change": "{old} → {now}",
+  "improve.graph.yes": "예",
+  "improve.graph.no": "아니요",
   "improve.graph.connection": "{from} → {to}",
   "improve.graph.connection.option": "{from} → {to} (옵션 “{option}”)",
   "improve.check.passed": "검사에서 새 그래프의 문제를 찾지 못했습니다.",

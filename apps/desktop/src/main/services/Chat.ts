@@ -41,6 +41,7 @@ import { CHAT_SEARCH_TOOL_DEFS, isChatSearchTool, makeChatSearch } from "./chatS
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
 import { isMemoryTool, MEMORY_TOOL_DEFS, makeMemoryTool } from "./memoryTool.ts"
 import { Platform } from "./Platform.ts"
@@ -981,10 +982,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           outside ??= n.outside
           program ||= n.program
         }
+        const source = { kind: "run" as const, id: runId }
+        // The limits of spec 002 ("Limits"): one proposal of the kinds that change the workflow for
+        // each run, and 3 in 24 hours. When one stops it, the request does not offer those tools.
+        // Spec 002 and 008 state no daily limit for memory items, so none is made up here.
+        const may = {
+          propose:
+            flags.selfImprovement && proposals.workflowChangeLimit(workflowId, source) === null,
+          memory: flags.enabled,
+        }
+        if (!may.propose && !may.memory) {
+          return
+        }
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), REFLECT_MS)
-        const source = { kind: "run" as const, id: runId }
-        const may = { propose: flags.selfImprovement, memory: flags.enabled }
         const defs = [
           ...(may.propose ? PROPOSE_TOOL_DEFS : []),
           ...(may.memory ? MEMORY_TOOL_DEFS : []),
@@ -1046,8 +1057,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           )
           // The turn posts no message: its only results are proposals.
           for await (const event of events) void event
-        } catch {
-          // A turn that fails leaves no trace in the chat: the next run looks again.
+        } catch (error) {
+          // A turn that fails leaves no trace in the chat: the next run looks again. It leaves one
+          // line in the log of workflows, with the kind of the fault and no text of it (no secret).
+          appendLog(platform.dataDir, "workflows", {
+            event: "reflection_failed",
+            workflowId,
+            runId,
+            error: error instanceof Error ? error.name : "unknown",
+            code: (error as { code?: unknown } | null)?.code ?? null,
+          })
         } finally {
           clearTimeout(timer)
         }

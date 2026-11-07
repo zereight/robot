@@ -2,9 +2,11 @@ import {
   charLength,
   type DiffSegment,
   DOCUMENT_MAX,
+  GRAPH_PROPOSAL_TEXT_MAX,
   type GraphChange,
   type GraphConnectionChange,
   type GraphNodeChange,
+  graphChangeSize,
   MEMORY_USER_MAX,
   type MessageKey,
   type Proposal,
@@ -20,8 +22,9 @@ import { useApp } from "../state/app.tsx"
 import { improveRequest } from "../state/improve.ts"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { tabKeyDown } from "../ui/tabKeys.ts"
 import styles from "./improve.module.css"
-import { GRAPH_FIELD_KEYS, problemLine } from "./improveView.ts"
+import { GRAPH_FIELD_KEYS, nodeDetails, problemLine } from "./improveView.ts"
 
 const TABS = ["waiting", "log"] as const
 type Tab = (typeof TABS)[number]
@@ -73,33 +76,106 @@ const connectionLine = (t: ReturnType<typeof useApp>["t"], c: GraphConnectionCha
     : t("improve.graph.connection.option", { from, to, option: c.option })
 }
 
+/** The values of one node of a graph change, as text: the new text is on the card before "Accept". */
+const NodeDetails = (props: { node: GraphNodeChange }) => {
+  const { t } = useApp()
+  const details = () => nodeDetails(t, props.node)
+  return (
+    <Show when={details().length > 0}>
+      <dl class={styles.details} data-testid="proposal-graph-details">
+        <For each={details()}>
+          {(d) => (
+            <div class={styles.detail} data-field={d.field}>
+              <dt class={styles.meta}>{t(GRAPH_FIELD_KEYS[d.field])}</dt>
+              <dd class={styles.detailValue}>
+                <Show
+                  when={d.old !== null}
+                  fallback={
+                    <Show when={d.long} fallback={d.now}>
+                      <pre class={styles.text} data-testid="proposal-graph-new">
+                        {d.now}
+                      </pre>
+                    </Show>
+                  }
+                >
+                  <Show
+                    when={d.long}
+                    fallback={
+                      <span data-testid="proposal-graph-change">
+                        {t("improve.graph.value.change", { old: d.old ?? "", now: d.now })}
+                      </span>
+                    }
+                  >
+                    <span class={styles.meta}>{t("improve.text.old")}</span>
+                    <pre class={styles.text} data-testid="proposal-graph-old">
+                      {d.old}
+                    </pre>
+                    <span class={styles.meta}>{t("improve.text.new")}</span>
+                    <pre class={styles.text} data-testid="proposal-graph-new">
+                      {d.now}
+                    </pre>
+                  </Show>
+                </Show>
+              </dd>
+            </div>
+          )}
+        </For>
+      </dl>
+    </Show>
+  )
+}
+
 /** The nodes and the connections that a graph change adds, changes and removes. */
 const GraphDiff = (props: { change: GraphChange }) => {
   const { t } = useApp()
-  const groups = () =>
+  const connections = [
     [
-      ["improve.graph.added", props.change.addedNodes.map((n) => nodeLine(t, n)), "added"],
-      ["improve.graph.changed", props.change.changedNodes.map((n) => nodeLine(t, n)), "changed"],
-      ["improve.graph.removed", props.change.removedNodes.map((n) => nodeLine(t, n)), "removed"],
-      [
-        "improve.graph.connectionsAdded",
-        props.change.addedConnections.map((c) => connectionLine(t, c)),
-        "connections-added",
-      ],
-      [
-        "improve.graph.connectionsRemoved",
-        props.change.removedConnections.map((c) => connectionLine(t, c)),
-        "connections-removed",
-      ],
-    ] as const
+      "improve.graph.connectionsAdded",
+      () => props.change.addedConnections.map((c) => connectionLine(t, c)),
+      "connections-added",
+    ],
+    [
+      "improve.graph.connectionsRemoved",
+      () => props.change.removedConnections.map((c) => connectionLine(t, c)),
+      "connections-removed",
+    ],
+  ] as const
+  const nodes = [
+    ["improve.graph.added", () => props.change.addedNodes, "added"],
+    ["improve.graph.changed", () => props.change.changedNodes, "changed"],
+    ["improve.graph.removed", () => props.change.removedNodes, "removed"],
+  ] as const
   return (
     <div data-testid="proposal-graph">
-      <For each={groups()}>
-        {([key, lines, name]) => (
-          <Show when={lines.length > 0}>
+      <p class={styles.muted} data-testid="proposal-graph-size">
+        {t("improve.graph.size", {
+          n: graphChangeSize(props.change),
+          max: GRAPH_PROPOSAL_TEXT_MAX,
+        })}
+      </p>
+      <For each={nodes}>
+        {([key, list, name]) => (
+          <Show when={list().length > 0}>
             <h4 class={styles.subTitle}>{t(key)}</h4>
             <ul class={styles.group} data-testid={`proposal-graph-${name}`}>
-              <For each={lines}>{(line) => <li>{line}</li>}</For>
+              <For each={list()}>
+                {(n) => (
+                  <li data-testid="proposal-graph-node">
+                    {nodeLine(t, n)}
+                    <NodeDetails node={n} />
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        )}
+      </For>
+      <For each={connections}>
+        {([key, lines, name]) => (
+          <Show when={lines().length > 0}>
+            <h4 class={styles.subTitle}>{t(key)}</h4>
+            <ul class={styles.group} data-testid={`proposal-graph-${name}`}>
+              <For each={lines()}>{(line) => <li>{line}</li>}</For>
             </ul>
           </Show>
         )}
@@ -440,10 +516,14 @@ export const ImprovementPanel = (props: {
           {(name) => (
             <Button
               role="tab"
+              id={`improve-tab-${name}`}
               aria-selected={tab() === name}
+              aria-controls={`improve-panel-${name}`}
+              tabIndex={tab() === name ? 0 : -1}
               variant={tab() === name ? "primary" : "default"}
               data-testid={`improve-tab-${name}`}
               onClick={() => setTab(name)}
+              onKeyDown={(e) => tabKeyDown(e, TABS, tab(), setTab)}
             >
               {name === "waiting" && (v()?.waiting.length ?? 0) > 0
                 ? t("improve.tab.waiting.n", { n: v()?.waiting.length ?? 0 })
@@ -453,7 +533,12 @@ export const ImprovementPanel = (props: {
         </For>
       </div>
       <Show when={tab() === "waiting"}>
-        <div class={styles.page} role="tabpanel">
+        <div
+          class={styles.page}
+          role="tabpanel"
+          id="improve-panel-waiting"
+          aria-labelledby="improve-tab-waiting"
+        >
           <Show when={v() && !v()?.enabled}>
             <p class={styles.warn} role="status" data-testid="improve-off">
               {t("improve.off")}
@@ -488,7 +573,12 @@ export const ImprovementPanel = (props: {
         </div>
       </Show>
       <Show when={tab() === "log"}>
-        <div class={styles.page} role="tabpanel">
+        <div
+          class={styles.page}
+          role="tabpanel"
+          id="improve-panel-log"
+          aria-labelledby="improve-tab-log"
+        >
           <Show
             when={(v()?.log.length ?? 0) > 0}
             fallback={

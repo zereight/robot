@@ -54,8 +54,12 @@ const setup = async () => {
       { id: "c", name: "search_chats", input: JSON.stringify({ words }) },
       skip,
     )
-  const read = (reference: string, workflow = flow.id) =>
-    search.execute(workflow, { id: "c", name: "read_chat", input: JSON.stringify({ reference }) })
+  const read = (reference: string, workflow = flow.id, skip: ReadonlySet<string> = new Set()) =>
+    search.execute(
+      workflow,
+      { id: "c", name: "read_chat", input: JSON.stringify({ reference }) },
+      skip,
+    )
   return { ...t, run, server, flow, db, add, find, read }
 }
 
@@ -225,6 +229,39 @@ describe("read chat", () => {
     expect(r.output).toContain("[step: read_file — Failed]")
     expect(r.output).not.toContain("secret-arg")
     expect(r.output).not.toContain("secret-out")
+  })
+
+  test("a step that the app refused says Refused, not Ran", async () => {
+    const t = await setup()
+    const id = t.add("", {
+      author: "assistant",
+      parts: [
+        { kind: "text", text: "I tried." },
+        {
+          kind: "tool",
+          name: "run_shell",
+          state: "done",
+          refused: "level",
+          input: "x",
+          output: "y",
+        },
+      ],
+    })
+    expect(t.read(id).output).toContain("[step: run_shell — Refused]")
+    expect(t.read(id).output).not.toContain("run_shell — Ran")
+  })
+
+  test("the messages of the turn that reads are not the past: not found, and not in the slice", async () => {
+    const t = await setup()
+    const old = t.add("an old message")
+    const now = t.add("the question of this turn")
+    const after = t.add("another old one")
+    expect(t.read(now, undefined, new Set([now])).output).toBe("Not found.")
+    const r = t.read(old, undefined, new Set([now]))
+    expect(r.output).toContain("an old message")
+    expect(r.output).toContain("another old one")
+    expect(r.output).not.toContain("the question of this turn")
+    expect(after).toBeTruthy()
   })
 
   test("a thread is read in its own thread; a missing reference and another workflow give 'Not found.'", async () => {
