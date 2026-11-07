@@ -2,9 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { ChatPart, WorkflowChatMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
+import { standIn, tool as standTool } from "../connections/standIn.ts"
 import { runRequest } from "../rpc.ts"
+import { ASSISTANT_TOOL_DEFS } from "./assistantTools.ts"
 import { Cards } from "./Cards.ts"
 import { Chat } from "./Chat.ts"
+import { Connections, type ConnectionsOptions } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
 import { Providers } from "./Providers.ts"
@@ -35,8 +38,8 @@ const until = async (ok: () => boolean | Promise<boolean>, ms = 6000) => {
   throw new Error("timeout")
 }
 
-const setup = async (level?: "read_only" | "full") => {
-  const t = testRuntime({ check: { auto: false } })
+const setup = async (level?: "read_only" | "full", connections?: ConnectionsOptions) => {
+  const t = testRuntime({ check: { auto: false }, ...(connections ? { connections } : {}) })
   const run = t.runtime.runPromise
   const server = await run(Servers.use((s) => s.local))
   await run(
@@ -128,6 +131,51 @@ describe("the tools of the chat (spec 010, 'Assistant')", () => {
     const system = JSON.stringify(mock.requests.at(-1)?.body.messages[0])
     expect(system).toContain("Node 1")
     expect(system).toContain("Rules for the tools of the workflow")
+  })
+
+  test("the chat gets no tool of a connection and no tool that changes one; a call of such a name fails and the connection starts nothing (spec 018)", async () => {
+    const fake = standIn([standTool("echo")])
+    const t = await setup(undefined, { open: fake.open })
+    const form = {
+      name: "Notes",
+      kind: "program" as const,
+      command: "notes-server",
+      args: [],
+      folder: "",
+      env: [],
+      address: "",
+      headers: [],
+    }
+    await t.run(Connections.use((c) => c.test({ connection: form })))
+    const saved = await t.run(
+      Connections.use((c) => c.save({ connection: form, confirmed: true, scope: { kind: "all" } })),
+    )
+    fake.state.opened.length = 0
+    await t.send("hello")
+    await t.idle()
+    // No tool of a connection, no step "Search tools", and no tool that adds, changes or removes a
+    // connection of spec 018 (the tools "add_connection" and "remove_connection" are lines of the
+    // graph between two nodes).
+    const names = toolNames()
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.filter((n) => n.startsWith("mcp__") || n === "search_tools")).toEqual([])
+    expect(names.filter((n) => /connection/.test(n)).sort()).toEqual([
+      "add_connection",
+      "remove_connection",
+    ])
+    expect(
+      ASSISTANT_TOOL_DEFS.map((d) => d.name).filter((n) => /scope|workflows_of|trust/.test(n)),
+    ).toEqual([])
+    // A line of the graph takes node numbers, so it cannot name a connection of spec 018.
+    const before = (await t.run(Connections.use((c) => c.list)))[0]?.scope
+    await t.send('tool mcp__notes__echo {"text":"hi"}')
+    await t.idle()
+    await t.send(`tool add_connection {"from":1,"to":2,"connection":"${saved.id}"}`)
+    await t.idle()
+    expect(fake.state.calls).toEqual([])
+    expect(fake.state.opened).toHaveLength(0)
+    expect((await t.run(Connections.use((c) => c.list)))[0]?.scope).toEqual(before)
+    // The chat starts a run: the text nodes of the run ask for the connection, the chat does not.
   })
 
   test("add a node by chat: the graph has node 3, the version holds the graph from before, the card shows", async () => {

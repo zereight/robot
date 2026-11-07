@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { looksLikeSecret, REDACTED, redactSecrets } from "./redact.ts"
+import { looksLikeSecret, REDACTED, redactCounted, redactSecrets } from "./redact.ts"
 
 describe("redactSecrets", () => {
   test("hides common key and token shapes", () => {
@@ -42,5 +42,15 @@ describe("looksLikeSecret", () => {
     expect(looksLikeSecret("Likes green tea")).toBe(false)
     expect(looksLikeSecret("a cat sat", ["cat"])).toBe(false)
     expect(looksLikeSecret(REDACTED)).toBe(false)
+  })
+})
+
+describe("redactCounted", () => {
+  test("counts each place that it hides, and gives the same text as redactSecrets", () => {
+    const text = `a sk-abcdefghijklmnop1234 b -----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY----- c hunter2-hunter2`
+    const out = redactCounted(text, ["hunter2-hunter2"])
+    expect(out.count).toBe(3)
+    expect(out.text).toBe(redactSecrets(text, ["hunter2-hunter2"]))
+    expect(redactCounted("nothing here")).toEqual({ text: "nothing here", count: 0 })
   })
 })

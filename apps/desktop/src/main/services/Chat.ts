@@ -17,9 +17,12 @@ import {
   chatText,
   compactCut,
   compactDue,
+  editableMessageId,
+  editRefusal,
   guardVerdict,
   hourCacheEnded,
   isOutsideSource,
+  isReadableReply,
   type ModelInfo,
   type OutsideSource,
   type PermissionLevel,
@@ -32,6 +35,8 @@ import {
   type SensitiveLabel,
   shouldAutoCompact,
   translate,
+  type UnreadMark,
+  unreadOf,
   type WorkflowChatHistory,
   type WorkflowChatMessage,
   type WorkflowChatSend,
@@ -116,6 +121,17 @@ export interface ChatService {
   readonly sendNow: (messageId: string) => Effect.Effect<void, AppError>
   /** Retry on a failed reply: asks again with the same conversation. */
   readonly retry: (workflowId: string) => Effect.Effect<void, AppError>
+  /**
+   * Edit of the last message of the user (spec 003, "Message rows"): the new text replaces the old
+   * one, the replies after it go, and the responsible document answers again. It is refused while
+   * a turn works, for a message that is not the last one of the user, and when a step ran after it
+   * or the chat started a run after it.
+   */
+  readonly edit: (messageId: string, text: string) => Effect.Effect<void, AppError>
+  /** "Mark as unread": this finished reply and the later replies count as unread (spec 003). */
+  readonly markUnread: (messageId: string) => Effect.Effect<void, AppError>
+  /** The chat shows its latest message: the unread count clears (spec 003, "Mark as unread"). */
+  readonly read: (workflowId: string) => Effect.Effect<void, AppError>
   /** The user clears the marks of the chat: outside content and sensitive read (spec 007). */
   readonly clearMarks: (workflowId: string) => Effect.Effect<void, AppError>
   /** The two buttons of the notice after a restart (spec 003, "Rules"). */
@@ -919,6 +935,43 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return yield* exit instanceof AppError ? exit : toAppError(exit)
         })
 
+      // --- unread and edit (spec 003) ---------------------------------------------------------
+
+      const unreadMark = (workflowId: string): UnreadMark | null => {
+        const r = db.get<{ message_id: string; at: number }>(
+          "SELECT message_id, at FROM chat_unread WHERE workflow_id = ?",
+          workflowId,
+        )
+        return r ? { id: r.message_id, at: r.at } : null
+      }
+
+      /**
+       * True when a run that the chat started began at or after the message. A step that started a
+       * run cannot be taken back by an edit, even when the reply that holds the step is gone.
+       */
+      const chatRunSince = (workflowId: string, at: number): boolean =>
+        db.get<{ one: number }>(
+          "SELECT 1 AS one FROM run WHERE workflow_id = ? AND source = 'chat' AND started_at >= ? LIMIT 1",
+          workflowId,
+          at,
+        ) !== undefined
+
+      /**
+       * The message that Edit can change now. A message that a linked device sent is not edited
+       * here: the user edits their own message on the computer that sent it.
+       */
+      const editableOf = (
+        workflowId: string,
+        messages: readonly WorkflowChatMessage[],
+        busy: boolean,
+      ): string | null => {
+        const id = editableMessageId(messages, busy)
+        if (id === null) return null
+        const r = row(id)
+        if (!r || r.actor_id !== null) return null
+        return chatRunSince(workflowId, r.created_at) ? null : id
+      }
+
       const history = (workflowId: string) =>
         Effect.gen(function* () {
           const workflow = yield* findWorkflow(workflowId)
@@ -944,6 +997,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             marks: readMarks(workflowId),
             meter: yield* meterOf(workflowId, model),
             compacting: job !== undefined || autoCompacting.has(workflowId),
+            unread: unreadOf(messages, unreadMark(workflowId)),
+            editableId: editableOf(workflowId, messages, w !== undefined || job !== undefined),
           } satisfies WorkflowChatHistory
         })
 
@@ -1091,6 +1146,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         ) {
           let reply: Awaited<ReturnType<typeof cards.ask>>
           try {
+            markAsked(parts, touch, call.id)
             reply = await cards.ask({
               workflowId,
               runId: run.id,
@@ -1161,6 +1217,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
       }
 
+      /**
+       * Marks the tool step of the call as one that asks the user, before its card opens. The mark
+       * stays: a step that asked is a card in the chat, never a line of a folded series.
+       */
+      const markAsked = (parts: ChatPart[], touch: () => void, callId: string) => {
+        const at = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+        const part = parts[at]
+        if (part?.kind !== "tool" || part.asked) return
+        parts[at] = { ...part, asked: true }
+        touch()
+      }
+
       /** A note after a proposal, a save or a refusal for "20 wait": one muted line of the turn. */
       const pushNote = (parts: ChatPart[], part: ChatPart) => {
         const last = parts.at(-1)
@@ -1189,8 +1257,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       ): Promise<ToolOutcome> => {
         const marks = readMarks(workflowId)
         const source = { kind: "chat" as const, id: w.assistantId }
-        const ask = (step: "memory" | "change") => (summary: string) =>
-          cards.ask({
+        const ask = (step: "memory" | "change") => (summary: string) => {
+          markAsked(parts, touch, call.id)
+          return cards.ask({
             workflowId,
             runId: null,
             taskId: null,
@@ -1205,6 +1274,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             sensitive: marks.sensitive,
             signal: w.controller.signal,
           })
+        }
         if (isMemoryTool(call.name)) {
           const result = await memoryTool.execute(
             {
@@ -1373,8 +1443,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             turn,
             actor: () => turnActor(workflowId, w),
             t: (key, params) => translate(locale, key, params),
-            ask: (step, summary) =>
-              cards.ask({
+            ask: (step, summary) => {
+              markAsked(parts, touch, call.id)
+              return cards.ask({
                 workflowId,
                 runId: null,
                 taskId: null,
@@ -1388,7 +1459,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 scope: "turn",
                 sensitive: marks.sensitive,
                 signal: w.controller.signal,
-              }),
+              })
+            },
           },
           call,
         )
@@ -1520,6 +1592,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               touch()
             } else if (event.type === "tool") {
               const index = parts.findIndex((p) => p.kind === "tool" && p.id === event.call.id)
+              const before = parts[index]
               const part: ChatPart = {
                 kind: "tool",
                 id: event.call.id,
@@ -1529,6 +1602,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 input: event.call.input,
                 output: event.state === "running" ? "" : event.output,
                 ...(event.state !== "running" && event.notRun ? { notRun: true } : {}),
+                // A step that asked the user keeps the mark when its state changes.
+                ...(before?.kind === "tool" && before.asked ? { asked: true } : {}),
               }
               if (index >= 0) parts[index] = part
               else parts.push(part)
@@ -1992,6 +2067,83 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           yield* send({ workflowId, text: translate(locale, "chat.continue_text") })
         })
 
+      const edit = (messageId: string, text: string) =>
+        Effect.gen(function* () {
+          /**
+           * The checks that decide if the edit may run. They read the state now and wait for
+           * nothing, so they are the same at the time of the writes. They run twice: first to fail
+           * fast, and again after the model is known, because that step can wait on the network.
+           */
+          const check = () => {
+            const r = row(messageId)
+            if (!r || r.status === "queued") return new AppError({ code: "edit_not_last" })
+            const workflowId = r.workflow_id
+            const rows = visibleRows(workflowId)
+            const refusal = editRefusal(rows.map(toMessage), messageId, working.has(workflowId))
+            if (refusal !== null) return new AppError({ code: `edit_${refusal}` })
+            if (r.actor_id !== null || chatRunSince(workflowId, r.created_at))
+              return new AppError({
+                code: r.actor_id !== null ? "edit_not_last" : "edit_steps_ran",
+              })
+            const next = text.trim()
+            const others = (JSON.parse(r.parts) as ChatPart[]).filter((p) => p.kind !== "text")
+            if (next === "" && others.length === 0) return new AppError({ code: "message_empty" })
+            return { r, rows, next, others }
+          }
+          const first = check()
+          if (first instanceof AppError) return yield* first
+          const workflowId = first.r.workflow_id
+          // The answer needs an account, and it is checked before anything changes. The model is
+          // read before the last check: this step can wait, and a turn can start meanwhile.
+          const model = yield* resolveModel(workflowId)
+          if (!model) return yield* new AppError({ code: "provider_not_connected" })
+          const now = check()
+          if (now instanceof AppError) return yield* now
+          const { rows, next, others } = now
+          // The text keeps its place: after the skill chip and before the files, as send puts it.
+          const skillAt = others.findIndex((p) => p.kind === "skill")
+          const parts: ChatPart[] = [...others]
+          if (next !== "") parts.splice(skillAt + 1, 0, { kind: "text", text: next })
+          const at = rows.findIndex((x) => x.id === messageId)
+          // The change and the removal of the replies are one step: all happen, or none.
+          db.transaction(() => {
+            db.run(
+              "UPDATE chat_message SET parts = ?, edited_at = ? WHERE id = ?",
+              JSON.stringify(parts),
+              Date.now(),
+              messageId,
+            )
+            for (const later of rows.slice(at + 1))
+              db.run("DELETE FROM chat_message WHERE id = ?", later.id)
+          })
+          emitMessage(messageId)
+          emitState(workflowId)
+          yield* startTurn(workflowId, model)
+        })
+
+      const markUnread = (messageId: string) =>
+        Effect.gen(function* () {
+          const r = row(messageId)
+          if (!r || r.status === "queued" || !isReadableReply(toMessage(r)))
+            return yield* new AppError({ code: "mark_not_reply" })
+          db.run(
+            `INSERT INTO chat_unread (workflow_id, message_id, at) VALUES (?, ?, ?)
+             ON CONFLICT (workflow_id) DO UPDATE SET message_id = excluded.message_id, at = excluded.at`,
+            r.workflow_id,
+            r.id,
+            r.created_at,
+          )
+          emitState(r.workflow_id)
+        })
+
+      const read = (workflowId: string) =>
+        Effect.gen(function* () {
+          yield* findWorkflow(workflowId)
+          if (unreadMark(workflowId) === null) return
+          db.run("DELETE FROM chat_unread WHERE workflow_id = ?", workflowId)
+          emitState(workflowId)
+        })
+
       const clearMarks = (workflowId: string) =>
         Effect.gen(function* () {
           yield* findWorkflow(workflowId)
@@ -2013,6 +2165,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }),
         deleteWaiting,
         sendNow,
+        edit,
+        markUnread,
+        read,
         retry,
         resume,
       })

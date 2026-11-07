@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import {
   type CheckOutcome,
+  changesBackup,
   charLength,
   checkGraphKey,
   checkStateOf,
@@ -14,6 +15,7 @@ import {
   type GraphVersion,
   isLooser,
   isRuntimeKind,
+  type ModelPick,
   NODES_MAX,
   type NodeInput,
   type NodePatch,
@@ -23,6 +25,7 @@ import {
   programName,
   redactSecrets,
   resolveLocale,
+  sameModelChoice,
   THRESHOLD_DEFAULT,
   translate,
   type VersionSource,
@@ -136,7 +139,16 @@ export interface WorkflowsService {
   /** The versions of the graph, newest first (spec 010, "Flows", item 4). */
   readonly versions: (id: string) => Effect.Effect<readonly GraphVersion[], AppError>
   /** Restores a version. The graph as it is now is kept as a version too. */
-  readonly restoreVersion: (id: string, versionId: string) => Effect.Effect<WorkflowGraph, AppError>
+  readonly restoreVersion: (
+    id: string,
+    versionId: string,
+    /**
+     * A linked device restores a graph: the backup models of the nodes stay as they are now, and a
+     * node that is back from the version gets none. Only the user at this computer changes a
+     * backup model (spec 006; docs/spec-questions.md, B6).
+     */
+    options?: { readonly keepBackups?: boolean },
+  ) => Effect.Effect<WorkflowGraph, AppError>
 }
 
 interface WorkflowRow {
@@ -162,6 +174,9 @@ interface NodeRow {
   account_id: string | null
   model: string | null
   effort: string | null
+  backup_account_id: string | null
+  backup_model: string | null
+  backup_effort: string | null
   permission: PermissionLevel | null
   continue_on_failure: number
   question: string
@@ -222,6 +237,18 @@ export const readStoredCheck = (
   }
 }
 
+/**
+ * A graph that a version kept, read again. A version from before the backup model has no `backup`
+ * on its nodes: they have none (spec 006).
+ */
+const versionGraph = (json: string): WorkflowGraph => {
+  const graph = JSON.parse(json) as WorkflowGraph
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => ({ ...n, backup: n.backup ?? null })),
+  }
+}
+
 /** The graph of a workflow, read from the tables. */
 export const readGraph = (db: DatabaseService, workflowId: string): WorkflowGraph => {
   const options = db.all<OptionRow>(
@@ -241,6 +268,10 @@ export const readGraph = (db: DatabaseService, workflowId: string): WorkflowGrap
         accountId: r.account_id,
         model: r.model,
         effort: r.effort,
+        backup:
+          r.backup_account_id !== null && r.backup_model !== null
+            ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
+            : null,
         permission: r.permission,
         continueOnFailure: r.continue_on_failure === 1,
         question: r.question,
@@ -387,10 +418,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         accountId?: string | null
         model?: string | null
         effort?: string | null
+        backup?: ModelPick | null
         permission?: PermissionLevel | null
       }) => {
         if (patch.effort !== undefined && patch.effort !== null)
           return new AppError({ code: "decision_effort", detail: "effort" })
+        // A decision node names the decision model, so it keeps it and gets no backup (spec 006).
+        if (patch.backup !== undefined && patch.backup !== null)
+          return new AppError({ code: "decision_backup", detail: "backup" })
         if (
           (patch.accountId !== undefined && patch.accountId !== null) ||
           (patch.model !== undefined && patch.model !== null)
@@ -525,8 +560,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           for (const n of graph.nodes) {
             db.run(
               `INSERT INTO workflow_node (id, workflow_id, number, kind, name, prompt, account_id, model, effort,
+                 backup_account_id, backup_model, backup_effort,
                  permission, continue_on_failure, question, threshold, x, y)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               n.id,
               id,
               n.number,
@@ -536,6 +572,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               n.accountId,
               n.model,
               n.effort,
+              // A decision node has no backup model (spec 006). A version from before the field
+              // has no `backup`.
+              n.kind === "text" ? (n.backup?.accountId ?? null) : null,
+              n.kind === "text" ? (n.backup?.model ?? null) : null,
+              n.kind === "text" ? (n.backup?.effort ?? null) : null,
               n.permission,
               n.continueOnFailure ? 1 : 0,
               n.question,
@@ -620,9 +661,19 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             // A workflow that runs is not deleted: the cascade would remove its run rows.
             const busy = checkIdle(id)
             if (busy) return yield* busy
-            // Every table of the workflow holds a foreign key with ON DELETE CASCADE.
-            db.run("DELETE FROM workflow WHERE id = ?", id)
+            // Every table of the workflow holds a foreign key with ON DELETE CASCADE, but the holds
+            // of the main models have none on purpose (spec 006): they leave with the workflow.
+            db.transaction(() => {
+              db.run(
+                "DELETE FROM model_hold WHERE node_id IN (SELECT id FROM workflow_node WHERE workflow_id = ?)",
+                id,
+              )
+              db.run("DELETE FROM workflow WHERE id = ?", id)
+            })
             changed(row.server_id)
+            // The workflow left the list of every connection (spec 018, "Rules"): the page of
+            // connections reads its rows again.
+            bus.emit("connections.changed", {})
           }),
         setPermission: (id, level) =>
           Effect.gen(function* () {
@@ -782,10 +833,40 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               if (fields) return yield* fields
             }
             const pick = <T>(next: T | undefined, now: T) => (next === undefined ? now : next)
+            // The backup model (spec 006, "Backup model"): the editor refuses the same account, model
+            // and reasoning level as the main choice, and a backup on a node that has no main choice.
+            const backupNow: ModelPick | null =
+              node.backup_account_id !== null && node.backup_model !== null
+                ? {
+                    accountId: node.backup_account_id,
+                    model: node.backup_model,
+                    effort: node.backup_effort,
+                  }
+                : null
+            const backupNext = pick(patch.backup, backupNow)
+            if (backupNext !== null) {
+              const mainAccount = pick(patch.accountId, node.account_id)
+              const mainModel = pick(patch.model, node.model)
+              if (mainAccount !== null && mainModel !== null) {
+                if (
+                  sameModelChoice(
+                    {
+                      accountId: mainAccount,
+                      model: mainModel,
+                      effort: pick(patch.effort, node.effort),
+                    },
+                    backupNext,
+                  )
+                )
+                  return yield* new AppError({ code: "backup_same", detail: "backup" })
+              } else if (patch.backup !== undefined)
+                return yield* new AppError({ code: "backup_no_main", detail: "backup" })
+            }
             db.transaction(() => {
               keepVersion(row.id, source)
               db.run(
                 `UPDATE workflow_node SET name = ?, prompt = ?, account_id = ?, model = ?, effort = ?,
+                   backup_account_id = ?, backup_model = ?, backup_effort = ?,
                    permission = ?, continue_on_failure = ?, question = ?, threshold = ?, x = ?, y = ?
                  WHERE id = ?`,
                 pick(patch.name?.trim(), node.name),
@@ -793,6 +874,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 pick(patch.accountId, node.account_id),
                 pick(patch.model, node.model),
                 pick(patch.effort, node.effort),
+                backupNext?.accountId ?? null,
+                backupNext?.model ?? null,
+                backupNext?.effort ?? null,
                 pick(patch.permission, node.permission),
                 patch.continueOnFailure === undefined
                   ? node.continue_on_failure
@@ -820,6 +904,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               keepVersion(row.id, "editor")
               // The connections and the options of the node go with it (ON DELETE CASCADE).
               db.run("DELETE FROM workflow_node WHERE id = ?", nodeId)
+              db.run("DELETE FROM model_hold WHERE node_id = ?", nodeId)
               renumber(row.id)
               touch(row.id)
             })
@@ -994,10 +1079,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 id: r.id,
                 source: r.source,
                 createdAt: r.created_at,
-                graph: JSON.parse(r.graph) as WorkflowGraph,
+                graph: versionGraph(r.graph),
               }))
           }),
-        restoreVersion: (id, versionId) =>
+        restoreVersion: (id, versionId, options) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
             const version = db.get<{ graph: string }>(
@@ -1008,7 +1093,16 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (!version) return yield* new AppError({ code: "version_not_found" })
             const busy = checkIdle(id)
             if (busy) return yield* busy
-            const graph = JSON.parse(version.graph) as WorkflowGraph
+            const kept = versionGraph(version.graph)
+            const graph = options?.keepBackups
+              ? (() => {
+                  const now = new Map(readGraph(db, id).nodes.map((n) => [n.id, n.backup]))
+                  return {
+                    ...kept,
+                    nodes: kept.nodes.map((n) => ({ ...n, backup: now.get(n.id) ?? null })),
+                  }
+                })()
+              : kept
             // The workflow level may be stricter now than when the version was saved.
             if (loosestNode(graph.nodes, row.permission))
               return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
@@ -1023,6 +1117,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (busy) return yield* busy
             if (loosestNode(graph.nodes, row.permission))
               return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
+            // A change of the whole graph, from a proposal or from the chat, never sets or moves a
+            // backup model: it is a second account for the node, and only the user sets it, in the
+            // editor (spec 006; docs/spec-questions.md, B6). This holds whatever the caller built.
+            if (changesBackup(readGraph(db, id), graph) !== null)
+              return yield* new AppError({ code: "backup_change_refused", detail: "backup" })
             return { versionId: writeGraph(row, graph, source, device ?? null) }
           }),
         applyPrompt: (nodeId, prompt, source) =>

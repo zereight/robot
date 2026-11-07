@@ -48,6 +48,7 @@ const node = (
   accountId: null,
   model: null,
   effort: null,
+  backup: null,
   permission: null,
   continueOnFailure: false,
   question: text,

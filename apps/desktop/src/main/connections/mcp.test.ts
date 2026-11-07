@@ -4,6 +4,7 @@ import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  ANSWER_MAX,
   McpCallError,
   McpCallStopped,
   McpError,
@@ -183,6 +184,74 @@ describe("a program on this computer", () => {
     ])
   })
 
+  test("close ends the program and every process that it started (its whole group)", async () => {
+    // A launcher such as `npx` starts the real server as a child. This one starts a child that
+    // sleeps for a long time, writes its number to a file, and then becomes the test server.
+    const pidFile = join(work, `child-${Date.now()}.pid`)
+    const s = await open({
+      kind: "program",
+      command: "/bin/sh",
+      args: ["-c", `sleep 300 & echo $! > "${pidFile}"; exec "${process.execPath}" "${SERVER}"`],
+      cwd: process.cwd(),
+      env: { PATH: process.env.PATH },
+    })
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    const pid = Number(readFileSync(pidFile, "utf8").trim())
+    expect(pid).toBeGreaterThan(1)
+    expect(alive(pid)).toBe(true)
+    s.close()
+    const end = Date.now() + 5_000
+    while (alive(pid) && Date.now() < end) await Bun.sleep(25)
+    expect(alive(pid)).toBe(false)
+  })
+
+  test("a program that ends by itself and leaves a process that ignores the first signal: the process is stopped for good", async () => {
+    const pidFile = join(work, `ignorer-${Date.now()}.pid`)
+    const spec: McpSpec = {
+      ...program(),
+      command: "/bin/sh",
+      // `trap "" TERM` is kept by the child: it ignores the signal that the app sends first.
+      args: ["-c", `trap '' TERM; sleep 300 & echo $! > "${pidFile}"; exit 0`],
+    }
+    await openMcp(spec, { timeoutMs: 5_000 }).then(
+      (s) => s.close(),
+      () => {},
+    )
+    const pid = Number(readFileSync(pidFile, "utf8").trim())
+    expect(pid).toBeGreaterThan(1)
+    const alive = () => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    const end = Date.now() + 6_000
+    while (alive() && Date.now() < end) await Bun.sleep(50)
+    expect(alive()).toBe(false)
+  })
+
+  test("a line of an answer longer than the limit ends the connection with the reason", async () => {
+    const spec: McpSpec = {
+      ...program(),
+      args: ["-e", "process.stdout.write('x'.repeat(21_000_000))"],
+    }
+    const error = await openMcp(spec, { timeoutMs: 20_000 }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(error).toBeInstanceOf(McpError)
+    expect((error as McpError).failure).toBe("invalid")
+  })
+
   test("a tool list with more than 1000 tools says that it holds more", async () => {
     const s = await open(program({ MCP_TEST_TOOLS: "1100" }))
     const { tools, more } = await s.listTools(10_000)
@@ -300,5 +369,124 @@ describe("errors", () => {
     expect(new McpError("timeout").failure).toBe("timeout")
     expect(new McpCallError("x").message).toBe("x")
     expect(readFileSync(SERVER, "utf8")).toContain("MCP_TEST_HTTP_PORT")
+  })
+})
+
+/** A web server that answers the first exchange and gives the answer of `call` to a tool call. */
+const webServer = (call: (id: number) => Response | Promise<Response>) => {
+  const json = (id: number, result: unknown) =>
+    new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
+      headers: { "content-type": "application/json" },
+    })
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: async (req) => {
+      if (req.method !== "POST") return new Response(null, { status: 204 })
+      const body = (await req.json()) as { id?: number; method: string }
+      if (body.method === "initialize")
+        return json(body.id ?? 0, { protocolVersion: "2025-06-18", capabilities: {} })
+      if (body.method === "tools/call") return await call(body.id ?? 0)
+      return new Response(null, { status: 202 })
+    },
+  })
+  afterAll(() => server.stop(true))
+  return { url: `http://127.0.0.1:${server.port}/mcp`, json }
+}
+
+describe("re-review findings of B10: the size of an answer and the shape of a result", () => {
+  /** A body that a server sends in chunks, up to `total` bytes, and counts what it sent. */
+  const streamed = (total: number, chunk: Uint8Array) => {
+    const state = { sent: 0, cancelled: false }
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (state.sent >= total) return controller.close()
+        state.sent += chunk.byteLength
+        controller.enqueue(chunk)
+      },
+      cancel() {
+        state.cancelled = true
+      },
+    })
+    return { state, body }
+  }
+
+  test("a body above the limit stops the read: the client does not take the whole body", async () => {
+    const piece = new Uint8Array(64 * 1024).fill(0x61)
+    const big = streamed(ANSWER_MAX * 3, piece)
+    const { url } = webServer(
+      () => new Response(big.body, { headers: { "content-type": "application/json" } }),
+    )
+    const s = await open({ kind: "web", url, headers: {} })
+    await expect(
+      s.call("echo", {}, { signal: new AbortController().signal, timeoutMs: 20_000 }),
+    ).rejects.toMatchObject({ message: "The answer is too long." })
+    // The server could send a little more than the limit (the buffers on the way), not the body.
+    expect(big.state.sent).toBeLessThan(ANSWER_MAX + 16 * 1024 * 1024)
+    expect(big.state.sent).toBeLessThan(ANSWER_MAX * 3)
+  }, 30_000)
+
+  test("the limit counts bytes, not characters: a body of two-byte characters is cut at the limit", async () => {
+    // 11 million characters are 22 million bytes: more than the limit in bytes, less in characters.
+    const piece = new TextEncoder().encode("é".repeat(32 * 1024))
+    const big = streamed(22_000_000, piece)
+    const { url } = webServer(
+      () => new Response(big.body, { headers: { "content-type": "application/json" } }),
+    )
+    const s = await open({ kind: "web", url, headers: {} })
+    await expect(
+      s.call("echo", {}, { signal: new AbortController().signal, timeoutMs: 20_000 }),
+    ).rejects.toMatchObject({ message: "The answer is too long." })
+  }, 30_000)
+
+  test("a body under the limit is read whole, also when a character is split between two chunks", async () => {
+    const text = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { content: [{ type: "text", text: "안녕 é 😀" }] },
+    })
+    const bytes = new TextEncoder().encode(text)
+    const cut = bytes.indexOf(0xc3) + 1
+    const pieces = [bytes.slice(0, cut), bytes.slice(cut)]
+    const { url } = webServer(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const p of pieces) controller.enqueue(p)
+              controller.close()
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    )
+    const s = await open({ kind: "web", url, headers: {} })
+    // The id of the first tool call is 2 (the first exchange used 1).
+    expect(
+      (await s.call("echo", {}, { signal: new AbortController().signal, timeoutMs: 5_000 })).text,
+    ).toBe("안녕 é 😀")
+  })
+
+  for (const [name, result] of [
+    ["content that is not a list", { content: "not-an-array", isError: "yes" }],
+    ["an isError that is not true or false", { content: [], isError: "yes" }],
+    ["a result that is text", "hello"],
+    ["no result", null],
+  ] as const) {
+    test(`an answer with ${name} is an invalid answer, not an empty result`, async () => {
+      const { url, json } = webServer((id) => json(id, result))
+      const s = await open({ kind: "web", url, headers: {} })
+      await expect(
+        s.call("echo", {}, { signal: new AbortController().signal, timeoutMs: 5_000 }),
+      ).rejects.toBeInstanceOf(McpCallError)
+    })
+  }
+
+  test("a result with no content and no isError is still an empty result", async () => {
+    const { url, json } = webServer((id) => json(id, {}))
+    const s = await open({ kind: "web", url, headers: {} })
+    expect(
+      await s.call("echo", {}, { signal: new AbortController().signal, timeoutMs: 5_000 }),
+    ).toEqual({ text: "", isError: false })
   })
 })

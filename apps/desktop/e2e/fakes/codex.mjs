@@ -69,6 +69,11 @@ if (args[0] === "exec") {
     out({ type: "turn.failed", error: { message: "You've hit your usage limit." } })
     process.exit(1)
   }
+  // A failure in a form that the app does not know: it is no limit reason (spec 006).
+  if (/UNREADABLE/.test(prompt)) {
+    out({ type: "turn.failed", error: { message: "Something went wrong in a way never seen." } })
+    process.exit(1)
+  }
   if (/SLOW/.test(prompt)) await sleep(60_000)
   const tool = /RUN:(.+)/.exec(prompt)
   if (tool) {

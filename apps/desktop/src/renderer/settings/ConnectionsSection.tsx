@@ -13,6 +13,7 @@ import { useApp } from "../state/app.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import { ConnectionFormDialog } from "./ConnectionForm.tsx"
 import { ConnectionReviewDialog } from "./ConnectionReview.tsx"
 import styles from "./connections.module.css"
@@ -34,6 +35,7 @@ export const ConnectionsSection = () => {
     if (next) setStore("list", reconcile([...next], { key: "id" }))
   })
   const list = () => store.list
+  const workflows = useWorkflowList()
   onCleanup(window.robot.on("connections.changed", () => void refetch()))
 
   const [editing, setEditing] = createSignal<{ connection?: ToolConnection }>()
@@ -120,6 +122,20 @@ export const ConnectionsSection = () => {
       <p class={styles.code} data-testid="connection-row-target">
         {c.kind === "program" ? commandLine(c.command, c.args) : c.address}
       </p>
+      {/* The workflows that may use the connection (spec 018, "Concepts"). */}
+      <span class={styles.meta} data-testid="connection-row-scope">
+        {c.scope.kind === "all"
+          ? t("connections.scope.all")
+          : c.scope.workflowIds.length === 0
+            ? t("connections.scope.none")
+            : t("connections.scope.list", {
+                names: c.scope.workflowIds
+                  .map((id) => workflows.byId(id)?.name)
+                  .filter((n): n is string => n !== undefined)
+                  .sort((x, y) => x.localeCompare(y))
+                  .join(", "),
+              })}
+      </span>
       {/* The switch "Trust read-only marks" (spec 018, "Rules"). Off by default. */}
       <div class={styles.trust} data-testid="connection-trust">
         <Switch
