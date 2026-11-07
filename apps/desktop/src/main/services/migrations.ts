@@ -637,4 +637,10 @@ export const migrations: readonly string[] = [
   -- JSON text, or NULL.
   ALTER TABLE task ADD COLUMN connection_notes TEXT;
   `,
+  `
+  -- The use of the context after a reply (spec 003, "Context meter"): the tokens that the last
+  -- request of the turn read, and the tokens of the answer. NULL when the provider did not report
+  -- them. The meter and the automatic compact read it from the last reply after the last compact.
+  ALTER TABLE chat_message ADD COLUMN context_tokens INTEGER;
+  `,
 ]

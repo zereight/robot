@@ -350,6 +350,11 @@ export interface RpcMethods {
   "chat.resume": { input: { workflowId: string; mode: "continue" | "again" }; output: undefined }
   /** Removes the marks of the chat for the next turns, after a confirm in the window (spec 007). */
   "chat.clearMarks": { input: { workflowId: string }; output: undefined }
+  /**
+   * Compact (spec 003): the model that answers writes a summary of the older part of the chat.
+   * The call ends when the compact ends. Owner only: no linked device may call it (spec 012).
+   */
+  "chat.compact": { input: { workflowId: string }; output: undefined }
   /** Starts a run by hand (spec 010). The run works on, and the call returns at once. */
   "runs.start": { input: RunStart; output: RunSummary }
   /** Stops a run: its tasks are cancelled, a card that waits goes away (spec 005, 010). */

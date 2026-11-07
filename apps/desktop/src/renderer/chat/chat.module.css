@@ -749,3 +749,69 @@
   color: var(--c-text-muted);
   font-size: var(--text-xs);
 }
+
+/* The context meter (spec 003): a small ring in the head of the chat. */
+.meter {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-s);
+  color: var(--c-text-muted);
+}
+
+.meter:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.meterTrack {
+  stroke: var(--c-border);
+}
+
+.meterFill {
+  stroke: var(--c-accent);
+  transition: stroke-dashoffset var(--motion-medium) var(--ease-out);
+}
+
+.meter[data-level="high"] .meterFill {
+  stroke: var(--c-danger);
+}
+
+/* The line "Compacted" (spec 003). It opens to the summary. */
+.compacted {
+  margin: var(--spacing-sm) var(--spacing-lg);
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.compacted summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.compacted summary::before,
+.compacted summary::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--c-border);
+}
+
+.compactedBody {
+  margin-top: var(--spacing-xs);
+}
+
+.compactedSummary {
+  white-space: pre-wrap;
+  margin: var(--spacing-xs) 0 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  color: var(--c-text);
+  font-size: var(--text-s);
+}

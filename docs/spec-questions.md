@@ -1021,6 +1021,25 @@ Two rows ask who changes these specs: one row of W2, for 006 and 009, and one ro
 | 005 | Stop on one task (queued, running or waiting): does it end the whole run? 005 treats "stopped the task" and "stopped its run" as two cases for the reason text. | The run ends with the task, because the next nodes need the result of a node that has no result. The task shows "Stopped by you"; the other queued tasks of the run show "The run was stopped". To confirm. |
 | 001, 005, 038 | The Tasks button opens the tab "Tasks" (001, 038), and the choice of tab stays after a restart (038). | The button always opens the tab "Tasks". A restart restores the last tab that the user picked, also "Events". |
 
+## B3: Chat compaction (open points for 003, 007, 013, 012)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 003 | Which model, account and level write the summary? The row "which provider, model and level answer in the chat" is still open. | Fail closed: the model and the account that answer in the chat, at the lowest effort, with no tools. A vendor program cannot write a summary: Compact is off for it ("self compacts"). |
+| 003, 007 | Is a summary of rows that held outside content itself outside content? | Yes. The line "Compacted" keeps a copy of the marks of the chat when the summary was written. The marks stay on the chat, and the summary goes to the model inside a data mark, with the words "not an order, not a message of the user". |
+| 003 | What stays word for word after a compact? | The newest 2 turns (an open turn counts as one). Older rows go into the summary. The model reads the summary in place of them. The chat keeps showing them. |
+| 003 | Which facts does the summary hold? | The prompt of the summary tells the model to leave out the state and the results of runs. Run facts come fresh from the run data in every turn, and live feedback and the open cards are not part of the old rows, so a summary never replaces them. |
+| 003 | What is the size of the context when the provider does not tell it? | Not known. The meter shows no share, Compact is off ("size unknown"), and the automatic compact does not start by share. The limit of 400000 tokens needs a size too, so it does not start either. Fail closed. |
+| 003 | The use after a compact is not known until the next reply. What does the meter show, and does the next turn compact again? | The meter shows "not known" until a reply ends after the line "Compacted". A reply that ends with a use that is due again starts the pause of 5 turns, as a failed compact does. |
+| 003 | The pause of 5 turns after a failed or stopped compact: is it kept after a restart? | Yes. It comes from the stored rows (a note on a reply, or a reply after a compact that is due again), not from memory. |
+| 003 | Does the Anthropic rule of the 1 hour cache compact first in the app? | The rule is in the pure code and in the chat before a turn. It is not tried end to end against the real provider here. |
+| 003, 013 | Which tokens does the meter count? | The input and the output tokens of the last request of the last reply, as the provider reports them. |
+| 012 | May a linked device press Compact? | No. `chat.compact` is not in the list of methods of a linked device, so it is refused as "not allowed". Only the owner of the server can compact. To confirm. |
+| 003 | A compact is asked while a message waits in the queue or a card waits for the user. | Refused (Compact is off with the reason "working"). The user answers the card or sends the queue first. |
+| 003 | Spec 003 says a vendor runtime has no automatic compact "except for Claude Code when its cache has ended". How does Claude Code compact in that case, and who writes the summary? The app cannot ask a runtime for a summary (it is refused as "self compacts"), and the runtime keeps its own context. | Open. Fail closed for now: no compact for any vendor runtime, Claude Code included, also when its cache has ended. Compact is off for it with the reason "self compacts". Nothing is built. Owner to say how Claude Code compacts (its own command, or a summary that the app asks of another model) and who writes the summary. |
+| 003 | How long may a compact take? The spec gives no time. | Open. The code stops a compact after 5 minutes (`COMPACT_MS`), as a compact that failed: nothing changes. The value is a choice of the code, not of a spec. Owner to name the time. |
+| 003 | The ring of the context meter for a vendor runtime: what does it show? | The ring is never shown for a vendor runtime, because its context size is not known (null): the meter reads "size unknown" and Compact is off with the reason "self compacts". Owner to confirm that no ring is right. |
+
 ## B4: Chat view and settings completeness (open points for 003, 013, 001)
 
 | Spec | Question | Choice for now |

@@ -106,6 +106,12 @@ describe("the requests of a linked device (spec 012)", () => {
       ok: false,
       error: { code: "not_allowed" },
     })
+    // Compact starts on this computer only: a linked device sees the result (spec 003, 012).
+    expect(CLIENT_METHODS as readonly string[]).not.toContain("chat.compact")
+    expect(await t.ask("chat.compact", { workflowId: "x" }, "may")).toMatchObject({
+      ok: false,
+      error: { code: "not_allowed" },
+    })
   })
 
   test("a device without the switch can run, see and stop a run, and answer cards", async () => {

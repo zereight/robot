@@ -217,6 +217,8 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT id FROM run")).toEqual([{ id: "r1" }])
     expect(db.all("SELECT id, holder FROM action_log")).toEqual([{ id: "a1", holder: null }])
     // The columns of the 11th migration and of the 12th are there.
+    // The column of the context use (spec 003) is there.
+    expect(db.all("SELECT context_tokens FROM chat_message")).toEqual([])
     expect(db.get<{ device: string | null }>("SELECT device FROM run")?.device).toBeNull()
     expect(db.all("SELECT device FROM workflow_version")).toEqual([])
     // The table of claims takes a claim and goes with the workflow.

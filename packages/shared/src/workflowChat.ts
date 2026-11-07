@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { ChatMeter } from "./compact.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { ChatMarks, RunCard } from "./runs.ts"
 
@@ -55,6 +56,28 @@ export type ChatPart =
       readonly startedAt: number
       readonly nodes: readonly number[]
     }
+  /**
+   * The line "Compacted" (spec 003, "Compact"). The model gets `summary` in place of every row
+   * before `from`. The chat keeps those rows. `from` is the id of the first row that stays word
+   * for word, and the line shows just before it. `at` is when the compact ended: the use of the
+   * context is not known until a reply that ends after it. `auto` is true for an automatic compact.
+   * `marks` are the marks of the chat when the summary was written: the summary holds what the
+   * covered rows held, so it carries their mark (spec 007).
+   */
+  | {
+      readonly kind: "compacted"
+      readonly summary: string
+      readonly at: number
+      readonly auto: boolean
+      readonly from: string | null
+      readonly marks: ChatMarks
+    }
+  /**
+   * The muted line after an automatic compact that failed (spec 003, "Automatic compact"): the turn
+   * went on without it. `code` is the error code; the window writes the words. The model never
+   * reads it.
+   */
+  | { readonly kind: "note"; readonly note: "compact_failed"; readonly code: string }
   /** The muted line of a busy provider (spec 006). The model never reads it. */
   | { readonly kind: "note"; readonly note: "busy_retry"; readonly n: number; readonly of: number }
   /**
@@ -90,7 +113,8 @@ export type ChatStatus = "done" | "streaming" | "stopped" | "failed"
 export interface WorkflowChatMessage {
   readonly id: string
   readonly workflowId: string
-  readonly author: "user" | "assistant"
+  /** `app` is the line "Compacted": the app wrote it, no person and no model (spec 003). */
+  readonly author: "user" | "assistant" | "app"
   readonly parts: readonly ChatPart[]
   readonly status: ChatStatus
   /** The reason of a failed reply: a code of the error table, and the detail. */
@@ -161,6 +185,13 @@ export interface WorkflowChatHistory {
   readonly cards: readonly RunCard[]
   /** The marks of the chat: outside content and a sensitive read (spec 007, "The mark of a place"). */
   readonly marks: ChatMarks
+  /** The context meter and the state of Compact (spec 003). */
+  readonly meter: ChatMeter
+  /**
+   * True while a compact works: the working line reads "Compacting…" (spec 003). `working` is true
+   * too, so Stop shows.
+   */
+  readonly compacting: boolean
   /** The replies that count as unread, after "Mark as unread" (spec 003, "Mark as unread"). */
   readonly unread: ChatUnread
   /**

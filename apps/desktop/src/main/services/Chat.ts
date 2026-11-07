@@ -7,24 +7,33 @@ import {
   CHAT_QUEUE_MAX,
   type ChatAnswer,
   type ChatMarks,
+  type ChatMeter,
   type ChatNotice,
   type ChatPart,
   type ChatStatus,
+  type CompactOff,
   carriesProgramMark,
   chatFiles,
   chatText,
+  compactCut,
+  compactDue,
   editableMessageId,
   editRefusal,
   guardVerdict,
+  hourCacheEnded,
   isOutsideSource,
   isReadableReply,
+  type ModelInfo,
   type OutsideSource,
   type PermissionLevel,
   PROPOSAL_WAIT_MAX,
+  pauseLeft,
   type QueuedChatMessage,
   type RunFact,
+  redactSecrets,
   resolveLocale,
   type SensitiveLabel,
+  shouldAutoCompact,
   translate,
   type UnreadMark,
   unreadOf,
@@ -50,7 +59,14 @@ import {
 } from "./assistantTools.ts"
 import { Cards } from "./Cards.ts"
 import { chatDir } from "./chatDir.ts"
-import { chatSystem, FEEDBACK_TOOL, reflectText } from "./chatPrompt.ts"
+import {
+  chatSystem,
+  compactSystem,
+  compactTranscript,
+  FEEDBACK_TOOL,
+  reflectText,
+  summaryTurn,
+} from "./chatPrompt.ts"
 import { CHAT_SEARCH_TOOL_DEFS, isChatSearchTool, makeChatSearch } from "./chatSearch.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
@@ -131,6 +147,13 @@ export interface ChatService {
    * for a request. It posts no message in the chat.
    */
   readonly reflect: (workflowId: string, runId: string) => Effect.Effect<void>
+  /**
+   * The user runs Compact (spec 003, "Compact"): the model that answers in the chat writes a
+   * summary of the older part, and the line "Compacted" shows. It ends when the compact ends. A
+   * compact that is stopped changes nothing and gives no error. Owner only: no linked device may
+   * call it (spec 012).
+   */
+  readonly compact: (workflowId: string) => Effect.Effect<void, AppError>
 }
 
 interface MessageRow {
@@ -147,6 +170,8 @@ interface MessageRow {
   created_at: number
   finished_at: number | null
   read_at: number | null
+  /** The tokens of the context after the reply (spec 003, "Context meter"), or null. */
+  context_tokens: number | null
   /** The linked device that sent a message of the user, or null for the window of this computer. */
   actor_id: string | null
   actor_name: string | null
@@ -197,11 +222,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       )
 
       const working = new Map<string, Working>()
+      /** Compacts that the user started. No turn runs: messages wait in the queue (spec 003). */
+      const manualCompacts = new Map<string, { controller: AbortController; since: number }>()
+      /** Chats whose turn runs an automatic compact now: the working line reads "Compacting…". */
+      const autoCompacting = new Set<string>()
+      /** The size of the context of each model from the last look, by account and model. */
+      const sizes = new Map<string, number | null>()
 
       const toMessage = (r: MessageRow): WorkflowChatMessage => ({
         id: r.id,
         workflowId: r.workflow_id,
-        author: r.author === "assistant" ? "assistant" : "user",
+        author: r.author === "assistant" ? "assistant" : r.author === "app" ? "app" : "user",
         parts: JSON.parse(r.parts) as ChatPart[],
         status: r.status as ChatStatus,
         error:
@@ -389,10 +420,43 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return out.join("\n\n")
       }
 
+      type CompactedPart = Extract<ChatPart, { kind: "compacted" }>
+      /** The line "Compacted" of a row, if the row is one. */
+      const compactedOf = (r: MessageRow): CompactedPart | undefined =>
+        r.author === "app"
+          ? (JSON.parse(r.parts) as ChatPart[]).find(
+              (p): p is CompactedPart => p.kind === "compacted",
+            )
+          : undefined
+
+      /**
+       * Puts each line "Compacted" just before the first row that stays word for word. The order of
+       * time cannot tell it for rows of the same millisecond, so the line names its row.
+       */
+      const placeCompacted = (rows: MessageRow[]): MessageRow[] => {
+        if (!rows.some((r) => r.author === "app")) return rows
+        const lines = rows.filter((r) => compactedOf(r) !== undefined)
+        if (lines.length === 0) return rows
+        const out = rows.filter((r) => !lines.includes(r))
+        const loose: MessageRow[] = []
+        for (const line of lines) {
+          const at = out.findIndex((r) => r.id === compactedOf(line)?.from)
+          if (at >= 0) out.splice(at, 0, line)
+          else loose.push(line)
+        }
+        for (const line of loose) {
+          const after = out.findLastIndex((r) => r.created_at <= line.created_at)
+          out.splice(after + 1, 0, line)
+        }
+        return out
+      }
+
       const visibleRows = (workflowId: string) =>
-        db.all<MessageRow>(
-          "SELECT * FROM chat_message WHERE workflow_id = ? AND status != 'queued' ORDER BY created_at, rowid",
-          workflowId,
+        placeCompacted(
+          db.all<MessageRow>(
+            "SELECT * FROM chat_message WHERE workflow_id = ? AND status != 'queued' ORDER BY created_at, rowid",
+            workflowId,
+          ),
         )
 
       const queueOf = (workflowId: string): QueuedChatMessage[] =>
@@ -471,6 +535,406 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return next
       }
 
+      // --- Compact and the context meter (spec 003) ---------------------------------------------
+
+      /** A compact that takes longer than this ends as failed. */
+      const COMPACT_MS = 5 * 60_000
+
+      /** What the model reads of one message of the chat. */
+      const turnOf = (m: WorkflowChatMessage) =>
+        m.author === "user"
+          ? { role: "user" as const, content: modelText(m) }
+          : { role: "assistant" as const, content: chatText(m) }
+
+      /**
+       * The rows after the last line "Compacted" that the model reads, with what it reads of each,
+       * and the summary that stands in place of the older rows (spec 003, "Compact"). A failed
+       * reply, a message that no turn has read, and a row without words are not read.
+       */
+      const readableRows = (workflowId: string, selfId?: string) => {
+        const rows = visibleRows(workflowId)
+        const mark = rows.findLastIndex((r) => compactedOf(r) !== undefined)
+        const line = mark >= 0 ? rows[mark] : undefined
+        const readable = rows
+          .slice(mark + 1)
+          .filter(
+            (r) =>
+              r.author !== "app" &&
+              r.id !== selfId &&
+              !(r.joined_to !== null && r.read_at === null),
+          )
+          .map(toMessage)
+          .filter((m) => m.status !== "failed")
+          .map((message) => ({ message, turn: turnOf(message) }))
+          .filter((x) => x.turn.content.trim() !== "")
+        return { summary: line ? compactedOf(line)?.summary : undefined, rows: readable }
+      }
+
+      /** The turns that the model gets: one summary and the rows after it (spec 003, "Compact"). */
+      const conversation = (workflowId: string, selfId: string) => {
+        const { summary, rows } = readableRows(workflowId, selfId)
+        const turns = rows.map((x) => x.turn)
+        return summary === undefined
+          ? turns
+          : [{ role: "user" as const, content: summaryTurn(summary) }, ...turns]
+      }
+
+      /**
+       * What a compact covers now: the earlier summary and the rows before the newest 2 turns. The
+       * turn that starts now counts as one of the 2. Null when the conversation has 2 turns or fewer.
+       */
+      const compactRange = (workflowId: string, selfId?: string) => {
+        const { summary, rows } = readableRows(workflowId, selfId)
+        const cut = compactCut(
+          rows.map((x) => (x.message.author === "assistant" ? "assistant" : "user")),
+        )
+        const first = cut === null ? undefined : rows[cut]
+        if (cut === null || !first) return null
+        return {
+          summary,
+          covered: rows.slice(0, cut).map((x) => x.message),
+          firstKept: first.message,
+        }
+      }
+
+      /** The text of a message for the summary: the words, the skill chip and the file names. */
+      const compactText = (m: WorkflowChatMessage): string => {
+        const out: string[] = []
+        const skill = m.parts.find((p) => p.kind === "skill")
+        if (skill?.kind === "skill") out.push(`(the user picked the skill "${skill.name}")`)
+        const text = chatText(m)
+        if (text) out.push(text)
+        const files = chatFiles(m)
+        if (files.length > 0) out.push(`(attached files: ${files.map((f) => f.name).join(", ")})`)
+        return out.join("\n")
+      }
+
+      /** The size of the context of the model, or null when the provider does not tell it. */
+      const contextSize = (model: AnswerModel) =>
+        Effect.gen(function* () {
+          const key = `${model.accountId}|${model.model}`
+          // A program lists its models by a look at the program: the meter does not ask for it.
+          if (providers.isRuntime(model.accountId)) return sizes.get(key) ?? null
+          const listed = yield* providers
+            .models(model.accountId)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+          if (listed === undefined) return sizes.get(key) ?? null
+          const size = listed.find((m) => m.id === model.model)?.contextWindow ?? null
+          sizes.set(key, size)
+          return size
+        })
+
+      /** The time at which the last compact ended, or 0. */
+      const lastCompactAt = (rows: readonly MessageRow[]): number => {
+        const mark = rows.findLastIndex((r) => compactedOf(r) !== undefined)
+        const line = mark >= 0 ? rows[mark] : undefined
+        return line ? (compactedOf(line)?.at ?? 0) : 0
+      }
+
+      /**
+       * The use of the context that the last reply after the last compact reported (spec 003). Null
+       * after a compact until the next reply, and when no reply reported it.
+       */
+      const contextUse = (workflowId: string): number | null => {
+        const rows = visibleRows(workflowId)
+        const at = lastCompactAt(rows)
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const r = rows[i]
+          if (r?.author !== "assistant" || r.finished_at === null || r.finished_at < at) continue
+          if (r.context_tokens !== null && r.context_tokens > 0) return r.context_tokens
+        }
+        return null
+      }
+
+      /** When the last reply of the chat ended. A compact is not a reply. Null when none ended. */
+      const lastReplyAt = (workflowId: string): number | null => {
+        let latest: number | null = null
+        for (const r of visibleRows(workflowId))
+          if (r.author === "assistant" && r.finished_at !== null)
+            latest = Math.max(latest ?? 0, r.finished_at)
+        return latest
+      }
+
+      /**
+       * Turns that must still end before the next automatic compact (spec 003). The count starts
+       * after a reply that carries the line of a failed compact, and after the first reply after a
+       * compact whose use is due for a compact again. It is read from the rows, so it stays after a
+       * restart. The turn in which a compact failed is not one of the turns.
+       */
+      const pauseOf = (workflowId: string, size: number | null): number => {
+        const rows = visibleRows(workflowId)
+        const endedAfter = (index: number) =>
+          rows.slice(index + 1).filter((r) => r.author === "assistant" && r.status !== "streaming")
+            .length
+        let left = 0
+        const failed = rows.findLastIndex(
+          (r) =>
+            r.author === "assistant" &&
+            (JSON.parse(r.parts) as ChatPart[]).some(
+              (p) => p.kind === "note" && p.note === "compact_failed",
+            ),
+        )
+        if (failed >= 0) left = Math.max(left, pauseLeft(endedAfter(failed)))
+        const mark = rows.findLastIndex((r) => compactedOf(r) !== undefined)
+        const line = mark >= 0 ? rows[mark] : undefined
+        if (line) {
+          const at = compactedOf(line)?.at ?? 0
+          const first = rows.findIndex(
+            (r, i) =>
+              i > mark &&
+              r.author === "assistant" &&
+              r.finished_at !== null &&
+              r.finished_at >= at &&
+              r.context_tokens !== null,
+          )
+          const reply = rows[first]
+          if (reply && compactDue(reply.context_tokens, size))
+            left = Math.max(left, pauseLeft(endedAfter(first)))
+        }
+        return left
+      }
+
+      /**
+       * True while the chat is busy: a turn works, a compact works, a card of the turn waits for the
+       * user, or a message waits (spec 003, "Compact"). A card of a node in a run does not count: the
+       * run goes on while the chat compacts.
+       */
+      const chatBusy = (workflowId: string) =>
+        working.has(workflowId) ||
+        manualCompacts.has(workflowId) ||
+        autoCompacting.has(workflowId) ||
+        cards.open(workflowId).some((c) => c.scope === "turn") ||
+        queueOf(workflowId).length > 0 ||
+        db.get(
+          "SELECT 1 AS n FROM chat_message WHERE workflow_id = ? AND joined_to IS NOT NULL AND read_at IS NULL LIMIT 1",
+          workflowId,
+        ) !== undefined
+
+      /** Why Compact is off now, or null (spec 003, "Context meter" and "Compact"). */
+      const compactOff = (
+        workflowId: string,
+        model: AnswerModel | null,
+        size: number | null,
+      ): CompactOff | null => {
+        if (!model || !providers.isConnected(model.accountId)) return "not_connected"
+        // A vendor program keeps its own context. The app cannot change what it keeps.
+        if (providers.isRuntime(model.accountId)) return "self_compacts"
+        if (size === null) return "size_unknown"
+        if (chatBusy(workflowId)) return "working"
+        if (compactRange(workflowId) === null) return "too_short"
+        return null
+      }
+
+      const meterOf = (workflowId: string, model: AnswerModel | null) =>
+        Effect.gen(function* () {
+          const size = model ? yield* contextSize(model) : null
+          const running = manualCompacts.has(workflowId) || autoCompacting.has(workflowId)
+          // The ring is empty from the start of a compact until the next reply (spec 003).
+          return {
+            used: running ? null : contextUse(workflowId),
+            size,
+            off: compactOff(workflowId, model, size),
+          } satisfies ChatMeter
+        })
+
+      /**
+       * Asks the model that answers in the chat for the summary of the older part, and writes the
+       * line "Compacted" before the first row that stays. The model, its account and its runtime are
+       * the ones of the chat: the text never goes to another place (fail closed). A compact that is
+       * stopped or fails changes nothing.
+       */
+      const runCompact = async (
+        workflowId: string,
+        model: AnswerModel,
+        auto: boolean,
+        signal: AbortSignal,
+        selfId?: string,
+      ): Promise<void> => {
+        const range = compactRange(workflowId, selfId)
+        if (!range) throw new AppError({ code: "compact_too_short" })
+        // Only an account that the chat may use, and that is no vendor program, writes a summary.
+        if (!usable(model.accountId) || providers.isRuntime(model.accountId))
+          throw new AppError({ code: "compact_self_compacts" })
+        const listed = await Effect.runPromise(
+          providers
+            .models(model.accountId)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] => [])),
+        )
+        // The lowest effort that the model offers. The lists go from low to high.
+        const effort = listed.find((m) => m.id === model.model)?.efforts[0] ?? null
+        const transcript = compactTranscript(
+          range.covered.map((m) => ({
+            author: m.author === "assistant" ? ("assistant" as const) : ("user" as const),
+            text: compactText(m),
+          })),
+          range.summary,
+        )
+        const controller = new AbortController()
+        const stop = () => controller.abort()
+        if (signal.aborted) stop()
+        signal.addEventListener("abort", stop)
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          controller.abort()
+        }, COMPACT_MS)
+        let text = ""
+        const usage = { input: 0, output: 0 }
+        try {
+          const events = await Effect.runPromise(
+            providers.events(
+              model.accountId,
+              {
+                model: model.model,
+                effort,
+                system: compactSystem(),
+                turns: [{ role: "user", content: transcript }],
+                signal: controller.signal,
+                workspace: chatDir(),
+                permission: "read_only",
+                useTools: false,
+              },
+              { execute: async () => ({ output: "", failed: true }), approve: async () => false },
+            ),
+          )
+          for await (const event of events) {
+            if (event.type === "text") text += event.text
+            else if (event.type === "usage") {
+              usage.input = event.input ?? usage.input
+              usage.output = event.output ?? usage.output
+            }
+          }
+        } catch (error) {
+          if (timedOut) throw new AppError({ code: "compact_timeout" })
+          if (signal.aborted) throw error
+          throw error instanceof AppError ? error : toAppError(error)
+        } finally {
+          clearTimeout(timer)
+          signal.removeEventListener("abort", stop)
+        }
+        if (signal.aborted) throw new AppError({ code: "compact_stopped" })
+        // Secrets are hidden after the model wrote the summary too: it is sent again in each turn.
+        const summary = redactSecrets(text.trim())
+        if (summary === "") throw new AppError({ code: "compact_empty" })
+        // The summary holds what the covered rows held, so it carries their marks (spec 007). The
+        // marks of the chat are not changed here: a compact keeps them.
+        // `at` is later than the end of every reply that exists now, so a reply that ends at `at`
+        // or later is a reply after the compact, also when it ends in the same millisecond.
+        const endedBefore = visibleRows(workflowId).reduce(
+          (latest, r) => Math.max(latest, r.finished_at ?? 0),
+          0,
+        )
+        const part: ChatPart = {
+          kind: "compacted",
+          summary,
+          at: Math.max(Date.now(), endedBefore + 1),
+          auto,
+          from: range.firstKept.id,
+          marks: readMarks(workflowId),
+        }
+        // The tokens of the summary add to the usage of the day (spec 003, 006).
+        db.run(
+          `INSERT INTO chat_message (id, workflow_id, author, parts, status, model, created_at, finished_at, input_tokens, output_tokens)
+           VALUES (?, ?, 'app', ?, 'done', ?, ?, ?, ?, ?)`,
+          randomUUID(),
+          workflowId,
+          JSON.stringify([part]),
+          model.model,
+          range.firstKept.createdAt - 1,
+          part.at,
+          usage.input,
+          usage.output,
+        )
+        emitState(workflowId)
+      }
+
+      /**
+       * Before a turn (spec 003, "Automatic compact"): at 85 percent or more of the context, or at
+       * 400000 tokens or more, the app compacts first. Anthropic keeps the start of a request for 1
+       * hour, so a turn that keeps it also compacts when the last reply ended 1 hour ago or more. A
+       * failure does not stop the turn: a muted line gives the reason and the pause of 5 turns
+       * starts. Stop ends the turn as stopped.
+       */
+      const autoCompact = async (
+        workflowId: string,
+        w: Working,
+        model: AnswerModel,
+        parts: ChatPart[],
+        touch: () => void,
+        resumed: boolean,
+      ): Promise<void> => {
+        const setting = (await Effect.runPromise(settings.get)).autoCompact
+        // A vendor program keeps its own context, and the chat cannot ask it for a summary.
+        if (!setting || providers.isRuntime(model.accountId)) return
+        const size = await Effect.runPromise(contextSize(model))
+        const pause = pauseOf(workflowId, size)
+        const account = (await Effect.runPromise(providers.accounts)).find(
+          (a) => a.id === model.accountId,
+        )
+        const cold =
+          account?.kind === "anthropic" &&
+          !resumed &&
+          hourCacheEnded({ setting, pause, lastReplyAt: lastReplyAt(workflowId), now: Date.now() })
+        const due = shouldAutoCompact({
+          setting,
+          selfCompacts: false,
+          used: contextUse(workflowId),
+          size,
+          pause,
+        })
+        // A conversation of 2 turns or fewer has nothing to compact. That is no failure.
+        if ((!cold && !due) || compactRange(workflowId, w.assistantId) === null) return
+        autoCompacting.add(workflowId)
+        emitState(workflowId)
+        try {
+          await runCompact(workflowId, model, true, w.controller.signal, w.assistantId)
+        } catch (error) {
+          // A compact that the user stopped starts the same pause as a failed one: the next turn
+          // sends the old conversation (spec 003, acceptance). The turn ends as stopped.
+          const stopped = w.controller.signal.aborted
+          parts.push({
+            kind: "note",
+            note: "compact_failed",
+            code: stopped
+              ? "compact_stopped"
+              : error instanceof AppError
+                ? error.code
+                : toAppError(error).code,
+          })
+          touch()
+          if (stopped) throw error
+        } finally {
+          autoCompacting.delete(workflowId)
+          emitState(workflowId)
+        }
+      }
+
+      /** The user runs Compact (spec 003). No turn runs: messages wait in the queue. */
+      const compact = (workflowId: string) =>
+        Effect.gen(function* () {
+          yield* findWorkflow(workflowId)
+          const model = yield* resolveModel(workflowId)
+          const off = compactOff(workflowId, model, model ? yield* contextSize(model) : null)
+          if (off || !model)
+            return yield* new AppError({ code: `compact_${off ?? "not_connected"}` })
+          const job = { controller: new AbortController(), since: Date.now() }
+          manualCompacts.set(workflowId, job)
+          emitState(workflowId)
+          const exit = yield* Effect.promise(() =>
+            runCompact(workflowId, model, false, job.controller.signal).then(
+              () => null,
+              (error: unknown) => error,
+            ),
+          )
+          manualCompacts.delete(workflowId)
+          emitState(workflowId)
+          // The queue sends its first message as after a turn, also after a stop or a failure.
+          afterTurn(workflowId)
+          // A compact that the user stopped changes nothing and gives no error.
+          if (exit === null || job.controller.signal.aborted) return
+          return yield* exit instanceof AppError ? exit : toAppError(exit)
+        })
+
       // --- unread and edit (spec 003) ---------------------------------------------------------
 
       const unreadMark = (workflowId: string): UnreadMark | null => {
@@ -513,6 +977,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const workflow = yield* findWorkflow(workflowId)
           const messages = visibleRows(workflowId).map(toMessage)
           const w = working.get(workflowId)
+          const job = manualCompacts.get(workflowId)
           // The model is read once for the whole call. A read does not write to the database.
           const { model, skipped } = yield* resolveChoice(workflowId).pipe(
             Effect.orElseSucceed(() => ({ model: null, skipped: null as string | null })),
@@ -522,16 +987,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             workflowName: workflow.name,
             messages,
             queue: queueOf(workflowId),
-            working: w !== undefined,
-            workingSince: w?.since ?? null,
-            notice: w ? null : noticeOf(messages),
+            working: w !== undefined || job !== undefined,
+            workingSince: w?.since ?? job?.since ?? null,
+            notice: w || job ? null : noticeOf(messages),
             block: model ? null : "no_provider",
             answer: yield* answerOf(model),
             unsafeAccount: skipped,
             cards: cards.list(workflowId),
             marks: readMarks(workflowId),
+            meter: yield* meterOf(workflowId, model),
+            compacting: job !== undefined || autoCompacting.has(workflowId),
             unread: unreadOf(messages, unreadMark(workflowId)),
-            editableId: editableOf(workflowId, messages, w !== undefined),
+            editableId: editableOf(workflowId, messages, w !== undefined || job !== undefined),
           } satisfies WorkflowChatHistory
         })
 
@@ -581,8 +1048,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const words: string[] = []
         for (let i = (at === -1 ? rows.length : at) - 1; i >= 0; i--) {
           const r = rows[i]
-          if (!r || r.author === "assistant") break
-          if (r.author === "user") words.push(chatText(toMessage(r)))
+          if (r?.author !== "user") break
+          words.push(chatText(toMessage(r)))
         }
         for (const r of rows.slice(at === -1 ? rows.length : at + 1))
           if (r.author === "user" && r.joined_to === w.assistantId)
@@ -1025,18 +1492,28 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return result.outcome
       }
 
-      const runTurn = async (workflowId: string, w: Working, model: AnswerModel): Promise<void> => {
+      const runTurn = async (
+        workflowId: string,
+        w: Working,
+        model: AnswerModel,
+        resumed: boolean,
+      ): Promise<void> => {
         const parts: ChatPart[] = []
         let timer: ReturnType<typeof setTimeout> | null = null
         let tokensIn = 0
         let tokensOut = 0
+        // The use of the context after the reply: what the last request read, and what it wrote.
+        let contextIn = 0
+        let contextOut = 0
+        const contextNow = () => (contextIn + contextOut > 0 ? contextIn + contextOut : null)
         const save = () => {
           timer = null
           db.run(
-            "UPDATE chat_message SET parts = ?, input_tokens = ?, output_tokens = ? WHERE id = ?",
+            "UPDATE chat_message SET parts = ?, input_tokens = ?, output_tokens = ?, context_tokens = ? WHERE id = ?",
             JSON.stringify(parts),
             tokensIn,
             tokensOut,
+            contextNow(),
             w.assistantId,
           )
           emitMessage(w.assistantId)
@@ -1051,19 +1528,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // The chat has the tools of the chat (spec 007) and no others. A vendor program brings
           // shell and file tools of its own, so it answers in text only, outside the folder.
           const withTools = chatHasTools(model.accountId)
+          // A long conversation is compacted first, then the turn goes on (spec 003).
+          await autoCompact(workflowId, w, model, parts, touch, resumed)
+          // The run facts are read after the compact, and fresh in each turn: a summary never
+          // stands in for them (spec 003).
           const runs = await Effect.runPromise(facts.runs(workflowId))
           // The results in the prompt are outside content: the chat takes their marks (spec 007).
           markFromRuns(workflowId, runs)
-          const turns = visibleRows(workflowId)
-            .filter((r) => r.id !== w.assistantId && !(r.joined_to !== null && r.read_at === null))
-            .map(toMessage)
-            .filter((m) => m.status !== "failed")
-            .map((m) =>
-              m.author === "user"
-                ? { role: "user" as const, content: modelText(m) }
-                : { role: "assistant" as const, content: chatText(m) },
-            )
-            .filter((t) => t.content.trim() !== "")
+          const turns = conversation(workflowId, w.assistantId)
           const toolSet = chatToolSet(workflowId, workflow)
           // Only a turn that the user started in the chat has the tools (spec 007, "Who may use them").
           const turnState = newAssistantTurn("user", workflow.graph)
@@ -1136,6 +1608,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               if (index >= 0) parts[index] = part
               else parts.push(part)
               touch()
+            } else if (event.type === "usage") {
+              // The counts of a request are running totals. A new request starts again.
+              if (event.input !== undefined) {
+                contextIn = event.input
+                contextOut = event.output ?? 0
+              } else if (event.output !== undefined) contextOut = event.output
             } else if (event.type === "spent") {
               tokensIn += event.input ?? 0
               tokensOut += event.output ?? 0
@@ -1158,11 +1636,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
         if (timer) clearTimeout(timer)
         db.run(
-          `UPDATE chat_message SET parts = ?, input_tokens = ?, output_tokens = ?, status = ?,
-             error_code = ?, error_detail = ?, finished_at = ? WHERE id = ?`,
+          `UPDATE chat_message SET parts = ?, input_tokens = ?, output_tokens = ?, context_tokens = ?,
+             status = ?, error_code = ?, error_detail = ?, finished_at = ? WHERE id = ?`,
           JSON.stringify(parts),
           tokensIn,
           tokensOut,
+          contextNow(),
           status,
           failure?.code ?? null,
           failure?.detail ?? null,
@@ -1321,6 +1800,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           void Effect.runPromiseExit(startTurn(workflowId))
           return
         }
+        // A message that came in as a turn or a compact began, and that no turn answered: it is
+        // the last message of the chat and no reply follows it. Fail closed: it gets its answer.
+        const last = db
+          .all<MessageRow>(
+            "SELECT * FROM chat_message WHERE workflow_id = ? AND status != 'queued' AND author != 'app' ORDER BY created_at, rowid",
+            workflowId,
+          )
+          .at(-1)
+        if (last?.author === "user" && last.status === "done" && last.read_at === null) {
+          void Effect.runPromiseExit(startTurn(workflowId))
+          return
+        }
         const next = db.get<MessageRow>(
           "SELECT * FROM chat_message WHERE workflow_id = ? AND status = 'queued' ORDER BY created_at, rowid LIMIT 1",
           workflowId,
@@ -1338,9 +1829,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       }
 
       /** Starts a turn on the conversation as it is now. */
-      const startTurn = (workflowId: string, known?: AnswerModel): Effect.Effect<void, AppError> =>
+      const startTurn = (
+        workflowId: string,
+        known?: AnswerModel,
+        /** True for a turn that goes on after a restart: the 1 hour cache rule does not compact it. */
+        resumed = false,
+      ): Effect.Effect<void, AppError> =>
         Effect.gen(function* () {
-          if (working.has(workflowId)) return
+          if (working.has(workflowId) || manualCompacts.has(workflowId)) return
           const model = known ?? (yield* resolveModel(workflowId))
           if (!model || !usable(model.accountId))
             return yield* new AppError({ code: "provider_not_connected" })
@@ -1364,7 +1860,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           working.set(workflowId, w)
           emitMessage(assistantId)
           emitState(workflowId)
-          void runTurn(workflowId, w, model)
+          void runTurn(workflowId, w, model, resumed)
         })
 
       // --- files ----------------------------------------------------------------------------
@@ -1434,18 +1930,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 joinedTo: null,
                 actor,
               })
+              // The answer of a card starts no turn: no later turn has to answer it.
+              db.run("UPDATE chat_message SET read_at = ? WHERE id = ?", Date.now(), id)
               emitMessage(id)
               cards.answerInChat(input.workflowId, text)
               emitState(input.workflowId)
               return toMessage(row(id) as MessageRow)
             }
           }
-          const w = working.get(input.workflowId)
-          const mode = (yield* settings.get).duringTurn
-          if (w && mode === "queue") {
-            const waiting = queueOf(input.workflowId).length
-            if (waiting >= CHAT_QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
-          }
+          const duringTurn = (yield* settings.get).duringTurn
           const parts: ChatPart[] = []
           if (input.skillId) {
             const skill = yield* skills.usable(input.skillId)
@@ -1453,8 +1946,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }
           if (text !== "") parts.push({ kind: "text", text })
           parts.push(...(yield* attach(workflow.folder, paths)))
+          // The state is read here, after the last wait and before the row goes in, with no wait
+          // between the two. A compact or a turn that started while the files were copied holds
+          // the message (spec 003): the row is then never "done" with no turn to answer it.
+          const w = working.get(input.workflowId)
+          // A compact that the user started holds the chat: a message waits in the queue, whatever
+          // the setting says. During an automatic compact a message joins the turn (spec 003).
+          const compactHeld = manualCompacts.has(input.workflowId)
+          const mode = compactHeld ? "queue" : duringTurn
+          if ((w || compactHeld) && mode === "queue") {
+            const waiting = queueOf(input.workflowId).length
+            if (waiting >= CHAT_QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
+          }
           const id = randomUUID()
-          const queued = w !== undefined && mode === "queue"
+          const queued = (w !== undefined || compactHeld) && mode === "queue"
           insert({
             id,
             workflowId: input.workflowId,
@@ -1468,7 +1973,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           emitMessage(id)
           emitState(input.workflowId)
           if (w && !queued) for (const ready of w.ready) ready()
-          if (!w) yield* startTurn(input.workflowId, model)
+          if (!w && !compactHeld) yield* startTurn(input.workflowId, model)
           return toMessage(row(id) as MessageRow)
         })
 
@@ -1504,6 +2009,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         Effect.gen(function* () {
           const r = row(messageId)
           if (r?.status !== "queued") return yield* new AppError({ code: "message_read" })
+          // The queue sends its first message when the compact ends (spec 003).
+          if (manualCompacts.has(r.workflow_id))
+            return yield* new AppError({ code: "chat_compacting" })
           const w = working.get(r.workflow_id)
           const now = Date.now()
           if (w) {
@@ -1530,7 +2038,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const retry = (workflowId: string) =>
         Effect.gen(function* () {
-          if (working.has(workflowId)) return
+          if (working.has(workflowId) || manualCompacts.has(workflowId)) return
           const last = visibleRows(workflowId).at(-1)
           if (last?.author !== "assistant" || last.status !== "failed")
             return yield* new AppError({ code: "message_read" })
@@ -1541,7 +2049,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const resume = (workflowId: string, mode: "continue" | "again") =>
         Effect.gen(function* () {
-          if (working.has(workflowId)) return
+          if (working.has(workflowId) || manualCompacts.has(workflowId)) return
           const notice = noticeOf(visibleRows(workflowId).map(toMessage))
           if (!notice) return yield* new AppError({ code: "message_read" })
           if (mode === "again" || notice.notSent) {
@@ -1550,7 +2058,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               return yield* new AppError({ code: "message_read" })
             db.run("DELETE FROM chat_message WHERE id = ?", notice.messageId)
             emitState(workflowId)
-            yield* startTurn(workflowId)
+            // A turn that goes on after a restart does not compact by the 1 hour cache rule.
+            yield* startTurn(workflowId, undefined, true)
             return
           }
           const language = (yield* settings.get).language
@@ -1648,9 +2157,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         reflect,
         send,
         setModel,
+        compact,
         stop: (workflowId) =>
           Effect.sync(() => {
             working.get(workflowId)?.controller.abort()
+            manualCompacts.get(workflowId)?.controller.abort()
           }),
         deleteWaiting,
         sendNow,
