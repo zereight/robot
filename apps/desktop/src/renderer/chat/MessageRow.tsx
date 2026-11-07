@@ -12,6 +12,8 @@ import { createSignal, For, type JSX, Show } from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { openImprovement } from "../state/improve.ts"
+import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
@@ -22,12 +24,32 @@ import { Markdown } from "./Markdown.tsx"
 type Note = Extract<ChatPart, { kind: "note" }>
 type Tool = Extract<ChatPart, { kind: "tool" }>
 
-/** The muted line for a note of a message. The model never reads these lines. */
-const NoteLine = (props: { note: Note }) => {
+/**
+ * The muted line for a note of a message. The model never reads these lines. The lines about a
+ * proposal and about a saved fact have a link and an undo control only on the computer that made
+ * the change: on a linked server they are plain text (spec 002, "Surfaces"; spec 008).
+ */
+const NoteLine = (props: { note: Note; workflowId: string }) => {
   const { t, locale } = useApp()
+  const ui = useUi()
+  const local = () => ui.server()?.kind === "local"
+  const [undone, setUndone] = createSignal(false)
+  const undo = (historyId: string) =>
+    call("memory.undo", { historyId })
+      .then(() => setUndone(true))
+      .catch((e: unknown) => {
+        const text = describeError(e)
+        showToast("error", text.key, text.params)
+      })
   const text = () => {
     const n = props.note
     if (n.note === "busy_retry") return t("chat.busy", { n: n.n, of: n.of })
+    if (n.note === "proposals_full") return t("improve.full")
+    if (n.note === "memory_saved") return t("chat.memory.saved", { text: n.text })
+    if (n.note === "proposal")
+      return n.proposalKind === "prompt"
+        ? t("chat.proposal.prompt", { number: n.nodeNumber ?? 0 })
+        : t(`chat.proposal.${n.proposalKind}`, { number: 0 })
     const time = formatTime(locale(), n.startedAt)
     return n.nodes.length > 0
       ? t("chat.feedback.added", { time, nodes: n.nodes.join(", ") })
@@ -36,6 +58,43 @@ const NoteLine = (props: { note: Note }) => {
   return (
     <p class={styles.note} data-testid={`note-${props.note.note}`}>
       {text()}
+      <Show when={props.note.note === "proposal" && local() && props.note}>
+        {(n) => (
+          <>
+            {" "}
+            <button
+              type="button"
+              class={styles.linkButton}
+              data-testid="note-review"
+              onClick={() =>
+                openImprovement(props.workflowId, (n() as { proposalId: string }).proposalId)
+              }
+            >
+              {t("chat.proposal.review")}
+            </button>
+          </>
+        )}
+      </Show>
+      <Show when={props.note.note === "memory_saved" && local() && props.note}>
+        {(n) => (
+          <>
+            {" "}
+            <Show
+              when={!undone()}
+              fallback={<span data-testid="note-memory-undone">{t("chat.memory.undone")}</span>}
+            >
+              <button
+                type="button"
+                class={styles.linkButton}
+                data-testid="note-memory-undo"
+                onClick={() => void undo((n() as { historyId: string }).historyId)}
+              >
+                {t("chat.memory.undo")}
+              </button>
+            </Show>
+          </>
+        )}
+      </Show>
     </p>
   )
 }
@@ -160,7 +219,7 @@ export const MessageRow = (props: MessageRowProps) => {
               {(p) => <ToolCard part={p() as Tool} />}
             </Show>
             <Show when={part.kind === "note" && part}>
-              {(p) => <NoteLine note={p() as Note} />}
+              {(p) => <NoteLine note={p() as Note} workflowId={m().workflowId} />}
             </Show>
           </>
         )}

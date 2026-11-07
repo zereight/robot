@@ -39,8 +39,11 @@ import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { appendLog } from "./logs.ts"
+import { Memory } from "./Memory.ts"
+import { isMemoryTool, MEMORY_TOOL_DEFS, makeMemoryTool } from "./memoryTool.ts"
 import { makeNodeTools, NODE_TOOL_DEFS, type NodeCard, type TaskMarks } from "./NodeTools.ts"
 import { Platform } from "./Platform.ts"
+import { Proposals } from "./Proposals.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { RunFacts } from "./RunFacts.ts"
@@ -83,6 +86,11 @@ export interface RunsService {
   readonly get: (runId: string) => Effect.Effect<RunDetail, AppError>
   /** True while a run of the workflow works, waits or is queued. */
   readonly active: (workflowId: string) => boolean
+  /**
+   * Calls `listener` when a run has ended, whatever the state. The responsible document looks at
+   * an ended run to propose a change (spec 002, "Self-improvement").
+   */
+  readonly onEnded: (listener: (workflowId: string, runId: string) => void) => void
 }
 
 interface RunRow {
@@ -158,7 +166,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const facts = yield* RunFacts
       const rules = yield* Rules
       const actionLog = yield* ActionLog
+      const memory = yield* Memory
+      const proposals = yield* Proposals
       const tools = makeNodeTools({ rules, actionLog, platform })
+      const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
+      const endListeners: ((workflowId: string, runId: string) => void)[] = []
 
       // --- after a restart ----------------------------------------------------------------
 
@@ -258,6 +270,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           program: t.program_mark === 1,
           sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
           steps: t.steps,
+          memory: memory.ofTask(t.id),
         }
       }
 
@@ -884,6 +897,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             ),
         }
 
+        // A text node on an API account has the memory tool while memory is on for the workflow. A
+        // vendor program has tools of its own and none of the app (spec 008, 007).
+        const memoryOn = !isProgram && memory.settings(n.run.workflow_id)?.enabled === true
         const system = nodeSystem({
           document: n.detail.document,
           workflowName: n.detail.name,
@@ -891,6 +907,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           nodeName: node.name,
           folder: n.detail.folder,
           tools: true,
+          memory: memoryOn,
         })
         const prompt = renderPrompt(node.prompt, input, n.trigger)
         const turns: Turn[] = [
@@ -923,7 +940,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                     signal,
                     workspace: n.detail.folder,
                     permission: level,
-                    ...(isProgram ? {} : { tools: NODE_TOOL_DEFS }),
+                    ...(isProgram
+                      ? {}
+                      : {
+                          tools: memoryOn
+                            ? [...NODE_TOOL_DEFS, ...MEMORY_TOOL_DEFS]
+                            : NODE_TOOL_DEFS,
+                        }),
                     useTools: true,
                     busy: {
                       wait: (k) => {
@@ -949,6 +972,29 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                       attemptSteps++
                       pause()
                       try {
+                        if (memoryOn && isMemoryTool(call.name))
+                          return (
+                            await memoryTool.execute(
+                              {
+                                workflowId: n.run.workflow_id,
+                                taskId,
+                                level,
+                                outside: marks.outside,
+                                program: marks.program,
+                                source: { kind: "run", id: n.run.id },
+                                mayPress: true,
+                                signal,
+                                ask: (text) =>
+                                  ctx.ask({
+                                    kind: "approval",
+                                    summary: text,
+                                    step: "memory",
+                                    once: true,
+                                  }),
+                              },
+                              call,
+                            )
+                          ).outcome
                         return await tools.execute(ctx, call)
                       } finally {
                         resume()
@@ -1095,6 +1141,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           .finally(() => {
             active.delete(runId)
             busy.delete(r.workflow_id)
+            for (const listener of endListeners) {
+              try {
+                listener(r.workflow_id, runId)
+              } catch (error) {
+                console.error("runs: a listener of the end of a run failed:", error)
+              }
+            }
             const next = queues.get(r.workflow_id)?.shift()
             if (next) begin(next)
           })
@@ -1173,6 +1226,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             : Effect.fail(new AppError({ code: "run_not_found" }))
         },
         active: (workflowId) => busy.has(workflowId) || (queues.get(workflowId)?.length ?? 0) > 0,
+        onEnded: (listener) => {
+          endListeners.push(listener)
+        },
       })
     }),
   )

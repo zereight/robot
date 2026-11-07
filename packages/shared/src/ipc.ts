@@ -7,7 +7,9 @@ import type {
   NearbyComputer,
   PairingState,
 } from "./link.ts"
+import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryState } from "./memory.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
+import type { ProposalsView } from "./proposals.ts"
 import type {
   ModelInfo,
   ProviderAccount,
@@ -338,6 +340,32 @@ export interface RpcMethods {
   "runs.list": { input: { workflowId: string }; output: readonly RunSummary[] }
   /** One run with its nodes, tasks, results, feedback and usage. */
   "runs.get": { input: { runId: string }; output: RunDetail }
+  /**
+   * The memory of a workflow (spec 008): the choices of the page, the items with a search, the
+   * history, and the changes of the user. These are for the computer. A linked client may list,
+   * and with the switch "Can create and change workflows" change items and choices (spec 012).
+   */
+  "memory.state": { input: { workflowId: string; search?: string }; output: MemoryState }
+  "memory.history": { input: { workflowId: string }; output: readonly MemoryHistoryRow[] }
+  "memory.add": { input: { workflowId: string; text: string }; output: MemoryItem }
+  "memory.update": { input: { id: string; text: string }; output: MemoryItem }
+  "memory.delete": { input: { id: string }; output: undefined }
+  /** Undo of one row of the history (spec 008, "Flows", 4). */
+  "memory.undo": { input: { historyId: string }; output: undefined }
+  "memory.setEnabled": { input: { workflowId: string; enabled: boolean }; output: MemoryState }
+  "memory.setMode": { input: { workflowId: string; mode: MemoryMode }; output: MemoryState }
+  /**
+   * Self-improvement (spec 002): the proposals that wait and the change log. Only the window of
+   * this computer answers these methods. A linked device and an outside program do not (spec 002,
+   * "Surfaces"; spec 012), and no tool of a model reaches them: only the click of the user does.
+   */
+  "proposals.list": { input: { workflowId: string }; output: ProposalsView }
+  /** "Accept", or "Edit and accept" when `text` is given (a document, a prompt or a memory item). */
+  "proposals.accept": { input: { id: string; text?: string }; output: undefined }
+  "proposals.reject": { input: { id: string }; output: undefined }
+  "proposals.undo": { input: { id: string }; output: undefined }
+  /** The switch "Self-improvement" of a workflow (spec 002). Only the user sets it. */
+  "workflows.setSelfImprovement": { input: { id: string; enabled: boolean }; output: Workflow }
   /** Answers a card in the chat: Allow, Always allow or Deny, a question, or the pick of a decision. */
   "cards.answer": { input: { cardId: string; answer: CardAnswer }; output: undefined }
   "decision.status": { input: undefined; output: DecisionStatus }
@@ -388,6 +416,10 @@ export interface RpcEvents {
   /** A skill was made, turned on or off, or deleted. */
   "skills.changed": { serverId: string }
   "workflows.changed": { serverId: string }
+  /** The memory of a workflow changed: an item, the history or a choice (spec 008). */
+  "memory.changed": { workflowId: string }
+  /** A proposal was made, answered, expired or undone (spec 002). */
+  "proposals.changed": { workflowId: string }
   /** A run, a task or a card of a workflow changed (spec 010, 005). */
   "runs.changed": { workflowId: string; runId: string | null }
   /** A message of a chat was added or changed (spec 003). */

@@ -10,12 +10,14 @@ import {
   type ChatNotice,
   type ChatPart,
   type ChatStatus,
+  carriesProgramMark,
   chatFiles,
   chatText,
   guardVerdict,
   isOutsideSource,
   type OutsideSource,
   type PermissionLevel,
+  PROPOSAL_WAIT_MAX,
   type QueuedChatMessage,
   type RunFact,
   resolveLocale,
@@ -34,13 +36,19 @@ import { chatMayUse } from "../runtimes/driver.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Cards } from "./Cards.ts"
 import { chatDir } from "./chatDir.ts"
-import { chatSystem, FEEDBACK_TOOL } from "./chatPrompt.ts"
+import { chatSystem, FEEDBACK_TOOL, reflectText } from "./chatPrompt.ts"
+import { CHAT_SEARCH_TOOL_DEFS, isChatSearchTool, makeChatSearch } from "./chatSearch.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Memory } from "./Memory.ts"
+import { isMemoryTool, MEMORY_TOOL_DEFS, makeMemoryTool } from "./memoryTool.ts"
 import { Platform } from "./Platform.ts"
+import { Proposals } from "./Proposals.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
+import { isProposeTool, makeProposeTools, PROPOSE_TOOL_DEFS } from "./proposalTools.ts"
 import { RunFacts } from "./RunFacts.ts"
+import { Runs } from "./Runs.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
 import { Workflows } from "./Workflows.ts"
@@ -84,6 +92,17 @@ export interface ChatService {
   readonly clearMarks: (workflowId: string) => Effect.Effect<void, AppError>
   /** The two buttons of the notice after a restart (spec 003, "Rules"). */
   readonly resume: (workflowId: string, mode: "continue" | "again") => Effect.Effect<void, AppError>
+  /**
+   * The name of the vendor program that answers in the chat, when it cannot use the tools of the
+   * app: self-improvement does not work with it (spec 002, "Surfaces", "Runtimes"). Null otherwise.
+   */
+  readonly programBlock: (workflowId: string) => Effect.Effect<string | null>
+  /**
+   * The responsible document looks at an ended run and may propose a change (spec 002,
+   * "Self-improvement"). It runs by itself after each run; this is the same work, for a test and
+   * for a request. It posts no message in the chat.
+   */
+  readonly reflect: (workflowId: string, runId: string) => Effect.Effect<void>
 }
 
 interface MessageRow {
@@ -125,6 +144,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const facts = yield* RunFacts
       const cards = yield* Cards
       const actionLog = yield* ActionLog
+      const memory = yield* Memory
+      const proposals = yield* Proposals
+      const runs = yield* Runs
+      const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
+      const proposeTools = makeProposeTools({ proposals })
+      const chatSearch = makeChatSearch(db)
 
       // A reply that was streaming when the app closed is marked as stopped (spec 003, "Rules").
       db.run(
@@ -488,6 +513,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return words.filter((t) => t.trim() !== "")
       }
 
+      /** The messages of the turn that works: its reply and the messages of the user that it answers. */
+      const currentTurnIds = (workflowId: string, w: Working): ReadonlySet<string> => {
+        const rows = visibleRows(workflowId)
+        const at = rows.findIndex((r) => r.id === w.assistantId)
+        const ids = new Set<string>([w.assistantId])
+        for (let i = (at === -1 ? rows.length : at) - 1; i >= 0; i--) {
+          const r = rows[i]
+          if (!r || r.author === "assistant") break
+          ids.add(r.id)
+        }
+        for (const r of rows) if (r.joined_to === w.assistantId) ids.add(r.id)
+        return ids
+      }
+
       /** Adds feedback to a run when the model calls the tool (spec 003, "Feedback"). */
       const feedbackTool = async (
         workflowId: string,
@@ -616,6 +655,158 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
       }
 
+      // --- self-improvement and memory in the chat (spec 002, 007, 008) -----------------------
+
+      /** The tools that a turn of the chat has (spec 002, 007, 008). */
+      const chatToolSet = (workflowId: string, workflow: { selfImprovement: boolean }) => {
+        const memoryOn = memory.settings(workflowId)?.enabled === true
+        const may = { propose: workflow.selfImprovement, memory: memoryOn }
+        return {
+          may,
+          defs: [
+            FEEDBACK_TOOL,
+            ...(may.propose ? PROPOSE_TOOL_DEFS : []),
+            ...(memoryOn ? [...MEMORY_TOOL_DEFS, ...CHAT_SEARCH_TOOL_DEFS] : []),
+          ],
+        }
+      }
+
+      /** A note after a proposal, a save or a refusal for "20 wait": one muted line of the turn. */
+      const pushNote = (parts: ChatPart[], part: ChatPart) => {
+        const last = parts.at(-1)
+        if (
+          part.kind === "note" &&
+          part.note === "proposals_full" &&
+          last?.kind === "note" &&
+          last.note === "proposals_full"
+        )
+          return
+        parts.push(part)
+      }
+
+      /**
+       * A tool of the chat that proposes a change, keeps a fact, or reads the past (spec 002, 007,
+       * 008). The guarded steps ask the user first in a turn that holds outside content. No tool
+       * here changes the document, a prompt or the graph: a change is a proposal that waits.
+       */
+      const improveTool = async (
+        workflowId: string,
+        w: Working,
+        level: PermissionLevel,
+        call: ToolCall,
+        parts: ChatPart[],
+        touch: () => void,
+      ): Promise<ToolOutcome> => {
+        const marks = readMarks(workflowId)
+        const source = { kind: "chat" as const, id: w.assistantId }
+        const ask = (step: "memory" | "change") => (summary: string) =>
+          cards.ask({
+            workflowId,
+            runId: null,
+            taskId: null,
+            nodeNumber: null,
+            nodeName: null,
+            kind: "approval",
+            summary,
+            step,
+            once: true,
+            outside: marks.outside,
+            scope: "turn",
+            sensitive: marks.sensitive,
+            signal: w.controller.signal,
+          })
+        if (isMemoryTool(call.name)) {
+          const result = await memoryTool.execute(
+            {
+              workflowId,
+              taskId: null,
+              level,
+              outside: marks.outside,
+              program: marks.program,
+              source,
+              mayPress: true,
+              signal: w.controller.signal,
+              ask: ask("memory"),
+            },
+            call,
+          )
+          const event = result.event
+          if (event?.kind === "saved")
+            pushNote(parts, {
+              kind: "note",
+              note: "memory_saved",
+              text: event.text,
+              historyId: event.historyId,
+            })
+          else if (event?.kind === "suggested")
+            pushNote(parts, {
+              kind: "note",
+              note: "proposal",
+              proposalId: event.proposalId,
+              proposalKind: "memory",
+              nodeNumber: null,
+            })
+          else if (event?.kind === "full") pushNote(parts, { kind: "note", note: "proposals_full" })
+          touch()
+          return result.outcome
+        }
+        if (isProposeTool(call.name)) {
+          const result = await proposeTools.execute(
+            {
+              workflowId,
+              source,
+              level,
+              outside: marks.outside,
+              program: marks.program,
+              ask: ask("change"),
+            },
+            call,
+          )
+          if (result.guarded)
+            actionLog.add({
+              workflowId,
+              kind: "change",
+              target: result.guarded.target,
+              decidedBy: result.guarded.decidedBy,
+              result: result.guarded.result,
+              taskId: null,
+              outside: marks.outside,
+              sensitive: marks.sensitive,
+              ...(result.guarded.device ? { device: result.guarded.device } : {}),
+            })
+          const event = result.event
+          if (event?.kind === "made")
+            pushNote(parts, {
+              kind: "note",
+              note: "proposal",
+              proposalId: event.proposalId,
+              proposalKind: event.proposalKind,
+              nodeNumber: event.nodeNumber,
+            })
+          else if (event?.kind === "full") pushNote(parts, { kind: "note", note: "proposals_full" })
+          touch()
+          return result.outcome
+        }
+        if (isChatSearchTool(call.name)) {
+          if (memory.settings(workflowId)?.enabled !== true)
+            return {
+              output: "Memory is off for this workflow. This tool is not available.",
+              failed: true,
+            }
+          const result = chatSearch.execute(workflowId, call, currentTurnIds(workflowId, w))
+          // A message from Teams in the result is outside content: this turn holds it from now on
+          // (spec 007, "Outside content").
+          if (result.outside && marks.outside === null)
+            writeMarks(workflowId, {
+              ...marks,
+              outside: result.outside,
+              program: marks.program || carriesProgramMark(result.outside),
+            })
+          return { output: result.output, failed: false }
+        }
+        return { output: `Unknown tool: ${call.name}`, failed: true }
+      }
+
       const runTurn = async (workflowId: string, w: Working, model: AnswerModel): Promise<void> => {
         const parts: ChatPart[] = []
         let timer: ReturnType<typeof setTimeout> | null = null
@@ -655,6 +846,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 : { role: "assistant" as const, content: chatText(m) },
             )
             .filter((t) => t.content.trim() !== "")
+          const toolSet = chatToolSet(workflowId, workflow)
           const events = await Effect.runPromise(
             providers.events(
               model.accountId,
@@ -666,12 +858,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   document: workflow.document,
                   runs,
                   feedback: withTools,
+                  ...(withTools ? { graph: workflow.graph, may: toolSet.may } : {}),
                 }),
                 turns,
                 signal: w.controller.signal,
                 workspace: withTools ? workflow.folder : chatDir(),
                 permission: withTools ? workflow.permission : "read_only",
-                ...(withTools ? { tools: [FEEDBACK_TOOL] } : {}),
+                ...(withTools ? { tools: toolSet.defs } : {}),
                 useTools: withTools,
                 cache: "long",
                 inbox: inboxFor(workflowId, w),
@@ -687,7 +880,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 execute: async (call) => {
                   if (call.name === FEEDBACK_TOOL.name)
                     return feedbackTool(workflowId, w, workflow.permission, call, parts, touch)
-                  return { output: `Unknown tool: ${call.name}`, failed: true }
+                  return improveTool(workflowId, w, workflow.permission, call, parts, touch)
                 },
                 approve: async () => false,
               },
@@ -753,6 +946,119 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         emitState(workflowId)
         afterTurn(workflowId)
       }
+
+      // --- the work after a run (spec 002, "Self-improvement") --------------------------------
+
+      const programBlock = (workflowId: string) =>
+        resolveModel(workflowId).pipe(
+          Effect.flatMap((model) =>
+            model && providers.isRuntime(model.accountId)
+              ? providers.accounts.pipe(
+                  Effect.map((list) => list.find((a) => a.id === model.accountId)?.name ?? ""),
+                )
+              : Effect.succeed(null),
+          ),
+          Effect.orElseSucceed(() => null),
+        )
+
+      const REFLECT_MS = 5 * 60_000
+
+      const reflectNow = async (workflowId: string, runId: string): Promise<void> => {
+        const flags = memory.settings(workflowId)
+        if (!flags || (!flags.selfImprovement && !flags.enabled)) return
+        if (proposals.waiting(workflowId) >= PROPOSAL_WAIT_MAX) return
+        const workflow = await Effect.runPromise(findWorkflow(workflowId))
+        const all = await Effect.runPromise(facts.runs(workflowId))
+        const run = all.find((r) => r.id === runId)
+        if (!run || run.active || run.state === "cancelled") return
+        const model = await Effect.runPromise(resolveModel(workflowId))
+        if (!model || !usable(model.accountId) || !chatHasTools(model.accountId)) return
+        // The turn holds what the run held: a proposal after it carries the outside mark (spec 002).
+        let outside: OutsideSource | null = null
+        let program = false
+        for (const n of run.nodes) {
+          if (n.result === null || n.result === "") continue
+          outside ??= n.outside
+          program ||= n.program
+        }
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), REFLECT_MS)
+        const source = { kind: "run" as const, id: runId }
+        const may = { propose: flags.selfImprovement, memory: flags.enabled }
+        const defs = [
+          ...(may.propose ? PROPOSE_TOOL_DEFS : []),
+          ...(may.memory ? MEMORY_TOOL_DEFS : []),
+        ]
+        try {
+          const events = await Effect.runPromise(
+            providers.events(
+              model.accountId,
+              {
+                model: model.model,
+                effort: model.effort,
+                system: chatSystem({
+                  name: workflow.name,
+                  document: workflow.document,
+                  runs: all,
+                  feedback: false,
+                  graph: workflow.graph,
+                  may,
+                }),
+                turns: [{ role: "user", content: reflectText(runId, may) }],
+                signal: controller.signal,
+                workspace: chatDir(),
+                permission: "read_only",
+                tools: defs,
+                useTools: true,
+                cache: "short",
+              },
+              {
+                execute: async (call) => {
+                  if (isMemoryTool(call.name))
+                    return (
+                      await memoryTool.execute(
+                        {
+                          workflowId,
+                          taskId: null,
+                          level: workflow.permission,
+                          outside,
+                          program,
+                          source,
+                          mayPress: false,
+                          signal: controller.signal,
+                          ask: () => Promise.reject(new Error("no user")),
+                        },
+                        call,
+                      )
+                    ).outcome
+                  if (isProposeTool(call.name))
+                    return (
+                      await proposeTools.execute(
+                        { workflowId, source, level: workflow.permission, outside, program },
+                        call,
+                      )
+                    ).outcome
+                  return { output: `Unknown tool: ${call.name}`, failed: true }
+                },
+                approve: async () => false,
+              },
+            ),
+          )
+          // The turn posts no message: its only results are proposals.
+          for await (const event of events) void event
+        } catch {
+          // A turn that fails leaves no trace in the chat: the next run looks again.
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+
+      const reflect = (workflowId: string, runId: string) =>
+        Effect.promise(() => reflectNow(workflowId, runId).catch(() => {}))
+
+      runs.onEnded((workflowId, runId) => {
+        void Effect.runPromise(reflect(workflowId, runId))
+      })
 
       /** What follows a turn: unread messages start the next turn, else the queue sends one. */
       const afterTurn = (workflowId: string) => {
@@ -1010,6 +1316,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       return Chat.of({
         history,
         clearMarks,
+        programBlock,
+        reflect,
         send,
         setModel,
         stop: (workflowId) =>

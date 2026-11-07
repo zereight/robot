@@ -44,6 +44,8 @@ const text = (content: unknown) =>
  * - `slow`: 60 words, one every 50 ms, so a test can stop the reply;
  * - `tool <name> <json>`: one call of that tool; after the tool result it says "Tool said: ...";
  * - `tools <n> <name> <json>`: the same call n times in a row, then "Tool said: ...";
+ * - the turn after a run (a message that starts "The run <id> has ended."): one call of the tool that a
+ *   line `PROPOSE:<name> <json>` in the facts of the run names, when there is one;
  * - `[[fail]]`: a server error, always. `[[flaky]]`: a server error for the first two requests with the
  *   same last message, then the normal answer;
  * - `[[hang]]`: no answer at all, until the app closes the request;
@@ -129,6 +131,24 @@ export const startMockProvider = async (): Promise<MockProvider> => {
               index: 0,
               id: `call-${requests.length}`,
               function: { name: tool[1], arguments: tool[2] || "{}" },
+            },
+          ],
+        })
+        finish()
+        return
+      }
+      const reflect = /^The run \S+ has ended\./.test(said)
+        ? /PROPOSE:(\w+) (\{[^\n]*\})/.exec(
+            text(body.messages.find((m) => m.role === "system")?.content),
+          )
+        : null
+      if (reflect) {
+        send({
+          tool_calls: [
+            {
+              index: 0,
+              id: `call-${requests.length}`,
+              function: { name: reflect[1], arguments: reflect[2] },
             },
           ],
         })

@@ -128,6 +128,15 @@ export const CLIENT_METHODS = [
   // again (see `CHANGE_METHODS`).
   "workflows.create",
   "workflows.delete",
+  // The memory of a workflow (spec 008, 012). A client reads and searches the items with the link.
+  // It adds, edits and deletes items, and changes the choices of the memory page, only with the
+  // switch. The history, the undo and the proposals of self-improvement stay on the server.
+  "memory.state",
+  "memory.add",
+  "memory.update",
+  "memory.delete",
+  "memory.setEnabled",
+  "memory.setMode",
 ] as const
 export type ClientMethod = (typeof CLIENT_METHODS)[number]
 
@@ -136,7 +145,15 @@ export type ClientMethod = (typeof CLIENT_METHODS)[number]
  * for the device that asks (spec 010, 012). The server reads the switch at each request. Anything
  * that is not here and not in `CLIENT_METHODS` is refused.
  */
-export const CHANGE_METHODS = ["workflows.create", "workflows.delete"] as const
+export const CHANGE_METHODS = [
+  "workflows.create",
+  "workflows.delete",
+  "memory.add",
+  "memory.update",
+  "memory.delete",
+  "memory.setEnabled",
+  "memory.setMode",
+] as const
 export type ChangeMethod = (typeof CHANGE_METHODS)[number]
 export const isChangeMethod = (method: string): method is ChangeMethod =>
   (CHANGE_METHODS as readonly string[]).includes(method)
@@ -159,6 +176,8 @@ export const PUSHED_EVENTS = [
   // reads the run or the history again.
   "runs.changed",
   "chat.state",
+  // The memory of a workflow changed (spec 008): a client reads the memory page again.
+  "memory.changed",
 ] as const
 export type PushedEvent = (typeof PUSHED_EVENTS)[number]
 

@@ -67,6 +67,18 @@ const Card = (props: { flow: Workflow }) => {
             {t("workflows.check.line", { state: t(checkStateKey(props.flow)) })}
           </dd>
         </div>
+        <Show when={props.flow.proposals > 0}>
+          <div>
+            <dd data-testid="workflow-proposals">
+              {t(
+                props.flow.proposals === 1
+                  ? "workflows.card.proposals.one"
+                  : "workflows.card.proposals.other",
+                { n: props.flow.proposals },
+              )}
+            </dd>
+          </div>
+        </Show>
       </dl>
       <Show when={asking()}>
         <Confirm
@@ -100,6 +112,8 @@ export const WorkflowList = () => {
       call("workflows.list", { serverId }).catch(() => []),
   )
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
+  // A proposal that waits shows on the card: "N proposals wait" (spec 002, "Flows" 1).
+  onCleanup(window.robot.on("proposals.changed", () => void refetch()))
   return (
     <>
       <header class={shell.header}>

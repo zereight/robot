@@ -1,11 +1,13 @@
 import type { WorkflowDetail } from "@robot/shared"
 import { ArrowLeft, Play, Square, Trash2 } from "lucide-solid"
 import {
+  createEffect,
   createMemo,
   createResource,
   createSignal,
   For,
   Match,
+  on,
   onCleanup,
   Show,
   Switch,
@@ -15,6 +17,7 @@ import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
+import { improveRequest, openImprovement } from "../state/improve.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -22,12 +25,14 @@ import { showToast } from "../ui/toast.ts"
 import { DocumentEditor } from "./DocumentEditor.tsx"
 import { GraphEditor } from "./GraphEditor.tsx"
 import graph from "./graph.module.css"
+import { ImprovementPanel } from "./ImprovementPanel.tsx"
+import { MemoryPanel } from "./MemoryPanel.tsx"
 import { RunsPanel } from "./RunsPanel.tsx"
 import { createRunsState } from "./runsState.ts"
 import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
 
-const TABS = ["graph", "runs", "document", "settings"] as const
+const TABS = ["graph", "runs", "document", "memory", "improvement", "settings"] as const
 type Tab = (typeof TABS)[number]
 
 /** The workflow that is open: its name, and the editor of its responsible document. */
@@ -45,6 +50,16 @@ export const WorkflowView = (props: { id: string }) => {
   const [tab, setTab] = createSignal<Tab>("graph")
   const runs = createRunsState(() => props.id)
   const [selected, setSelected] = createSignal<string>()
+  // The link "Review" (chat, run view) and the link "Proposals (N)" open the page Self-improvement.
+  createEffect(
+    on(
+      improveRequest,
+      (r) => {
+        if (r && r.workflowId === props.id) setTab("improvement")
+      },
+      { defer: true },
+    ),
+  )
   const [trigger, setTrigger] = createSignal("")
   const toastError = (e: unknown) => {
     const text = describeError(e)
@@ -149,6 +164,21 @@ export const WorkflowView = (props: { id: string }) => {
                   </Match>
                   <Match when={tab() === "document"}>
                     <DocumentEditor workflow={flow()} />
+                  </Match>
+                  <Match when={tab() === "memory"}>
+                    <MemoryPanel
+                      workflow={flow()}
+                      onOpenProposals={() => openImprovement(flow().id)}
+                    />
+                  </Match>
+                  <Match when={tab() === "improvement"}>
+                    <ImprovementPanel
+                      workflow={flow()}
+                      onOpenRun={(id) => {
+                        setSelected(id)
+                        setTab("runs")
+                      }}
+                    />
                   </Match>
                   <Match when={tab() === "settings"}>
                     <WorkflowSettings workflow={flow()} />

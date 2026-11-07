@@ -520,7 +520,18 @@ describe("the tools of the chat (spec 007, 003)", () => {
     await t.send("hello")
     await t.idle()
     const request = mock.requests.at(-1)
-    expect(request?.body.tools?.map((x) => x.function.name)).toEqual(["add_run_feedback"])
+    // Self-improvement and memory are on by default: the chat also has the tools to propose a
+    // change, to keep and read facts, and to search the earlier chats (spec 002, 008, 007).
+    expect(request?.body.tools?.map((x) => x.function.name)).toEqual([
+      "add_run_feedback",
+      "propose_document_change",
+      "propose_prompt_change",
+      "propose_graph_change",
+      "memory_search",
+      "memory_save",
+      "search_chats",
+      "read_chat",
+    ])
     const h = await t.history()
     expect(h.answer).toMatchObject({ accountName: "Mock", model: "mock-fast", feedback: true })
     expect(JSON.stringify(request?.body.messages[0])).toContain("call the tool add_run_feedback")
