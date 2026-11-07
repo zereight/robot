@@ -1,3 +1,4 @@
+import type { NodeHold } from "./backup.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type {
@@ -310,6 +311,13 @@ export interface RpcMethods {
   }
   "workflows.disconnect": { input: { id: string }; output: undefined }
   "workflows.versions": { input: { id: string }; output: readonly GraphVersion[] }
+  /**
+   * The holds of the main models of the text nodes of a workflow that last now (spec 006, "Backup
+   * model"). Empty for a linked device and the phone: they do not show the hold (012, 011).
+   */
+  "workflows.holds": { input: { workflowId: string }; output: readonly NodeHold[] }
+  /** "Use <main model> now": ends the hold of a node. Only the window of this computer (006). */
+  "workflows.hold.release": { input: { nodeId: string }; output: undefined }
   /** Restores a version of the graph. The graph as it is now is kept as a version too. */
   "workflows.versions.restore": {
     input: { id: string; versionId: string }

@@ -10,6 +10,7 @@ const node = (id: string, patch: Partial<WorkflowNode> = {}): WorkflowNode => ({
   accountId: null,
   model: null,
   effort: null,
+  backup: null,
   permission: null,
   continueOnFailure: false,
   question: "",

@@ -1,4 +1,4 @@
-import type { WorkflowGraph } from "@robot/shared"
+import type { ModelPick, WorkflowGraph } from "@robot/shared"
 import { Effect } from "effect"
 import type { ProvidersService } from "./Providers.ts"
 
@@ -35,5 +35,27 @@ export const modelsOfferedBy =
         if (n.effort !== null && !info.efforts.includes(n.effort))
           return `Node ${n.number}: the model "${n.model}" does not take the reasoning level "${n.effort}".`
       }
+      return null
+    })
+
+/**
+ * The test of the backup model that the user picks in the editor (spec 006, "Backup model"): it must
+ * name an account of this computer that is connected, a model of the real list of that account, and
+ * a reasoning level that the model takes. Returns a plain text for the fault, or null. Only the
+ * editor of this computer uses it: no proposal and no chat tool may set a backup (docs/spec-questions.md, B6).
+ */
+export const backupOfferedBy =
+  (providers: Pick<ProvidersService, "accounts" | "models">) =>
+  (pick: ModelPick): Effect.Effect<string | null> =>
+    Effect.gen(function* () {
+      const account = (yield* providers.accounts).find((a) => a.id === pick.accountId)
+      if (!account) return "The account of the backup model is not on this computer."
+      if (!account.connected) return "The account of the backup model is not connected."
+      const models = yield* providers.models(pick.accountId).pipe(Effect.orElseSucceed(() => null))
+      if (models === null) return "The models of the backup account could not be read now."
+      const info = models.find((m) => m.id === pick.model)
+      if (!info) return `The account does not offer the model "${pick.model}".`
+      if (pick.effort !== null && !info.efforts.includes(pick.effort))
+        return `The model "${pick.model}" does not take the reasoning level "${pick.effort}".`
       return null
     })
