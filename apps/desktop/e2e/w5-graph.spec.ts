@@ -82,7 +82,6 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await shot(page, "w5-22-graph-decision")
 
   // The workflow card counts the problem.
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-check")).toHaveText("Check: Problem found")
   await expect(page.getByTestId("workflow-nodes")).toHaveText("3 nodes")
   await page.getByTestId("workflow-open").click()
@@ -192,7 +191,6 @@ test("workflow settings: the folder and the level are read-only while a run work
   // A workflow that runs is not deleted: the button is off and the read-only line shows.
   await expect(page.getByTestId("workflow-running-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-delete")).toBeDisabled()
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-card-delete")).toBeDisabled()
   await shot(page, "w5-27-card-running")

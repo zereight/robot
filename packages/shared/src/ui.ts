@@ -15,11 +15,17 @@ export const PLACE_LIST_MIN = 200
 export const PLACE_LIST_MAX = 400
 export const PLACE_LIST_DEFAULT = 240
 export const NARROW_WIDTH = 800
+/** The workflow list docks at this window width and wider; below it opens as an overlay. */
+export const LIST_DOCK_MIN = 1100
 
 /** The side column of the workflow editor holds the panel of a node and the list of runs. */
 export const WORKFLOW_SIDE_MIN = 240
 export const WORKFLOW_SIDE_MAX = 720
 export const WORKFLOW_SIDE_DEFAULT = 340
+/** The panel column of the studio: the chat of the open workflow (spec 001). */
+export const PANEL_MIN = 320
+export const PANEL_MAX = 720
+export const PANEL_DEFAULT = 360
 /** The canvas of the workflow editor keeps at least this width, so a wide column never hides it. */
 export const WORKFLOW_CANVAS_MIN = 240
 /** The width of the drag handle between the canvas and the side column. */
@@ -31,6 +37,7 @@ export const UiState = Schema.Struct({
   page: Page,
   /** The open workflow of each server, by server id. */
   places: Schema.Record(Schema.String, PlaceRef),
+  /** The panel column of the studio is open (spec 001). The name is from the earlier panel. */
   activityPanel: Schema.Boolean,
   /** The tab of the Tasks page: "Tasks" or "Events" (spec 005, 038). It stays after a restart. */
   tasksTab: Schema.Literals(["tasks", "events"]),
@@ -41,6 +48,8 @@ export const UiState = Schema.Struct({
   workflowSideWidth: Schema.Number.check(
     Schema.isBetween({ minimum: WORKFLOW_SIDE_MIN, maximum: WORKFLOW_SIDE_MAX }),
   ),
+  /** The width of the panel column of the studio, in px (spec 001). */
+  panelWidth: Schema.Number.check(Schema.isBetween({ minimum: PANEL_MIN, maximum: PANEL_MAX })),
 })
 export type UiState = typeof UiState.Type
 
@@ -55,10 +64,14 @@ export const defaultUiState: UiState = {
   tasksTab: "tasks",
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
+  panelWidth: PANEL_DEFAULT,
 }
 
 export const clampPlaceListWidth = (width: number) =>
   Math.round(Math.min(PLACE_LIST_MAX, Math.max(PLACE_LIST_MIN, width)))
+
+export const clampPanelWidth = (width: number) =>
+  Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, width)))
 
 /**
  * Keeps the width of the workflow side column inside the limits. `available` is the width of the

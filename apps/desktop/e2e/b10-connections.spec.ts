@@ -69,8 +69,6 @@ const openWorkflow = async (page: Page, name: string) => {
 
 /** Opens a workflow and starts a run in it. The cards of its tasks show in its chat. */
 const startIn = async (page: Page, name: string, workflowId: string) => {
-  await page.getByTestId("page-workflows").click()
-  await page.getByTestId("workflows-page").waitFor()
   await openWorkflow(page, name)
   return await startRunCall(page, workflowId)
 }
@@ -78,12 +76,9 @@ const startIn = async (page: Page, name: string, workflowId: string) => {
 /** Opens the newest run of the open workflow in its runs tab. */
 const viewNewestRun = async (page: Page) => {
   await page.getByTestId("tab-runs").click()
+  if (await page.getByTestId("run-back").count()) await page.getByTestId("run-back").click()
   await page.getByTestId("runs-list").locator("button").first().click()
   await expect(page.getByTestId("run-view")).toBeVisible()
-}
-
-const closeWorkflow = async (page: Page) => {
-  await page.getByTestId("workflow-back").click()
 }
 
 const callsIn = (file: string): { tool: string; args: unknown }[] =>
@@ -161,7 +156,6 @@ test("connections: scope per workflow, the card at the permission levels, Always
   await expect(page.getByTestId("run-node-result-1")).toContainText("Tool said: Echo: from A")
   await expect(page.getByTestId("run-node-outside-1")).toBeVisible()
   await shot(page, "b10-04-tool-line")
-  await closeWorkflow(page)
 
   // The rules page shows one Allow rule for that tool, for that workflow.
   await page.getByTestId("open-settings").click()
@@ -183,7 +177,6 @@ test("connections: scope per workflow, the card at the permission levels, Always
   await expect(page.getByTestId("run-tool-line")).toHaveText(
     "Notes · echo: Ran — Allowed by a rule",
   )
-  await closeWorkflow(page)
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-permissions").click()
   const logEntries = page.getByTestId("action-log-entry").filter({ hasText: "Notes" })
@@ -200,7 +193,6 @@ test("connections: scope per workflow, the card at the permission levels, Always
   )
   expect(toolsOfLastRequest(mock).some((n) => n.startsWith("mcp__"))).toBe(false)
   expect(callsIn(calls)).toHaveLength(2)
-  await closeWorkflow(page)
 
   // The other levels, on the workflow "Lookup" (the tool "lookup" has the read-only mark).
   const setLevel = (id: string, level: string) =>
@@ -212,7 +204,6 @@ test("connections: scope per workflow, the card at the permission levels, Always
   await expect(page.getByTestId("run-tool-line")).toHaveText(
     "Notes · lookup: Refused — Permission level: Read only",
   )
-  await closeWorkflow(page)
   expect(callsIn(calls)).toHaveLength(2)
 
   // Trust read-only marks: on, the marked tool runs with no card at "Ask for risky steps" and the
@@ -228,7 +219,6 @@ test("connections: scope per workflow, the card at the permission levels, Always
   await expect(page.getByTestId("run-tool-line")).toHaveText(
     "Notes · lookup: Ran — Read only, as the connection says",
   )
-  await closeWorkflow(page)
   await setLevel(lookup, "ask_all")
   await startIn(page, "Lookup", lookup)
   await expect(page.getByTestId("card-approval")).toBeVisible({ timeout: 20_000 })
@@ -244,7 +234,6 @@ test("connections: scope per workflow, the card at the permission levels, Always
     detail: null,
     decision: "deny",
   })
-  await closeWorkflow(page)
   await setLevel(lookup, "full")
   await startIn(page, "Lookup", lookup)
   await viewNewestRun(page)
@@ -254,17 +243,13 @@ test("connections: scope per workflow, the card at the permission levels, Always
   )
   await expect(page.getByTestId("card-approval")).toHaveCount(0)
   expect(callsIn(calls)).toHaveLength(4)
-  await closeWorkflow(page)
 
   // The words in Korean.
   await invokeCall(page, "settings.update", { language: "ko" })
-  await page.getByTestId("page-workflows").click()
-  await page.getByTestId("workflows-page").waitFor()
   await openWorkflow(page, "Lookup")
   await viewNewestRun(page)
   await expect(page.getByTestId("run-tool-line")).toContainText("규칙으로 거부됨")
   await shot(page, "b10-06-tool-line-ko")
-  await closeWorkflow(page)
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-connections").click()
   await expect(rowOf(page).getByTestId("connection-row-scope")).toContainText("워크플로우:")
@@ -336,7 +321,6 @@ test("connections: a value that looks like a secret is hidden, the card says so 
   await page.getByTestId("card-allow").click()
   await expect.poll(() => callsIn(calls).length, { timeout: 20_000 }).toBe(1)
   expect(JSON.stringify(callsIn(calls)[0])).toContain(secret)
-  await closeWorkflow(page)
 
   await startIn(page, "Tags", ids.Tags ?? "")
   await expect(page.getByTestId("card-approval")).toBeVisible({ timeout: 20_000 })

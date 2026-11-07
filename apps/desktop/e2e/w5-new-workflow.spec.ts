@@ -24,7 +24,6 @@ test("workflow list: the empty state, a new workflow, the card, the delete quest
   await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-text")).toHaveValue(/You answer for this workflow/)
 
-  await page.getByTestId("workflow-back").click()
   const card = page.getByTestId("workflow-row")
   await expect(card).toHaveCount(1)
   await expect(card.getByTestId("workflow-nodes")).toHaveText("0 nodes")
@@ -37,19 +36,18 @@ test("workflow list: the empty state, a new workflow, the card, the delete quest
   await page.getByTestId("new-workflow-name").fill("Daily digest")
   await page.getByTestId("new-workflow-name").press("Enter")
   await expect(page.getByTestId("workflow-view")).toBeVisible()
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-row")).toHaveCount(2)
 
-  // Delete from the card asks first; "Keep it" changes nothing.
+  // Delete from the card asks first; "Keep it" changes nothing. The list is alphabetical.
   await page.getByTestId("workflow-card-delete").first().click()
-  await expect(page.getByTestId("workflow-delete-ask")).toContainText("Weekly")
+  await expect(page.getByTestId("workflow-delete-ask")).toContainText("Daily digest")
   await shot(page, "w5-04-list-delete-ask")
   await page.getByTestId("workflow-delete-keep").click()
   await expect(page.getByTestId("workflow-row")).toHaveCount(2)
   await page.getByTestId("workflow-card-delete").first().click()
   await page.getByTestId("workflow-delete-confirm").click()
   await expect(page.getByTestId("workflow-row")).toHaveCount(1)
-  await expect(page.getByTestId("workflow-row")).toContainText("Daily digest")
+  await expect(page.getByTestId("workflow-row")).toContainText("Weekly")
   await app.close()
 })
 
@@ -63,7 +61,6 @@ test("workflow list in Korean: the words 워크플로우 and 담당 문서", asy
   await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-editor")).toContainText("담당 문서")
   await shot(page, "w5-05-document-ko")
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("아직 실행한 적이 없어요")
   await expect(page.getByTestId("workflow-check")).toHaveText("검사: 통과")
   await shot(page, "w5-06-list-ko")
@@ -107,7 +104,6 @@ test("workflow list: a state that this version does not know is not shown as 'No
   db.close()
 
   ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("Last run: state not known")
   await app.close()
 })
@@ -118,12 +114,10 @@ test("workflow list: a background event does not close the delete question", asy
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
   await expect(page.getByTestId("workflow-view")).toBeVisible()
-  await page.getByTestId("workflow-back").click()
   await page.getByTestId("new-workflow").click()
   await page.getByTestId("new-workflow-name").fill("Daily digest")
   await page.getByTestId("new-workflow-name").press("Enter")
   await expect(page.getByTestId("workflow-view")).toBeVisible()
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-row")).toHaveCount(2)
 
   // Count the events "workflows.changed" that the window gets.
@@ -139,7 +133,7 @@ test("workflow list: a background event does not close the delete question", asy
   })
   const changed = () => page.evaluate(() => (window as unknown as { changed: number }).changed)
 
-  await page.getByTestId("workflow-card-delete").nth(1).click()
+  await page.getByTestId("workflow-card-delete").first().click()
   await expect(page.getByTestId("workflow-delete-ask")).toContainText("Daily digest")
 
   // A background check ends and the main process sends "workflows.changed": the list is read

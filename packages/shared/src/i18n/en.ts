@@ -63,8 +63,15 @@ export const en = {
   "page.help": "Help",
   "page.settings": "Settings",
 
+  "studio.pick": "Select a workflow in the list.",
+  "studio.chat.empty": "Open a workflow to chat.",
+  "studio.list.show": "Show the workflow list",
+  "studio.chat.show": "Show the chat",
+  "studio.chat.hide": "Hide the chat",
+  "studio.panel.resize": "Change the width of the chat",
+
   "main.noServer.title": "No server yet",
-  "main.noServer.body": "A server is a computer that runs your agents. Add one to start.",
+  "main.noServer.body": "A server is a computer that runs your workflows. Add one to start.",
 
   "help.shortcuts": "Keyboard shortcuts",
   "help.shortcut.find": "Find in the chat",
@@ -363,7 +370,6 @@ export const en = {
   "error.skills_full": "This server has 100 skills, the most it can hold.",
   "error.skill_unavailable": "This skill is not available.",
   "workflows.new": "New workflow",
-  "workflows.back": "Back",
   "workflows.name": "Workflow name",
   "workflows.empty": "No workflows yet.",
   "workflows.delete.ask":

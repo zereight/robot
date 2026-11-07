@@ -144,12 +144,8 @@ test("backup model: the editor, the first run on the backup, the hold, 'Use the 
     await app.close()
     ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "ko-KR" }))
     await resizeWindow(app, 1100, 800)
-    // The window opens the workflow that was open, or its list: open the first one if it is a list.
-    await expect(
-      page.getByTestId("tab-graph").or(page.getByTestId("workflow-open").first()),
-    ).toBeVisible()
-    if (await page.getByTestId("workflow-open").count())
-      await page.getByTestId("workflow-open").first().click()
+    // The window opens the workflow that was open again.
+    await expect(page.getByTestId("tab-graph")).toBeVisible()
     await page.getByTestId("tab-graph").click()
     await page.getByTestId("graph-node").first().click()
     await expect(page.getByTestId("node-backup-hold-until")).toContainText("백업 사용")

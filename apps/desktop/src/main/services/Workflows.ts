@@ -632,7 +632,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           Effect.sync(() =>
             db
               .all<WorkflowRow>(
-                "SELECT * FROM workflow WHERE server_id = ? ORDER BY created_at, rowid",
+                "SELECT * FROM workflow WHERE server_id = ? ORDER BY name_key, rowid",
                 serverId,
               )
               .map((r) => toWorkflow(r)),

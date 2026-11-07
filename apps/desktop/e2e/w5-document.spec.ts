@@ -90,7 +90,6 @@ test("document: the editor is read-only while a run works", async () => {
   await expect(page.getByTestId("document-text")).toHaveAttribute("readonly", "")
   await expect(page.getByTestId("document-save")).toBeDisabled()
   await shot(page, "w5-14-document-readonly")
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("Last run: Running")
   await app.close()
   await mock.close()

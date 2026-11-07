@@ -77,7 +77,6 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await page.getByTestId("tab-graph").click()
 
   // The card of the list shows the same state.
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-check")).toHaveText("Check: Problem found")
   await shot(page, "w7-02-card-problem")
   await page.getByTestId("workflow-open").click()
@@ -98,7 +97,6 @@ test("check: a loop shows Problem found with its place, the run does not start, 
 
   await page.getByTestId("workflow-run").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-check")).toHaveText("Check: Passed")
   await app.close()
   await mock.close()
@@ -113,7 +111,6 @@ test("check: the problem and its path are in Korean when the window is Korean", 
   await expect(page.getByTestId("graph-problems")).toContainText("서로를 기다려서")
   await expect(page.getByTestId("check-path-line").first()).toHaveText("노드 1 “Draft” 실행")
   await shot(page, "w7-04-problem-ko")
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-check")).toHaveText("검사: 문제 발견")
   await app.close()
   await mock.close()

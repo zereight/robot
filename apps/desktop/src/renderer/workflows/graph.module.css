@@ -9,6 +9,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* In a narrow centre column the node panel stacks under the canvas. */
+@container centre (max-width: 600px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .main {
   display: flex;
   flex-direction: column;

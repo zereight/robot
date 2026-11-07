@@ -1,4 +1,6 @@
 import {
+  clampPanelWidth,
+  LIST_DOCK_MIN,
   NARROW_WIDTH,
   type Page,
   type PlaceRef,
@@ -77,6 +79,12 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
      * last one; the last tab is what a restart restores (spec 001, 005, 038).
      */
     selectPage: (page: Page) => update(page === "tasks" ? { page, tasksTab: "tasks" } : { page }),
+    /** The workflow list docks beside the centre column (spec 001). Else it is an overlay. */
+    listDocked: () => width() >= LIST_DOCK_MIN,
+    /** The panel column of the studio is open (spec 001). */
+    panelOpen: () => ui.activityPanel,
+    selectPanelOpen: (open: boolean) => update({ activityPanel: open }),
+    selectPanelWidth: (panelWidth: number) => update({ panelWidth: clampPanelWidth(panelWidth) }),
     /** The tab of the Tasks page; it stays after a restart (spec 005, 038). */
     selectTasksTab: (tasksTab: UiState["tasksTab"]) => update({ tasksTab }),
   }

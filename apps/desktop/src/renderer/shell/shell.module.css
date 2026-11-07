@@ -167,6 +167,10 @@
   min-width: 0;
 }
 
+.header [data-problem="true"] {
+  color: var(--c-danger);
+}
+
 .headerSpacer {
   flex: 1;
 }
@@ -187,6 +191,100 @@
 
 .empty p {
   color: var(--c-text-muted);
+}
+
+/* Studio: the workflow list, the centre column and the panel column (spec 001). */
+.studio {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) auto;
+}
+
+.studio[data-list="overlay"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.studio[data-panel="closed"] {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.studio[data-list="overlay"][data-panel="closed"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.studioList {
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.studioCentre {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.studioPanel {
+  position: relative;
+  border-left: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 12px;
+}
+
+.studioHandle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  margin: 0;
+  border: 0;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+/* A wide panel never takes the room of the centre column: 300 px stay. Rail 72, list 280. */
+.studio[data-list="docked"] .studioPanel[data-overlay="false"] {
+  max-width: calc(100vw - 652px);
+}
+
+.studio[data-list="overlay"] .studioPanel[data-overlay="false"] {
+  max-width: calc(100vw - 372px);
+}
+
+.studioList[data-overlay="true"] {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(320px, 84vw);
+  z-index: 6;
+  background: var(--c-main);
+}
+
+.studioPanel[data-overlay="true"] {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: min(400px, 92vw);
+  z-index: 6;
+  background: var(--c-main);
+}
+
+.studioBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: rgb(0 0 0 / 0.45);
 }
 
 /* Pages */
