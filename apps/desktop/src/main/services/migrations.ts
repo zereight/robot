@@ -569,4 +569,16 @@ export const migrations: readonly string[] = [
   -- The workflow that held the file, for a step that a claim refused (spec 025, "States").
   ALTER TABLE action_log ADD COLUMN holder TEXT;
   `,
+  `
+  -- "Mark as unread" (spec 003). The place that the user marked in the chat of a workflow: the
+  -- message, and its time for the case that an edit removed the message. The unread replies are
+  -- that reply and every later reply. The row goes when the chat shows its latest message. It stays
+  -- on this computer. Natural unread counts (a reply that ends while the chat is shut) are not kept
+  -- here (docs/spec-questions.md, rows for B4).
+  CREATE TABLE chat_unread (
+    workflow_id TEXT PRIMARY KEY REFERENCES workflow (id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  `,
 ]

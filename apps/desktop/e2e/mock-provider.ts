@@ -50,6 +50,8 @@ const text = (content: unknown) =>
  * - `tool-hold <name> <json>`: the same, but the answer waits until the test calls `release()`, so the
  *   test can change something in the app while the turn works;
  * - `tools <n> <name> <json>`: the same call n times in a row, then "Tool said: ...";
+ * - `split <n> <name> <json>`: the same call n times in a row, with a short text before each call
+ *   ("Step 1."), then "Tool said: ...", so the reply has a text between its steps;
  * - the turn after a run (a message that starts "The run <id> has ended."): one call of the tool that a
  *   line `PROPOSE:<name> <json>` in the facts of the run names, when there is one;
  * - `[[fail]]`: a server error, always. `[[flaky]]`: a server error for the first two requests with the
@@ -108,6 +110,24 @@ export const startMockProvider = async (): Promise<MockProvider> => {
       }
       const first = body.messages.find((m) => m.role === "user")
       const firstSaid = text(first?.content)
+      const split = /^split (\d+) (\w+)\s*(.*)$/s.exec(firstSaid)
+      if (split) {
+        const done = body.messages.filter((m) => m.role === "tool").length
+        if (done < Number(split[1])) {
+          send({ content: `Step ${done + 1}. ` })
+          send({
+            tool_calls: [
+              {
+                index: 0,
+                id: `call-${requests.length}`,
+                function: { name: split[2], arguments: split[3] || "{}" },
+              },
+            ],
+          })
+        } else send({ content: `Tool said: ${said}` })
+        finish()
+        return
+      }
       const many = /^tools (\d+) (\w+)\s*(.*)$/s.exec(firstSaid)
       if (many) {
         const done = body.messages.filter((m) => m.role === "tool").length

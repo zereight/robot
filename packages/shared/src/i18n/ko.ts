@@ -42,6 +42,9 @@ export const ko: Record<MessageKey, string> = {
   "settings.reduceMotion.system": "시스템 설정 따르기",
   "settings.reduceMotion.on": "켜기",
   "settings.reduceMotion.off": "끄기",
+  "settings.showToolSteps": "도구 단계 표시",
+  "settings.showToolSteps.hint":
+    "끄면 채팅이 끝난 일반 도구 단계를 연속된 묶음마다 개수가 적힌 한 줄로 접어요.",
 
   "settings.data.folder": "데이터 폴더",
   "settings.data.open": "폴더 열기",
@@ -62,17 +65,16 @@ export const ko: Record<MessageKey, string> = {
   "page.help": "도움말",
   "page.settings": "설정",
 
-  "nav.back": "이전",
-  "nav.forward": "다음",
-
   "main.noServer.title": "아직 서버가 없어요",
   "main.noServer.body": "서버는 에이전트를 실행하는 컴퓨터예요. 서버를 추가해서 시작하세요.",
 
   "help.shortcuts": "키보드 단축키",
-  "help.shortcut.search": "장소 검색",
-  "help.shortcut.move": "장소 사이 이동",
-  "help.shortcut.open": "선택한 장소 열기",
-  "help.shortcut.clear": "검색 지우기",
+  "help.shortcut.find": "채팅에서 찾기",
+  "help.shortcut.send": "메시지 보내기",
+  "help.shortcut.newline": "메시지에서 줄 바꾸기",
+  "help.shortcut.findNext": "찾기 창에서 다음 결과",
+  "help.shortcut.findPrevious": "찾기 창에서 이전 결과",
+  "help.shortcut.findClose": "찾기 창 닫기",
 
   "error.workspace_failed": "작업 폴더를 만들지 못했어요.",
   "error.invalid_input": "올바르지 않은 값이 있어요.",
@@ -892,6 +894,11 @@ export const ko: Record<MessageKey, string> = {
   "error.message_empty": "메시지를 쓰거나 파일을 첨부해 주세요.",
   "error.queue_full": "메시지 10개가 대기 중이에요. 하나를 지우거나 기다려 주세요.",
   "error.message_read": "담당 문서가 이미 이 메시지를 읽었어요.",
+  "error.edit_working": "답이 끝날 때까지 기다린 뒤 메시지를 고치세요.",
+  "error.edit_not_last": "마지막 메시지만 고칠 수 있어요.",
+  "error.edit_steps_ran":
+    "이 메시지 뒤에 담당 문서가 단계를 실행했어요. 이 메시지는 더 이상 고칠 수 없어요.",
+  "error.mark_not_reply": "끝난 답만 읽지 않음으로 표시할 수 있어요.",
   "error.run_ended": "이 실행은 끝났어요. 피드백을 더할 수 없어요.",
   "permissions.log.kind.feedback": "실행에 피드백",
   "permissions.log.kind.change": "워크플로우 변경",
@@ -1064,6 +1071,12 @@ export const ko: Record<MessageKey, string> = {
   "chat.queue": "대기 중인 메시지",
   "chat.sendNow": "지금 보내기",
   "chat.edit": "고치기",
+  "chat.edit.label": "메시지 고치기",
+  "chat.edit.save": "저장하고 다시 묻기",
+  "chat.edit.cancel": "취소",
+  "chat.markUnread": "읽지 않음으로 표시",
+  "chat.unread": "읽지 않음 {count}개",
+  "chat.unread.go": "처음 읽지 않은 답으로 이동",
   "chat.remove": "지우기",
   "chat.replyingTo": "답장 대상:",
   "chat.cancelReply": "답장 취소",
