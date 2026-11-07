@@ -16,6 +16,8 @@ export const createRunsState = (workflowId: () => string) => {
   )
   /** The runs that work, wait or queue, oldest first. */
   const active = () => (runs() ?? []).filter((r) => r.finishedAt === null).reverse()
+  /** True while a run really works. A run that waits for the user or in the queue does not. */
+  const working = () => active().some((r) => r.state === "running")
   /**
    * The numbers of the nodes that work now in the runs that are not final (specs/039: the canvas
    * shows a spinner on each). A node that waits for the user or in the queue does not work.
@@ -39,5 +41,5 @@ export const createRunsState = (workflowId: () => string) => {
       },
     )
   })
-  return { runs, refetch, active, runningNodes }
+  return { runs, refetch, active, working, runningNodes }
 }

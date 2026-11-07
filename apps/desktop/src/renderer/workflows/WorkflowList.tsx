@@ -37,7 +37,7 @@ const Card = (props: { flow: Workflow }) => {
           onClick={() => ui.selectPlace({ kind: "workflow", id: props.flow.id })}
         >
           <span class={styles.name}>{props.flow.name}</span>
-          <Show when={props.flow.running}>
+          <Show when={props.flow.working}>
             <Spinner testId="workflow-card-spinner" />
           </Show>
         </button>

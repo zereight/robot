@@ -234,6 +234,7 @@ export const GraphEditor = (props: {
     const line = marks().lines.get(n.id)
     return [
       t("graph.node.aria", { number: n.number, name: n.name }),
+      ...(working(n) ? [t("workflows.run.state.running")] : []),
       ...(line === undefined ? [] : [t("check.marked", { line })]),
       ...(hasProblem(n) ? [t("check.marked.problem", { line: line ?? 0 })] : []),
     ].join(". ")

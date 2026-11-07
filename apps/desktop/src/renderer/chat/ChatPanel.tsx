@@ -110,7 +110,7 @@ const AnswerHeader = (props: {
     <>
       <div class={styles.head}>
         <Show when={props.running}>
-          <Spinner testId="chat-spinner" />
+          <Spinner testId="chat-spinner" label={t("workflows.run.state.running")} />
         </Show>
         <label for="chat-model">{t("chat.model.label")}</label>
         <select

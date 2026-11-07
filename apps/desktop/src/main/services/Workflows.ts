@@ -279,6 +279,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             )?.n ?? 0,
           nodeCount: nodeCount(r.id),
           running: checkIdle(r.id) !== null,
+          working:
+            db.get(
+              "SELECT 1 FROM run WHERE workflow_id = ? AND finished_at IS NULL AND state = 'running'",
+              r.id,
+            ) !== undefined,
           lastRun: last ? { state: last.state, startedAt: last.started_at } : null,
           check: checkStateOf(readStoredCheck(db, r.id, graph)),
           createdAt: r.created_at,

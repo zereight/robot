@@ -197,7 +197,7 @@ export const WorkflowView = (props: { id: string }) => {
             not take the focus out of the box of the chat. */}
         <Show when={loaded()}>
           <aside class={styles.chatColumn}>
-            <ChatPanel workflowId={props.id} running={runs.active().length > 0} />
+            <ChatPanel workflowId={props.id} running={runs.working()} />
           </aside>
         </Show>
       </div>

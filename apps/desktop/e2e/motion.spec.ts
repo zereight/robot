@@ -56,6 +56,14 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await expect(page.getByTestId("graph-node-running")).toBeVisible()
   await expect(page.getByTestId("chat-spinner")).toBeVisible()
+  // The spinners have a text alternative, as the app shows the state in words (specs/039).
+  await expect(page.getByTestId("chat-spinner")).toHaveText("Running")
+  await expect(page.getByTestId("graph-node").first()).toHaveAttribute("aria-label", /Running/)
+  // A chat turn that works shows the pulse of the working mark.
+  await page.getByTestId("chat-input").fill("[[hang]]")
+  await page.getByTestId("chat-input").press("Enter")
+  await expect(page.getByTestId("working-line")).toBeVisible()
+  await expect(page.getByTestId("working-line").getByTestId("work-mark")).toBeVisible()
   await page.getByTestId("tab-runs").click()
   await page.getByTestId("runs-list").locator("button").first().click()
   await expect(page.getByTestId("run-node-state-1")).toHaveText("Running")
@@ -76,6 +84,7 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   // pulse is slower than the spinner, and no other motion loops.
   const everything = await loops(page)
   const pulses = everything.filter((l) => l.name.includes("pulse"))
+  expect(pulses.length, "the chat working mark pulses").toBeGreaterThanOrEqual(1)
   for (const p of pulses) expect(p.duration).toBeGreaterThan(spinPeriod)
   expect(new Set(pulses.map((p) => p.duration)).size).toBeLessThanOrEqual(1)
   const strange = everything.filter((l) => !l.name.includes("spin") && !l.name.includes("pulse"))
@@ -90,6 +99,10 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   await expect.poll(() => loops(page)).toEqual([])
   await expect(page.getByTestId("graph-node-running")).toBeVisible()
   await expect(page.getByTestId("chat-spinner")).toBeVisible()
+  await expect(page.getByTestId("working-line").getByTestId("work-mark")).toBeVisible()
+  // The words stay with reduce motion on: the mark is still, and it still says "Running".
+  await expect(page.getByTestId("chat-spinner")).toHaveText("Running")
+  await expect(page.getByTestId("graph-node").first()).toHaveAttribute("aria-label", /Running/)
   await shot(page, "motion-02-still")
 
   // Off again: they move again, in the same window.
@@ -109,6 +122,24 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   await expect(page.locator("html")).toHaveAttribute("data-reduce-motion", "false")
   await expect.poll(async () => (await loops(page)).length).toBeGreaterThanOrEqual(2)
 
+  await app.close()
+  await mock.close()
+})
+
+test('motion: the spinners say "Running" in Korean too, with reduce motion on', async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  await resizeWindow(app, 1200, 800)
+  await page.getByTestId("new-workflow-empty").click()
+  await page.getByTestId("new-workflow-name").fill("반복")
+  await page.getByTestId("new-workflow-name").press("Enter")
+  await expect(page.getByTestId("chat")).toBeVisible()
+  await setReduceMotion(page, "on")
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
+  await expect(page.getByTestId("graph-node-running")).toBeVisible()
+  await expect(page.getByTestId("chat-spinner")).toHaveText("실행 중")
+  await expect(page.getByTestId("graph-node").first()).toHaveAttribute("aria-label", /실행 중/)
+  await expect.poll(() => loops(page)).toEqual([])
   await app.close()
   await mock.close()
 })
@@ -169,6 +200,9 @@ test("motion: a motion that ends takes under 300 ms, and a dialog leaves with an
   // Reduce motion: the exit is at once, and no motion has a length.
   await setReduceMotion(page, "on")
   await expect(page.locator("html")).toHaveAttribute("data-reduce-motion", "true")
+  // A transition that started before the switch (for example the exit of the first dialog) may
+  // still run for 120 ms. Wait for it to end, then count only what starts after the switch.
+  await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0)
   await page.evaluate(() => {
     ;(window as unknown as { __motion: unknown[] }).__motion.length = 0
   })

@@ -527,7 +527,33 @@ describe("the facts of a card of the list (spec 001)", () => {
     expect(card?.id).toBe(flow.id)
     expect(card?.lastRun).toBeNull()
     expect(card?.running).toBe(false)
+    expect(card?.working).toBe(false)
     expect(card?.check).toBe("not_checked")
+  })
+
+  test("a run that waits for the user or in the queue locks the editor but does not work (spec 039)", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const card = async () => (await t.w((x) => x.list(t.server.id)))[0]
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', 1)",
+      flow.id,
+    )
+    expect(await card()).toMatchObject({ running: true, working: true })
+    // A run parked on an approval card.
+    await t.sql("UPDATE run SET state = 'waiting' WHERE id = 'r1'")
+    expect(await card()).toMatchObject({ running: true, working: false })
+    // The step goes on after the answer.
+    await t.sql("UPDATE run SET state = 'running' WHERE id = 'r1'")
+    expect(await card()).toMatchObject({ running: true, working: true })
+    // A run in the queue.
+    await t.sql("UPDATE run SET state = 'queued' WHERE id = 'r1'")
+    expect(await card()).toMatchObject({ running: true, working: false })
+    // The detail has the same two flags as the card.
+    expect(await t.w((x) => x.get(flow.id))).toMatchObject({ running: true, working: false })
+    // An ended run does neither.
+    await t.sql("UPDATE run SET state = 'done', finished_at = 2 WHERE id = 'r1'")
+    expect(await card()).toMatchObject({ running: false, working: false })
   })
 
   test("the last run and the running mark follow the runs", async () => {
@@ -544,6 +570,7 @@ describe("the facts of a card of the list (spec 001)", () => {
     const [card] = await t.w((x) => x.list(t.server.id))
     expect(card?.lastRun).toEqual({ state: "running", startedAt: 300 })
     expect(card?.running).toBe(true)
+    expect(card?.working).toBe(true)
     await t.sql("UPDATE run SET state = 'done', finished_at = 400 WHERE id = 'r2'")
     const [after] = await t.w((x) => x.list(t.server.id))
     expect(after?.lastRun).toEqual({ state: "done", startedAt: 300 })

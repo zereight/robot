@@ -269,13 +269,23 @@ describe("looping motion (specs/039)", () => {
   }
 
   const all = blocks()
-  const loops = all.filter((b) => /(?:^|[;\s])animation\s*:[^;]*\binfinite\b/.test(b.body))
+  // The shorthand (`animation: x 1s infinite`) and the longhand (`animation-iteration-count`).
+  const isLoop = (body: string) =>
+    /(?:^|[;\s])animation(?:-iteration-count)?\s*:[^;]*\binfinite\b/.test(body)
+  const loops = all.filter((b) => isLoop(b.body))
   const period = (name: string) => {
     const css = readFileSync(join(root, "styles/motion.css"), "utf8")
     const found = css.match(new RegExp(`${name}:\\s*([0-9.]+)ms`))
     if (!found) throw new Error(`${name} is missing from motion.css`)
     return Number.parseFloat(found[1] as string)
   }
+
+  test("the finder of loops sees the shorthand and the longhand", () => {
+    expect(isLoop("animation: spin 1s linear infinite;")).toBe(true)
+    expect(isLoop("animation-name: spin; animation-iteration-count: infinite;")).toBe(true)
+    expect(isLoop("animation-iteration-count: 2;")).toBe(false)
+    expect(isLoop("animation: fade 1s both;")).toBe(false)
+  })
 
   test("the page has at least one spinner and one pulse", () => {
     expect(loops.some((b) => b.body.includes("var(--motion-spin)"))).toBe(true)
@@ -313,7 +323,7 @@ describe("looping motion (specs/039)", () => {
         (b) =>
           b.file === loop.file &&
           b.selector === `:root[data-reduce-motion="true"] ${loop.selector}` &&
-          /\banimation\s*:\s*none\b/.test(b.body),
+          /(?:^|[;\s])animation(?:-name)?\s*:\s*none\b/.test(b.body),
       )
       if (!stop) missing.push(`${loop.file} ${loop.selector}`)
       else
