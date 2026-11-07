@@ -1,19 +1,11 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
 import { homedir, arch as osArch, release as osRelease, type as osType } from "node:os"
-import { basename, join, join as joinPath } from "node:path"
+import { basename, join } from "node:path"
 import {
-  EVENT_CHANNEL,
-  ISLAND_BAR_WIDTH,
-  ISLAND_CARD_WIDTH,
-  type IslandShape,
-  type IslandWidth,
-  islandBarWidth,
+  BROWSER_LIMITS,
+  type ControlPlace,
   PAGE_INPUT_CHANNEL,
   SCREEN_INPUT_CHANNEL,
-  TEACH_CHANNEL,
-  TEACH_ON_CHANNEL,
-  type TeachEvent,
-  teachEventOf,
 } from "@robot/shared"
 import {
   app,
@@ -30,23 +22,29 @@ import {
   shell,
   WebContentsView,
 } from "electron"
-import { islandBounds, type Notch, notchReader } from "./notch.ts"
 import { appendLog, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
   BrowserActionState,
+  BrowserDialog,
+  BrowserInspect,
   BrowserPage,
+  NavigationPolicy,
   PageBounds,
   PlatformService,
 } from "./services/Platform.ts"
-import { createTeamsSurface, TEAMS_PAGE_KEY, type TeamsSurface } from "./teams/surface.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
 import {
+  PAGE_WORLD_ID,
   type PageActAnswer,
+  type PageInspectAnswer,
   type PageReadAnswer,
   type PageStateAnswer,
   pageActScript,
+  pageInspectScript,
   pageReadScript,
+  pageSecureScript,
+  pageSelectScript,
   pageStateScript,
 } from "./web/pageControls.ts"
 import {
@@ -94,6 +92,111 @@ const partitionOf = (agentId: string) => {
   const profile = browserProfiles.get(agentId)
   return profile ? `persist:browser-${profile}` : `persist:agent-${agentId}`
 }
+
+/**
+ * The rule for the addresses of each page that a workflow uses, by the id of its web contents
+ * (spec 007, "Addresses of a web page fetch"). A session is shared by the workflows that use the
+ * same browser profile, so the rule is looked up for each request.
+ */
+interface PageRule {
+  policy: () => NavigationPolicy | undefined
+  /** The page was kept from this address. */
+  blocked: (url: string) => void
+  /** A download that the page started was cancelled. */
+  download: (host: string) => void
+  /**
+   * Whether the page may have a permission of the system (a notification, the location, the
+   * camera, the clipboard). A page of a workflow has none; a page of the app itself names what it
+   * needs.
+   */
+  permit: (permission: string) => boolean
+}
+const pageRules = new Map<number, PageRule>()
+const guardedSessions = new WeakSet<Electron.Session>()
+/**
+ * The sessions that hold a page of a workflow, which has a rule for its addresses. A request that
+ * no page owns (a service worker, a shared worker) has no rule to ask in such a session, so it is
+ * cancelled: the rule is the only thing that keeps a worker of a page from a private address.
+ */
+const strictSessions = new WeakSet<Electron.Session>()
+
+/** The kinds of request that a page may use to run code outside of its own rule. */
+const WORKER_TYPES = new Set(["serviceWorker", "sharedWorker"])
+
+/**
+ * Puts the rule on a session once: every request of a page that has a rule is checked (the first
+ * load, a frame, a script, an image), and so is the target of each redirect. A request that no
+ * page owns is cancelled in a session of a workflow, and so is the script of a service worker or
+ * of a shared worker. A download is cancelled: the browser tools take no file from a page (the open
+ * rows of B9). Every permission is refused unless the page has a rule that names it.
+ */
+const guardSession = (data: Electron.Session) => {
+  if (guardedSessions.has(data)) return
+  guardedSessions.add(data)
+  const allowed = async (details: {
+    webContentsId?: number
+    resourceType?: string
+    url: string
+  }): Promise<boolean> => {
+    const strict = strictSessions.has(data)
+    const id = details.webContentsId
+    const rule = id === undefined ? undefined : pageRules.get(id)
+    if (
+      strict &&
+      (id === undefined || (details.resourceType && WORKER_TYPES.has(details.resourceType)))
+    ) {
+      // The worker has no rule of its own, and the page that started it cannot be told apart.
+      rule?.blocked(details.url)
+      return false
+    }
+    const policy = rule?.policy()
+    if (!rule || !policy) return true
+    const ok = await policy(details.url).catch(() => false)
+    if (!ok) rule.blocked(details.url)
+    return ok
+  }
+  data.webRequest.onBeforeRequest((details, callback) => {
+    void allowed(details).then((ok) => callback({ cancel: !ok }))
+  })
+  data.webRequest.onHeadersReceived((details, callback) => {
+    const headers = details.responseHeaders ?? {}
+    const found = Object.entries(headers).find(([name]) => name.toLowerCase() === "location")
+    const location = Array.isArray(found?.[1]) ? found?.[1][0] : undefined
+    if (details.statusCode < 300 || details.statusCode >= 400 || !location) {
+      callback({})
+      return
+    }
+    let target: string
+    try {
+      target = new URL(location, details.url).href
+    } catch {
+      callback({ cancel: true })
+      return
+    }
+    void allowed({ ...details, url: target }).then((ok) => callback(ok ? {} : { cancel: true }))
+  })
+  data.on("will-download", (event, item, wc) => {
+    const rule = wc ? pageRules.get(wc.id) : undefined
+    if (!rule) return
+    event.preventDefault()
+    item.cancel()
+    rule.download(hostOf(item.getURL()))
+  })
+  // Electron grants every permission that a page asks for, unless the app answers. The app
+  // answers no, for a page without a rule that names the permission, and for a worker.
+  const permitted = (wc: Electron.WebContents | null, permission: string) =>
+    (wc ? pageRules.get(wc.id) : undefined)?.permit(permission) === true
+  data.setPermissionRequestHandler((wc, permission, callback) => {
+    callback(permitted(wc, permission))
+  })
+  data.setPermissionCheckHandler((wc, permission) => permitted(wc, permission))
+  data.setDevicePermissionHandler(() => false)
+  data.setDisplayMediaRequestHandler((_request, callback) => callback(null))
+}
+
+/** The dialog that nobody answers is dismissed after this time. A test may make it shorter. */
+const dialogMs = () =>
+  (isTestRun && Number(process.env.ROBOT_BROWSER_DIALOG_MS)) || BROWSER_LIMITS.dialogMs
 
 /** What each page says about itself for the diagnostic report. */
 const snapshots = new Map<string, () => PageSnapshot>()
@@ -333,7 +436,12 @@ export const setMainWindow = (win: BrowserWindow) => {
  */
 const electronBrowser = (
   agentId: string,
-  options: { fixedLayout?: boolean; log?: DiagWrite } = {},
+  options: {
+    fixedLayout?: boolean
+    log?: DiagWrite
+    /** The permissions of the system that the page may have. Default: none. */
+    permit?: (permission: string) => boolean
+  } = {},
 ): BrowserPage => {
   /** The counts of input and the lines of the log about this page (the diagnostic report). */
   const diag = createInputDiagnostics(options.log ?? (() => {}))
@@ -349,13 +457,18 @@ const electronBrowser = (
   let sized = false
   let userInput = false
   const listeners: (() => void)[] = []
-  /** The recorder of "Teach a task" (spec 017), while it runs. */
-  let recorder: ((event: TeachEvent) => void) | undefined
-  /** Reports the page that shows now, when it is a web page. */
-  const reportPage = (wc: Electron.WebContents) => {
-    const url = wc.getURL()
-    if (recorder && /^https?:\/\//i.test(url)) recorder({ kind: "page", url, title: wc.getTitle() })
-  }
+  /** The rule for the addresses of this page, the hosts it was kept from, and its dialog. */
+  let policy: NavigationPolicy | undefined
+  let blocked: string[] = []
+  let dialogNow: BrowserDialog | null = null
+  let dismissed: BrowserDialog | null = null
+  let dialogTimer: ReturnType<typeof setTimeout> | undefined
+  const dialogWaiters: (() => void)[] = []
+  /** The errors of the page since the last action (up to 20), as the debugger told them. */
+  const pageErrors: string[] = []
+  /** The file input that a chooser belongs to, while a chooser waits. */
+  let chooserNode: number | null = null
+  let cdpReady = false
   const live = () => (view && !view.webContents.isDestroyed() ? view : undefined)
   const need = () => {
     const v = live()
@@ -363,20 +476,122 @@ const electronBrowser = (
     return v.webContents
   }
   const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  /**
+   * Runs a script of the controls in an isolated world: it sees the DOM of the page and none of
+   * its globals, so the page cannot forge what the script reads (`PAGE_WORLD_ID`).
+   */
+  const runIsolated = async <T>(code: string): Promise<T> =>
+    (await need().executeJavaScriptInIsolatedWorld(PAGE_WORLD_ID, [{ code }], true)) as T
   /** The short state after an action: address, title, load, focus and the new errors. */
   const actionState = async (): Promise<BrowserActionState> => {
     const wc = need()
     const url = wc.getURL()
     const title = wc.getTitle()
     const loading = wc.isLoading()
+    const extra = {
+      dialog: dialogNow,
+      chooser: chooserNode !== null,
+      ...(dismissed ? { dismissed } : {}),
+    }
+    dismissed = null
+    // The errors that the debugger told since the last action. Reading them clears them.
+    const errors = pageErrors.splice(0).slice(0, 5)
+    // A dialog blocks the page: no script runs until it is answered.
+    if (extra.dialog) return { url, title, loading, focus: null, errors, ...extra }
     try {
-      const seen = await run<PageStateAnswer>(pageStateScript())
-      return { url, title, loading, focus: seen.focus, errors: seen.errors }
+      const seen = await runIsolated<PageStateAnswer>(pageStateScript())
+      return { url, title, loading, focus: seen.focus, errors, ...extra }
     } catch {
       // The action moved to a new page: the state script has no document yet.
-      return { url, title, loading, focus: null, errors: [] }
+      return { url, title, loading, focus: null, errors, ...extra }
     }
   }
+  /**
+   * The debugger of the page, attached and ready: dialogs of the page come to the app (a dialog
+   * that the app does not see would block the page), and a file chooser does not open a window of
+   * the system. Undefined when the page has none.
+   */
+  const cdp = async () => {
+    const v = live()
+    if (!v) return undefined
+    const dbg = v.webContents.debugger
+    try {
+      if (!dbg.isAttached()) {
+        dbg.attach("1.3")
+        emulated = undefined
+        cdpReady = false
+      }
+    } catch {
+      return undefined
+    }
+    if (!cdpReady) {
+      cdpReady = true
+      try {
+        await dbg.sendCommand("Page.enable")
+        await dbg.sendCommand("Runtime.enable")
+        await dbg.sendCommand("DOM.enable")
+        await dbg.sendCommand("Page.setInterceptFileChooserDialog", { enabled: true })
+      } catch {
+        cdpReady = false
+      }
+    }
+    return dbg
+  }
+  const answerDialogNow = async (accept: boolean, text?: string) => {
+    const dbg = await cdp()
+    if (!dbg || !dialogNow) return false
+    clearTimeout(dialogTimer)
+    dialogNow = null
+    await dbg.sendCommand("Page.handleJavaScriptDialog", {
+      accept,
+      ...(text !== undefined ? { promptText: text } : {}),
+    })
+    return true
+  }
+  /** What the debugger tells: a dialog opens or closes, a file chooser opens. */
+  const onCdp = (_: unknown, method: string, params: Record<string, unknown>) => {
+    if (method === "Page.javascriptDialogOpening") {
+      const kind = String(params.type)
+      dialogNow = {
+        kind: kind === "alert" || kind === "confirm" || kind === "prompt" ? kind : "beforeunload",
+        text: String(params.message ?? ""),
+      }
+      clearTimeout(dialogTimer)
+      // A dialog that nobody answers in time is dismissed, and the node is told (spec 007).
+      dialogTimer = setTimeout(() => {
+        const was = dialogNow
+        void answerDialogNow(false).then((done) => {
+          if (done && was) dismissed = was
+        })
+      }, dialogMs())
+      for (const wake of dialogWaiters.splice(0)) wake()
+    } else if (method === "Page.javascriptDialogClosed") {
+      dialogNow = null
+      clearTimeout(dialogTimer)
+    } else if (method === "Runtime.exceptionThrown") {
+      // A script error or a promise that nobody caught. The page cannot write this list.
+      const details = (params.exceptionDetails ?? {}) as {
+        text?: string
+        exception?: { description?: string }
+      }
+      const message = (details.exception?.description ?? details.text ?? "error").split("\n")[0]
+      if (pageErrors.length < 20) pageErrors.push(String(message).slice(0, 200))
+    } else if (method === "Page.fileChooserOpened") {
+      chooserNode = typeof params.backendNodeId === "number" ? params.backendNodeId : null
+    }
+  }
+  const DIALOG = Symbol("dialog")
+  /** An action that opens a dialog of the page returns at once: the page waits for the answer. */
+  const withDialog = <T>(work: Promise<T>): Promise<T | typeof DIALOG> => {
+    if (dialogNow) return Promise.resolve(DIALOG)
+    return Promise.race([
+      work,
+      new Promise<typeof DIALOG>((resolve) => {
+        dialogWaiters.push(() => resolve(DIALOG))
+      }),
+    ])
+  }
+  const FILE_CHOOSER_WAIT_MS = 80
   /** How much the page is drawn smaller than its own size, in the place that it has now. */
   let scaleNow = 1
   /**
@@ -524,6 +739,13 @@ const electronBrowser = (
     started = false
     emulated = undefined
     userInput = false
+    dialogNow = null
+    dismissed = null
+    clearTimeout(dialogTimer)
+    chooserNode = null
+    cdpReady = false
+    pageErrors.length = 0
+    for (const wake of dialogWaiters.splice(0)) wake()
     const h = host
     host = undefined
     if (h && !h.isDestroyed()) {
@@ -605,7 +827,7 @@ const electronBrowser = (
     const stack = host && !host.isDestroyed() && v ? host.contentView.children : []
     const index = v ? stack.indexOf(v) : -1
     return {
-      page: agentId === TEAMS_PAGE_KEY ? "teams" : "agent",
+      page: "agent",
       open: v !== undefined,
       plain: !fixedLayout,
       userInput,
@@ -636,6 +858,7 @@ const electronBrowser = (
         // such as Teams turn away the `Electron/` token that Electron adds.
         const data = session.fromPartition(partitionOf(agentId))
         data.setUserAgent(pageUserAgent(data.getUserAgent(), app.getName()))
+        guardSession(data)
         const created = new WebContentsView({
           webPreferences: {
             partition: partitionOf(agentId),
@@ -644,24 +867,29 @@ const electronBrowser = (
             nodeIntegration: false,
             // The agent goes on with the page while the user looks at another chat.
             backgroundThrottling: false,
-            // The recorder of "Teach a task". It runs in its own world: the page cannot reach it.
-            preload: join(import.meta.dirname, "../preload/teach.cjs"),
           },
         })
         const wc = created.webContents
-        // The recorder asks at each page whether the app records, and reports the steps of the
-        // user. Only this page talks on these channels.
-        wc.ipc.on(TEACH_ON_CHANNEL, (event) => {
-          event.returnValue = recorder !== undefined
+        // The rule for the addresses of this page: the session asks for it on each request.
+        const wcId = wc.id
+        pageRules.set(wcId, {
+          policy: () => policy,
+          blocked: (url) => {
+            const host = hostOf(url)
+            if (blocked.length < 50) blocked.push(host || url.slice(0, 40))
+            options.log?.("address_blocked", { host })
+          },
+          download: (host) => options.log?.("download_refused", { host }),
+          permit: (permission) => options.permit?.(permission) === true,
         })
-        wc.ipc.on(TEACH_CHANNEL, (_, payload: unknown) => {
-          const step = teachEventOf(payload)
-          if (step && recorder) recorder(step)
+        wc.debugger.on("message", onCdp)
+        // A new document starts with no errors.
+        wc.on("did-start-navigation", (details) => {
+          if (details.isMainFrame && !details.isSameDocument) pageErrors.length = 0
         })
         wc.on("did-finish-load", () => {
           lastHost = hostOf(wc.getURL())
           diag.state("loaded", { host: lastHost })
-          reportPage(wc)
         })
         // A web page is never a handle of the window (see PAGE_NO_DRAG_CSS). The page is counted
         // first, so the report can say what it declared, then its drag areas are cancelled.
@@ -685,9 +913,6 @@ const electronBrowser = (
               // A page that is gone, or that does not answer, has nothing to cancel.
             }
           })()
-        })
-        wc.on("did-navigate-in-page", (_, __, isMainFrame) => {
-          if (isMainFrame) reportPage(wc)
         })
         wc.setWindowOpenHandler(({ url: next }) => {
           if (/^https?:\/\//i.test(next)) wc.loadURL(next).catch(() => {})
@@ -727,11 +952,13 @@ const electronBrowser = (
         // The session of the debugger ends (a tool of the page took it, or the page crashed): the
         // page gets its size again.
         wc.debugger.on("detach", () => {
+          cdpReady = false
           emulated = undefined
           if (view === created && !wc.isDestroyed()) apply()
         })
         // The page can close itself.
         wc.once("destroyed", () => {
+          pageRules.delete(wcId)
           if (view === created) release()
         })
         diag.reset()
@@ -756,6 +983,7 @@ const electronBrowser = (
             emulate(scaleNow)
           }
           started = true
+          await cdp()
         }
         // A debugger that does not answer must not keep the agent from the page.
         await Promise.race([emulating, new Promise((resolve) => setTimeout(resolve, 2_000))])
@@ -794,7 +1022,7 @@ const electronBrowser = (
     },
     read: async () => {
       const wc = need()
-      const seen = await run<PageReadAnswer>(pageReadScript(PAGE_TEXT_MAX))
+      const seen = await runIsolated<PageReadAnswer>(pageReadScript(PAGE_TEXT_MAX))
       return {
         url: wc.getURL(),
         title: wc.getTitle(),
@@ -804,18 +1032,125 @@ const electronBrowser = (
       }
     },
     evaluate: <T>(code: string) => run<T>(code),
-    click: async (target): Promise<BrowserAct> => {
-      const answer = await run<PageActAnswer>(pageActScript("click", target))
+    currentUrl: () => live()?.webContents.getURL() ?? "",
+    click: async (target, expect): Promise<BrowserAct> => {
+      const running = runIsolated<PageActAnswer>(pageActScript("click", target, "", expect))
+      const answer = await withDialog(running)
+      returnFocusSoon()
+      if (answer === DIALOG) {
+        // The page waits for the answer to its dialog, so the script does not end yet.
+        running.catch(() => {})
+        return { ok: true, state: await actionState() }
+      }
+      if (!answer.ok) return answer as BrowserAct
+      // A file chooser opens a moment after the click.
+      await new Promise((resolve) => setTimeout(resolve, FILE_CHOOSER_WAIT_MS))
+      return { ok: true, state: await actionState() }
+    },
+    type: async (target, text, expect): Promise<BrowserAct> => {
+      const running = runIsolated<PageActAnswer>(pageActScript("type", target, text, expect))
+      const answer = await withDialog(running)
+      returnFocusSoon()
+      if (answer === DIALOG) {
+        running.catch(() => {})
+        return { ok: true, state: await actionState() }
+      }
+      if (!answer.ok) return answer as BrowserAct
+      return { ok: true, state: await actionState() }
+    },
+    inspect: async (target): Promise<BrowserInspect> => {
+      const answer = await runIsolated<PageInspectAnswer>(pageInspectScript(target))
+      if (answer.ok && answer.facts)
+        return { ok: true, facts: answer.facts, formHost: answer.formHost ?? null }
+      if (answer.reason === "many" && answer.candidates)
+        return {
+          ok: false,
+          reason: "many",
+          candidates: answer.candidates,
+          total: answer.total ?? answer.candidates.length,
+        }
+      return { ok: false, reason: "none" }
+    },
+    select: async (target, value, expect): Promise<BrowserAct> => {
+      const answer = await runIsolated<PageActAnswer>(pageSelectScript(target, value, expect))
       returnFocusSoon()
       if (!answer.ok) return answer as BrowserAct
       return { ok: true, state: await actionState() }
     },
-    type: async (target, text): Promise<BrowserAct> => {
-      const answer = await run<PageActAnswer>(pageActScript("type", target, text))
-      returnFocusSoon()
-      if (!answer.ok) return answer as BrowserAct
+    screenshot: async () => {
+      const dbg = await cdp()
+      if (dbg) {
+        try {
+          const shot = (await dbg.sendCommand("Page.captureScreenshot", { format: "png" })) as {
+            data: string
+          }
+          return new Uint8Array(Buffer.from(shot.data, "base64"))
+        } catch {
+          // The debugger could not make it: the window makes it below.
+        }
+      }
+      return new Uint8Array((await need().capturePage()).toPNG())
+    },
+    securePlace: async (): Promise<ControlPlace | null> => {
+      const wc = need()
+      if (await runIsolated<boolean>(pageSecureScript())) return { kind: "page" }
+      // A frame of another site can hold the field (spec 007, "Secure fields in frames").
+      for (const frame of wc.mainFrame.framesInSubtree) {
+        if (frame === wc.mainFrame) continue
+        try {
+          if (await frame.executeJavaScript(pageSecureScript(), true)) {
+            let site = frame.url
+            try {
+              site = new URL(frame.url).origin
+            } catch {
+              // The address of the frame is not an address: the card names it as it is.
+            }
+            return { kind: "frame", site }
+          }
+        } catch {
+          // A frame that is gone or does not answer holds nothing to name.
+        }
+      }
+      return null
+    },
+    dialog: () => dialogNow,
+    answerDialog: async (accept, text) => {
+      if (!(await answerDialogNow(accept, text))) return { ok: false }
+      // The page goes on once the dialog is answered; its state is read after that.
+      await new Promise((resolve) => setTimeout(resolve, 30))
       return { ok: true, state: await actionState() }
     },
+    chooserOpen: () => chooserNode !== null,
+    upload: async (paths) => {
+      const node = chooserNode
+      const dbg = await cdp()
+      if (node === null || !dbg) return { ok: false, reason: "no_chooser" }
+      try {
+        await dbg.sendCommand("DOM.setFileInputFiles", { files: paths, backendNodeId: node })
+        chooserNode = null
+        return { ok: true }
+      } catch {
+        return { ok: false, reason: "failed" }
+      }
+    },
+    setPolicy: (next) => {
+      policy = next
+      if (next) {
+        // A page with a rule for its addresses: its session turns strict, and a worker that an
+        // older page left in it goes.
+        const data = session.fromPartition(partitionOf(agentId))
+        if (!strictSessions.has(data)) {
+          strictSessions.add(data)
+          void data.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {})
+        }
+      }
+    },
+    drainBlocked: () => {
+      const list = blocked
+      blocked = []
+      return list
+    },
+    audible: () => live()?.webContents.isCurrentlyAudible() ?? false,
     place: (next) => {
       bounds = next
       apply()
@@ -842,237 +1177,23 @@ const electronBrowser = (
     onClosed: (l) => {
       listeners.push(l)
     },
-    record: (listener) => {
-      const starts = listener !== undefined && recorder === undefined
-      recorder = listener
-      const v = live()
-      if (!v) return
-      v.webContents.send(TEACH_ON_CHANNEL, listener !== undefined)
-      // The page that shows when the recording starts is its first step.
-      if (starts && !v.webContents.isLoading()) reportPage(v.webContents)
-    },
   }
 }
 
+const lowMemoryListeners: (() => void)[] = []
+let memoryTimer: ReturnType<typeof setInterval> | undefined
 /**
- * The bar is wider than the camera notch, so the app mark and the faces sit in the two wings at
- * each side of it. The cards start below the notch. These sizes are where a shape starts. Then
- * the island page measures its content and the window takes that size.
+ * Electron has no event for low memory. The app looks at the free memory of the system every 30
+ * seconds, and a share under 3 % is low. On macOS the system keeps almost no memory free, because
+ * it fills it with the file cache, so the look never says low there (docs/spec-questions.md, B9).
  */
-const ISLAND_SIZE: Record<Exclude<IslandShape, "hidden">, { width: number; height: number }> = {
-  bar: { width: ISLAND_BAR_WIDTH, height: 34 },
-  attention: { width: ISLAND_CARD_WIDTH, height: 204 },
-  result: { width: ISLAND_CARD_WIDTH, height: 132 },
-}
-/** The window never gets a size outside this, whatever the page asks for. */
-const ISLAND_LIMIT = { width: [120, 960], height: [20, 560] } as const
-let island: BrowserWindow | undefined
-let islandShapeNow: IslandShape = "hidden"
-/** Where the camera notch of the screen is, or null when the screen has none (spec 015). */
-let islandNotch: Notch | null = null
-
-/** The width of the bar on the screen that shows now: the notch plus a wing at each side. */
-const islandBarWidthNow = () => islandBarWidth(islandNotch?.width ?? 0, undefined, islandWidthNow)
-
-/** The width choice of the bar (spec 015, "Island bar width"). */
-let islandWidthNow: IslandWidth = "compact"
-
-/** A new width choice shows at once. A card that is open keeps the width of its content. */
-const setIslandWidth = (width: IslandWidth) => {
-  if (width === islandWidthNow) return
-  const before = islandBarWidthNow()
-  islandWidthNow = width
-  if (!island || island.isDestroyed() || islandShapeNow !== "bar") return
-  const now = island.getBounds()
-  if (now.width === before) placeIsland(island, { width: islandBarWidthNow(), height: now.height })
-}
-
-/**
- * The island is for macOS. A test run has no island unless the test asks for it, on any system,
- * so that an extra window does not change the focus in the other tests.
- */
-const islandAllowed = () =>
-  isTestRun ? Boolean(process.env.ROBOT_FORCE_ISLAND) : process.platform === "darwin"
-
-/** How long the island window takes to move from one size to the next (spec 015). */
-const ISLAND_MOVE_MS = 240
-let islandMove: ReturnType<typeof setInterval> | undefined
-
-const stopIslandMove = () => {
-  if (islandMove) clearInterval(islandMove)
-  islandMove = undefined
-}
-
-/** The same curve as `--ease-out` of the motion tokens. */
-const easeOut = (t: number) => 1 - (1 - t) ** 4
-
-/**
- * Takes the window to its next bounds in small steps, so that the shape does not jump in one
- * frame. The page draws the round corners, and the window is always the size of the shape.
- */
-const moveIsland = (win: BrowserWindow, next: Electron.Rectangle) => {
-  stopIslandMove()
-  const from = win.getBounds()
-  const started = Date.now()
-  islandMove = setInterval(() => {
-    if (win.isDestroyed()) return stopIslandMove()
-    const t = Math.min(1, (Date.now() - started) / ISLAND_MOVE_MS)
-    const k = easeOut(t)
-    const at = (a: number, b: number) => Math.round(a + (b - a) * k)
-    win.setBounds(
-      t === 1
-        ? next
-        : {
-            x: at(from.x, next.x),
-            y: at(from.y, next.y),
-            width: at(from.width, next.width),
-            height: at(from.height, next.height),
-          },
-    )
-    if (t === 1) stopIslandMove()
-  }, 16)
-}
-
-/** Puts the island window at the top centre of the screen, with the size of its content. */
-const placeIsland = (
-  win: BrowserWindow,
-  size: { width: number; height: number },
-  animate = false,
-) => {
-  const next = islandBounds(screen.getPrimaryDisplay(), islandNotch, size)
-  if (animate && win.isVisible()) return moveIsland(win, next)
-  stopIslandMove()
-  const now = win.getBounds()
-  if (
-    now.x !== next.x ||
-    now.y !== next.y ||
-    now.width !== next.width ||
-    now.height !== next.height
-  )
-    win.setBounds(next)
-}
-
-/**
- * The notch of the screen, read once. A screen does not change its notch while the app runs, so
- * the read runs one time and every later caller waits on the same promise. A read that fails
- * leaves null, and the island keeps 340 px (spec 015). A change of the screen (its resolution, or a
- * screen that comes or goes) moves the notch, so that one starts a new read.
- */
-let onceNotch = notchReader()
-
-/** The event that tells the island page where the camera notch is (spec 015). */
-const ISLAND_NOTCH_EVENT = "island.notch"
-
-/** The island windows that got the notch, so that a window is told one time. */
-const windowsToldNotch = new WeakSet<BrowserWindow>()
-
-/** The screen changed: read the notch again, tell the page, and place the window again. */
-const followScreen = () => {
-  onceNotch = notchReader()
-  void onceNotch().then((notch) => {
-    islandNotch = notch
-    const win = island
-    if (!win || win.isDestroyed()) return
-    windowsToldNotch.add(win)
-    win.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, notch)
-    if (islandShapeNow === "hidden") return
-    // The bar takes the width of the new notch. A card keeps its size and only moves.
-    if (islandShapeNow === "bar")
-      placeIsland(win, { width: islandBarWidthNow(), height: win.getBounds().height })
-    else placeIsland(win, win.getBounds())
-  })
-}
-let followingScreen = false
-
-const setIslandShape = (shape: IslandShape) => {
-  if (!islandAllowed()) return
-  if (shape === "hidden") {
-    islandShapeNow = "hidden"
-    island?.hide()
-    return
-  }
-  if (!island || island.isDestroyed()) {
-    island = new BrowserWindow({
-      ...ISLAND_SIZE[shape],
-      frame: false,
-      transparent: true,
-      resizable: false,
-      movable: false,
-      hasShadow: false,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      focusable: false,
-      show: false,
-      // Without this, macOS moves the window down, under the menu bar and the camera notch.
-      enableLargerThanScreen: true,
-      title: "ROBot island",
-      webPreferences: {
-        preload: joinPath(import.meta.dirname, "../preload/index.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    })
-    island.setAlwaysOnTop(true, "screen-saver")
-    // By default this call turns the app into a background program on macOS. The app then loses
-    // its Dock icon and its place in the app switcher, and the user cannot quit it from the Dock.
-    island.setVisibleOnAllWorkspaces(true, {
-      visibleOnFullScreen: true,
-      skipTransformProcessType: true,
-    })
-    const devUrl = process.env.ELECTRON_RENDERER_URL
-    if (devUrl) void island.loadURL(`${devUrl}/island.html`)
-    else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
-    // The page asks for nothing at load: this one event tells it where the notch is. A reload
-    // (a crash of the page, a new build in a development run) must send it again.
-    island.webContents.on("did-finish-load", () => {
-      if (island && !island.isDestroyed())
-        island.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, islandNotch)
-    })
-    islandShapeNow = "hidden"
-  }
-  const win = island
-  const size = (): { width: number; height: number } => ({
-    width: shape === "bar" ? islandBarWidthNow() : ISLAND_SIZE[shape].width,
-    height: ISLAND_SIZE[shape].height,
-  })
-  // A new shape starts at its own size. The page then fits the window to its content.
-  if (shape !== islandShapeNow) placeIsland(win, size())
-  islandShapeNow = shape
-  win.showInactive()
-  // The notch is known a moment after the first shape, because another program reads it. The
-  // page gets it once, so that it can centre each group in a wing, and the bar keeps the width
-  // that the notch needs (spec 015). A card that is open by then keeps the width of its content.
-  void onceNotch().then((notch) => {
-    if (island !== win || win.isDestroyed() || islandShapeNow === "hidden") return
-    // Each window is told one time. The start of the app stores the notch too, and that may come
-    // first, so the stored value says nothing about what this window and its page know.
-    if (windowsToldNotch.has(win)) return
-    windowsToldNotch.add(win)
-    islandNotch = notch
-    win.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, notch)
-    // The window was placed when the notch was not known yet: the bar at 340 px, and the bar or a
-    // card under the menu bar. A card keeps the size of its content, and only its place changes.
-    if (islandShapeNow === "bar") placeIsland(win, size())
-    else placeIsland(win, win.getBounds())
-  })
-}
-
-const fitIsland = (size: { width: number; height: number; animate?: boolean | undefined }) => {
-  if (!island || island.isDestroyed() || islandShapeNow === "hidden") return
-  const clamp = (value: number, [min, max]: readonly [number, number]) =>
-    Math.min(max, Math.max(min, Math.ceil(Number.isFinite(value) ? value : min)))
-  // The bar never gets narrower than the notch needs, whatever the page measures (spec 015). A
-  // card is wider than that, so it keeps the width of its content.
-  const width = islandShapeNow === "bar" ? Math.max(size.width, islandBarWidthNow()) : size.width
-  placeIsland(
-    island,
-    {
-      width: clamp(width, ISLAND_LIMIT.width),
-      height: clamp(size.height, ISLAND_LIMIT.height),
-    },
-    size.animate === true,
-  )
+const watchMemory = () => {
+  if (memoryTimer || process.platform === "darwin") return
+  memoryTimer = setInterval(() => {
+    const info = process.getSystemMemoryInfo()
+    if (info.total > 0 && info.free / info.total < 0.03) for (const l of lowMemoryListeners) l()
+  }, 30_000)
+  memoryTimer.unref()
 }
 
 export const electronPlatform = (): PlatformService => {
@@ -1081,31 +1202,14 @@ export const electronPlatform = (): PlatformService => {
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
   watchApp()
-  // The camera notch is read once, at the start, so that the first bar already has the width that
-  // it needs (spec 015). A read that fails leaves the island at 340 px.
-  if (islandAllowed())
-    void onceNotch().then((notch) => {
-      islandNotch = notch
-    })
-  if (islandAllowed() && !followingScreen) {
-    followingScreen = true
-    screen.on("display-metrics-changed", followScreen)
-    screen.on("display-added", followScreen)
-    screen.on("display-removed", followScreen)
-  }
-  let teamsSurface: TeamsSurface | undefined
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)
     if (known) return known
-    // The Teams page is for the hands of the user (spec 028): it fills its place exactly, with
-    // no fixed layout and no scale, so a click lands where the page shows. An agent keeps the
-    // fixed layout, so its place never changes what the agent reads or where a click lands.
-    const isTeams = agentId === TEAMS_PAGE_KEY
     // The browser log (spec 014) gets the input that the page took or refused, and the changes of
-    // its place. The line says "teams" or "agent", never the id of an agent.
+    // its place. The line never holds the id of a workflow.
     const log: DiagWrite = (event, data) =>
-      appendLog(dataDir, "browser", { event, page: isTeams ? "teams" : "agent", ...data })
-    const page = electronBrowser(agentId, isTeams ? { fixedLayout: false, log } : { log })
+      appendLog(dataDir, "browser", { event, page: "agent", ...data })
+    const page = electronBrowser(agentId, { log })
     browsers.set(agentId, page)
     return page
   }
@@ -1167,32 +1271,6 @@ export const electronPlatform = (): PlatformService => {
       if (isTestRun && process.env.ROBOT_TEST_OPEN_PATH) return process.env.ROBOT_TEST_OPEN_PATH
       const options = {
         filters: [{ name: "ROBot export", extensions: ["zip"] }],
-        properties: ["openFile"] as "openFile"[],
-      }
-      const parent = BrowserWindow.getFocusedWindow()
-      const result = parent
-        ? await dialog.showOpenDialog(parent, options)
-        : await dialog.showOpenDialog(options)
-      return result.canceled ? undefined : result.filePaths[0]
-    },
-    pickAgentFileSave: async (defaultName) => {
-      if (isTestRun && process.env.ROBOT_TEST_AGENT_FILE_SAVE)
-        return process.env.ROBOT_TEST_AGENT_FILE_SAVE
-      const options = {
-        defaultPath: join(app.getPath("documents"), defaultName),
-        filters: [{ name: "ROBot agents", extensions: ["json"] }],
-      }
-      const parent = BrowserWindow.getFocusedWindow()
-      const result = parent
-        ? await dialog.showSaveDialog(parent, options)
-        : await dialog.showSaveDialog(options)
-      return result.canceled ? undefined : result.filePath
-    },
-    pickAgentFile: async () => {
-      if (isTestRun && process.env.ROBOT_TEST_AGENT_FILE_OPEN)
-        return process.env.ROBOT_TEST_AGENT_FILE_OPEN
-      const options = {
-        filters: [{ name: "ROBot agents", extensions: ["json"] }],
         properties: ["openFile"] as "openFile"[],
       }
       const parent = BrowserWindow.getFocusedWindow()
@@ -1323,19 +1401,7 @@ export const electronPlatform = (): PlatformService => {
       mainWindow.show()
       mainWindow.focus()
     },
-    setIslandShape,
-    setIslandWidth,
-    fitIsland,
     browser: pageOf,
-    teams: () => {
-      // The Teams page is a page like the browser of an agent, with a key that no agent has.
-      // A test run can load a stand-in site on this computer in place of Teams, and never reaches
-      // the real Teams.
-      const url = isTestRun ? process.env.ROBOT_TEST_TEAMS_URL : undefined
-      teamsSurface ??= createTeamsSurface(pageOf(TEAMS_PAGE_KEY), url ? { url } : {})
-      return teamsSurface
-    },
-    setTeamsProfile: (profileId) => platformSetBrowserProfile(TEAMS_PAGE_KEY, profileId),
     diagnosticReport: async () => {
       const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
       // The screen measures the boxes of the native pages. A kind of page that has no box on the
@@ -1389,12 +1455,11 @@ export const electronPlatform = (): PlatformService => {
           memoryMB: Math.round(m.memory.workingSetSize / 1024),
         })),
         boxes,
-        // The screen of the app first, then the Teams page, then the pages of the agents.
+        // The screen of the app first, then the pages of the workflows.
         pages: [screenSnapshot(), ...[...snapshots.values()].map((snapshot) => snapshot())],
         logs: [
           { name: "app", lines: readLogTail(dataDir, "app", 100) },
           { name: "browser", lines: readLogTail(dataDir, "browser", 150) },
-          { name: "teams", lines: readLogTail(dataDir, "teams", 60) },
           { name: "channels", lines: readLogTail(dataDir, "channels", 40) },
         ],
       })
@@ -1410,6 +1475,10 @@ export const electronPlatform = (): PlatformService => {
       const data = session.fromPartition(`persist:browser-${profileId}`)
       await data.clearStorageData()
       await data.clearCache()
+    },
+    onLowMemory: (listener) => {
+      lowMemoryListeners.push(listener)
+      watchMemory()
     },
   }
 }

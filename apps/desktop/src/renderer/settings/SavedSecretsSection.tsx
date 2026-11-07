@@ -1,14 +1,13 @@
-import type { Agent, SavedSecret, SecretAuth } from "@robot/shared"
+import type { SavedSecret, SecretAuth } from "@robot/shared"
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
-import { Face } from "../agents/Face.tsx"
-import { formatDateTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import styles from "./settings.module.css"
 
 /**
@@ -18,32 +17,22 @@ import styles from "./settings.module.css"
 export const SavedSecretsSection = () => {
   const app = useApp()
   const { t } = app
-  const ui = useUi()
-  const [agentFilter, setAgentFilter] = createSignal("")
-  const [secrets, { refetch }] = createResource(agentFilter, (agentId) =>
-    call("secrets.list", agentId ? { agentId } : {}),
+  const workflows = useWorkflowList()
+  const [workflowFilter, setWorkflowFilter] = createSignal("")
+  const [secrets, { refetch }] = createResource(workflowFilter, (workflowId) =>
+    call("secrets.list", workflowId ? { workflowId } : {}),
   )
   const [all, { refetch: refetchAll }] = createResource(() => call("secrets.list", {}))
-  const [agents, { refetch: refetchAgents }] = createResource(
-    () => ui.localServer()?.id,
-    async (serverId) => [
-      ...(await call("agents.list", { serverId, archived: false })),
-      ...(await call("agents.list", { serverId, archived: true })),
-    ],
-    { initialValue: [] as readonly Agent[] },
-  )
   onCleanup(
     window.robot.on("secrets.changed", () => {
       void refetch()
       void refetchAll()
     }),
   )
-  onCleanup(window.robot.on("agents.changed", () => void refetchAgents()))
-  const agentOf = (id: string) => agents().find((a) => a.id === id)
-  /** The agents that hold a secret, for the filter. */
+  /** The workflows that hold a secret, for the filter. */
   const owners = createMemo(() => {
-    const ids = [...new Set((all.latest ?? []).map((s) => s.agentId))]
-    return ids.map((id) => ({ id, name: agentOf(id)?.name ?? t("secrets.unknownAgent") }))
+    const ids = [...new Set((all.latest ?? []).map((s) => s.workflowId))]
+    return ids.map((id) => ({ id, name: workflows.byId(id)?.name ?? t("secrets.unknownWorkflow") }))
   })
 
   const [replacing, setReplacing] = createSignal<SavedSecret>()
@@ -80,7 +69,7 @@ export const SavedSecretsSection = () => {
         : t("secret.auth.basic", { user: auth.user })
 
   const row = (s: SavedSecret) => {
-    const agent = () => agentOf(s.agentId)
+    const workflow = () => workflows.byId(s.workflowId)
     return (
       <li
         class={styles.logRow}
@@ -90,10 +79,7 @@ export const SavedSecretsSection = () => {
       >
         <div class={styles.logHead}>
           <span class={styles.secretAgent}>
-            <Show when={agent()}>
-              {(a) => <Face face={a().face} image={a().faceImage} size={20} />}
-            </Show>
-            <span>{agent()?.name ?? t("secrets.unknownAgent")}</span>
+            <span>{workflow()?.name ?? t("secrets.unknownWorkflow")}</span>
           </span>
           <span class={styles.label}>{s.name}</span>
           <Show when={s.valueMissing}>
@@ -171,12 +157,12 @@ export const SavedSecretsSection = () => {
         <Show when={owners().length > 0}>
           <select
             class={styles.select}
-            aria-label={t("secrets.filterAgent")}
-            data-testid="saved-secrets-agent"
-            value={agentFilter()}
-            onChange={(e) => setAgentFilter(e.currentTarget.value)}
+            aria-label={t("secrets.filterWorkflow")}
+            data-testid="saved-secrets-workflow"
+            value={workflowFilter()}
+            onChange={(e) => setWorkflowFilter(e.currentTarget.value)}
           >
-            <option value="">{t("secrets.allAgents")}</option>
+            <option value="">{t("secrets.allWorkflows")}</option>
             <For each={owners()}>{(o) => <option value={o.id}>{o.name}</option>}</For>
           </select>
         </Show>

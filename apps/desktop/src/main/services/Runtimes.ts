@@ -170,12 +170,6 @@ export class Runtimes extends Context.Service<Runtimes, RuntimesService>()("robo
         if (JSON.stringify(before) !== JSON.stringify(next)) {
           bus.emit("runtimes.changed", next)
           bus.emit("providers.changed", {})
-          // An agent on this program stops or starts to work when its state moves (spec 006).
-          if (
-            next.state !== "checking" &&
-            (before.state !== next.state || before.reason !== next.reason)
-          )
-            bus.emit("agents.changed", { serverId: "*" })
         }
         return next
       }

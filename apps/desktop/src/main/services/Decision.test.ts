@@ -225,3 +225,52 @@ describe("logs", () => {
     expect(LOG_MAX_BYTES).toBeGreaterThan(0)
   })
 })
+
+describe("Decision.choose (a decision node, spec 010, 013)", () => {
+  const options = ["Yes", "No"]
+  const call = { question: "Is it good?", options, input: "The text, key sk-secret-1234567890abcd" }
+
+  test("gives the probability of each option and sends the question, the options and the input", async () => {
+    const s = await setup()
+    next = () =>
+      Response.json({
+        answers: {
+          decision: {
+            type: "choice",
+            probabilities: { option_1: 0.8, option_2: 0.2 },
+          },
+        },
+      })
+    const r = await s.run(Decision.use((d) => d.choose(call)))
+    expect(r.probabilities).toEqual([0.8, 0.2])
+    expect(r.reason).toBeNull()
+    const body = JSON.stringify(seen.at(-1)?.body)
+    expect(body).toContain("Is it good?")
+    expect(body).toContain("Yes")
+    expect(body).not.toContain("sk-secret-1234567890abcd")
+  })
+
+  test("off: no probabilities and nothing is sent", async () => {
+    const s = await setup({ on: false })
+    const r = await s.run(Decision.use((d) => d.choose(call)))
+    expect(r).toMatchObject({ probabilities: null, reason: "not_set_up" })
+    expect(seen).toHaveLength(0)
+  })
+
+  test("an answer with a missing or wrong probability is not decided", async () => {
+    const s = await setup()
+    next = () =>
+      Response.json({ answers: { decision: { type: "choice", probabilities: { option_1: 0.9 } } } })
+    expect((await s.run(Decision.use((d) => d.choose(call)))).probabilities).toBeNull()
+    next = () =>
+      Response.json({
+        answers: { decision: { type: "choice", probabilities: { option_1: 2, option_2: 0 } } },
+      })
+    expect((await s.run(Decision.use((d) => d.choose(call)))).probabilities).toBeNull()
+    next = () => Response.json({}, { status: 500 })
+    expect(await s.run(Decision.use((d) => d.choose(call)))).toMatchObject({
+      probabilities: null,
+      reason: "service_error",
+    })
+  })
+})

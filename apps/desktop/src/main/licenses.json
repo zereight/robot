@@ -80,6 +80,11 @@
     "license": "MIT"
   },
   {
+    "name": "tla-ts",
+    "version": "0.0.8",
+    "license": "MIT"
+  },
+  {
     "name": "uqr",
     "version": "0.1.3",
     "license": "MIT"

@@ -21,7 +21,7 @@ const rule = (
   fields: Partial<PermissionRule> & Pick<PermissionRule, "kind" | "text">,
 ): PermissionRule => ({
   id: "r",
-  agentId: "a1",
+  workflowId: "a1",
   detail: null,
   decision: "allow",
   source: "list",
@@ -182,9 +182,9 @@ describe("what the rules say about a step", () => {
 
   test("the rules of an agent and the rules for all agents count, and the rules of others do not", () => {
     const rules = [
-      rule({ id: "mine", kind: "shell", text: "a", agentId: "a1" }),
-      rule({ id: "all", kind: "shell", text: "b", agentId: null }),
-      rule({ id: "other", kind: "shell", text: "c", agentId: "a2" }),
+      rule({ id: "mine", kind: "shell", text: "a", workflowId: "a1" }),
+      rule({ id: "all", kind: "shell", text: "b", workflowId: null }),
+      rule({ id: "other", kind: "shell", text: "c", workflowId: "a2" }),
     ]
     expect(ruleVerdict(rules, "a1", shell("a"), env).kind).toBe("allow")
     expect(ruleVerdict(rules, "a1", shell("b"), env).kind).toBe("allow")
@@ -258,7 +258,10 @@ describe("the order of the decisions", () => {
 
 describe("a rule that the user types", () => {
   const input = (fields: Partial<Parameters<typeof checkRuleInput>[0]> = {}) =>
-    checkRuleInput({ agentId: null, kind: "shell", text: "ls", decision: "allow", ...fields }, "/h")
+    checkRuleInput(
+      { workflowId: null, kind: "shell", text: "ls", decision: "allow", ...fields },
+      "/h",
+    )
 
   test("the match text holds 1 to 500 characters", () => {
     expect(input({ text: "" })).toEqual({ ok: false, code: "rule_text_invalid" })
@@ -326,7 +329,7 @@ describe("a rule that the user types", () => {
   })
 
   test("two rules are the same when agent, kind, text and decision are equal", () => {
-    const a = { agentId: "x", kind: "web", text: "Example.com", detail: null, decision: "allow" }
+    const a = { workflowId: "x", kind: "web", text: "Example.com", detail: null, decision: "allow" }
     const b = { ...a, text: "example.com" }
     expect(ruleSameKey({ ...a, kind: "web", decision: "allow" })).toBe(
       ruleSameKey({ ...b, kind: "web", decision: "allow" }),
@@ -335,7 +338,7 @@ describe("a rule that the user types", () => {
       ruleSameKey({ ...b, kind: "web", decision: "deny" }),
     )
     expect(ruleSameKey({ ...a, kind: "web", decision: "allow" })).not.toBe(
-      ruleSameKey({ ...b, kind: "web", decision: "allow", agentId: null }),
+      ruleSameKey({ ...b, kind: "web", decision: "allow", workflowId: null }),
     )
     // The text of a command depends on the case of letters.
     expect(ruleSameKey({ ...a, kind: "shell", text: "LS", decision: "allow" })).not.toBe(
@@ -347,7 +350,7 @@ describe("a rule that the user types", () => {
 describe("Always allow for this agent", () => {
   test("the rule is not wider than the step on the card", () => {
     expect(ruleInputOfStep("a1", { kind: "shell", command: "npm install left-pad" })).toEqual({
-      agentId: "a1",
+      workflowId: "a1",
       kind: "shell",
       text: "npm install left-pad",
       detail: null,

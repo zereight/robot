@@ -168,6 +168,6 @@ describe("the servers of tests", () => {
 
   test("the scan reaches the test files", () => {
     expect(files(root).length).toBeGreaterThan(100)
-    expect(files(root).some((path) => path.endsWith("teamsHarness.testing.ts"))).toBe(true)
+    expect(files(root).some((path) => path.endsWith("nearby.testing.ts"))).toBe(true)
   })
 })

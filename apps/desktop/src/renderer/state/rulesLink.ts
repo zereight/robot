@@ -1,11 +1,10 @@
 import { createSignal } from "solid-js"
 
 /**
- * A request to show the rules page (spec 007): filtered to one agent (the link in the profile of
- * an agent), or at one rule (a row of the action log). The page reads it and clears it.
+ * A request to show the rules page (spec 007): filtered to one workflow, or at one rule (a row of the action log). The page reads it and clears it.
  */
 export interface RulesTarget {
-  readonly agentId?: string
+  readonly workflowId?: string
   readonly ruleId?: string
 }
 

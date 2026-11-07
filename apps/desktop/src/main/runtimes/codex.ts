@@ -9,7 +9,7 @@ import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { planFromItems } from "./plan.ts"
 import { execute } from "./proc.ts"
-import { spawnProgram } from "./programs.ts"
+import { killProgram, spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
@@ -66,6 +66,11 @@ export const codexArgs = (run: RuntimeRun, staged?: Staged): string[] => {
   ]
   if (run.model !== "default") args.push("-m", run.model)
   if (run.effort) args.push("-c", `model_reasoning_effort="${run.effort}"`)
+  // "Read only" is the sandbox, and the sandbox does not limit an MCP server of the user: the
+  // servers of `config.toml` run with their own rights. An empty table replaces them for this run
+  // (found with Codex 0.31: a server in `config.toml` started without the override, and did not
+  // start with it). The tools of the app come after, as they are the app's own.
+  if (run.permission === "read_only") args.push("-c", "mcp_servers={}")
   if (staged) args.push(...codexBridgeArgs(staged))
   args.push("-")
   return args
@@ -258,7 +263,7 @@ export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       resolve(code)
     }),
   )
-  const stop = () => child.kill()
+  const stop = () => killProgram(child)
   run.signal.addEventListener("abort", stop, { once: true })
   child.stdin.on("error", () => {})
   child.stdin.end(codexPrompt(run))
@@ -288,7 +293,7 @@ export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   } finally {
     run.signal.removeEventListener("abort", stop)
     if (child.exitCode === null) {
-      const timer = setTimeout(stop, 2000)
+      const timer = setTimeout(() => killProgram(child, "SIGKILL"), 2000)
       await exited
       clearTimeout(timer)
     }

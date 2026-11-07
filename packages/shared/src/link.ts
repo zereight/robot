@@ -16,13 +16,7 @@ export * from "@robot/link/wire"
  * The window sends the id of the server with these, and the app sends them over the link.
  */
 export const ROUTED_METHODS = [
-  ...CLIENT_METHODS.filter(
-    (m) =>
-      m !== "server.summary" &&
-      m !== "attachment.upload" &&
-      m !== "attachment.download" &&
-      !m.startsWith("sync."),
-  ),
+  ...CLIENT_METHODS,
   "attachments.save",
   "attachments.picture",
 ] as const
@@ -66,6 +60,11 @@ export interface ModelChoice {
    * no read-only mode of its own. The server refuses the level for such an agent in any case.
    */
   readonly readOnly?: boolean
+  /**
+   * False for a program that cannot be locked to text only by a flag that it enforces. The chat of
+   * a workflow does not offer or use such an account.
+   */
+  readonly chatSafe?: boolean
   readonly models: readonly ModelInfo[]
 }
 

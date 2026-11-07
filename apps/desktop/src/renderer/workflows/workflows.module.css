@@ -1,494 +1,279 @@
-.page,
-.list,
-.editor {
+.page {
+  padding: 24px 32px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  gap: 16px;
+  user-select: text;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text);
+  text-align: left;
+  padding: 0;
+}
+
+.name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.open:hover .meta {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  white-space: nowrap;
+}
+
+.empty {
+  color: var(--c-text-muted);
+  margin: 0;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
 }
 
-/* The page fills the height of the window, so the canvas can use it. */
-.page {
-  flex: 1;
-  min-height: 0;
-}
-
-/* The editor never gets shorter than its content: a small window scrolls the page. */
-.editor {
-  flex: 1 0 auto;
-}
-
-.bar,
-.toolbar,
-.triggerRow,
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.spacer {
-  flex: 1;
-}
-
-.card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+.input {
   border: 1px solid var(--c-border);
   border-radius: var(--radius-s);
   background: var(--c-elevated);
-}
-
-.cardMain {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.hint {
-  color: var(--c-text-muted);
-  font-size: var(--text-xs);
-}
-
-.input,
-.name {
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  background: var(--c-main);
   color: var(--c-text);
-  padding: 6px 8px;
-}
-
-.name {
-  min-width: 200px;
-  font-weight: 600;
-}
-
-.inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scheduleBox {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-basis: 100%;
-}
-
-.banner {
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: var(--radius-s);
-  background: var(--c-selected);
+  padding: 5px 8px;
+  min-width: 260px;
 }
 
 .error {
   color: var(--c-danger);
+  font-size: var(--text-s);
   margin: 0;
 }
 
-/*
- * Canvas, drag handle, side column. The workspace takes all the height that is left in the window.
- * The side column is at least 240px. It leaves 240px to the canvas, when the window has room. The
- * limits are WORKFLOW_SIDE_MIN and WORKFLOW_SIDE_MAX in the shared ui state.
- */
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 6px clamp(
-      240px,
-      var(--side-width, 340px),
-      calc(100% - 246px)
-    );
-  grid-template-rows: minmax(0, 1fr);
-  flex: 1 1 420px;
-  min-height: 420px;
-}
-
-.canvas {
-  position: relative;
-  overflow: hidden;
-  min-height: 0;
+.document {
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: inherit;
+  padding: 12px;
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  background-color: var(--c-main);
-  background-image: radial-gradient(var(--c-border) 1px, transparent 1px);
-  background-size: 20px 20px;
-  touch-action: none;
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
 }
 
-.surface {
-  position: absolute;
-  inset: 0;
-  transform-origin: 0 0;
+.label {
+  font-weight: 600;
+  margin: 0;
 }
 
-.edges {
+.hint {
+  color: var(--c-text-muted);
+  margin: 0;
+  max-width: 62ch;
+}
+
+.hidden {
   position: absolute;
-  left: 0;
-  top: 0;
   width: 1px;
   height: 1px;
-  overflow: visible;
-  pointer-events: none;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.edge {
-  fill: none;
-  stroke: var(--c-text-muted);
-  stroke-width: 2;
-  pointer-events: stroke;
-  cursor: pointer;
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.edge[data-selected="true"] {
-  stroke: var(--c-accent);
-  stroke-width: 3;
-}
-
-.edge[data-draft="true"] {
-  stroke-dasharray: 5 4;
-  pointer-events: none;
-}
-
-.node {
-  position: absolute;
+.card {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  padding: 6px 14px;
-  border: 2px solid var(--c-border);
-  border-radius: 10px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
   background: var(--c-elevated);
-  cursor: grab;
-  user-select: none;
-  box-sizing: border-box;
 }
 
-.node[data-selected="true"] {
-  border-color: var(--c-accent);
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
-.node[data-state="running"] {
-  border-color: var(--c-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 30%, transparent);
-}
-
-.node[data-state="waiting"] {
-  border-color: orange;
-  box-shadow: 0 0 0 3px color-mix(in srgb, orange 30%, transparent);
-}
-
-.node[data-state="done"] {
-  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-elevated));
-}
-
-.node[data-state="failed"] {
-  border-color: var(--c-danger);
-}
-
-.node[data-state="skipped"] {
-  opacity: 0.5;
-}
-
-.nodeKind {
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
   color: var(--c-text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--text-s);
 }
 
-.nodeWarn {
+.facts dd {
+  margin: 0;
+}
+
+.facts [data-problem="true"] {
   color: var(--c-danger);
 }
 
-.nodeName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
+.sectionTitle {
+  font-size: var(--text-m);
+  margin: 0;
 }
 
-.handleIn,
-.handleOut {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--c-text-muted);
-  background: var(--c-main);
-  top: calc(50% - 7px);
+.notice {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-m);
+  background: var(--c-selected);
 }
 
-.handleIn {
-  left: -9px;
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-width: 860px;
 }
 
-.handleOut {
-  right: -9px;
-  cursor: crosshair;
+.textarea {
+  min-height: 260px;
+  resize: vertical;
+  padding: var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  line-height: 1.55;
+  user-select: text;
 }
 
-.yes {
-  top: 11px;
-  border-color: #3a9b57;
-}
-
-.no {
-  top: auto;
-  bottom: 11px;
+.textarea[aria-invalid="true"] {
   border-color: var(--c-danger);
 }
 
-.empty {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  margin: 0;
+.editorBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.count {
   color: var(--c-text-muted);
-  pointer-events: none;
+  font-size: var(--text-s);
 }
 
-/* The handle sits between the canvas and the side column. It is wider to grab than to see. */
-.resizer {
-  cursor: col-resize;
-  background: transparent;
-  touch-action: none;
+.count[data-over="true"] {
+  color: var(--c-danger);
 }
 
-.resizer:hover,
-.resizer:focus-visible {
-  background: var(--c-focus);
-  outline: none;
-}
-
-/* The panel of a node on top, the runs below. Each one scrolls inside its own box. */
-.side {
+.actions {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-  min-height: 0;
-}
-
-.panel {
-  flex: 0 1 auto;
-  max-height: 60%;
-  padding: 10px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  overflow: auto;
-}
-
-.fields,
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field {
-  gap: 4px;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
 }
 
 .history {
   display: flex;
-  flex: 1 1 0;
   flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-  padding: 10px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  overflow: auto;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--c-border);
 }
 
-.historyTitle {
+.versions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
   margin: 0;
-  font-size: var(--text-m);
-}
-
-.runList {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 160px;
-  overflow: auto;
-}
-
-.runRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 4px 8px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  background: var(--c-main);
-  color: var(--c-text);
-  text-align: start;
-}
-
-.runRow[aria-pressed="true"] {
-  border-color: var(--c-accent);
-  background: var(--c-selected);
-}
-
-.runState {
-  margin-inline-start: auto;
-  color: var(--c-text-muted);
-}
-
-.runRow[data-state="failed"] .runState {
-  color: var(--c-danger);
-}
-
-.runDetail {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.stepRun {
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  padding: 4px 8px;
-}
-
-.stepRun summary {
-  display: flex;
-  gap: 8px;
-}
-
-.stepRun pre {
-  margin: 4px 0;
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
-  font-size: var(--text-s);
-  max-height: 200px;
-  overflow: auto;
-}
-
-.nodeNumber {
-  position: absolute;
-  top: -9px;
-  left: -9px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  border: 1px solid var(--c-border);
-  background: var(--c-main);
-  color: var(--c-text-muted);
-  font-size: var(--text-xs);
-  line-height: 18px;
-  text-align: center;
-}
-
-.note {
-  position: absolute;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-s);
-  cursor: grab;
-  user-select: none;
-  box-sizing: border-box;
-  color: var(--c-text);
-  background: color-mix(in srgb, var(--note-tone, var(--c-border)) 22%, var(--c-elevated));
-  border-color: color-mix(in srgb, var(--note-tone, var(--c-border)) 55%, var(--c-border));
-}
-
-.note[data-tone="yellow"] {
-  --note-tone: #e0b400;
-}
-
-.note[data-tone="blue"] {
-  --note-tone: #3b82f6;
-}
-
-.note[data-tone="green"] {
-  --note-tone: #22a55b;
-}
-
-.note[data-tone="pink"] {
-  --note-tone: #e0558f;
-}
-
-.note[data-selected="true"] {
-  outline: 2px solid var(--c-accent);
-}
-
-.noteText {
-  display: block;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 180px;
-  overflow: hidden;
-}
-
-.noteText[data-empty="true"] {
-  color: var(--c-text-muted);
-}
-
-.fields .hint {
-  display: block;
-}
-
-/* An item that the profile of an agent asks for lights up for a moment. */
-.card[data-flash="true"] {
-  background: var(--c-selected);
-}
-
-.diagram {
-  margin: 0;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--c-text);
-  background: var(--c-main);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  padding: 8px;
-  max-height: 240px;
-}
-
-/* The row "Workflows" of the profile of an agent (spec 002): the workflows that the agent owns. */
-.ownedField {
-  border: 0;
   padding: 0;
-  margin: 0;
-  min-width: 0;
+  list-style: none;
 }
-.ownedRow {
+
+.version {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-}
-.ownedChip {
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-m);
   background: var(--c-elevated);
-  color: var(--c-text);
-  padding: 2px 8px;
-  font: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  transition: background var(--motion-fast) var(--ease-out);
 }
-.ownedChip:hover {
-  background: var(--c-hover);
+
+.versionTime {
+  margin-right: var(--spacing-md);
 }
-.ownedChip:focus-visible {
-  outline: 2px solid var(--c-focus);
-  outline-offset: 1px;
+
+.versionSource {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.versionView {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* The open workflow: the canvas and the editors, and beside them the chat (spec 001). */
+.split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+}
+
+.split[data-narrow="true"] {
+  grid-template-columns: minmax(0, 1fr);
+  overflow-y: auto;
+}
+
+.splitMain {
+  padding: 24px 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  user-select: text;
+}
+
+.chatColumn {
+  min-height: 0;
+  padding: 16px 16px 16px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.split[data-narrow="true"] .chatColumn {
+  min-height: 480px;
+  padding: 0 16px 16px;
 }

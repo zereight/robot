@@ -153,31 +153,6 @@ export const connectMock = async (page: Page, baseUrl: string, apiKey: string, n
 }
 
 /**
- * Sets the role line of the open agent form through the role field (spec 002, "Role label"): opens
- * the list, types the role, and presses Enter on the marked choice. A role that a listed role
- * equals (ignoring case) gets the spelling of the list. The list closes at the end.
- */
-export const pickRole = async (page: Page, role: string) => {
-  await page.getByTestId("agent-role-open").or(page.getByTestId("agent-role-chip")).click()
-  const filter = page.getByTestId("agent-role-filter")
-  await filter.fill(role)
-  await filter.press("Enter")
-  await page.getByTestId("agent-role-list").waitFor({ state: "detached" })
-}
-
-/** Creates an agent with the first model of the first account. */
-export const createAgent = async (page: Page, name: string) => {
-  await page.getByTestId("new-agent").click()
-  await page.getByTestId("agent-name").fill(name)
-  await page.getByTestId("model-model").waitFor()
-  await page.getByTestId("agent-submit").click()
-  await page.getByTestId("chat-start").filter({ hasText: name }).waitFor()
-  // The box of the form plays an exit motion first. A test that goes on at once can meet the box
-  // twice: it holds the same controls as the next box (for example the one that picks a model).
-  await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
-}
-
-/**
  * Records the window with the Chrome DevTools screencast. `stop` writes `<name>.mp4` and
  * `<name>.gif` under build/e2e/videos when ffmpeg is on PATH; the frames stay otherwise.
  */
@@ -241,4 +216,115 @@ export const startRecording = async (page: Page, name: string) => {
     ])
     rmSync(framesDir, { recursive: true, force: true })
   }
+}
+
+/** The page side of a call to the main process, for a test that needs data the screens cannot make. */
+type Invoke = (method: string, input?: unknown) => Promise<{ ok: boolean; value?: unknown }>
+
+export interface NodeSpec {
+  readonly kind?: "text" | "decision"
+  readonly name: string
+  readonly prompt?: string
+  readonly permission?: string | null
+  readonly continueOnFailure?: boolean
+  /** A decision node: the labels of the options. */
+  readonly options?: readonly string[]
+}
+
+export interface FlowSpec {
+  readonly provider: { openaiUrl: string; key: string }
+  /** The permission level of the workflow. The app starts at "Ask for risky steps". */
+  readonly level?: string
+  readonly nodes: readonly NodeSpec[]
+  /** `[from, to, option]`: indexes into `nodes`; `option` is the index of the option of a decision node. */
+  readonly edges?: readonly (readonly [number, number, number?])[]
+}
+
+/**
+ * Makes the nodes and connections of the first workflow of the open app, and the account of the
+ * stand-in provider, with the same calls as the window. It returns the id of the workflow.
+ */
+export const buildFlow = async (page: Page, spec: FlowSpec) =>
+  page.evaluate(async (spec) => {
+    const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+    const call = async (method: string, input?: unknown) => {
+      const result = await invoke(method, input)
+      if (!result.ok) throw new Error(`${method}: ${JSON.stringify(result)}`)
+      return result.value as never
+    }
+    const servers = (await call("servers.list")) as { id: string; kind: string }[]
+    const server = servers.find((s) => s.kind === "local")
+    const flows = (await call("workflows.list", { serverId: server?.id })) as { id: string }[]
+    const flow = flows[0]
+    let accounts = (await call("providers.list")) as { id: string }[]
+    if (accounts.length === 0) {
+      await call("providers.connect", {
+        kind: "openai",
+        name: "Mock",
+        baseUrl: spec.provider.openaiUrl,
+        apiKey: spec.provider.key,
+      })
+      accounts = (await call("providers.list")) as { id: string }[]
+    }
+    if (spec.level) await call("workflows.setPermission", { id: flow?.id, level: spec.level })
+    type Made = { id: string; options: { id: string }[] }
+    const made: Made[] = []
+    for (const [index, n] of spec.nodes.entries()) {
+      const node = (await call("workflows.node.add", {
+        workflowId: flow?.id,
+        node: {
+          kind: n.kind ?? "text",
+          name: n.name,
+          // The grid of the editor (GraphEditor `placeFor`), so that the nodes do not stack.
+          x: 24 + (index % 4) * 216,
+          y: 24 + Math.floor(index / 4) * 120,
+          ...(n.kind === "decision"
+            ? { question: "Which way?", threshold: 0.9, options: n.options ?? ["Yes", "No"] }
+            : {
+                prompt: n.prompt ?? "",
+                accountId: accounts[0]?.id,
+                model: "mock-fast",
+                ...(n.permission !== undefined ? { permission: n.permission } : {}),
+                ...(n.continueOnFailure ? { continueOnFailure: true } : {}),
+              }),
+        },
+      })) as Made
+      made.push(node)
+    }
+    for (const [from, to, option] of spec.edges ?? []) {
+      const optionId = option === undefined ? null : (made[from]?.options[option]?.id ?? null)
+      await call("workflows.connect", {
+        workflowId: flow?.id,
+        from: made[from]?.id,
+        to: made[to]?.id,
+        optionId,
+      })
+    }
+    return flow?.id ?? ""
+  }, spec)
+
+/** Starts a run through the same call as the Run button. */
+export const startRunCall = async (page: Page, workflowId: string, trigger?: string) =>
+  page.evaluate(
+    async ({ workflowId, trigger }) => {
+      const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+      const result = await invoke("runs.start", { workflowId, ...(trigger ? { trigger } : {}) })
+      if (!result.ok) throw new Error(JSON.stringify(result))
+      return (result.value as { id: string }).id
+    },
+    { workflowId, trigger },
+  )
+
+/**
+ * Starts a real run that works until the test ends: one text node on the stand-in provider that
+ * never answers (`[[hang]]`). The app has the account, the node and the run, as a user would make
+ * them.
+ */
+export const startHangingRun = async (
+  page: Page,
+  provider: { openaiUrl: string; key: string },
+  prompt = "[[hang]]",
+) => {
+  const workflowId = await buildFlow(page, { provider, nodes: [{ name: "Work", prompt }] })
+  return startRunCall(page, workflowId)
 }

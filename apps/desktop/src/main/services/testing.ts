@@ -1,18 +1,25 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { TeachEvent } from "@robot/shared"
+import type { ControlExpect } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
-import { FakeChat } from "../teams/fakeChat.testing.ts"
 import { PAGE_CONTROLS_MAX } from "../web/pageControls.ts"
 import type { ConnectionsOptions } from "./Connections.ts"
-import type { BrowserAct, BrowserPage, PlatformService } from "./Platform.ts"
+import type {
+  BrowserAct,
+  BrowserActionState,
+  BrowserDialog,
+  BrowserInspect,
+  BrowserPage,
+  NavigationPolicy,
+  PlatformService,
+} from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
-import { fakeClock } from "./silence.testing.ts"
+import type { WorkflowCheckOptions } from "./WorkflowCheck.ts"
 
 /** One control of a fake page: the selector it answers, and its line in the read list. */
 export interface FakeBrowserControl {
@@ -21,6 +28,22 @@ export interface FakeBrowserControl {
   label: string
   x: number
   y: number
+  /** The control submits a form with this method (lower case). */
+  submit?: { method: string; host?: string }
+  /** A password, a code or a card field. */
+  secure?: boolean
+  /** A click opens this dialog; the click returns while it waits. */
+  opens?: BrowserDialog
+  /** A click opens a file chooser. */
+  chooser?: boolean
+  /** A click goes to this address, as a link does. */
+  goes?: string
+  /** A select field: the options a choice may name. */
+  options?: string[]
+  /** The tag of the element. Default: `a` for a link, `input` for a box, else `button`. */
+  tag?: string
+  /** A plain link, as the page proves it. Default: true for a link. */
+  plain?: boolean
 }
 
 /** What a test puts on a fake page before the agent acts: its controls, focus, errors, load. */
@@ -29,41 +52,45 @@ export interface FakeBrowserSeed {
   focus?: string | null
   errors?: string[]
   loading?: boolean
+  /** The text of the page. Default: "Text of <address>". */
+  text?: string
+  title?: string
+  /** An address that redirects to another one, as a server does: `from -> to`. */
+  redirects?: Record<string, string>
+  /** The page shows a password field in the page itself, or in a frame of this site. */
+  secure?: "page" | { frame: string }
+  /** The page plays sound. */
+  audible?: boolean
+  /** The picture the page gives. */
+  picture?: Uint8Array
+  /** The page does not answer: the next action waits until the test calls the release. */
+  hang?: boolean
+  /** A read or an inspect of the page fails with this reason, as a dead page does. */
+  fails?: string
 }
 
-/**
- * A platform for unit tests: a temp data folder and a trash list. A test that restarts the app
- * gives the same stand-in Teams to both starts, because the outside world does not restart.
- */
-export const testPlatform = (options: { chat?: FakeChat } = {}) => {
+/** A platform for unit tests: a temp data folder and a trash list. */
+export const testPlatform = () => {
   const dataDir = mkdtempSync(join(tmpdir(), "robot-unit-"))
   // A home folder of its own, so a test never reads or writes a real place of the user (spec 007).
   const homeDir = mkdtempSync(join(tmpdir(), "robot-unit-home-"))
   /** The addresses that each host name leads to, for a web page fetch. A name not here fails. */
   const hosts = new Map<string, string[]>()
   const trashed: string[] = []
-  /** What the fake browsers did, in order, as "agent:action". */
+  /** What the fake browsers did, in order, as "workflow:action". */
   const browserLog: string[] = []
-  /** Where the fake browsers were told to show, as "agent:x,y WxH" or "agent:hidden". */
+  /** Where the fake browsers were told to show, as "workflow:x,y WxH" or "workflow:hidden". */
   const browserPlaced: string[] = []
-  /** Whether the input of the user was let in or kept out, as "agent:on" or "agent:off". */
+  /** Whether the input of the user was let in or kept out, as "workflow:on" or "workflow:off". */
   const browserInput: string[] = []
   const pages = new Map<string, BrowserPage>()
-  /** The stand-in Teams (spec 028). No Teams page opens until the Teams link asks for one. */
-  const chat = options.chat ?? new FakeChat()
-  /** The browser profile that holds the sign-in of the Teams page now, as the platform was told. */
-  const teamsProfile: { id: string | undefined } = { id: undefined }
   /** The browser profile that each agent uses now, as the fake platform was told. */
   const browserProfiles = new Map<string, string>()
   /** The browser profiles whose saved data was deleted, in order. */
   const clearedProfiles: string[] = []
-  /** The recorders of "Teach a task" that run now, by agent. A test calls one to act as the user. */
-  const recorders = new Map<string, (event: TeachEvent) => void>()
   const shell = {
     focused: true,
     notices: [] as { title: string; body: string; click: () => void }[],
-    shapes: [] as string[],
-    fits: [] as { width: number; height: number }[],
     shown: 0,
     /** What "Save as" answers. Undefined means the user cancelled. */
     savePath: undefined as string | undefined,
@@ -73,120 +100,284 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     /** Whether the computer runs on its battery. A test sets it and calls `powerChanged`. */
     battery: false,
     powerListeners: [] as (() => void)[],
+    /** The system says that memory is low (spec 007, "Idle work"). */
+    memoryListeners: [] as (() => void)[],
+    lowMemory: () => {
+      for (const l of shell.memoryListeners) l()
+    },
     /** The computer changes between its battery and power. */
     powerChanged: () => {
       for (const l of shell.powerListeners) l()
     },
   }
-  const browserSeeds = new Map<
-    string,
-    { controls: FakeBrowserControl[]; focus: string | null; errors: string[]; loading: boolean }
-  >()
-  const seedBrowserPage = (agentId: string, seed: FakeBrowserSeed) => {
-    browserSeeds.set(agentId, {
+  interface Seed {
+    controls: FakeBrowserControl[]
+    focus: string | null
+    errors: string[]
+    loading: boolean
+    text: string | null
+    title: string
+    redirects: Record<string, string>
+    secure: "page" | { frame: string } | null
+    audible: boolean
+    picture: Uint8Array
+    hang: boolean
+    fails: string | null
+  }
+  const browserSeeds = new Map<string, Seed>()
+  const freshSeed = (): Seed => ({
+    controls: [],
+    focus: null,
+    errors: [],
+    loading: false,
+    text: null,
+    title: "Fake page",
+    redirects: {},
+    secure: null,
+    audible: false,
+    picture: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    hang: false,
+    fails: null,
+  })
+  const seedBrowserPage = (workflowId: string, seed: FakeBrowserSeed) => {
+    browserSeeds.set(workflowId, {
+      ...freshSeed(),
       controls: seed.controls ?? [],
       focus: seed.focus ?? null,
       errors: [...(seed.errors ?? [])],
       loading: seed.loading ?? false,
+      text: seed.text ?? null,
+      title: seed.title ?? "Fake page",
+      redirects: seed.redirects ?? {},
+      secure: seed.secure ?? null,
+      audible: seed.audible ?? false,
+      picture: seed.picture ?? freshSeed().picture,
+      hang: seed.hang ?? false,
+      fails: seed.fails ?? null,
     })
   }
-  const fakeBrowser = (agentId: string): BrowserPage => {
+  /** What a test may change on a page that is open. */
+  const browserHang = new Map<string, { release: () => void }>()
+  const fakeBrowser = (workflowId: string): BrowserPage => {
     let open = false
     let url = ""
+    let dialog: BrowserDialog | null = null
+    let chooser = false
+    let typed = ""
+    let policy: NavigationPolicy | undefined
+    let blocked: string[] = []
     const listeners: (() => void)[] = []
     const state = () => {
-      const known = browserSeeds.get(agentId)
+      const known = browserSeeds.get(workflowId)
       if (known) return known
-      const fresh = {
-        controls: [] as FakeBrowserControl[],
-        focus: null as string | null,
-        errors: [] as string[],
-        loading: false,
-      }
-      browserSeeds.set(agentId, fresh)
+      const fresh = freshSeed()
+      browserSeeds.set(workflowId, fresh)
       return fresh
     }
-    /** A click or a type: a number picks from the list, a selector must fit exactly one. */
-    const act = (target: string): BrowserAct => {
+    /** Goes to an address as a page does: each hop meets the rule. */
+    const go = async (to: string): Promise<string> => {
+      let next = to
+      for (let hops = 0; hops < 10; hops++) {
+        if (policy && !(await policy(next))) {
+          try {
+            blocked.push(new URL(next).hostname)
+          } catch {
+            blocked.push(next)
+          }
+          return "about:blank"
+        }
+        const moved = state().redirects[next]
+        if (!moved) return next
+        next = moved
+      }
+      return next
+    }
+    const stall = async () => {
+      if (!state().hang) return
+      await new Promise<void>((resolve) => browserHang.set(workflowId, { release: resolve }))
+    }
+    const kindOf = (c: FakeBrowserControl) => ({
+      role: c.role,
+      label: c.label,
+      tag: c.tag ?? (c.role === "link" ? "a" : c.role === "textbox" ? "input" : "button"),
+    })
+    /** The control must still be the one that a card named (the page may change while it waits). */
+    const same = (c: FakeBrowserControl, expect: ControlExpect | undefined) => {
+      if (!expect) return true
+      const now = kindOf(c)
+      return now.role === expect.role && now.label === expect.label && now.tag === expect.tag
+    }
+    const fit = (target: string): FakeBrowserControl | BrowserAct => {
       const s = state()
       if (/^\d+$/.test(target)) {
         const at = Number(target) - 1
-        if (at < 0 || at >= s.controls.length) return { ok: false, reason: "none" }
-      } else {
-        const fits = s.controls.filter((c) => c.selector === target)
-        if (fits.length === 0) return { ok: false, reason: "none" }
-        if (fits.length > 1)
-          return {
-            ok: false,
-            reason: "many",
-            candidates: fits.slice(0, 5).map((c) => ({
-              index: s.controls.indexOf(c) + 1,
-              role: c.role,
-              label: c.label,
-              x: c.x,
-              y: c.y,
-            })),
-            total: fits.length,
-          }
+        const found = s.controls[at]
+        if (!found) return { ok: false, reason: "none" }
+        return found
       }
+      const fits = s.controls.filter((c) => c.selector === target)
+      if (fits.length === 0) return { ok: false, reason: "none" }
+      if (fits.length > 1)
+        return {
+          ok: false,
+          reason: "many",
+          candidates: fits.slice(0, 5).map((c) => ({
+            index: s.controls.indexOf(c) + 1,
+            role: c.role,
+            label: c.label,
+            x: c.x,
+            y: c.y,
+          })),
+          total: fits.length,
+        }
+      return fits[0] as FakeBrowserControl
+    }
+    const current = (): BrowserActionState => {
+      const s = state()
       const errors = s.errors
       s.errors = []
       return {
-        ok: true,
-        state: { url, title: "Fake page", loading: s.loading, focus: s.focus, errors },
+        url,
+        title: s.title,
+        loading: s.loading,
+        focus: s.focus,
+        errors,
+        dialog,
+        chooser,
       }
+    }
+    const act = async (
+      target: string,
+      click: boolean,
+      expect: ControlExpect | undefined,
+    ): Promise<BrowserAct> => {
+      await stall()
+      // A page that was closed while the step waited does nothing.
+      if (!open) return { ok: false, reason: "none" }
+      const found = fit(target)
+      if (!("selector" in found)) return found
+      if (!same(found, expect)) return { ok: false, reason: "changed" }
+      browserLog.push(
+        `${workflowId}:${click ? "click" : "type"} ${target}${click ? "" : ` ${typed}`}`,
+      )
+      if (click) {
+        if (found.opens) dialog = found.opens
+        if (found.chooser) chooser = true
+        if (found.goes) url = await go(found.goes)
+      }
+      return { ok: true, state: current() }
     }
     return {
       isOpen: () => open,
+      currentUrl: () => (open ? url : ""),
       open: async (next) => {
+        await stall()
         open = true
-        url = next
-        browserLog.push(`${agentId}:open ${next}`)
-        return { url, title: "Fake page" }
+        url = await go(next)
+        dialog = null
+        chooser = false
+        browserLog.push(`${workflowId}:open ${next}`)
+        return { url, title: state().title }
       },
       read: async () => {
+        await stall()
         const s = state()
+        if (s.fails) throw new Error(s.fails)
         return {
           url,
-          title: "Fake page",
-          text: `Text of ${url}`,
+          title: s.title,
+          text: s.text ?? `Text of ${url}`,
           controls: s.controls
             .slice(0, PAGE_CONTROLS_MAX)
             .map((c, i) => ({ index: i + 1, role: c.role, label: c.label })),
           total: s.controls.length,
         }
       },
-      click: async (target) => {
-        browserLog.push(`${agentId}:click ${target}`)
-        return act(target)
+      click: async (target, expect) => act(target, true, expect),
+      type: async (target, text, expect) => {
+        typed = text
+        return act(target, false, expect)
       },
-      type: async (target, text) => {
-        browserLog.push(`${agentId}:type ${target} ${text}`)
-        return act(target)
+      inspect: async (target): Promise<BrowserInspect> => {
+        const found = fit(target)
+        if (!("selector" in found)) return found as BrowserInspect
+        return {
+          ok: true,
+          facts: {
+            ...kindOf(found),
+            submit: found.submit !== undefined,
+            method: found.submit?.method ?? "get",
+            secure: found.secure === true,
+            plain: found.plain ?? found.role === "link",
+          },
+          formHost: found.submit?.host ?? null,
+        }
       },
+      select: async (target, value, expect) => {
+        const found = fit(target)
+        if (!("selector" in found)) return found
+        if (!same(found, expect)) return { ok: false, reason: "changed" }
+        browserLog.push(`${workflowId}:select ${target} ${value}`)
+        if (!found.options?.includes(value)) return { ok: false, reason: "none" }
+        return { ok: true, state: current() }
+      },
+      screenshot: async () => {
+        browserLog.push(`${workflowId}:screenshot`)
+        return state().picture
+      },
+      securePlace: async () => {
+        const secure = state().secure
+        if (secure === null) return null
+        return secure === "page" ? { kind: "page" } : { kind: "frame", site: secure.frame }
+      },
+      dialog: () => dialog,
+      answerDialog: async (accept, text) => {
+        if (!dialog) return { ok: false }
+        browserLog.push(
+          `${workflowId}:dialog ${accept ? "accept" : "dismiss"}${text ? ` ${text}` : ""}`,
+        )
+        dialog = null
+        return { ok: true, state: current() }
+      },
+      chooserOpen: () => chooser,
+      upload: async (paths) => {
+        if (!chooser) return { ok: false, reason: "no_chooser" }
+        chooser = false
+        browserLog.push(`${workflowId}:upload ${paths.length}`)
+        return { ok: true }
+      },
+      setPolicy: (next) => {
+        policy = next
+      },
+      drainBlocked: () => {
+        const list = blocked
+        blocked = []
+        return list
+      },
+      audible: () => open && state().audible,
       evaluate: async () => {
         throw new Error("The fake browser runs no script")
       },
       place: (bounds) => {
         browserPlaced.push(
-          `${agentId}:${bounds ? `${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}` : "hidden"}`,
+          `${workflowId}:${bounds ? `${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}` : "hidden"}`,
         )
       },
       allowUserInput: (allowed) => {
-        browserInput.push(`${agentId}:${allowed ? "on" : "off"}`)
+        browserInput.push(`${workflowId}:${allowed ? "on" : "off"}`)
       },
       close: () => {
         if (!open) return
         open = false
-        browserLog.push(`${agentId}:close`)
+        dialog = null
+        chooser = false
+        browserLog.push(`${workflowId}:close`)
+        // A step that waits for a page that is gone ends with the page.
+        browserHang.get(workflowId)?.release()
         for (const l of listeners) l()
       },
       onClosed: (l) => {
         listeners.push(l)
-      },
-      record: (listener) => {
-        if (listener) recorders.set(agentId, listener)
-        else recorders.delete(agentId)
       },
     }
   }
@@ -207,8 +398,6 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     pickFiles: async () => [],
     pickSavePath: async () => shell.savePath,
     pickArchive: async () => undefined,
-    pickAgentFileSave: async () => undefined,
-    pickAgentFile: async () => undefined,
     pickWorkflowFileSave: async () => undefined,
     pickWorkflowFile: async () => undefined,
     openPath: async () => {},
@@ -237,42 +426,29 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     showWindow: () => {
       shell.shown++
     },
-    setIslandWidth: () => {},
-    setIslandShape: (shape) => {
-      shell.shapes.push(shape)
-    },
-    fitIsland: (size) => {
-      shell.fits.push(size)
-    },
-    browser: (agentId) => {
-      const known = pages.get(agentId)
+    browser: (workflowId) => {
+      const known = pages.get(workflowId)
       if (known) return known
-      const page = fakeBrowser(agentId)
-      pages.set(agentId, page)
+      const page = fakeBrowser(workflowId)
+      pages.set(workflowId, page)
       return page
     },
-    setBrowserProfile: (agentId, profileId) => {
-      const before = browserProfiles.get(agentId)
-      if (profileId === undefined) browserProfiles.delete(agentId)
-      else browserProfiles.set(agentId, profileId)
-      if (before !== profileId) pages.get(agentId)?.close()
+    setBrowserProfile: (workflowId, profileId) => {
+      const before = browserProfiles.get(workflowId)
+      if (profileId === undefined) browserProfiles.delete(workflowId)
+      else browserProfiles.set(workflowId, profileId)
+      if (before !== profileId) pages.get(workflowId)?.close()
     },
     clearBrowserProfile: async (profileId) => {
       clearedProfiles.push(profileId)
-      // The saved sign-in is gone: the stand-in Teams shows a sign-in form again.
-      if (profileId === teamsProfile.id) chat.endSession()
     },
-    teams: () => chat.surface,
-    setTeamsProfile: (profileId) => {
-      if (profileId !== teamsProfile.id) chat.closeByUser()
-      teamsProfile.id = profileId
+    onLowMemory: (listener) => {
+      shell.memoryListeners.push(listener)
     },
     diagnosticReport: async () => ({ text: "report", path: join(dataDir, "logs", "report.txt") }),
   }
   return {
     platform,
-    chat,
-    teamsProfile,
     dataDir,
     homeDir,
     hosts,
@@ -282,9 +458,10 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     browserInput,
     browserProfiles,
     clearedProfiles,
-    recorders,
     shell,
     seedBrowserPage,
+    /** Lets a page that was seeded to hang answer. */
+    releaseBrowser: (workflowId: string) => browserHang.get(workflowId)?.release(),
   }
 }
 
@@ -297,16 +474,16 @@ export const testRuntime = (
     cacheHosts?: readonly string[]
     /** A database file, for a test that starts the app again on the same data. */
     databaseFile?: string
-    /** The stand-in Teams to use. A restart gives the same one to both starts. */
-    chat?: FakeChat
     /** How connections are reached, and their time limits (spec 018). */
     connections?: ConnectionsOptions
+    /** The check of workflows (spec 010). A test turns the check in the background off. */
+    check?: WorkflowCheckOptions
+    /** The clock and the idle timer of the browser work (spec 007). A test calls the sweep. */
+    browser?: { now?: () => number; sweepMs?: number }
   } = {},
 ) => {
   const {
     platform,
-    chat,
-    teamsProfile,
     dataDir,
     homeDir,
     hosts,
@@ -316,19 +493,14 @@ export const testRuntime = (
     browserInput,
     browserProfiles,
     clearedProfiles,
-    recorders,
     shell,
     seedBrowserPage,
-  } = testPlatform(options.chat ? { chat: options.chat } : {})
+    releaseBrowser,
+  } = testPlatform()
   const events: { event: string; payload: unknown; server?: string }[] = []
-  // The clock of the Teams link. A test moves it by hand (`advance`, `sleep`).
-  const { clock, advance, sleep } = fakeClock()
-  // The messages of the stand-in Teams carry the time of this clock.
-  chat.useClock(clock.now)
   const runtime = ManagedRuntime.make(
     appLayer({
       platform,
-      clock,
       databaseFile: options.databaseFile ?? ":memory:",
       linkPort: 0,
       nearbySocket: (options.network ?? new MemoryNetwork()).open,
@@ -339,17 +511,14 @@ export const testRuntime = (
       ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
       ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
       ...(options.connections ? { connections: options.connections } : {}),
+      check: { auto: false, ...options.check },
+      browser: { sweepMs: 0, ...options.browser },
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.
   void bindLinkDispatcher(runtime)
   return {
     runtime,
-    chat,
-    teamsProfile,
-    clock,
-    advance,
-    sleep,
     dataDir,
     homeDir,
     hosts,
@@ -360,24 +529,25 @@ export const testRuntime = (
     browserInput,
     browserProfiles,
     clearedProfiles,
-    recorders,
     shell,
     seedBrowserPage,
+    releaseBrowser,
+    platform,
   }
 }
 
 export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]
 
 /**
- * Saves the rule "Always allow for this agent" for a fetch of a local host (spec 007, "Addresses of
+ * Saves the rule "Always allow for this workflow" for a fetch of a local host (spec 007, "Addresses of
  * a web page fetch"). A test that fetches from a test server on this computer needs it: a fetch of
  * a local address is a hard step, and it asks without the rule.
  */
-export const allowLocalHost = (runtime: TestRuntime, agentId: string, host = "127.0.0.1") =>
+export const allowLocalHost = (runtime: TestRuntime, workflowId: string, host = "127.0.0.1") =>
   runtime.runPromise(
     Rules.use((rules) =>
       Effect.sync(() => {
-        rules.saveFromCard(agentId, { kind: "web", host })
+        rules.saveFromCard(workflowId, { kind: "web", host })
       }),
     ),
   )

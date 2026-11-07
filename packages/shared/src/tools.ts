@@ -109,6 +109,14 @@ export const riskyReason = (command: string, workspace: string): RiskReason | nu
 export const needsApproval = (level: PermissionLevel, risky: boolean) =>
   level === "ask_all" ? true : level === "full" ? false : risky
 
+/**
+ * The level that a text node works at for the checked steps of "Ask when unsure" (spec 007). A node
+ * has no words of the user, so the check never sees a step that it could allow: a checked step
+ * always asks the user, as at "Ask for risky steps".
+ */
+export const levelForNode = (level: PermissionLevel): PermissionLevel =>
+  level === "ask_unsure" ? "ask_risky" : level
+
 /** "Full access" asks the user to confirm when the user picks it. No other level asks (spec 007). */
 export const levelNeedsConfirm = (level: PermissionLevel) => level === "full"
 
@@ -177,6 +185,6 @@ export const readOnlyRefusesKey = (level: PermissionLevel, key: string) =>
 
 /**
  * Why a step did not run: the level "Read only", an address that is never allowed (spec 007,
- * "Sensitive places"), or a Deny rule (spec 007, "Permission rules").
+ * "Sensitive places"), a Deny rule (spec 007, "Permission rules"), or a file claim of another workflow (spec 025).
  */
-export type RefusalReason = "read_only" | "address" | "rule"
+export type RefusalReason = "read_only" | "address" | "rule" | "claim"

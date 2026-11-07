@@ -1,112 +1,90 @@
 import {
-  behindWords,
-  catalogues,
   filterTasks,
-  followUpActionKey,
-  isActive,
+  isRetryable,
+  isStoppable,
   type MessageKey,
-  type Moment,
-  TASK_SOURCES,
+  RUN_SOURCES,
   TASK_STATES,
-  type Task,
   type TaskFilter,
+  type TaskItem,
+  type TaskView,
   taskDuration,
-  taskMoments,
-  taskTimes,
-  taskTree,
 } from "@robot/shared"
 import { OctagonX } from "lucide-solid"
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-} from "solid-js"
-import { formatElapsed, formatHitTime, formatTime } from "../chat/format.ts"
-import { openThread } from "../chat/threads.ts"
-import { describeError, type ErrorText } from "../lib/errors.ts"
+import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { formatDateTime, formatElapsed } from "../chat/format.ts"
+import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
-import { useRetry } from "../retry/RetryNote.tsx"
 import shell from "../shell/shell.module.css"
-import { makeSkillFromWork } from "../skills/SkillForm.tsx"
-import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useDevices } from "../state/devices.tsx"
-import { openTarget, takeTarget } from "../state/target.ts"
+import { quietOfTask } from "../state/quiet.ts"
+import { openRun } from "../state/runTarget.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { tabKeyDown } from "../ui/tabKeys.ts"
 import { showToast } from "../ui/toast.ts"
-import { EventsTab } from "./EventsTab.tsx"
-import { TaskStateText } from "./TaskStateText.tsx"
-import { TaskUsageView } from "./TaskUsageView.tsx"
+import { useRetry } from "./RetryNote.tsx"
 import styles from "./tasks.module.css"
-import { sourceWords, taskTitle } from "./title.ts"
+import { progressLine, stateWord, taskReason } from "./taskText.ts"
 
-// A reason with no text of its own shows the general error text.
-const catalogueKeys = catalogues.en
+const toastError = (e: unknown) => {
+  const text = describeError(e)
+  showToast("error", text.key, text.params)
+}
 
-const reasonKey = (task: Task): MessageKey =>
-  task.error && `error.${task.error.code}` in catalogueKeys
-    ? (`error.${task.error.code}` as MessageKey)
-    : "error.unknown"
-
-/** The icon of a state that has one: a blocked task has a stop sign. */
-const StateIcon = (props: { state: Task["state"] }) => (
-  <Show when={props.state === "blocked"}>
-    <OctagonX size={12} aria-hidden="true" />
-  </Show>
-)
-
-/**
- * "Run next" is on for a queued task of this computer that has not started (spec 005, "Queue"). A
- * linked computer and the phone do not have it (011, 012).
- */
-const canRunNext = (task: Task, linked: boolean) =>
-  !linked && task.state === "queued" && task.originName === null
-
-/** What a queued task waits behind, in words (spec 005, "Tasks page"). */
-const BehindLine = (props: { task: Task; testid: string; class: string | undefined }) => {
+/** The state of a task. A running task whose turn is quiet shows the quiet line (spec 005). */
+const StateText = (props: { task: Pick<TaskItem, "id" | "state"> }) => {
   const { t } = useApp()
+  const quiet = () => (props.task.state === "running" ? quietOfTask(props.task.id) : undefined)
   return (
-    <Show when={props.task.state === "queued" && props.task.behind}>
-      {(behind) => {
-        const words = () => behindWords(behind())
-        return (
-          <div class={props.class} data-testid={props.testid}>
-            {t(words().key, words().params)}
-          </div>
-        )
-      }}
+    <span
+      class={styles.state}
+      data-state={props.task.state}
+      data-quiet={quiet() ? "true" : undefined}
+      data-testid="task-state"
+    >
+      <Show when={props.task.state === "blocked"}>
+        <OctagonX size={12} aria-hidden="true" />
+      </Show>
+      <Show when={quiet()} fallback={t(stateWord(props.task.state))}>
+        {(q) => <span data-testid="task-quiet">{t("tasks.quiet", q())}</span>}
+      </Show>
+    </span>
+  )
+}
+
+const Reason = (props: { task: TaskItem; testid: string; class?: string | undefined }) => {
+  const { t, locale } = useApp()
+  const text = () => taskReason(t, locale(), props.task)
+  return (
+    <Show when={text()}>
+      {(line) => (
+        <div class={props.class} data-testid={props.testid} data-code={props.task.reasonCode ?? ""}>
+          {line()}
+        </div>
+      )}
     </Show>
   )
 }
 
-/** The sources of a task whose place the button "Open source place" opens. */
-const OPENS_PLACE: readonly Task["source"][] = ["chat", "handover", "teams"]
-
-/** The sources that the filter offers (spec 005). */
-const SHOWN_SOURCES = TASK_SOURCES.filter((source) => source !== "mention")
-
-const duration = (task: Task) => {
+/** The duration of a task. A time that is not known is "—", never 0 (spec 005, "Times"). */
+const duration = (task: TaskItem, unknown: string) => {
   const ms = taskDuration(task)
-  return ms === null ? "–" : formatElapsed(ms)
+  return ms === null ? unknown : formatElapsed(ms)
 }
 
 /** The three times of a task (spec 005). A time that is not known shows as a dash, never as 0. */
-const TaskTimesList = (props: { task: Task }) => {
+const TimesList = (props: { view: TaskView }) => {
   const { t, locale } = useApp()
-  const times = () => taskTimes(props.task)
   const rows = () =>
     [
-      ["wait", "tasks.times.wait", times().wait],
-      ["first-reply", "tasks.times.firstReply", times().firstReply],
-      ["total", "tasks.times.total", times().total],
+      ["wait", "tasks.times.wait", props.view.times.wait],
+      ["first-reply", "tasks.times.firstReply", props.view.times.firstReply],
+      ["total", "tasks.times.total", props.view.times.total],
     ] as const
   return (
     <dl class={styles.times} data-testid="task-times">
@@ -126,35 +104,33 @@ const TaskTimesList = (props: { task: Task }) => {
   )
 }
 
-/**
- * The moments of a task with their clock times, in plain text (spec 005). A moment that did not
- * happen is not listed. The three times above keep their own meaning.
- */
-const MomentsList = (props: { task: Task }) => {
+/** The moments of a task with their clock times, in plain text (spec 005, "Moments"). */
+const Moments = (props: { view: TaskView }) => {
   const { t, locale } = useApp()
-  const text = (moment: Moment): string => {
-    switch (moment.id) {
+  const text = (moment: TaskView["moments"][number]) => {
+    switch (moment.kind) {
       case "given":
-        return t(
-          moment.by.kind === "agent"
-            ? "moments.given.agent"
-            : (`moments.given.${moment.by.source}` as MessageKey),
-        )
+        return `${t("tasks.moment.given")} · ${t("tasks.moment.given.by", {
+          time: formatDateTime(locale(), props.view.runStartedAt),
+          source: t(`tasks.source.${props.view.source}` as MessageKey),
+        })}`
       case "started":
-        return t("moments.started")
+        return t("tasks.moment.started")
       case "ended":
-        return t(`moments.ended.${moment.how}` as MessageKey)
+        return t("tasks.moment.ended", {
+          how: t(stateWord(moment.how ?? "done")),
+        })
       case "closed":
-        return t("moments.closed", { state: t(`tasks.state.${moment.state}` as MessageKey) })
+        return t("tasks.moment.closed")
     }
   }
   return (
     <ol class={styles.moments} data-testid="task-moments">
-      <For each={taskMoments(props.task)}>
+      <For each={props.view.moments}>
         {(moment) => (
-          <li data-testid="task-moment" data-moment={moment.id}>
-            <time class={styles.joinedTime} data-at={moment.at}>
-              {formatHitTime(locale(), moment.at)}
+          <li data-testid="task-moment" data-moment={moment.kind}>
+            <time class={styles.time} data-at={moment.at}>
+              {new Date(moment.at).toLocaleTimeString(locale())}
             </time>
             <span class={styles.text}>{text(moment)}</span>
           </li>
@@ -164,226 +140,134 @@ const MomentsList = (props: { task: Task }) => {
   )
 }
 
-/** The follow-ups of one task, and the delete that asks first (spec 005, "Follow-up"). */
-const FollowUpRows = (props: { taskId: string }) => {
-  const app = useApp()
-  const { t } = app
-  const [error, setError] = createSignal<ErrorText>()
-  const [deleting, setDeleting] = createSignal<string>()
-  const [rows, { refetch }] = createResource(() => call("followups.list", { taskId: props.taskId }))
-  onCleanup(window.robot.on("followups.changed", () => void refetch()))
+const Usage = (props: { view: TaskView }) => {
+  const { t } = useApp()
+  const u = () => props.view.usage
+  const dash = () => t("time.unknown")
+  const cachedShare = () =>
+    u().cached !== null && u().input
+      ? Math.round(((u().cached ?? 0) / (u().input ?? 1)) * 100)
+      : null
   return (
-    <Show when={(rows() ?? []).length > 0}>
-      <h3>{t("tasks.followUp.title")}</h3>
-      <ul class={styles.followUps} data-testid="task-follow-ups">
-        <For each={rows() ?? []}>
-          {(row) => (
-            <li class={styles.followUp} data-testid="task-follow-up">
-              <span class={styles.text}>{row.reason}</span>
-              <span class={styles.joinedTime} data-testid="task-follow-up-action">
-                {t(followUpActionKey(row.action))}
-              </span>
-              <time class={styles.joinedTime}>{formatTime(app.locale(), row.at)}</time>
-              <Show
-                when={deleting() === row.id}
-                fallback={
-                  <Button onClick={() => setDeleting(row.id)} data-testid="task-follow-up-delete">
-                    {t("tasks.followUp.delete")}
-                  </Button>
-                }
-              >
-                <div class={styles.confirm}>
-                  <span role="alert" data-testid="task-follow-up-ask">
-                    {t("tasks.followUp.delete.ask")}
-                  </span>
-                  <Button
-                    onClick={() => setDeleting(undefined)}
-                    data-testid="task-follow-up-cancel"
-                  >
-                    {t("tasks.followUp.delete.cancel")}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      setError(undefined)
-                      void call("followups.remove", { id: row.id })
-                        .then(() => setDeleting(undefined))
-                        .catch((e: unknown) => setError(describeError(e)))
-                    }}
-                    data-testid="task-follow-up-confirm"
-                  >
-                    {t("tasks.followUp.delete.confirm")}
-                  </Button>
-                </div>
-              </Show>
-            </li>
-          )}
-        </For>
-      </ul>
-      <Show when={error()}>
-        {(err) => <p class={styles.errorText}>{t(err().key, err().params)}</p>}
-      </Show>
-    </Show>
+    <>
+      <h3>{t("tasks.usage")}</h3>
+      <p class={styles.meta} data-testid="task-usage">
+        {t("tasks.usage.line", { input: u().input ?? dash(), output: u().output ?? dash() })}
+        <Show when={cachedShare() !== null}>
+          {" · "}
+          <span data-testid="task-usage-cached">
+            {t("tasks.usage.cached", { percent: cachedShare() ?? 0 })}
+          </span>
+        </Show>
+      </p>
+    </>
   )
 }
 
-const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
-  const app = useApp()
-  const { t } = app
+const TaskDetail = (props: { id: string; onClose: () => void; onChanged: () => void }) => {
+  const { t, locale } = useApp()
   const ui = useUi()
-  const [error, setError] = createSignal<ErrorText>()
-  const retry = useRetry()
-  const [detail, { refetch }] = createResource(() => call("tasks.get", { id: props.id }))
-  onCleanup(window.robot.on("tasks.changed", () => void refetch()))
-  const act = async (run: () => Promise<unknown>) => {
-    setError(undefined)
-    try {
-      await run()
-    } catch (e) {
-      setError(describeError(e))
-    }
-  }
-  const openSource = (task: Task) => {
-    if (!task.sourceId || !OPENS_PLACE.includes(task.source)) return
-    // A linked device has the main thread only (spec 003, 012): the button is off for a thread.
-    if (ui.linked() && task.threadId) return
-    // A handover is a message in a thread of the agent that runs it (spec 003, 005).
-    openThread(task.sourceId, task.threadId)
-    ui.selectPlace({ kind: "agent", id: task.sourceId })
+  const [view, { refetch }] = createResource(() => call("tasks.get", { taskId: props.id }))
+  const retry = useRetry({
+    onDone: () => {
+      void refetch()
+      props.onChanged()
+    },
+  })
+  onCleanup(window.robot.on("runs.changed", () => void refetch()))
+  const act = (run: () => Promise<unknown>) =>
+    run()
+      .then(() => {
+        void refetch()
+        props.onChanged()
+      })
+      .catch(toastError)
+  const open = (v: TaskView) => {
+    ui.selectPlace({ kind: "workflow", id: v.workflowId })
+    openRun(v.workflowId, v.runId)
     props.onClose()
   }
   return (
     <Dialog label={t("tasks.detail.title")} onClose={props.onClose} testId="task-detail">
       {retry.dialog()}
-      <Show when={detail()}>
-        {(d) => (
+      <Show when={view()}>
+        {(v) => (
           <div class={styles.detail}>
-            <h2 class={styles.title}>{taskTitle(d().task, t)}</h2>
-            <p class={styles.meta}>
-              {d().task.agentName} · {sourceWords(d().task, t)} ·{" "}
-              <span
-                class={styles.state}
-                data-testid="task-detail-state"
-                data-state={d().task.state}
-              >
-                <StateIcon state={d().task.state} />
-                <TaskStateText task={d().task} />
-              </span>
-            </p>
-            <Show when={d().task.originName !== null}>
-              <p class={styles.meta} data-testid="task-detail-computer">
-                {t("tasks.detail.computer", {
-                  name: d().task.originName || t("sync.anotherComputer"),
+            <div class={styles.body}>
+              <h2 class={styles.title}>{v().workflowName}</h2>
+              <p class={styles.meta}>
+                {t("tasks.node", { number: v().nodeNumber, name: v().nodeName })} ·{" "}
+                {t(`tasks.source.${v().source}` as MessageKey)} · <StateText task={v()} />
+              </p>
+              <p class={styles.meta}>
+                {t("tasks.run", {
+                  time: formatDateTime(locale(), v().runStartedAt),
+                  source: t(`tasks.source.${v().source}` as MessageKey),
                 })}
               </p>
-            </Show>
-            <FollowUpRows taskId={d().task.id} />
-            <BehindLine task={d().task} testid="task-detail-behind" class={styles.meta} />
-            <Show when={d().task.waitsFor}>
-              {(name) => (
-                <p class={styles.meta} data-testid="task-detail-waits">
-                  {t("tasks.waitsFor", { name: name() })}
-                </p>
-              )}
-            </Show>
-            <Show when={d().task.retryOf}>
-              <p class={styles.meta}>{t("tasks.retryOf")}</p>
-            </Show>
-            <h3>{t("tasks.times")}</h3>
-            <TaskTimesList task={d().task} />
-            <h3>{t("moments.title")}</h3>
-            <MomentsList task={d().task} />
-            {/* The tokens and the cost of the task, and the total of its tree (spec 005). */}
-            <TaskUsageView usage={d().task.usage} tree={d().tree} />
-            <h3>{t("tasks.prompt")}</h3>
-            <pre class={styles.text}>{d().task.prompt}</pre>
-            <Show when={d().joined.length > 0}>
-              <h3>{t("tasks.joined")}</h3>
-              <ul class={styles.joined} data-testid="task-joined">
-                <For each={d().joined}>
-                  {(message) => (
-                    <li data-testid="task-joined-item">
-                      <time class={styles.joinedTime}>{formatTime(app.locale(), message.at)}</time>
-                      <span class={styles.text}>{message.text}</span>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
-            <Show when={d().result}>
+              <Reason task={v()} testid="task-detail-reason" class={styles.meta} />
+              <Show when={v().retryOf}>
+                <p class={styles.meta}>{t("tasks.retryOf")}</p>
+              </Show>
+              <h3>{t("tasks.times")}</h3>
+              <TimesList view={v()} />
+              <h3>{t("tasks.moments")}</h3>
+              <Moments view={v()} />
+              <Usage view={v()} />
+              <Show when={v().steps > 0}>
+                <p class={styles.meta}>{t("tasks.steps", { count: v().steps })}</p>
+              </Show>
+              <Show when={v().input !== ""}>
+                <h3>{t("tasks.input")}</h3>
+                <pre class={styles.text} data-testid="task-input">
+                  {v().input}
+                </pre>
+              </Show>
               <h3>{t("tasks.result")}</h3>
-              <pre class={styles.text} data-testid="task-result">
-                {d().result}
-              </pre>
-            </Show>
-            <Show when={d().task.error}>
-              {(e) => (
-                <>
-                  <h3>{t("tasks.error")}</h3>
-                  <p class={styles.errorText} data-testid="task-error">
-                    {t(reasonKey(d().task), { detail: e().detail })}
+              <Show
+                when={v().result !== ""}
+                fallback={<p class={styles.meta}>{t("tasks.result.none")}</p>}
+              >
+                <pre class={styles.text} data-testid="task-result">
+                  {v().result}
+                </pre>
+              </Show>
+              <Show when={progressLine(v())}>
+                {(key) => (
+                  <p
+                    class={styles.meta}
+                    data-testid="task-progress-line"
+                    data-progress={v().progress}
+                  >
+                    {t(key())}
                   </p>
-                </>
-              )}
-            </Show>
-            <Show when={d().children.length > 0}>
-              <h3>{t("tasks.children")}</h3>
-              <ul class={styles.tree} data-testid="task-children">
-                <For each={taskTree([d().task, ...d().children], d().task.id)}>
-                  {(node) => (
-                    <li style={{ "padding-left": `${node.depth * 16}px` }}>
-                      <span data-state={node.task.state} class={styles.state}>
-                        <StateIcon state={node.task.state} />
-                        <TaskStateText task={node.task} />
-                      </span>{" "}
-                      {node.task.agentName}: {taskTitle(node.task, t)}
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
-            <Show when={error()}>
-              {(err) => <p class={styles.errorText}>{t(err().key, err().params)}</p>}
-            </Show>
-            {/* How far the turn went (spec 005). It sits with Retry. A Stop of the user shows no line. */}
-            <Show when={d().task.state === "failed" && d().task.progress}>
-              {(progress) => (
-                <p class={styles.meta} data-testid="task-progress-line" data-progress={progress()}>
-                  {t(`progress.line.${progress()}` as MessageKey)}
-                </p>
-              )}
-            </Show>
+                )}
+              </Show>
+            </div>
             <div class={styles.actions}>
-              <Show when={isActive(d().task.state)}>
+              <Show when={isStoppable(v().state)}>
                 <Button
-                  onClick={() => act(() => call("tasks.stop", { id: d().task.id }))}
+                  onClick={() => void act(() => call("tasks.stop", { taskId: v().id }))}
                   data-testid="task-stop"
                 >
                   {t("tasks.stop")}
                 </Button>
               </Show>
-              <Show when={canRunNext(d().task, ui.linked())}>
+              <Show when={v().canRunNext}>
                 <Button
-                  onClick={() => act(() => call("tasks.runNext", { id: d().task.id }))}
+                  onClick={() => void act(() => call("tasks.runNext", { taskId: v().id }))}
                   data-testid="task-run-next"
                 >
                   {t("tasks.runNext")}
                 </Button>
               </Show>
-              <Show
-                when={
-                  !ui.linked() &&
-                  (d().task.state === "failed" ||
-                    d().task.state === "blocked" ||
-                    d().task.state === "cancelled")
-                }
-              >
+              <Show when={isRetryable(v().state)}>
                 <Button
                   onClick={() =>
-                    act(() =>
+                    void act(() =>
                       retry.start((confirmed) =>
                         call("tasks.retry", {
-                          id: d().task.id,
+                          taskId: v().id,
                           ...(confirmed ? { confirmed } : {}),
                         }),
                       ),
@@ -394,37 +278,12 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("tasks.retry")}
                 </Button>
               </Show>
-              {/* "Make a skill" needs the model account of this computer: a client has none (spec 017). */}
-              <Show when={!ui.linked() && d().task.state === "done"}>
-                <Button
-                  onClick={() => makeSkillFromWork({ kind: "task", id: d().task.id })}
-                  data-testid="task-make-skill"
-                >
-                  {t("skills.make")}
-                </Button>
-              </Show>
-              <Show when={d().task.sourceId && OPENS_PLACE.includes(d().task.source)}>
-                <Button
-                  onClick={() => openSource(d().task)}
-                  disabled={ui.linked() && d().task.threadId !== undefined}
-                  title={
-                    ui.linked() && d().task.threadId !== undefined
-                      ? t("tasks.openSource.thread")
-                      : undefined
-                  }
-                  data-testid="task-open-source"
-                >
-                  {t("tasks.openSource")}
-                </Button>
-                <Show when={ui.linked() && d().task.threadId !== undefined}>
-                  <span class={styles.meta} data-testid="task-open-source-off">
-                    {t("tasks.openSource.thread")}
-                  </span>
-                </Show>
-              </Show>
+              <Button onClick={() => open(v())} data-testid="task-open-run">
+                {t("tasks.openRun")}
+              </Button>
               <span class={styles.spacer} />
               <Button variant="primary" onClick={props.onClose}>
-                {t("tasks.close")}
+                {t("tasks.detail.close")}
               </Button>
             </div>
           </div>
@@ -434,263 +293,236 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   )
 }
 
-export const TasksPage = () => {
+const FilterSelect = (props: {
+  label: string
+  testId: string
+  value: string
+  onChange: (value: string) => void
+  children: import("solid-js").JSX.Element
+}) => {
   const { t } = useApp()
-  const ui = useUi()
-  const agents = useAgents()
-  const devices = useDevices()
+  return (
+    <label class={styles.filter}>
+      <span>{props.label}</span>
+      <select
+        class={styles.select}
+        value={props.value}
+        onChange={(e) => props.onChange(e.currentTarget.value)}
+        data-testid={props.testId}
+      >
+        <option value="">{t("tasks.filter.all")}</option>
+        {props.children}
+      </select>
+    </label>
+  )
+}
+
+const TasksTab = () => {
+  const { t } = useApp()
   const [filter, setFilter] = createSignal<TaskFilter>({})
   const [openId, setOpenId] = createSignal<string>()
-  // The page holds two tabs (spec 038). The choice stays after a restart.
-  const [tab, setTab] = createSignal<"tasks" | "events">(
-    ui.ui.tasksTab === "events" ? "events" : "tasks",
-  )
-  const pickTab = (next: "tasks" | "events") => {
-    setTab(next)
-    void call("ui.update", { tasksTab: next }).catch(() => undefined)
-  }
-  // A page asks for a task: its detail opens at once.
-  createEffect(() => {
-    if (openTarget()?.kind !== "task") return
-    const target = takeTarget("task")
-    if (target) setOpenId(target.id)
-  })
-  // The profile of an agent asks for the tasks of that agent: the filter is set to it (spec 002).
-  createEffect(() => {
-    if (openTarget()?.kind !== "agentTasks") return
-    const target = takeTarget("agentTasks")
-    if (target) setFilter({ agentId: target.id })
-  })
   const [tasks, { refetch }] = createResource(
-    () => ui.server()?.id,
-    (serverId) => call("tasks.list", { serverId }).catch(() => []),
+    () => true,
+    () => call("tasks.list", undefined).catch(() => [] as readonly TaskItem[]),
     { initialValue: [] },
   )
-  onCleanup(
-    window.robot.on("tasks.changed", ({ serverId }) => {
-      if (serverId === ui.server()?.id) void refetch()
-    }),
-  )
+  // A run changes often while it streams: read the table again at most every 200 ms.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const soon = () => {
+    timer ??= setTimeout(() => {
+      timer = undefined
+      void refetch()
+    }, 200)
+  }
+  onCleanup(window.robot.on("runs.changed", soon))
+  onCleanup(() => timer && clearTimeout(timer))
   const shown = createMemo(() => filterTasks(tasks(), filter()))
-  /** The names of the other computers that ran tasks. They show when this computer syncs. */
-  const computers = createMemo(() => [
-    ...new Set(tasks().flatMap((task) => (task.originName === null ? [] : [task.originName]))),
-  ])
-  const showComputers = () => computers().length > 0 || devices.sync.active() !== undefined
-  const computerOf = (task: Task) =>
-    task.originName === null
-      ? t("tasks.computer.here")
-      : task.originName || t("sync.anotherComputer")
-  const setComputer = (value: string) =>
-    setFilter({
-      ...filter(),
-      computer:
-        value === ""
-          ? undefined
-          : value === "here"
-            ? "here"
-            : { name: value.slice("name:".length) },
-    })
-  const set = <K extends keyof TaskFilter>(key: K, value: TaskFilter[K] | "") =>
+  const workflows = createMemo(() => {
+    const seen = new Map<string, string>()
+    for (const task of tasks()) seen.set(task.workflowId, task.workflowName)
+    return [...seen]
+  })
+  const set = <K extends keyof TaskFilter>(key: K, value: string) =>
     setFilter({ ...filter(), [key]: value === "" ? undefined : value })
-
   return (
-    <div class={`${shell.page} ${styles.page}`} data-testid="tasks-page">
-      <div class={styles.tabs} role="tablist" aria-label={t("events.tab")}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab() === "tasks"}
-          class={styles.tab}
-          data-selected={tab() === "tasks"}
-          onClick={() => pickTab("tasks")}
-          data-testid="tasks-tab"
+    <div class={styles.body} data-testid="tasks-tab-body">
+      <div class={styles.filters}>
+        <FilterSelect
+          label={t("tasks.filter.state")}
+          testId="tasks-filter-state"
+          value={filter().state ?? ""}
+          onChange={(v) => set("state", v)}
         >
-          {t("events.tasksTab")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab() === "events"}
-          class={styles.tab}
-          data-selected={tab() === "events"}
-          onClick={() => pickTab("events")}
-          data-testid="events-tab"
+          <For each={TASK_STATES}>{(s) => <option value={s}>{t(stateWord(s))}</option>}</For>
+        </FilterSelect>
+        <FilterSelect
+          label={t("tasks.filter.workflow")}
+          testId="tasks-filter-workflow"
+          value={filter().workflowId ?? ""}
+          onChange={(v) => set("workflowId", v)}
         >
-          {t("events.tab")}
-        </button>
+          <Keyed each={workflows()} by={([id]) => id}>
+            {(entry) => <option value={entry()[0]}>{entry()[1]}</option>}
+          </Keyed>
+        </FilterSelect>
+        <FilterSelect
+          label={t("tasks.filter.source")}
+          testId="tasks-filter-source"
+          value={filter().source ?? ""}
+          onChange={(v) => set("source", v)}
+        >
+          <For each={RUN_SOURCES}>
+            {(s) => <option value={s}>{t(`tasks.source.${s}` as MessageKey)}</option>}
+          </For>
+        </FilterSelect>
       </div>
-
-      <Show when={tab() === "events"}>
-        <EventsTab t={t} />
-      </Show>
-
-      <Show when={tab() === "tasks"}>
-        <div class={styles.filters}>
-          <label class={styles.filter}>
-            <span>{t("tasks.filter.state")}</span>
-            <select
-              class={styles.select}
-              onChange={(e) => set("state", e.currentTarget.value as TaskFilter["state"] | "")}
-              data-testid="tasks-filter-state"
-            >
-              <option value="">{t("tasks.filter.all")}</option>
-              <For each={TASK_STATES}>
-                {(s) => <option value={s}>{t(`tasks.state.${s}` as MessageKey)}</option>}
-              </For>
-            </select>
-          </label>
-          <label class={styles.filter}>
-            <span>{t("tasks.filter.agent")}</span>
-            <select
-              class={styles.select}
-              onChange={(e) => set("agentId", e.currentTarget.value)}
-              data-testid="tasks-filter-agent"
-            >
-              <option value="" selected={!filter().agentId}>
-                {t("tasks.filter.all")}
-              </option>
-              <For each={agents.agents()}>
-                {(a) => (
-                  <option value={a.id} selected={filter().agentId === a.id}>
-                    {a.name}
-                  </option>
-                )}
-              </For>
-            </select>
-          </label>
-          <label class={styles.filter}>
-            <span>{t("tasks.filter.source")}</span>
-            <select
-              class={styles.select}
-              onChange={(e) => set("source", e.currentTarget.value as TaskFilter["source"] | "")}
-              data-testid="tasks-filter-source"
-            >
-              <option value="">{t("tasks.filter.all")}</option>
-              <For each={SHOWN_SOURCES}>
-                {(s) => <option value={s}>{t(`tasks.source.${s}` as MessageKey)}</option>}
-              </For>
-            </select>
-          </label>
-          <Show when={showComputers()}>
-            <label class={styles.filter}>
-              <span>{t("tasks.filter.computer")}</span>
-              <select
-                class={styles.select}
-                onChange={(e) => setComputer(e.currentTarget.value)}
-                data-testid="tasks-filter-computer"
-              >
-                <option value="">{t("tasks.filter.all")}</option>
-                <option value="here">{t("tasks.computer.here")}</option>
-                <For each={computers()}>
-                  {(name) => (
-                    <option value={`name:${name}`}>{name || t("sync.anotherComputer")}</option>
-                  )}
-                </For>
-              </select>
-            </label>
-          </Show>
-          <input
-            class={styles.search}
-            type="search"
-            placeholder={t("tasks.search")}
-            aria-label={t("tasks.search")}
-            onInput={(e) => set("query", e.currentTarget.value)}
-            data-testid="tasks-search"
-          />
-        </div>
-
+      <Show
+        when={tasks().length > 0}
+        fallback={
+          <p class={styles.muted} data-testid="tasks-empty">
+            {t("tasks.empty")}
+          </p>
+        }
+      >
         <Show
-          when={tasks().length > 0}
+          when={shown().length > 0}
           fallback={
-            <p class={styles.muted} data-testid="tasks-empty">
-              {t("tasks.empty")}
+            <p class={styles.muted} data-testid="tasks-no-match">
+              {t("tasks.noMatch")}
             </p>
           }
         >
-          <Show
-            when={shown().length > 0}
-            fallback={
-              <p class={styles.muted} data-testid="tasks-no-match">
-                {t("tasks.noMatch")}
-              </p>
-            }
-          >
-            <table class={styles.table} data-testid="tasks-table">
-              <thead>
-                <tr>
-                  <th scope="col">{t("tasks.col.agent")}</th>
-                  <th scope="col">{t("tasks.col.label")}</th>
-                  <th scope="col">{t("tasks.col.source")}</th>
-                  <Show when={showComputers()}>
-                    <th scope="col">{t("tasks.col.computer")}</th>
-                  </Show>
-                  <th scope="col">{t("tasks.col.state")}</th>
-                  <th scope="col" class={styles.num}>
-                    {t("tasks.col.duration")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={shown()}>
-                  {(task) => (
-                    <tr data-testid="task-row" data-state={task.state}>
-                      <td>{task.agentName}</td>
-                      <th scope="row">
+          <table class={styles.table} data-testid="tasks-table">
+            <thead>
+              <tr>
+                <th scope="col">{t("tasks.col.workflow")}</th>
+                <th scope="col">{t("tasks.col.node")}</th>
+                <th scope="col">{t("tasks.col.source")}</th>
+                <th scope="col">{t("tasks.col.state")}</th>
+                <th scope="col" class={styles.num}>
+                  {t("tasks.col.duration")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <Keyed each={shown()} by={(task) => task.id}>
+                {(task) => (
+                  <tr data-testid="task-row" data-state={task().state} data-id={task().id}>
+                    <td>{task().workflowName}</td>
+                    <th scope="row">
+                      <button
+                        type="button"
+                        class={styles.rowButton}
+                        onClick={() => setOpenId(task().id)}
+                        data-testid="task-open"
+                      >
+                        {t("tasks.node", { number: task().nodeNumber, name: task().nodeName })}
+                      </button>
+                    </th>
+                    <td data-testid="task-source">
+                      {t(`tasks.source.${task().source}` as MessageKey)}
+                    </td>
+                    <td>
+                      <StateText task={task()} />
+                      <Reason task={task()} testid="task-reason" class={styles.muted} />
+                      <Show when={task().canRunNext}>
                         <button
                           type="button"
                           class={styles.rowButton}
-                          onClick={() => setOpenId(task.id)}
-                          data-testid="task-open"
+                          aria-label={t("tasks.runNext.for", {
+                            workflow: task().workflowName,
+                            number: task().nodeNumber,
+                            name: task().nodeName,
+                          })}
+                          onClick={() =>
+                            void call("tasks.runNext", { taskId: task().id }).catch(toastError)
+                          }
+                          data-testid="task-run-next"
                         >
-                          {taskTitle(task, t)}
+                          {t("tasks.runNext")}
                         </button>
-                      </th>
-                      <td>{sourceWords(task, t)}</td>
-                      <Show when={showComputers()}>
-                        <td data-testid="task-computer">{computerOf(task)}</td>
                       </Show>
-                      <td>
-                        <span class={styles.state} data-state={task.state} data-testid="task-state">
-                          <StateIcon state={task.state} />
-                          <TaskStateText task={task} />
-                        </span>
-                        <Show when={task.waitsFor}>
-                          {(name) => (
-                            <div class={styles.muted} data-testid="task-waits">
-                              {t("tasks.waitsFor", { name: name() })}
-                            </div>
-                          )}
-                        </Show>
-                        <BehindLine task={task} testid="task-behind" class={styles.muted} />
-                        <Show when={canRunNext(task, ui.linked())}>
-                          <button
-                            type="button"
-                            class={styles.rowButton}
-                            onClick={() =>
-                              void call("tasks.runNext", { id: task.id }).catch((e: unknown) => {
-                                const error = describeError(e)
-                                showToast("error", error.key, error.params)
-                              })
-                            }
-                            data-testid="task-run-next"
-                          >
-                            {t("tasks.runNext")}
-                          </button>
-                        </Show>
-                      </td>
-                      <td class={styles.num}>{duration(task)}</td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </Show>
+                    </td>
+                    <td class={styles.num}>{duration(task(), t("time.unknown"))}</td>
+                  </tr>
+                )}
+              </Keyed>
+            </tbody>
+          </table>
         </Show>
       </Show>
       <Presence when={openId()}>
-        {(id) => <TaskDetailDialog id={id} onClose={() => setOpenId(undefined)} />}
+        {(id) => (
+          <TaskDetail
+            id={id}
+            onClose={() => setOpenId(undefined)}
+            onChanged={() => void refetch()}
+          />
+        )}
       </Presence>
     </div>
+  )
+}
+
+/**
+ * The events of this computer (spec 038). The list of events is not built yet (a later slice, see
+ * docs/spec-questions.md, B2): the tab shows its empty line.
+ */
+const EventsTab = () => {
+  const { t } = useApp()
+  return (
+    <div class={styles.body} data-testid="events-tab-body">
+      <h2 class={styles.title}>{t("events.title")}</h2>
+      <p class={styles.muted} data-testid="events-empty">
+        {t("events.empty")}
+      </p>
+    </div>
+  )
+}
+
+/** The page "Tasks": two tabs at the top of the header line, "Tasks" and "Events" (spec 005, 038). */
+export const TasksPage = () => {
+  const { t } = useApp()
+  const ui = useUi()
+  const tab = () => ui.ui.tasksTab
+  const pick = ui.selectTasksTab
+  const tabs = ["tasks", "events"] as const
+  return (
+    <>
+      <header class={shell.header} data-testid="tasks-header">
+        <div class={styles.tabs} role="tablist" aria-label={t("tasks.tabs")}>
+          <For each={tabs}>
+            {(name) => (
+              <button
+                type="button"
+                role="tab"
+                id={`tasks-page-tab-${name}`}
+                class={styles.tab}
+                aria-selected={tab() === name}
+                aria-controls={tab() === name ? `tasks-page-panel-${name}` : undefined}
+                tabIndex={tab() === name ? 0 : -1}
+                data-selected={tab() === name}
+                onClick={() => pick(name)}
+                onKeyDown={(e) => tabKeyDown(e, tabs, tab(), pick)}
+                data-testid={`${name}-tab`}
+              >
+                {t(`tasks.tab.${name}` as MessageKey)}
+              </button>
+            )}
+          </For>
+        </div>
+      </header>
+      <div
+        class={`${shell.page} ${styles.page}`}
+        role="tabpanel"
+        id={`tasks-page-panel-${tab()}`}
+        aria-labelledby={`tasks-page-tab-${tab()}`}
+        data-testid="tasks-page"
+      >
+        <Show when={tab() === "events"} fallback={<TasksTab />}>
+          <EventsTab />
+        </Show>
+      </div>
+    </>
   )
 }

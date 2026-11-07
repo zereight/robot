@@ -1,7 +1,5 @@
 /** Skills (spec 017): saved instructions that the user calls in a chat. */
 
-import type { TaskSource } from "./task.ts"
-
 export const SKILL_NAME_MAX = 40
 export const SKILL_DESCRIPTION_MAX = 140
 export const SKILL_INSTRUCTIONS_MAX = 20_000
@@ -13,8 +11,6 @@ export interface Skill {
   readonly name: string
   readonly description: string
   readonly instructions: string
-  /** The agents that may use the skill. `null` means all agents. */
-  readonly agentIds: readonly string[] | null
   readonly enabled: boolean
   readonly createdAt: number
 }
@@ -86,40 +82,9 @@ export const skillProblems = (input: SkillInput): readonly SkillProblem[] => {
   return problems
 }
 
-/** What a delete of an agent does to one skill (spec 017, "Rules"). */
-export type SkillAfterAgentDelete =
-  | { readonly kind: "same" }
-  | { readonly kind: "shorter"; readonly agentIds: readonly string[] }
-  | { readonly kind: "delete" }
-
-/**
- * What happens to a skill when the agent `agentId` is deleted. A skill for all agents, and a skill
- * that does not name the agent, stay as they are. The agent leaves the list of the others. A skill
- * that was only for this agent is deleted: no agent that still exists is left in its list.
- * `exists` tells whether an agent is still there, in the archive or not; an id of an agent that
- * went before this rule counts as gone.
- */
-export const skillAfterAgentDelete = (
-  agentIds: readonly string[] | null,
-  agentId: string,
-  exists: (id: string) => boolean,
-): SkillAfterAgentDelete => {
-  if (agentIds === null || !agentIds.includes(agentId)) return { kind: "same" }
-  const rest = agentIds.filter((id) => id !== agentId)
-  return rest.some(exists) ? { kind: "shorter", agentIds: rest } : { kind: "delete" }
-}
-
 /** What the agent reads before the text of a message with a skill chip. */
 export const skillLead = (name: string, instructions: string) =>
   `Use the skill "${name}". Its instructions:\n${instructions}`
-
-/**
- * The turns that read the skill list and the read-skill tool (spec 017, flow 8): a direct chat or
- * a thread that a person started, or that follows one. A routine, a workflow and a turn of another
- * agent read neither.
- */
-export const skillPickSource = (source: TaskSource): boolean =>
-  source === "chat" || source === "handover" || source === "teams" || source === "follow_up"
 
 /**
  * What the agent reads about its skills at the start of a turn (spec 017, flow 8): the names and

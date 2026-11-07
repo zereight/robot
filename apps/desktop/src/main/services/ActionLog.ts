@@ -24,9 +24,9 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 
-/** What a step adds to the log. The service adds the time, the name of the agent and the id. */
+/** What a step adds to the log. The service adds the time, the name of the workflow and the id. */
 export interface ActionLogInput {
-  readonly agentId: string
+  readonly workflowId: string
   readonly kind: ActionKind
   /** For a step of a file, whether it read or wrote. Left out for every other kind. */
   readonly access?: StepAccess | null
@@ -41,12 +41,16 @@ export interface ActionLogInput {
   readonly rule?: RuleRef | null
   /** The check of "Ask when unsure", when the step went to the check (spec 007). */
   readonly check?: ActionCheck | null
+  /** The linked device that answered the card of the step (spec 012). */
+  readonly device?: string | null
+  /** The workflow that held the file, when a file claim refused the step (spec 025). */
+  readonly holder?: string | null
 }
 
 export interface ActionLogFilter {
-  readonly agentId?: string
+  readonly workflowId?: string
   readonly result?: ActionResult
-  /** The kind of step (spec 007: the log has filters for the agent, the result and the step kind). */
+  /** The kind of step (spec 007: the log has filters for the workflow, the result and the step kind). */
   readonly kind?: ActionKind
   /** A search of the target: the entries whose target holds this text, with no regard to case. */
   readonly search?: string
@@ -62,13 +66,20 @@ export interface ActionLogService {
    * tool of a connection), oldest first. The retry note of spec 005 reads them.
    */
   ofTask(taskId: string): readonly ActionLogEntry[]
+  /**
+   * The steps of these tasks that a file claim of another workflow refused (spec 025), oldest
+   * first, from one query for all the tasks.
+   */
+  refusedOf(taskIds: readonly string[]): readonly ActionLogEntry[]
 }
 
 interface Row {
   id: string
   at: number
-  agent_id: string
-  agent_name: string
+  workflow_id: string
+  workflow_name: string
+  node_name: string | null
+  node_number: number | null
   kind: ActionKind
   access: StepAccess | null
   target: string
@@ -85,6 +96,8 @@ interface Row {
   rule_alive: number | null
   check_reason: string | null
   check_probability: number | null
+  device: string | null
+  holder: string | null
 }
 
 /** The columns of an entry, and whether its rule still exists. */
@@ -127,8 +140,10 @@ const toCheck = (r: Row): ActionCheck | null => {
 const toEntry = (r: Row): ActionLogEntry => ({
   id: r.id,
   at: r.at,
-  agentId: r.agent_id,
-  agentName: r.agent_name,
+  workflowId: r.workflow_id,
+  workflowName: r.workflow_name,
+  nodeName: r.node_name,
+  nodeNumber: r.node_number,
   kind: r.kind,
   access: r.access,
   target: r.target,
@@ -139,6 +154,8 @@ const toEntry = (r: Row): ActionLogEntry => ({
   sensitive: isSensitiveLabel(r.sensitive) ? r.sensitive : null,
   rule: toRule(r),
   check: toCheck(r),
+  device: r.device,
+  holder: r.holder,
 })
 
 /** The target as the log keeps it: secrets hidden, then cut at 200 characters. */
@@ -165,15 +182,24 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
           const id = randomUUID()
           const at = Date.now()
           const name =
-            db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", input.agentId)?.name ??
-            ""
+            db.get<{ name: string }>("SELECT name FROM workflow WHERE id = ?", input.workflowId)
+              ?.name ?? ""
+          // The node is the node of the task as it was then, so a later rename does not change it.
+          const node = input.taskId
+            ? db.get<{ node_name: string; node_number: number }>(
+                "SELECT node_name, node_number FROM task WHERE id = ?",
+                input.taskId,
+              )
+            : undefined
           db.run(
-            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, workflow_id, workflow_name, node_name, node_number, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability, device, holder)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
-            input.agentId,
+            input.workflowId,
             name,
+            node?.node_name ?? null,
+            node?.node_number ?? null,
             input.kind,
             input.kind === "file" ? (input.access ?? null) : null,
             logTarget(input.target),
@@ -192,6 +218,8 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
                 : (input.check.reason ?? "unsure")
               : null,
             input.check?.probability ?? null,
+            input.device ? logTarget(input.device) : null,
+            input.holder ? logTarget(input.holder) : null,
           )
           db.run("DELETE FROM action_log WHERE at < ?", at - ACTION_LOG_DAYS * DAY_MS)
           db.run(
@@ -213,13 +241,25 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
               ...LOGGED_KINDS,
             )
             .map(toEntry),
+        refusedOf: (taskIds) =>
+          taskIds.length === 0
+            ? []
+            : db
+                .all<Row>(
+                  `SELECT ${COLUMNS} FROM action_log l
+                   WHERE l.task_id IN (${taskIds.map(() => "?").join(", ")})
+                     AND l.decided_by = 'shared_folder' AND l.result = 'refused'
+                   ORDER BY l.at, l.rowid`,
+                  ...taskIds,
+                )
+                .map(toEntry),
         list: (filter = {}, limit = 500) =>
           Effect.sync(() => {
             const where: string[] = []
             const params: (string | number)[] = []
-            if (filter.agentId) {
-              where.push("l.agent_id = ?")
-              params.push(filter.agentId)
+            if (filter.workflowId) {
+              where.push("l.workflow_id = ?")
+              params.push(filter.workflowId)
             }
             if (filter.result) {
               where.push("l.result = ?")

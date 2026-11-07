@@ -1,458 +1,972 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { GO_ON_MESSAGE, HOLD_UNKNOWN_MS, type MessagePart, messageText } from "@robot/shared"
-import { Agents } from "./Agents.ts"
-import { Chat } from "./Chat.ts"
-import { holdClock } from "./ModelHolds.ts"
+import { DatabaseSync } from "node:sqlite"
+import {
+  GO_ON_MESSAGE,
+  HOLD_MAX_MS,
+  HOLD_UNKNOWN_MS,
+  type NodeHold,
+  type RunDetail,
+  type WorkflowNode,
+} from "@robot/shared"
+import { Effect } from "effect"
+import { makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
+import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
+import { busyClock } from "../providers/busyRetry.ts"
+import { ProviderFailure } from "../providers/client.ts"
+import { handlers, runRequest } from "../rpc.ts"
+import { CurrentActor } from "./actor.ts"
+import { isBackupChoice, limitSwitch, modelUsageOf } from "./backupRun.ts"
+import { Database } from "./Database.ts"
+import { Memory } from "./Memory.ts"
+import { holdClock, ModelHolds } from "./ModelHolds.ts"
 import { Providers } from "./Providers.ts"
+import { Runs, runClock } from "./Runs.ts"
 import { Servers } from "./Servers.ts"
-import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
+import { Workflows } from "./Workflows.ts"
 
-// The spec 006 "Backup model": the main model reaches its limit, the main model is held, and the
-// backup model takes the turn in the same task. A stand-in server plays both models.
+// The backup model of a text node (spec 006, "Backup model"). The services, the tables and the engine
+// are the real ones. The only stand-ins are the two model providers: the main one can be made to fail
+// with a spent limit, the backup one answers.
 
-/** What reached the server: the model, and the messages of the request. */
-interface Seen {
-  readonly model: string
-  readonly messages: { role: string; content: string | null; tool_calls?: unknown }[]
-}
-const seen: Seen[] = []
-const callsOf = (model: string) => seen.filter((s) => s.model === model)
-
-const sse = (data: unknown[]) =>
-  new Response(
-    data.map((d) => `data: ${typeof d === "string" ? d : JSON.stringify(d)}\n\n`).join(""),
-    {
-      headers: { "content-type": "text/event-stream" },
-    },
-  )
-const text = (content: string) => ({ choices: [{ delta: { content } }] })
-
-const server = Bun.serve({
-  hostname: "127.0.0.1",
-  port: 0,
-  async fetch(req) {
-    const url = new URL(req.url)
-    if (url.pathname.endsWith("/models"))
-      return Response.json({ data: [{ id: "main-m" }, { id: "backup-m" }, { id: "other-m" }] })
-    const body = (await req.json()) as Seen & { tools?: unknown }
-    seen.push({ model: body.model, messages: body.messages })
-    const last = body.messages.at(-1)
-    // What the user asked: the last message of the user that is not the go-on message.
-    const asked = [...body.messages]
-      .reverse()
-      .find((m) => m.role === "user" && !String(m.content).includes(GO_ON_MESSAGE))
-    const request = String(asked?.content ?? "")
-    const hasToolResult = body.messages.some((m) => m.role === "tool")
-    if (body.model === "main-m") {
-      if (request.includes("BADKEY"))
-        return Response.json({ error: { message: "Incorrect API key" } }, { status: 401 })
-      if (request.includes("NOTIME"))
-        return Response.json(
-          { error: { message: "You have hit your usage limit." } },
-          { status: 429 },
-        )
-      if (request.includes("LIMIT"))
-        return Response.json(
-          { error: { message: "You have hit your usage limit." } },
-          { status: 429, headers: { "retry-after": "7200" } },
-        )
-      if (request.includes("STEPS")) {
-        // A tool step first; the next request, with its result, reaches the limit.
-        if (!hasToolResult)
-          return sse([
-            {
-              choices: [
-                {
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: 0,
-                        id: "call_1",
-                        function: {
-                          name: "save_memory",
-                          arguments: JSON.stringify({ text: "The step ran once" }),
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-            "[DONE]",
-          ])
-        return Response.json(
-          { error: { message: "You have hit your usage limit." } },
-          { status: 429, headers: { "retry-after": "7200" } },
-        )
-      }
-      return sse([text(`main answers: ${request}`), "[DONE]"])
-    }
-    if (body.model === "backup-m") {
-      if (request.includes("BOTH"))
-        return Response.json(
-          { error: { message: "Your credit balance is too low to access the API." } },
-          { status: 400 },
-        )
-      const goOn = String(last?.content ?? "").includes(GO_ON_MESSAGE)
-      return sse([text(`backup answers${goOn ? " (go on)" : ""}: ${request}`), "[DONE]"])
-    }
-    return sse([text(`other answers: ${request}`), "[DONE]"])
-  },
+const PLAN = "Plan limit reached for this account."
+const real = holdClock.now
+const mocks: MockProvider[] = []
+runClock.retryWaitMs = 10
+runClock.minuteMs = 60
+afterAll(async () => {
+  for (const m of mocks) await m.close()
 })
-afterAll(() => server.stop(true))
+afterEach(() => {
+  holdClock.now = real
+})
 
-const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
+const until = async (ok: () => boolean | Promise<boolean>, ms = 6000) => {
   const end = Date.now() + ms
   while (Date.now() < end) {
-    if (await check()) return
-    await Bun.sleep(10)
+    if (await ok()) return
+    await new Promise((r) => setTimeout(r, 15))
   }
-  throw new Error("timed out")
+  throw new Error("timeout")
 }
 
-afterEach(() => {
-  holdClock.now = () => Date.now()
-  seen.length = 0
-})
-
-const setup = async (options: { databaseFile?: string; backup?: boolean } = {}) => {
-  const t = testRuntime(options.databaseFile ? { databaseFile: options.databaseFile } : {})
+const setup = async (options: { databaseFile?: string; prompt?: string } = {}) => {
+  const main = await startMockProvider()
+  const backup = await startMockProvider()
+  mocks.push(main, backup)
+  const t = testRuntime({
+    check: { auto: false },
+    ...(options.databaseFile ? { databaseFile: options.databaseFile } : {}),
+  })
   const run = t.runtime.runPromise
-  const connect = (name: string) =>
-    run(
-      Providers.use((p) =>
-        p.connect({
-          kind: "custom",
-          name,
-          baseUrl: `http://127.0.0.1:${server.port}/v1`,
-          apiKey: `sk-${name}`,
-        }),
-      ),
-    )
-  const mainAccount = await connect("Main")
-  const backupAccount = await connect("Backup")
-  const local = await run(Servers.use((s) => s.local))
-  const agent = await run(
-    Agents.use((a) =>
-      a.create({
-        serverId: local.id,
-        name: "Ada",
-        role: "",
-        instructions: "Be brief.",
-        model: { accountId: mainAccount.id, model: "main-m", effort: null },
-        ...(options.backup === false
-          ? {}
-          : { backupModel: { accountId: backupAccount.id, model: "backup-m", effort: null } }),
+  const server = await run(Servers.use((s) => s.local))
+  const connect = (name: string, url: string) =>
+    run(Providers.use((p) => p.connect({ kind: "openai", name, baseUrl: url, apiKey: GOOD_KEY })))
+  const mainAccount = await connect("Main", main.openaiUrl)
+  const backupAccount = await connect("Backup", backup.openaiUrl)
+  const flow = await run(Workflows.use((w) => w.create({ serverId: server.id, name: "Report" })))
+  await run(Workflows.use((w) => w.setSelfImprovement(flow.id, false)))
+  await run(Memory.use((m) => m.setEnabled(flow.id, false)))
+  const node = await run(
+    Workflows.use((w) =>
+      w.addNode(flow.id, {
+        kind: "text",
+        name: "Draft",
+        prompt: options.prompt ?? "write it",
+        accountId: mainAccount.id,
+        model: "mock-fast",
       }),
     ),
   )
-  const history = () => run(Chat.use((c) => c.history(agent.id)))
-  const send = (message: string) =>
-    run(Chat.use((c) => c.send({ agentId: agent.id, text: message, replyTo: null })))
-  const settled = () =>
-    until(async () => {
-      const h = await history()
-      return (
-        h.messages.length > 0 &&
-        h.messages.every((m) => m.status !== "streaming") &&
-        h.queue.length === 0
-      )
-    })
-  const current = () => run(Agents.use((a) => a.get(agent.id)))
-  const lastReply = async () => (await history()).messages.at(-1)
-  const lines = async () =>
-    (await history()).messages.flatMap((m) =>
-      m.parts.filter(
-        (p): p is Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }> =>
-          p.kind === "note" && p.note === "backup_goes_on",
-      ),
+  const pick = { accountId: backupAccount.id, model: "gpt-5", effort: null }
+  /** The main choice of the node. */
+  const mainPick = { accountId: mainAccount.id, model: "mock-fast", effort: null }
+  /** The editor of this computer sets the backup (the same path as the window). */
+  const setBackup = (id: string, value: typeof pick | null = pick) =>
+    runRequest(t.runtime, "workflows.node.update", { id, patch: { backup: value } })
+  const start = () => run(Runs.use((r) => r.start({ workflowId: flow.id })))
+  const get = (id: string) => run(Runs.use((r) => r.get(id)))
+  const ended = async (id: string): Promise<RunDetail> => {
+    await until(async () => (await get(id)).finishedAt !== null)
+    return get(id)
+  }
+  const go = async () => ended((await start()).id)
+  const holds = (): Promise<readonly NodeHold[]> =>
+    runRequest(t.runtime, "workflows.holds", { workflowId: flow.id }).then((r) =>
+      r.ok ? (r.value as readonly NodeHold[]) : [],
     )
+  const rows = <T>(statement: string, ...params: (string | number | null)[]) =>
+    run(Database.use((d) => Effect.sync(() => d.all<T>(statement, ...params))))
   return {
     ...t,
     run,
-    agent,
-    local,
+    main,
+    backup,
     mainAccount,
     backupAccount,
-    history,
-    send,
-    settled,
-    current,
-    lastReply,
-    lines,
+    flow,
+    node,
+    pick,
+    mainPick,
+    setBackup,
+    go,
+    start,
+    ended,
+    get,
+    holds,
+    rows,
+    server,
   }
 }
 
-describe("backup model (spec 006)", () => {
-  test("a limit before any step: the main model is held and the backup runs the turn from the start", async () => {
+const task = (d: RunDetail) => d.nodes[0]?.task
+
+describe("the choice of the backup model (spec 006, 010)", () => {
+  test("the editor saves a backup, and the node holds it; it starts as none", async () => {
     const t = await setup()
-    await t.send("LIMIT please")
-    await t.settled()
-    const reply = await t.lastReply()
-    expect(reply?.status).toBe("done")
-    expect(messageText(reply as never)).toBe("backup answers: LIMIT please")
-    // The reply says which model made it.
-    expect(reply?.model).toBe("backup-m")
-    // The backup got the request, as the first request of its own, with no go-on message.
-    expect(callsOf("backup-m")).toHaveLength(1)
-    expect(JSON.stringify(callsOf("backup-m")[0]?.messages)).not.toContain(GO_ON_MESSAGE)
-    // One task, and it ends once.
-    const tasks = await t.run(Tasks.use((s) => s.list(t.local.id)))
-    expect(tasks).toHaveLength(1)
-    expect(tasks[0]?.state).toBe("done")
-    // The line names both models and the reset time that the provider gave.
-    const lines = await t.lines()
-    expect(lines).toHaveLength(1)
-    expect(lines[0]?.main).toBe("main-m")
-    expect(lines[0]?.backup).toBe("backup-m")
-    expect(lines[0]?.until).toBeGreaterThan(Date.now() + 7_000_000)
-    // The agent shows the hold until that time, with the backup that takes the turns.
-    const agent = await t.current()
-    expect(agent.hold?.model.model).toBe("backup-m")
-    expect(agent.hold?.until).toBe(lines[0]?.until as number)
-    expect(agent.backupReady).toBe(true)
+    expect(t.node.backup).toBeNull()
+    expect(await t.setBackup(t.node.id)).toMatchObject({ ok: true })
+    const g = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
+    expect(g.nodes[0]?.backup).toEqual(t.pick)
+    // The earlier graph is kept as a version, and a version from before the field reads as none.
+    const versions = await t.run(Workflows.use((w) => w.versions(t.flow.id)))
+    expect(versions[0]?.graph.nodes[0]?.backup).toBeNull()
+    await t.setBackup(t.node.id, null)
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toBeNull()
   })
 
-  test("while the hold lasts the next turn uses the backup at once", async () => {
+  test("the same account, model and reasoning level as the main choice is refused, with the reason", async () => {
     const t = await setup()
-    await t.send("LIMIT first")
-    await t.settled()
-    const mainCalls = callsOf("main-m").length
-    await t.send("second message")
-    await t.settled()
-    expect(messageText((await t.lastReply()) as never)).toBe("backup answers: second message")
-    expect(callsOf("main-m")).toHaveLength(mainCalls)
-    // No second line: the hold was there when the turn started.
-    expect(await t.lines()).toHaveLength(1)
+    const same = { accountId: t.mainAccount.id, model: "mock-fast", effort: null }
+    expect(await t.setBackup(t.node.id, same)).toMatchObject({
+      ok: false,
+      error: { code: "backup_same" },
+    })
+    // Another model of the same account is a different choice.
+    expect(
+      await t.setBackup(t.node.id, { accountId: t.mainAccount.id, model: "gpt-5", effort: null }),
+    ).toMatchObject({ ok: true })
   })
 
-  test("a limit after a step: the backup gets the work so far and a short message, not the request again", async () => {
+  test("a change of the main choice to the backup is refused too", async () => {
     const t = await setup()
-    await t.send("STEPS please")
-    await t.settled()
-    const reply = await t.lastReply()
-    expect(reply?.status).toBe("done")
-    expect(messageText(reply as never)).toContain("backup answers (go on)")
-    const [call] = callsOf("backup-m")
-    expect(callsOf("backup-m")).toHaveLength(1)
-    const last = call?.messages.at(-1)
-    // The last message of the backup request is the go-on message. It is no message of the chat.
-    expect(last?.role).toBe("user")
-    expect(String(last?.content)).toContain(GO_ON_MESSAGE)
-    // It sees the step that ran, with its result, once.
-    expect(call?.messages.filter((m) => m.role === "tool")).toHaveLength(1)
-    expect(JSON.stringify(call?.messages)).toContain("save_memory")
-    // The chat has no row for the go-on message: a row of the user and a row of the reply.
-    const { messages } = await t.history()
-    expect(messages.map((m) => m.author)).toEqual(["user", "agent"])
-    expect(JSON.stringify(messages)).not.toContain(GO_ON_MESSAGE)
-    // The tool step stays in the reply, and the line comes after it. One task, ended once.
-    const kinds = (reply?.parts ?? []).map((p) => (p.kind === "note" ? p.note : p.kind))
-    expect(kinds).toContain("tool")
-    expect(kinds).toContain("backup_goes_on")
-    const tasks = await t.run(Tasks.use((s) => s.list(t.local.id)))
-    expect(tasks).toHaveLength(1)
-    expect(tasks[0]?.state).toBe("done")
+    await t.setBackup(t.node.id)
+    const r = await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { accountId: t.backupAccount.id, model: "gpt-5" },
+    })
+    expect(r).toMatchObject({ ok: false, error: { code: "backup_same" } })
   })
 
-  test("a limit on both models fails the turn with the reason of the backup", async () => {
+  test("a backup needs a main choice, an account of this computer and a model of its real list", async () => {
     const t = await setup()
-    await t.send("LIMIT BOTH")
-    await t.settled()
-    const reply = await t.lastReply()
-    expect(reply?.status).toBe("failed")
-    expect(reply?.error?.code).toBe("provider_limit")
-    // It is the reason of the backup: its credit is spent. The main limit gave no such words.
-    expect(reply?.error?.detail).toContain("credit balance")
-    const tasks = await t.run(Tasks.use((s) => s.list(t.local.id)))
-    expect(tasks[0]?.state).toBe("failed")
-  })
-
-  test("a key that is not valid does not go to the backup", async () => {
-    const t = await setup()
-    await t.send("BADKEY")
-    await t.settled()
-    const reply = await t.lastReply()
-    expect(reply?.error?.code).toBe("provider_auth")
-    expect(callsOf("backup-m")).toHaveLength(0)
-    expect((await t.current()).hold).toBeNull()
-  })
-
-  test("a backup that is not ready does not take the turn", async () => {
-    const t = await setup()
-    await t.run(Providers.use((p) => p.remove(t.backupAccount.id)))
-    await t.send("LIMIT please")
-    await t.settled()
-    const reply = await t.lastReply()
-    expect(reply?.error?.code).toBe("provider_limit")
-    expect((await t.current()).hold).toBeNull()
-    // The account is gone, so the agent has no backup any more.
-    expect((await t.current()).backupModel).toBeNull()
-  })
-
-  test("an agent with no backup fails with the limit as before", async () => {
-    const t = await setup({ backup: false })
-    await t.send("LIMIT please")
-    await t.settled()
-    const reply = await t.lastReply()
-    expect(reply?.error?.code).toBe("provider_limit")
-    expect(reply?.error?.resetsAt).toBeGreaterThan(Date.now() + 7_000_000)
-    expect(await t.lines()).toHaveLength(0)
-  })
-
-  test("with no reset time the hold lasts 15 minutes, and then the main model is used again", async () => {
-    const t = await setup()
-    const start = Date.now()
-    holdClock.now = () => start
-    await t.send("NOTIME")
-    await t.settled()
-    const agent = await t.current()
-    expect(agent.hold?.until).toBe(start + HOLD_UNKNOWN_MS)
-    // The line gives no reset time: the provider named none.
-    expect((await t.lines())[0]?.until).toBeNull()
-    // With a fake clock, past the end of the hold: the next turn goes to the main model.
-    holdClock.now = () => start + HOLD_UNKNOWN_MS + 1
-    expect((await t.current()).hold).toBeNull()
-    const mainCalls = callsOf("main-m").length
-    await t.send("fine now")
-    await t.settled()
-    expect(messageText((await t.lastReply()) as never)).toBe("main answers: fine now")
-    expect(callsOf("main-m")).toHaveLength(mainCalls + 1)
-  })
-
-  test("Use the main model now: the next turn tries the main model; a limit again holds it with no second line", async () => {
-    const t = await setup()
-    await t.send("LIMIT one")
-    await t.settled()
-    expect((await t.current()).hold).not.toBeNull()
-    const held = await t.run(Agents.use((a) => a.useMain(t.agent.id)))
-    expect(held.hold).toBeNull()
-    const mainCalls = callsOf("main-m").length
-    await t.send("LIMIT two")
-    await t.settled()
-    // The main model was tried, failed with the limit again, and the backup answered.
-    expect(callsOf("main-m")).toHaveLength(mainCalls + 1)
-    expect(messageText((await t.lastReply()) as never)).toBe("backup answers: LIMIT two")
-    expect((await t.current()).hold).not.toBeNull()
-    // The chat shows no second line.
-    expect(await t.lines()).toHaveLength(1)
-  })
-
-  test("Use the main model now, and the main model answers: the next limit is a new one with its line", async () => {
-    const t = await setup()
-    await t.send("LIMIT one")
-    await t.settled()
-    await t.run(Agents.use((a) => a.useMain(t.agent.id)))
-    await t.send("fine now")
-    await t.settled()
-    expect(messageText((await t.lastReply()) as never)).toBe("main answers: fine now")
-    await t.send("LIMIT again")
-    await t.settled()
-    expect(await t.lines()).toHaveLength(2)
-  })
-
-  test("the hold ends at once when the backup is no longer ready", async () => {
-    const t = await setup()
-    await t.send("LIMIT one")
-    await t.settled()
-    expect((await t.current()).hold).not.toBeNull()
-    // The account of the backup is disconnected: nothing takes the turns.
-    await t.run(Providers.use((p) => p.remove(t.backupAccount.id)))
-    expect((await t.current()).hold).toBeNull()
-    await t.send("tell me")
-    await t.settled()
-    expect(messageText((await t.lastReply()) as never)).toBe("main answers: tell me")
-  })
-
-  test("the hold stays after a restart", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "robot-hold-")), "robot.db")
-    const first = await setup({ databaseFile: file })
-    await first.send("LIMIT please")
-    await first.settled()
-    const until = (await first.current()).hold?.until
-    expect(until).toBeGreaterThan(Date.now())
-    await first.runtime.dispose()
-    // The same data in a new app: the agent is still on its backup.
-    const second = testRuntime({ databaseFile: file })
-    const agents = await second.runtime.runPromise(Agents.use((a) => a.list(first.local.id, false)))
-    expect(agents[0]?.hold?.until).toBe(until as number)
-    await second.runtime.dispose()
-  })
-
-  test("a routine with its own model keeps it while the agent is on its backup", async () => {
-    const t = await setup()
-    await t.send("LIMIT one")
-    await t.settled()
-    await t.run(
-      Chat.use((c) =>
-        c.send(
-          { agentId: t.agent.id, text: "routine job", replyTo: null },
-          {
-            source: "routine",
-            sourceId: "r1",
-            model: { accountId: t.mainAccount.id, model: "other-m", effort: null },
-          },
-        ),
-      ),
+    const bare = await t.run(
+      Workflows.use((w) => w.addNode(t.flow.id, { kind: "text", name: "Bare", prompt: "x" })),
     )
-    await t.settled()
-    expect(messageText((await t.lastReply()) as never)).toBe("other answers: routine job")
-    // A routine that follows the agent uses the backup.
-    await t.run(
-      Chat.use((c) =>
-        c.send(
-          { agentId: t.agent.id, text: "routine two", replyTo: null },
-          { source: "routine", sourceId: "r2" },
-        ),
-      ),
-    )
-    await t.settled()
-    expect(messageText((await t.lastReply()) as never)).toBe("backup answers: routine two")
+    expect(await t.setBackup(bare.id)).toMatchObject({
+      ok: false,
+      error: { code: "backup_no_main" },
+    })
+    expect(
+      await t.setBackup(t.node.id, { accountId: "nobody", model: "gpt-5", effort: null }),
+    ).toMatchObject({ ok: false, error: { code: "backup_not_offered" } })
+    expect(
+      await t.setBackup(t.node.id, { accountId: t.backupAccount.id, model: "nope", effort: null }),
+    ).toMatchObject({ ok: false, error: { code: "backup_not_offered" } })
   })
 
-  test("the form refuses a backup that is the same as the main choice", async () => {
-    const t = await setup({ backup: false })
-    const same = { accountId: t.mainAccount.id, model: "main-m", effort: null }
-    const exit = await t.runtime.runPromiseExit(
-      Agents.use((a) => a.update(t.agent.id, { backupModel: same })),
-    )
-    expect(exit._tag).toBe("Failure")
-    expect(JSON.stringify(exit)).toContain("backup_same")
-    // The same model on another account is a different choice.
-    const other = { accountId: t.backupAccount.id, model: "main-m", effort: null }
-    const ok = await t.run(Agents.use((a) => a.update(t.agent.id, { backupModel: other })))
-    expect(ok.backupModel?.model).toBe("main-m")
-    // A new main model that equals the backup is refused too.
-    const refused = await t.runtime.runPromiseExit(
-      Agents.use((a) => a.update(t.agent.id, { model: other })),
-    )
-    expect(refused._tag).toBe("Failure")
-  })
-
-  test("a new main model ends the hold of the old one", async () => {
+  test("a decision node has no backup model", async () => {
     const t = await setup()
-    await t.send("LIMIT one")
-    await t.settled()
-    await t.run(
-      Agents.use((a) =>
-        a.update(t.agent.id, {
-          model: { accountId: t.mainAccount.id, model: "other-m", effort: null },
+    const decision = await t.run(
+      Workflows.use((w) =>
+        w.addNode(t.flow.id, {
+          kind: "decision",
+          name: "Pick",
+          question: "Which?",
+          options: ["a", "b"],
         }),
       ),
     )
-    expect((await t.current()).hold).toBeNull()
+    expect(await t.setBackup(decision.id)).toMatchObject({
+      ok: false,
+      error: { code: "decision_backup" },
+    })
+    // A hold row that names the decision node counts for nothing: it has no backup.
+    const holds = await t.run(ModelHolds.use((h) => Effect.succeed(h)))
+    holds.start(decision.id, t.mainPick, t.pick, Date.now() + 60_000)
+    expect(holds.active(decision.id, t.mainPick, null)).toBeNull()
+    expect(await t.holds()).toEqual([])
   })
 
-  test("removing the backup ends the hold", async () => {
+  test("a linked device cannot set a backup, and its restore of a version leaves the backups as they are", async () => {
     const t = await setup()
-    await t.send("LIMIT one")
-    await t.settled()
-    const agent = await t.run(Agents.use((a) => a.update(t.agent.id, { backupModel: null })))
-    expect(agent.backupModel).toBeNull()
-    expect(agent.hold).toBeNull()
+    await t.setBackup(t.node.id)
+    const phone = { id: "phone-1", name: "Anna's phone" }
+    const asDevice = <A, E>(effect: Effect.Effect<A, E, never>) =>
+      t.runtime.runPromiseExit(Effect.provideService(effect as never, CurrentActor, phone))
+    // The handler refuses, whatever the switch of the device says.
+    const exit = await asDevice(
+      handlers["workflows.node.update"]({
+        id: t.node.id,
+        patch: { backup: null },
+      }) as Effect.Effect<never, never, never>,
+    )
+    expect(exit._tag).toBe("Failure")
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toEqual(t.pick)
+    // The link lists no method for the hold: a device gets "Not allowed" before any handler runs.
+    expect(
+      await runRequest(t.runtime, "workflows.holds", { workflowId: t.flow.id }, phone),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "not_allowed" },
+    })
+    // Restoring the version from before the backup, as a device, keeps the backup of the node.
+    const versions = await t.run(Workflows.use((w) => w.versions(t.flow.id)))
+    const before = versions.find((v) => v.graph.nodes[0]?.backup === null)
+    expect(before).toBeDefined()
+    await t.run(
+      Workflows.use((w) => w.restoreVersion(t.flow.id, before?.id ?? "", { keepBackups: true })),
+    )
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toEqual(t.pick)
+    // The user at this computer restores it as it was: no backup.
+    await t.run(Workflows.use((w) => w.restoreVersion(t.flow.id, before?.id ?? "")))
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toBeNull()
+  })
+})
+
+describe("a limit of the main model moves the turn to the backup (spec 006)", () => {
+  test("a spent plan limit before any step: the backup runs the turn from the start, with one line, and the node shows the hold", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 7200 })
+    const before = Date.now()
+    const d = await t.go()
+    expect(d.state).toBe("done")
+    expect(task(d)?.result).toContain("You said: write it")
+    // The main model was asked once, the backup once, with the request from its start.
+    expect(t.main.requests).toHaveLength(1)
+    expect(t.backup.requests).toHaveLength(1)
+    expect(JSON.stringify(t.backup.requests[0]?.body.messages)).not.toContain(GO_ON_MESSAGE)
+    // The line names both models and the reset time.
+    const note = task(d)?.backupNote
+    expect(note).toMatchObject({ main: "mock-fast", backup: "gpt-5" })
+    expect(note?.resetsAt).toBeGreaterThan(before + 7_100_000)
+    // The node shows the hold and its end.
+    const holds = await t.holds()
+    expect(holds).toHaveLength(1)
+    expect(holds[0]).toMatchObject({ nodeId: t.node.id, main: "mock-fast", backup: t.pick })
+    expect(holds[0]?.until).toBeGreaterThan(before + 7_100_000)
+    // The next task goes to the backup at once: the main model is not asked again, and no line.
+    const second = await t.go()
+    expect(second.state).toBe("done")
+    expect(t.main.requests).toHaveLength(1)
+    expect(t.backup.requests).toHaveLength(2)
+    expect(task(second)?.backupNote).toBeNull()
+  })
+
+  test("a limit after 2 tool steps: the backup gets a short message that asks it to go on, not the first request again; one task, one end", async () => {
+    const t = await setup({ prompt: 'tools 2 list_files {"path":"."}' })
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 }, 2)
+    const run = await t.start()
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    // The main model ran 2 steps and failed on its third request; the backup was asked once.
+    expect(t.main.requests).toHaveLength(3)
+    expect(t.backup.requests).toHaveLength(1)
+    const messages = t.backup.requests[0]?.body.messages ?? []
+    expect(messages.filter((m) => m.role === "tool")).toHaveLength(2)
+    expect(JSON.stringify(messages.at(-1))).toContain(GO_ON_MESSAGE.slice(0, 40))
+    // The first request is in the history once: it is not sent again as a request of its own.
+    expect(
+      messages.filter((m) => JSON.stringify(m.content).includes("tools 2 list_files")),
+    ).toHaveLength(1)
+    // One task for the node, and it ended once.
+    const tasks = await t.rows<{ id: string; state: string }>("SELECT id, state FROM task")
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]?.state).toBe("done")
+    expect(task(d)?.backupNote?.backup).toBe("gpt-5")
+    // The tokens count for the model that made them.
+    const usage = await t.run(
+      Database.use((db) => Effect.sync(() => modelUsageOf(db, tasks[0]?.id ?? ""))),
+    )
+    expect(usage).toHaveLength(2)
+    const byAccount = new Map(usage.map((u) => [u.accountId, u]))
+    expect(byAccount.get(t.mainAccount.id)?.input).toBeGreaterThan(
+      byAccount.get(t.backupAccount.id)?.input ?? 0,
+    )
+    expect((byAccount.get(t.backupAccount.id)?.input ?? 0) > 0).toBe(true)
+    // The sum of the rows is the usage of the task.
+    expect(task(d)?.usage.input).toBe(usage.reduce((sum, u) => sum + (u.input ?? 0), 0))
+  })
+
+  test("Use the main model now: the next task goes to the main model; a limit again starts the hold again and shows no second line", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    expect(task(await t.go())?.backupNote).not.toBeNull()
+    expect(await t.holds()).toHaveLength(1)
+    const released = await runRequest(t.runtime, "workflows.hold.release", { nodeId: t.node.id })
+    expect(released).toMatchObject({ ok: true })
+    expect(await t.holds()).toEqual([])
+    const mainBefore = t.main.requests.length
+    const d = await t.go()
+    expect(d.state).toBe("done")
+    // The main model was tried, failed with the limit again, and the backup went on: no second line.
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(task(d)?.backupNote).toBeNull()
+    expect(await t.holds()).toHaveLength(1)
+  })
+
+  test("after Use the main model now, a main model that answers ends the episode: the next limit shows its line again", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    await runRequest(t.runtime, "workflows.hold.release", { nodeId: t.node.id })
+    t.main.setFailure(null)
+    const answered = await t.go()
+    expect(answered.state).toBe("done")
+    expect(task(answered)?.result).toContain("You said: write it")
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    expect(task(await t.go())?.backupNote).not.toBeNull()
+  })
+
+  test("a key that is not valid does not move the turn: no switch, the task fails with that reason", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 401, message: "Invalid API key." })
+    const d = await t.go()
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_auth")
+    expect(t.backup.requests).toHaveLength(0)
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("a request that the provider refuses, and a model that does not exist, do not move the turn", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    for (const failure of [
+      { status: 400, message: "This request is not valid." },
+      { status: 404, message: "The model `mock-fast` does not exist." },
+    ]) {
+      t.main.setFailure(failure)
+      const d = await t.go()
+      expect(d.state).toBe("failed")
+      expect(t.backup.requests).toHaveLength(0)
+    }
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("a busy provider is tried again three times and then fails with its reason: no backup (the spec names a limit reason only)", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    const busy = { status: 503, message: "The model is overloaded." }
+    t.main.setFailure(busy)
+    // The waits are short here: 2, 4 and 8 seconds would pass the silent limit of this test.
+    const waits = [...busyClock.waitsMs]
+    busyClock.waitsMs = [5, 5, 5]
+    const d = await t.go().finally(() => {
+      busyClock.waitsMs = waits
+    })
+    expect(t.main.requests).toHaveLength(4)
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_busy")
+    expect(t.backup.requests).toHaveLength(0)
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("both models fail with a limit: the turn fails with the reason of the backup model", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    t.backup.setFailure({ status: 402, message: "Your credit balance is too low to go on." })
+    const d = await t.go()
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_limit")
+    expect(task(d)?.reasonText).toContain("credit balance")
+    expect(t.main.requests).toHaveLength(1)
+    expect(t.backup.requests).toHaveLength(1)
+  })
+
+  test("a backup that is not ready does not take the turn: the turn fails with the limit reason and no hold starts", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    await t.run(Providers.use((p) => p.disconnect(t.backupAccount.id)))
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    const d = await t.go()
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_limit")
+    expect(t.backup.requests).toHaveLength(0)
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("a synced backup that names an account this computer lacks is not ready: the turn fails with the limit reason", async () => {
+    const t = await setup()
+    // The choice arrives with the workflow from another computer: it names an account that is not here.
+    await t.rows("SELECT 1")
+    await t.run(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.run(
+            "UPDATE workflow_node SET backup_account_id = 'other-computer', backup_model = 'gpt-5' WHERE id = ?",
+            t.node.id,
+          ),
+        ),
+      ),
+    )
+    t.main.setFailure({ status: 429, message: PLAN })
+    const d = await t.go()
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_limit")
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("the backup becomes not ready during a hold: the hold ends at once and the next task tries the main model", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    expect(await t.holds()).toHaveLength(1)
+    await t.run(Providers.use((p) => p.disconnect(t.backupAccount.id)))
+    // The editor and the run view see no hold any more.
+    expect(await t.holds()).toEqual([])
+    const mainBefore = t.main.requests.length
+    const d = await t.go()
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_limit")
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("a node with no backup fails with the limit reason as before", async () => {
+    const t = await setup()
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    const d = await t.go()
+    expect(d.state).toBe("failed")
+    expect(task(d)?.reasonCode).toBe("provider_limit")
+    expect(task(d)?.backupNote).toBeNull()
+  })
+
+  test("another node of the same workflow keeps its own main model while the first is held", async () => {
+    const t = await setup()
+    const other = await t.run(
+      Workflows.use((w) =>
+        w.addNode(t.flow.id, {
+          kind: "text",
+          name: "Edit",
+          prompt: "edit {{input}}",
+          accountId: t.mainAccount.id,
+          model: "mock-fast",
+        }),
+      ),
+    )
+    await t.run(Workflows.use((w) => w.connect(t.flow.id, t.node.id, other.id, null)))
+    await t.setBackup(t.node.id)
+    // Node 1 is held; the stand-in answers node 2 again (it is on the same account as node 1's main).
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    const first = await t.go()
+    expect(first.nodes[0]?.task?.backupNote).not.toBeNull()
+    expect(first.nodes[1]?.state).toBe("failed")
+    // Node 2 has no backup of its own and uses its main model, which is still at its limit.
+    expect(first.nodes[1]?.task?.reasonCode).toBe("provider_limit")
+    expect(first.nodes[1]?.task?.backupNote).toBeNull()
+    expect(await t.holds()).toHaveLength(1)
+    expect((await t.holds())[0]?.nodeId).toBe(t.node.id)
+  })
+})
+
+describe("a vendor program reports a limit in its own form (spec 006)", () => {
+  const withCodex = async (
+    run: (t: Awaited<ReturnType<typeof setup>>, nodeId: string) => Promise<void>,
+    prompt: string,
+  ) => {
+    const fake = makeFakeRuntimes()
+    const saved = process.env.ROBOT_CODEX_BIN
+    process.env.ROBOT_CODEX_BIN = fake.codex
+    try {
+      fake.setCodex({ loggedIn: true, method: "chatgpt" })
+      const t = await setup()
+      const codex = await t.run(Providers.use((p) => p.connect({ kind: "codex", name: "Codex" })))
+      const node = await t.run(
+        Workflows.use((w) =>
+          w.addNode(t.flow.id, {
+            kind: "text",
+            name: "Program",
+            prompt,
+            accountId: codex.id,
+            model: "default",
+          }),
+        ),
+      )
+      // The first node of the setup is on the stand-in API account: it has no part in this test.
+      await t.run(Workflows.use((w) => w.removeNode(t.node.id)))
+      await run(t, node.id)
+    } finally {
+      if (saved === undefined) delete process.env.ROBOT_CODEX_BIN
+      else process.env.ROBOT_CODEX_BIN = saved
+    }
+  }
+
+  test("a spent plan limit in the form of the program: the turn goes to the backup", async () => {
+    await withCodex(async (t, nodeId) => {
+      expect(await t.setBackup(nodeId)).toMatchObject({ ok: true })
+      const d = await t.go()
+      expect(d.state).toBe("done")
+      expect(t.backup.requests).toHaveLength(1)
+      expect(task(d)?.backupNote).toMatchObject({ main: "default", backup: "gpt-5" })
+      expect(await t.holds()).toHaveLength(1)
+    }, "FAIL do the work")
+  })
+
+  test("a report that the app cannot read is no limit: the turn fails and the backup is not asked", async () => {
+    await withCodex(async (t, nodeId) => {
+      expect(await t.setBackup(nodeId)).toMatchObject({ ok: true })
+      const d = await t.go()
+      expect(d.state).toBe("failed")
+      expect(task(d)?.reasonCode).toBe("provider_error")
+      expect(t.backup.requests).toHaveLength(0)
+      expect(await t.holds()).toEqual([])
+    }, "UNREADABLE do the work")
+  })
+})
+
+describe("the hold ends at its time (spec 006)", () => {
+  test("with a fake clock past the reset time, the next task goes to the main model", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    const base = Date.now()
+    holdClock.now = () => base
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 7200 })
+    await t.go()
+    expect(await t.holds()).toHaveLength(1)
+    // One hour on: still held.
+    holdClock.now = () => base + 3_600_000
+    const mainBefore = t.main.requests.length
+    await t.go()
+    expect(t.main.requests.length).toBe(mainBefore)
+    // Past the reset time, and the main model answers again.
+    holdClock.now = () => base + 7_200_000 + 1000
+    t.main.setFailure(null)
+    expect(await t.holds()).toEqual([])
+    const d = await t.go()
+    expect(d.state).toBe("done")
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(task(d)?.backupNote).toBeNull()
+  })
+
+  test("a limit that names no reset time holds for 15 minutes", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    const base = Date.now()
+    holdClock.now = () => base
+    t.main.setFailure({ status: 429, message: PLAN })
+    await t.go()
+    expect((await t.holds())[0]?.until).toBe(base + HOLD_UNKNOWN_MS)
+    holdClock.now = () => base + HOLD_UNKNOWN_MS - 60_000
+    const mainBefore = t.main.requests.length
+    await t.go()
+    expect(t.main.requests.length).toBe(mainBefore)
+    holdClock.now = () => base + HOLD_UNKNOWN_MS + 60_000
+    t.main.setFailure(null)
+    await t.go()
+    expect(t.main.requests.length - mainBefore).toBe(1)
+  })
+
+  test("the hold stays after the app is closed and opened again", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-hold-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    const [hold] = await t.holds()
+    expect(hold).toBeDefined()
+    await t.runtime.dispose()
+    const again = testRuntime({ databaseFile: file, check: { auto: false } })
+    const stored = await again.runtime.runPromise(
+      ModelHolds.use((h) => Effect.sync(() => h.stored(t.node.id))),
+    )
+    expect(stored?.until).toBe(hold?.until ?? 0)
+    expect(stored?.released).toBe(false)
+    expect(stored?.backup).toEqual(t.pick)
+    expect(stored?.main).toEqual(t.mainPick)
+    // A valid hold still counts after the restart, and the node shows it.
+    const kept = await again.runtime.runPromise(
+      ModelHolds.use((h) => Effect.sync(() => h.active(t.node.id, t.mainPick, t.pick))),
+    )
+    expect(kept?.until).toBe(hold?.until ?? 0)
+    await again.runtime.dispose()
+  })
+
+  test("a hold does not pass to another backup, and it is gone when the node is removed", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    expect(await t.holds()).toHaveLength(1)
+    await t.setBackup(t.node.id, {
+      accountId: t.backupAccount.id,
+      model: "mock-fast",
+      effort: null,
+    })
+    expect(await t.holds()).toEqual([])
+    const holds = await t.run(ModelHolds.use((h) => Effect.succeed(h)))
+    expect(
+      holds.active(t.node.id, t.mainPick, {
+        accountId: t.backupAccount.id,
+        model: "mock-fast",
+        effort: null,
+      }),
+    ).toBeNull()
+    // The hold is dropped, not only ignored.
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("a graph change of the whole graph keeps the hold of a node that stays", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
+    await t.run(Workflows.use((w) => w.applyGraph(t.flow.id, graph, "proposal")))
+    expect(await t.holds()).toHaveLength(1)
+  })
+})
+
+describe("no proposal and no tool of the chat sets or changes a backup (spec 006; docs/spec-questions.md, B6)", () => {
+  const withBackup = (node: WorkflowNode, pick: WorkflowNode["backup"]): WorkflowNode => ({
+    ...node,
+    backup: pick,
+  })
+
+  test("a change of the whole graph that sets, moves or clears a backup is refused, whatever built it", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
+    const node = graph.nodes[0] as WorkflowNode
+    const edit = (backup: WorkflowNode["backup"]) =>
+      t.runtime.runPromiseExit(
+        Workflows.use((w) =>
+          w.applyGraph(t.flow.id, { ...graph, nodes: [withBackup(node, backup)] }, "chat"),
+        ),
+      )
+    for (const backup of [
+      null,
+      { accountId: t.mainAccount.id, model: "gpt-5", effort: null },
+      { ...t.pick, effort: "high" },
+    ]) {
+      const exit = await edit(backup)
+      expect(exit._tag).toBe("Failure")
+    }
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toEqual(t.pick)
+    // A new node with a backup is refused too.
+    const fresh = { ...node, id: "new-node", number: 2, backup: t.pick }
+    const exit = await t.runtime.runPromiseExit(
+      Workflows.use((w) => w.applyGraph(t.flow.id, { ...graph, nodes: [node, fresh] }, "proposal")),
+    )
+    expect(exit._tag).toBe("Failure")
+    // The graph as it is applies.
+    await t.run(Workflows.use((w) => w.applyGraph(t.flow.id, graph, "proposal")))
+  })
+})
+
+describe("a hold has a longest time, and a bad row never stops the app (spec 006; docs/spec-questions.md, B6)", () => {
+  test("a reset time that is far away holds for 24 hours at most, and the node still shows it", async () => {
+    // 1e14 s is 1e17 ms. 9e12 s is 9e15 ms: past the range of a date. 86401 s is one second over.
+    for (const retryAfter of [100_000_000_000_000, 9_000_000_000_000, 86_401 * 365]) {
+      const t = await setup()
+      await t.setBackup(t.node.id)
+      t.main.setFailure({ status: 429, message: PLAN, retryAfter })
+      const before = Date.now()
+      const d = await t.go()
+      expect(d.state).toBe("done")
+      const [hold] = await t.holds()
+      expect(hold).toBeDefined()
+      expect(hold?.until).toBeLessThanOrEqual(Date.now() + HOLD_MAX_MS)
+      expect(hold?.until).toBeGreaterThan(before + HOLD_MAX_MS - 60_000)
+      // The line of the task view names a time that a date can hold.
+      const at = task(d)?.backupNote?.resetsAt
+      expect(at).toBe(hold?.until)
+      expect(Number.isNaN(new Date(at ?? 0).getTime())).toBe(false)
+      const [row] = await t.rows<{ ends_at: number }>("SELECT ends_at FROM model_hold")
+      expect(row?.ends_at).toBe(hold?.until ?? 0)
+      await t.runtime.dispose()
+    }
+  })
+
+  test("a limit that names no usable time holds for 15 minutes", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    // A header that is not a number is ignored: the hold has the default time.
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: -5 })
+    const before = Date.now()
+    const d = await t.go()
+    expect(task(d)?.backupNote?.resetsAt).toBeNull()
+    const [hold] = await t.holds()
+    expect(hold?.until).toBeGreaterThanOrEqual(before + HOLD_UNKNOWN_MS)
+    expect(hold?.until).toBeLessThan(before + HOLD_UNKNOWN_MS + 60_000)
+  })
+
+  test("rows of the store with a time that no hold can have are dropped and logged; the app starts and the good hold stays", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-hold-bad-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.setBackup(t.node.id)
+    const others = []
+    for (const name of ["Huge", "Negative", "Text", "Edge"])
+      others.push(
+        await t.run(
+          Workflows.use((w) =>
+            w.addNode(t.flow.id, {
+              kind: "text",
+              name,
+              prompt: "x",
+              accountId: t.mainAccount.id,
+              model: "mock-fast",
+            }),
+          ),
+        ),
+      )
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    const good = await t.holds()
+    expect(good.map((h) => h.nodeId)).toEqual([t.node.id])
+    await t.runtime.dispose()
+    // Write the bad rows into the file while no app has it open.
+    const raw = new DatabaseSync(file)
+    const insert = (id: string | undefined, endsAt: string) =>
+      raw.exec(
+        `INSERT OR REPLACE INTO model_hold (node_id, ends_at, released, main_account_id, main_model,
+           backup_account_id, backup_model)
+         VALUES ('${id}', ${endsAt}, 0, 'a', 'm', 'b', 'n')`,
+      )
+    insert(others[0]?.id, "100000000000000000")
+    insert(others[1]?.id, "-5")
+    insert(others[2]?.id, "'soon'")
+    insert(others[3]?.id, `${Date.now() + HOLD_MAX_MS * 2}`)
+    raw.close()
+    const again = testRuntime({ databaseFile: file, check: { auto: false } })
+    // The app starts: the layer of the holds is built, and the good hold is read.
+    const stored = await again.runtime.runPromise(
+      ModelHolds.use((h) => Effect.sync(() => h.stored(t.node.id))),
+    )
+    expect(stored?.until).toBe(good[0]?.until ?? 0)
+    const left = await again.runtime.runPromise(
+      Database.use((d) =>
+        Effect.sync(() => d.all<{ node_id: string }>("SELECT node_id FROM model_hold")),
+      ),
+    )
+    expect(left.map((r) => r.node_id)).toEqual([t.node.id])
+    const log = join(again.dataDir, "logs", "workflows.log")
+    expect(existsSync(log)).toBe(true)
+    expect(readFileSync(log, "utf8").match(/hold_dropped/g)).toHaveLength(4)
+    await again.runtime.dispose()
+  })
+
+  test("a table that cannot be read does not stop the app either", async () => {
+    // Nothing can be read as a number past 2^53, so the test of the row must not read it.
+    const file = join(mkdtempSync(join(tmpdir(), "robot-hold-huge-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.runtime.dispose()
+    const raw = new DatabaseSync(file)
+    raw.exec(
+      `INSERT INTO model_hold (node_id, ends_at, released, main_account_id, main_model,
+         backup_account_id, backup_model)
+       VALUES ('gone', 9223372036854775807, 0, 'a', 'm', 'b', 'n')`,
+    )
+    raw.close()
+    const again = testRuntime({ databaseFile: file, check: { auto: false } })
+    const rows = await again.runtime.runPromise(
+      Database.use((d) => Effect.sync(() => d.all("SELECT node_id FROM model_hold"))),
+    )
+    expect(rows).toEqual([])
+    await again.runtime.dispose()
+  })
+})
+
+describe('the hold is of the main choice and the backup that it began with (spec 006: "it holds the main model")', () => {
+  const limited = async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    expect(await t.holds()).toHaveLength(1)
+    return t
+  }
+
+  test("another main model on the node: the next task tries it, the hold is dropped and the button is gone", async () => {
+    const t = await limited()
+    t.main.setFailure(null)
+    const r = await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { model: "mock-smart" },
+    })
+    expect(r).toMatchObject({ ok: true })
+    // The editor and the run view show no hold, and the row is gone.
+    expect(await t.holds()).toEqual([])
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+    const backupBefore = t.backup.requests.length
+    const mainBefore = t.main.requests.length
+    const d = await t.go()
+    expect(d.state).toBe("done")
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(t.backup.requests.length).toBe(backupBefore)
+  })
+
+  test("another main model: the engine ignores and drops a hold that nobody listed", async () => {
+    const t = await limited()
+    t.main.setFailure(null)
+    // The node changes under the engine without a call that lists the holds first.
+    await t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.run("UPDATE workflow_node SET effort = 'high' WHERE id = ?", t.node.id),
+        ),
+      ),
+    )
+    const mainBefore = t.main.requests.length
+    await t.go()
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("a changed backup drops the hold, also when the same backup is chosen again later", async () => {
+    const t = await limited()
+    await t.setBackup(t.node.id, {
+      accountId: t.backupAccount.id,
+      model: "mock-fast",
+      effort: null,
+    })
+    expect(await t.holds()).toEqual([])
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+    await t.setBackup(t.node.id)
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("the button names the model that reached its limit, and a valid hold is kept for the same choice", async () => {
+    const t = await limited()
+    const [hold] = await t.holds()
+    expect(hold?.main).toBe("mock-fast")
+    // An edit of a field that is not a model choice leaves the hold.
+    await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { prompt: "write it again" },
+    })
+    expect(await t.holds()).toHaveLength(1)
+  })
+
+  test("a main choice that came back is a new episode: a hold of the old main choice is not used", async () => {
+    const t = await limited()
+    // The hold is of mock-fast. Another model is asked and answers; the hold is gone for good.
+    await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { model: "mock-smart" },
+    })
+    await t.holds()
+    await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { model: "mock-fast" },
+    })
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("the holds of a workflow leave with the workflow", async () => {
+    const t = await limited()
+    await t.run(Workflows.use((w) => w.remove(t.flow.id)))
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("the holds of a node leave with the node", async () => {
+    const t = await limited()
+    await t.run(Workflows.use((w) => w.removeNode(t.node.id)))
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+})
+
+describe("small points of the backup engine", () => {
+  const node = (over: Partial<WorkflowNode> = {}): WorkflowNode =>
+    ({
+      id: "n1",
+      number: 1,
+      kind: "text",
+      name: "n",
+      prompt: "",
+      accountId: "a",
+      model: "m",
+      effort: null,
+      backup: { accountId: "a", model: "m", effort: "high" },
+      ...over,
+    }) as WorkflowNode
+
+  test("a backup that differs from the main choice only by its level is a backup", () => {
+    const n = node()
+    expect(isBackupChoice({ accountId: "a", model: "m", effort: "high" }, n)).toBe(true)
+    expect(isBackupChoice({ accountId: "a", model: "m", effort: null }, n)).toBe(false)
+    expect(isBackupChoice({ accountId: "b", model: "m", effort: null }, n)).toBe(true)
+  })
+
+  test("a task that ended while the backup was checked starts no hold and leaves no line", async () => {
+    const started: unknown[] = []
+    const controller = new AbortController()
+    const deps = {
+      holds: { start: (...args: unknown[]) => started.push(args) } as never,
+      // The check of the backup takes time. The task is stopped meanwhile.
+      ready: async () => {
+        controller.abort()
+        return true
+      },
+    }
+    const limit = new ProviderFailure("provider_limit", PLAN, undefined, "plan")
+    expect(await limitSwitch(deps, node(), limit, false, controller.signal)).toBeNull()
+    expect(started).toEqual([])
+    // The same call with a task that goes on starts the hold.
+    const live = {
+      holds: {
+        start: (...args: unknown[]) => {
+          started.push(args)
+          return { fresh: true }
+        },
+      } as never,
+      ready: async () => true,
+    }
+    expect(
+      await limitSwitch(live, node(), limit, false, new AbortController().signal),
+    ).toMatchObject({
+      fresh: true,
+    })
+    expect(started).toHaveLength(1)
+  })
+})
+
+describe("a linked device restores a version without changing a backup (rpc wiring)", () => {
+  test("the actor of a linked device keeps the backups, and the user of this computer does not", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    const versions = await t.run(Workflows.use((w) => w.versions(t.flow.id)))
+    const before = versions.find((v) => v.graph.nodes[0]?.backup === null)
+    expect(before).toBeDefined()
+    const phone = { id: "phone-2", name: "Anna's phone" }
+    // The handler itself, with the actor of a linked device (the list of the link is another test).
+    const exit = await t.runtime.runPromiseExit(
+      Effect.provideService(
+        handlers["workflows.versions.restore"]({
+          id: t.flow.id,
+          versionId: before?.id ?? "",
+        }) as Effect.Effect<unknown, never, never>,
+        CurrentActor,
+        phone,
+      ),
+    )
+    expect(exit._tag).toBe("Success")
+    // The backup of this computer stayed.
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toEqual(t.pick)
+    const own = await runRequest(t.runtime, "workflows.versions.restore", {
+      id: t.flow.id,
+      versionId: before?.id ?? "",
+    })
+    expect(own).toMatchObject({ ok: true })
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toBeNull()
   })
 })

@@ -4,19 +4,19 @@ import {
   type ActionLogEntry,
   type ActionResult,
   type ActionRule,
-  type Agent,
   type MessageKey,
+  NOTE_NAME_CHARS,
+  plainLine,
 } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
-import { formatDateTime } from "../chat/format.ts"
+import { formatDateTime } from "../lib/format.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { sensitiveLabelText } from "../lib/sensitive.ts"
 import { useApp } from "../state/app.tsx"
 import { showRules } from "../state/rulesLink.ts"
-import { setOpenTarget } from "../state/target.ts"
-import { useUi } from "../state/ui.tsx"
 import { Segmented } from "../ui/controls.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import styles from "./settings.module.css"
 
 type ResultFilter = ActionResult | "all"
@@ -26,46 +26,30 @@ const RESULTS: readonly ResultFilter[] = ["all", "ran", "failed", "refused", "st
 const ANY = ""
 
 /**
- * The action log of spec 007, newest first, with filters for the agent, the result and the step
+ * The action log of spec 007, newest first, with filters for the workflow, the result and the step
  * kind, and a search of the target. Each entry says whether the turn held outside content and
- * names its first source. A row that a rule decided opens that rule; any other row opens the task
- * of its step.
+ * names its first source. A row that a rule decided opens that rule; any other row has no link.
  */
 export const ActionLogSection = () => {
   const app = useApp()
   const { t } = app
-  const ui = useUi()
+  const workflows = useWorkflowList()
   const [result, setResult] = createSignal<ResultFilter>("all")
-  const [agent, setAgent] = createSignal(ANY)
+  const [workflow, setWorkflow] = createSignal(ANY)
   const [kind, setKind] = createSignal(ANY)
   const [search, setSearch] = createSignal("")
   const [entries, { refetch }] = createResource(
-    () => ({ result: result(), agent: agent(), kind: kind(), search: search().trim() }),
+    () => ({ result: result(), workflow: workflow(), kind: kind(), search: search().trim() }),
     (f) =>
       call("actionLog.list", {
         ...(f.result === "all" ? {} : { result: f.result }),
-        ...(f.agent === ANY ? {} : { agentId: f.agent }),
+        ...(f.workflow === ANY ? {} : { workflowId: f.workflow }),
         ...(f.kind === ANY ? {} : { kind: f.kind as ActionKind }),
         ...(f.search ? { search: f.search } : {}),
       }),
   )
-  const [agents, { refetch: refetchAgents }] = createResource(
-    () => ui.localServer()?.id,
-    async (serverId) => [
-      ...(await call("agents.list", { serverId, archived: false })),
-      ...(await call("agents.list", { serverId, archived: true })),
-    ],
-    { initialValue: [] as readonly Agent[] },
-  )
   onCleanup(window.robot.on("actionLog.changed", () => void refetch()))
   onCleanup(window.robot.on("rules.changed", () => void refetch()))
-  onCleanup(window.robot.on("agents.changed", () => void refetchAgents()))
-  /** Shows the task of a step on the Tasks page; the settings close. */
-  const openTask = (taskId: string) => {
-    setOpenTarget({ kind: "task", id: taskId })
-    ui.closeSettings()
-    ui.selectPage("tasks")
-  }
   /** The match text of a rule as the log shows it: the second part, when the rule has one. */
   const ruleText = (rule: ActionRule) =>
     rule.kind === "connection"
@@ -97,12 +81,19 @@ export const ActionLogSection = () => {
           {t(`permissions.log.result.${e.result}` as MessageKey)}
         </span>
       </div>
-      <div class={styles.logTarget}>{e.target}</div>
+      <div class={styles.logTarget}>
+        {e.decidedBy === "shared_folder" ? plainLine(e.target) : e.target}
+      </div>
       <div class={styles.hint}>
         {[
           formatDateTime(app.locale(), e.at),
-          e.agentName || t("permissions.log.deletedAgent"),
+          e.workflowName || t("permissions.log.deletedWorkflow"),
+          ...(e.nodeName === null ? [] : [`${e.nodeNumber}. ${e.nodeName}`]),
           t(`permissions.log.decided.${e.decidedBy}` as MessageKey),
+          ...(e.device === null ? [] : [t("permissions.log.device", { name: e.device })]),
+          ...(e.holder === null
+            ? []
+            : [t("permissions.log.holder", { holder: plainLine(e.holder, NOTE_NAME_CHARS) })]),
         ].join(" · ")}
       </div>
       <div class={styles.hint} data-testid="action-log-outside">
@@ -165,23 +156,6 @@ export const ActionLogSection = () => {
           </div>
         )}
       </Show>
-      {/*
-        The row opens the rule that decided it (above). A row that no rule decided, and a row whose
-        rule is gone, opens the task of its step. A row of a rule has a small link for the task
-        too, so that both ways stay (spec 007).
-      */}
-      <Show when={e.taskId}>
-        {(taskId) => (
-          <button
-            type="button"
-            class={e.rule && !e.rule.deleted ? styles.taskLink : styles.rowLink}
-            data-testid="action-log-task-open"
-            onClick={() => openTask(taskId())}
-          >
-            {t("permissions.log.openTask")}
-          </button>
-        )}
-      </Show>
     </li>
   )
 
@@ -211,18 +185,18 @@ export const ActionLogSection = () => {
       <div class={`${styles.row} ${styles.rowWrap}`}>
         <select
           class={styles.select}
-          aria-label={t("permissions.log.filterAgent")}
-          data-testid="action-log-agent"
-          value={agent()}
-          onChange={(e) => setAgent(e.currentTarget.value)}
+          aria-label={t("permissions.log.filterWorkflow")}
+          data-testid="action-log-workflow"
+          value={workflow()}
+          onChange={(e) => setWorkflow(e.currentTarget.value)}
         >
-          <option value={ANY} selected={agent() === ANY}>
-            {t("permissions.log.anyAgent")}
+          <option value={ANY} selected={workflow() === ANY}>
+            {t("permissions.log.anyWorkflow")}
           </option>
-          <For each={agents()}>
-            {(a) => (
-              <option value={a.id} selected={agent() === a.id}>
-                {a.name}
+          <For each={workflows.list()}>
+            {(w) => (
+              <option value={w.id} selected={workflow() === w.id}>
+                {w.name}
               </option>
             )}
           </For>
@@ -256,7 +230,7 @@ export const ActionLogSection = () => {
         fallback={
           <p class={styles.muted} data-testid="action-log-empty">
             {t(
-              result() !== "all" || agent() !== ANY || kind() !== ANY || search().trim()
+              result() !== "all" || workflow() !== ANY || kind() !== ANY || search().trim()
                 ? "permissions.log.searchEmpty"
                 : "permissions.log.empty",
             )}

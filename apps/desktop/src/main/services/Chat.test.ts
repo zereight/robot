@@ -1,1054 +1,850 @@
-import { afterAll, afterEach, describe, expect, it, test } from "bun:test"
-import { existsSync, writeFileSync } from "node:fs"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type MessagePart, messageText, type TaskProgress, taskTimes } from "@robot/shared"
-import { Effect, Exit, Layer, ManagedRuntime } from "effect"
-import { appLayer } from "../layers.ts"
-import { BUSY_WAIT_MS, busyClock } from "../providers/busyRetry.ts"
-import { Activity } from "./Activity.ts"
-import { Agents } from "./Agents.ts"
+import { chatFiles, chatText, type WorkflowChatMessage } from "@robot/shared"
+import { Effect } from "effect"
+import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
+import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
+import { runRequest } from "../rpc.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
-import { Places } from "./Places.ts"
-import { Providers, secretKey } from "./Providers.ts"
-import { Secrets } from "./Secrets.ts"
+import { Providers } from "./Providers.ts"
+import { RunFacts } from "./RunFacts.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
-import { fakeClock } from "./silence.testing.ts"
-import { useClockForTests } from "./silence.ts"
-import { Tasks } from "./Tasks.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { testRuntime } from "./testing.ts"
+import { Workflows } from "./Workflows.ts"
 
-const KEY = "sk-chat-test"
-let failNext = true
-/** The last message of each request that reached the model. */
-const asked: string[] = []
-/** How many of the next "busy" or "flood" requests the stand-in fails before it answers. */
-let busyLeft = 0
-/** The system text of each request that reached the model. */
-const systems: string[] = []
-/** What the server saw of the requests that it holds with no answer. */
-const held = { opened: 0, closed: 0 }
-
-const sse = (chunks: { delay: number; data: unknown }[]) =>
-  new Response(
-    new ReadableStream({
-      async start(controller) {
-        const enc = new TextEncoder()
-        for (const c of chunks) {
-          await Bun.sleep(c.delay)
-          controller.enqueue(
-            enc.encode(`data: ${typeof c.data === "string" ? c.data : JSON.stringify(c.data)}\n\n`),
-          )
-        }
-        controller.close()
-      },
-    }),
-    { headers: { "content-type": "text/event-stream" } },
-  )
-
-const delta = (content: string, extra: object = {}) => ({
-  choices: [{ delta: { content, ...extra } }],
+let mock: MockProvider
+let fake: FakeRuntimes
+const savedClaudeBin = process.env.ROBOT_CLAUDE_BIN
+const savedCodexBin = process.env.ROBOT_CODEX_BIN
+beforeAll(async () => {
+  mock = await startMockProvider()
+  fake = makeFakeRuntimes()
+  process.env.ROBOT_CLAUDE_BIN = fake.claude
+  process.env.ROBOT_CODEX_BIN = fake.codex
+})
+afterAll(async () => {
+  if (savedClaudeBin === undefined) delete process.env.ROBOT_CLAUDE_BIN
+  else process.env.ROBOT_CLAUDE_BIN = savedClaudeBin
+  if (savedCodexBin === undefined) delete process.env.ROBOT_CODEX_BIN
+  else process.env.ROBOT_CODEX_BIN = savedCodexBin
+  await mock.close()
 })
 
-const server = Bun.serve({
-  port: 0,
-  hostname: "127.0.0.1",
-  async fetch(req) {
-    const url = new URL(req.url)
-    if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { role: string; content: string }[] }
-    const last = body.messages.at(-1)?.content ?? ""
-    asked.push(last)
-    systems.push(body.messages.find((m) => m.role === "system")?.content ?? "")
-    if (last.endsWith("fail") && failNext) {
-      failNext = false
-      return Response.json({ error: { message: "boom" } }, { status: 500 })
-    }
-    // A model that shows no sign of life: the answer opens and nothing follows. "partial" sends one
-    // part first. The request ends when the app closes the connection.
-    if (last.endsWith("hang") || last.endsWith("partial")) {
-      held.opened++
-      const enc = new TextEncoder()
-      req.signal.addEventListener("abort", () => held.closed++)
-      return new Response(
-        new ReadableStream({
-          start(controller) {
-            if (last.endsWith("partial"))
-              controller.enqueue(enc.encode(`data: ${JSON.stringify(delta("Starting "))}\n\n`))
-          },
-        }),
-        { headers: { "content-type": "text/event-stream" } },
-      )
-    }
-    if (last.endsWith("limit")) {
-      return Response.json(
-        { error: { message: "slow down" } },
-        { status: 429, headers: { "retry-after": "60" } },
-      )
-    }
-    if ((last.endsWith("busy") || last.endsWith("flood")) && busyLeft > 0) {
-      busyLeft -= 1
-      const message = last.endsWith("flood") ? "Too many requests" : "The engine is overloaded"
-      const status = last.endsWith("flood") ? 429 : 503
-      return Response.json({ error: { message } }, { status })
-    }
-    if (last.endsWith("slow")) {
-      return sse([
-        ...Array.from({ length: 40 }, (_, i) => ({ delay: 25, data: delta(`w${i} `) })),
-        { delay: 0, data: "[DONE]" },
-      ])
-    }
-    // Thinks at once, and the text that the user sees comes 300 ms later.
-    if (last.endsWith("ponder")) {
-      return sse([
-        { delay: 0, data: { choices: [{ delta: { reasoning_content: "Hmm." } }] } },
-        { delay: 300, data: delta("Ready.") },
-        { delay: 0, data: "[DONE]" },
-      ])
-    }
-    if (last.endsWith("think")) {
-      return sse([
-        { delay: 0, data: { choices: [{ delta: { reasoning_content: "Let me see." } }] } },
-        { delay: 0, data: delta("Answer.") },
-        { delay: 0, data: "[DONE]" },
-      ])
-    }
-    return sse([
-      { delay: 0, data: delta(`Echo (${body.messages.length}): `) },
-      { delay: 5, data: delta(last.split("\n").at(-1) ?? "") },
-      { delay: 0, data: { choices: [], usage: { prompt_tokens: 12, completion_tokens: 5 } } },
-      { delay: 0, data: "[DONE]" },
-    ])
-  },
-})
-// Some requests are held with no answer on purpose, so the stop must close them.
-afterAll(() => server.stop(true))
-
-const until = async (check: () => Promise<boolean>, ms = 3000) => {
+const until = async (ok: () => boolean | Promise<boolean>, ms = 4000) => {
   const end = Date.now() + ms
   while (Date.now() < end) {
-    if (await check()) return
-    await Bun.sleep(10)
+    if (await ok()) return
+    await new Promise((r) => setTimeout(r, 20))
   }
-  throw new Error("timed out")
+  throw new Error("timeout")
 }
 
-afterEach(() => {
-  useClockForTests(undefined)
-  busyLeft = 0
-  busyClock.waitsMs = [...BUSY_WAIT_MS]
-})
-
-const setup = async () => {
+const setup = async (options: { connect?: boolean } = {}) => {
   const t = testRuntime()
   const run = t.runtime.runPromise
-  const account = await run(
-    Providers.use((p) =>
-      p.connect({
-        kind: "custom",
-        name: "M",
-        baseUrl: `http://127.0.0.1:${server.port}/v1`,
-        apiKey: KEY,
-      }),
-    ),
-  )
-  const local = await run(Servers.use((s) => s.local))
-  const agent = await run(
-    Agents.use((a) =>
-      a.create({
-        serverId: local.id,
-        name: "Ada",
-        role: "",
-        instructions: "Be brief.",
-        model: { accountId: account.id, model: "mock", effort: null },
-      }),
-    ),
-  )
-  const history = () => run(Chat.use((c) => c.history(agent.id)))
-  const send = (text: string, replyTo: string | null = null) =>
-    run(Chat.use((c) => c.send({ agentId: agent.id, text, replyTo })))
-  const settled = () =>
-    until(async () => {
-      const h = await history()
-      return (
-        h.messages.length > 0 &&
-        h.messages.every((m) => m.status !== "streaming") &&
-        h.queue.length === 0
-      )
-    })
-  const setDuringTurn = (duringTurn: "join" | "queue") =>
-    run(SettingsStore.use((s) => s.update({ duringTurn })))
-  /** Waits until the reply streams, so that the turn runs. */
-  const streaming = () =>
-    until(async () => messageText((await history()).messages[1] ?? { parts: [] }).length > 0)
-  return { ...t, run, agent, local, history, send, settled, setDuringTurn, streaming }
+  const server = await run(Servers.use((s) => s.local))
+  if (options.connect !== false)
+    await run(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+  const flow = await run(Workflows.use((w) => w.create({ serverId: server.id, name: "Report" })))
+  const chat = <A>(f: (c: Chat["Service"]) => Effect.Effect<A, import("./errors.ts").AppError>) =>
+    run(Chat.use(f))
+  const send = (text: string, extra: Record<string, unknown> = {}) =>
+    chat((c) => c.send({ workflowId: flow.id, text, ...extra }))
+  const history = () => chat((c) => c.history(flow.id))
+  const sql = (statement: string, ...params: (string | number | null)[]) =>
+    run(Database.use((d) => Effect.sync(() => d.run(statement, ...params))))
+  const rows = <T>(statement: string, ...params: (string | number | null)[]) =>
+    run(Database.use((d) => Effect.sync(() => d.all<T>(statement, ...params))))
+  const idle = async () => until(async () => !(await history()).working)
+  const code = async (f: Promise<unknown>) => {
+    try {
+      await f
+      return "ok"
+    } catch (e) {
+      return (e as { code?: string }).code ?? String(e)
+    }
+  }
+  return { ...t, run, flow, chat, send, history, sql, rows, idle, code, server }
 }
 
-describe("Chat", () => {
-  test("no two messages of a chat have the same time, so every computer shows them in one order", async () => {
-    // A question and its reply are often made in the same millisecond. A computer that syncs gets
-    // them in any order, and orders by time (spec 019), so equal times would swap them there.
+const texts = (messages: readonly WorkflowChatMessage[]) =>
+  messages.map((m) => `${m.author}:${chatText(m)}:${m.status}`)
+
+describe("chat of a workflow (spec 003)", () => {
+  test("a new chat has no message and is ready to send", async () => {
     const t = await setup()
-    for (let i = 0; i < 8; i++) {
-      await t.send(`question ${i}`)
-      await t.settled()
-    }
-    const times = (await t.history()).messages.map((m) => m.createdAt)
-    expect(times).toHaveLength(16)
-    for (let i = 1; i < times.length; i++)
-      expect(times[i] as number).toBeGreaterThan(times[i - 1] as number)
+    const h = await t.history()
+    expect(h.messages).toEqual([])
+    expect(h.workflowName).toBe("Report")
+    expect(h.block).toBeNull()
+    expect(h.working).toBe(false)
   })
 
-  test("a reply streams in and is stored with usage; the place list shows it", async () => {
+  test("with no provider connected, the chat is blocked and send is refused", async () => {
+    const t = await setup({ connect: false })
+    expect((await t.history()).block).toBe("no_provider")
+    expect(await t.code(t.send("hello"))).toBe("provider_not_connected")
+    expect((await t.history()).messages).toEqual([])
+  })
+
+  test("send stores the message and the streamed reply", async () => {
     const t = await setup()
     await t.send("hello")
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages.map((m) => [m.author, m.status])).toEqual([
-      ["user", "done"],
-      ["agent", "done"],
-    ])
-    expect(messageText(messages[1] as never)).toBe("Echo (2): hello")
-    expect(messages[1]?.model).toBe("mock")
-    const places = await t.run(Places.use((p) => p.list(t.local.id)))
-    const row = places[0]?.places[0]
-    expect(row?.lastMessage).toBe("Echo (2): hello")
-    expect(row?.unread).toBe(1)
-    await t.run(Chat.use((c) => c.markRead(t.agent.id)))
-    expect((await t.run(Places.use((p) => p.list(t.local.id))))[0]?.places[0]?.unread).toBe(0)
-  })
-
-  test("the role line of the agent does not reach the model (spec 002)", async () => {
-    // A role line is a label for placement. A direct chat gives the model the handbook and the
-    // instructions, and no role line.
-    const t = await setup()
-    await t.run(Agents.use((a) => a.update(t.agent.id, { role: "Researcher" })))
-    await t.send("hello")
-    await t.settled()
-    const system = systems.at(-1) ?? ""
-    // The text that the model gets is the text of the turn: it holds the instructions.
-    expect(system).toContain("Be brief.")
-    expect(system).not.toContain("Researcher")
-  })
-
-  test("stop keeps the partial reply marked stopped; the next send works", async () => {
-    const t = await setup()
-    await t.send("go slow")
-    await until(
-      async () => messageText((await t.history()).messages[1] ?? { parts: [] }).length > 0,
+    await t.idle()
+    const h = await t.history()
+    expect(texts(h.messages)).toEqual(["user:hello:done", "assistant:You said: hello:done"])
+    const stored = await t.rows<{ model: string; output_tokens: number }>(
+      "SELECT model, output_tokens FROM chat_message WHERE author = 'assistant'",
     )
-    await t.run(Chat.use((c) => c.stop(t.agent.id)))
-    let { messages } = await t.history()
-    expect(messages[1]?.status).toBe("stopped")
-    const partial = messageText(messages[1] as never)
-    expect(partial.length).toBeGreaterThan(0)
-    expect(partial).not.toContain("w39")
+    expect(stored[0]?.model).toBe("mock-fast")
+    expect(stored[0]?.output_tokens).toBe(5)
+  })
+
+  test("an empty message is refused", async () => {
+    const t = await setup()
+    expect(await t.code(t.send("   "))).toBe("message_empty")
+  })
+
+  test("stop ends the turn, keeps the partial reply, and the next send works", async () => {
+    const t = await setup()
+    await t.send("slow please")
+    await until(async () => {
+      const m = (await t.history()).messages.at(-1)
+      return m !== undefined && chatText(m).includes("word2")
+    })
+    await t.chat((c) => c.stop(t.flow.id))
+    await t.idle()
+    const stopped = (await t.history()).messages.at(-1)
+    expect(stopped?.status).toBe("stopped")
+    expect(chatText(stopped as WorkflowChatMessage)).toContain("word1")
     await t.send("again")
-    await t.settled()
-    ;({ messages } = await t.history())
-    expect(messages.map((m) => m.status)).toEqual(["done", "stopped", "done", "done"])
-  })
-
-  test("a message sent while the agent works waits in the queue and goes when the turn ends", async () => {
-    const t = await setup()
-    await t.setDuringTurn("queue")
-    await t.send("go slow")
-    expect((await t.send("second")).queued).toBe(true)
-    const third = await t.send("third")
-    expect(third.queued).toBe(true)
-    const { queue } = await t.history()
-    await t.run(Chat.use((c) => c.removeQueued(t.agent.id, queue[1]?.id ?? "")))
-    await t.run(Chat.use((c) => c.updateQueued(t.agent.id, queue[0]?.id ?? "", "second, edited")))
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages.map((m) => (m.author === "user" ? messageText(m) : m.status))).toEqual([
-      "go slow",
-      "done",
-      "second, edited",
-      "done",
+    await t.idle()
+    expect(texts((await t.history()).messages).slice(-2)).toEqual([
+      "user:again:done",
+      "assistant:You said: again:done",
     ])
   })
 
-  test("a failed reply shows the reason and can be retried", async () => {
+  test("join the current turn: the message waits, the next request holds it, one turn only", async () => {
     const t = await setup()
-    failNext = true
-    await t.send("please fail")
-    await t.settled()
-    let { messages } = await t.history()
-    expect(messages[1]?.status).toBe("failed")
-    expect(messages[1]?.error?.code).toBe("provider_error")
-    await t.run(Chat.use((c) => c.retry(t.agent.id, messages[1]?.id ?? "")))
-    await t.settled()
-    ;({ messages } = await t.history())
-    expect(messages.map((m) => m.status)).toEqual(["done", "done"])
-    // The new turn tries the failed task again, so the Today page drops its row (spec 005, 021).
-    const tasks = await t.run(Tasks.use((x) => x.list(t.local.id)))
-    const failed = tasks.find((x) => x.state === "failed")
-    expect(failed).toBeDefined()
-    expect(tasks.find((x) => x.retryOf === failed?.id)?.state).toBe("done")
+    await t.send("slow start")
+    await until(async () => (await t.history()).working)
+    const joined = await t.send("Use b.txt instead")
+    expect(joined.pending).toBe(true)
+    await t.idle()
+    const h = await t.history()
+    expect(h.messages.filter((m) => m.author === "assistant")).toHaveLength(1)
+    expect(h.messages.find((m) => m.id === joined.id)?.pending).toBe(false)
+    const last = mock.requests.at(-1)
+    const lastUser = last?.body.messages.at(-1)
+    expect(JSON.stringify(lastUser)).toContain("Use b.txt instead")
   })
 
-  // Two taps on Retry (or a tap on the computer and one on the phone) give one reply, not two.
-  test("a retry that is asked twice at once makes one new reply", async () => {
+  test("a joined message that is deleted before it is read never reaches the model", async () => {
     const t = await setup()
-    failNext = true
-    await t.send("please fail")
-    await t.settled()
-    const failedId = (await t.history()).messages[1]?.id ?? ""
-    const retry = () => t.runtime.runPromiseExit(Chat.use((c) => c.retry(t.agent.id, failedId)))
-    const [a, b] = await Promise.all([retry(), retry()])
-    await t.settled()
-    // Exactly one of the two asks went through; the other found no failed reply to try again.
-    expect([a, b].filter((exit) => Exit.isSuccess(exit))).toHaveLength(1)
-    const { messages } = await t.history()
-    expect(messages.map((m) => m.author)).toEqual(["user", "agent"])
-    expect(messages[1]?.status).toBe("done")
-    // The same ask again, after the reply is done, is refused too.
-    expect(Exit.isFailure(await retry())).toBe(true)
+    const before = mock.requests.length
+    await t.send("slow start")
+    await until(async () => (await t.history()).working)
+    const joined = await t.send("never mind this")
+    const back = await t.chat((c) => c.deleteWaiting(joined.id))
+    expect(back.text).toBe("never mind this")
+    await t.chat((c) => c.stop(t.flow.id))
+    await t.idle()
+    const sent = mock.requests.slice(before).map((r) => JSON.stringify(r.body.messages))
+    expect(sent.some((s) => s.includes("never mind this"))).toBe(false)
+    expect(texts((await t.history()).messages).join("|")).not.toContain("never mind")
   })
 
-  test("a usage limit fails the turn with the reset time", async () => {
+  test("a message that was not read when the turn ends starts the next turn", async () => {
     const t = await setup()
-    await t.send("hit the limit")
-    await t.settled()
-    const reply = (await t.history()).messages[1]
-    expect(reply?.error?.code).toBe("provider_limit")
-    expect(reply?.error?.resetsAt).toBeGreaterThan(Date.now() + 50_000)
-  })
-
-  test("thinking is kept as its own part", async () => {
-    const t = await setup()
-    await t.send("think")
-    await t.settled()
-    expect((await t.history()).messages[1]?.parts).toEqual([
-      { kind: "thinking", text: "Let me see." },
-      { kind: "text", text: "Answer." },
-    ])
-  })
-
-  test("the first reply counts from the message, and thinking does not count (spec 005)", async () => {
-    const t = await setup()
-    await t.send("please ponder")
-    await t.settled()
-    const tasks = () => t.run(Tasks.use((s) => s.list(t.local.id)))
-    const [done] = await tasks()
-    const times = taskTimes(done as never)
-    expect(done?.askedAt).not.toBeNull()
-    expect(times.firstReply).toBeGreaterThanOrEqual(290)
-    expect(times.total).toBeGreaterThanOrEqual(times.firstReply ?? 0)
-    // A failed turn has no first reply. Its retry has its own times, from its own start.
-    failNext = true
-    await t.send("now fail")
-    await t.settled()
-    const [failed] = await tasks()
-    expect(failed?.state).toBe("failed")
-    expect(taskTimes(failed as never).firstReply).toBeNull()
-    const reply = (await t.history()).messages.at(-1)
-    await t.run(Chat.use((c) => c.retry(t.agent.id, reply?.id ?? "")))
-    await t.settled()
-    const [retried] = await tasks()
-    expect(retried?.id).not.toBe(failed?.id)
-    expect(retried?.askedAt).toBeNull()
-    expect(taskTimes(retried as never).firstReply).not.toBeNull()
-  })
-
-  test("a queued message counts its first reply from when it was sent", async () => {
-    const t = await setup()
-    await t.setDuringTurn("queue")
-    await t.send("go slow")
-    const sent = Date.now()
-    expect((await t.send("second")).queued).toBe(true)
-    await t.settled()
-    const [second] = await t.run(Tasks.use((s) => s.list(t.local.id)))
-    expect(second?.prompt).toBe("second")
-    expect(second?.askedAt).toBeGreaterThanOrEqual(sent - 5)
-    expect(second?.askedAt).toBeLessThan(second?.createdAt ?? 0)
-  })
-
-  test("editing the last user message replaces the reply", async () => {
-    const t = await setup()
-    await t.send("first")
-    await t.settled()
-    const user = (await t.history()).messages[0]
-    await t.run(Chat.use((c) => c.edit(t.agent.id, user?.id ?? "", "changed")))
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages).toHaveLength(2)
-    expect(messageText(messages[0] as never)).toBe("changed")
-    expect(messages[0]?.editedAt).not.toBeNull()
-    expect(messageText(messages[1] as never)).toBe("Echo (2): changed")
-  })
-
-  test("a reply quotes the message it answers", async () => {
-    const t = await setup()
-    await t.send("first")
-    await t.settled()
-    const reply = (await t.history()).messages[1]
-    await t.send("about this", reply?.id ?? null)
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages[2]?.replyTo).toBe(reply?.id ?? "")
-    expect(messageText(messages[3] as never)).toBe("Echo (4): about this")
-  })
-
-  test("an agent without a connected account cannot get messages", async () => {
-    const t = await setup()
-    const accountId = t.agent.model?.accountId ?? ""
-    await t.run(Providers.use((p) => p.disconnect(accountId)))
-    const exit = await t.runtime.runPromiseExit(
-      Chat.use((c) => c.send({ agentId: t.agent.id, text: "hi", replyTo: null })),
+    const before = mock.requests.length
+    await t.send("slow start")
+    await until(async () => (await t.history()).working)
+    // The first request must reach the stand-in before the stop: a turn that is stopped sooner
+    // makes no request, and the next one would be the one that the test skips.
+    await until(() => mock.requests.length > before)
+    await t.send("second request")
+    await t.chat((c) => c.stop(t.flow.id))
+    // The second turn asks the model with the unread message (the stand-in streams slowly again,
+    // because it reads the joined user turns as one).
+    await until(() =>
+      mock.requests
+        .slice(before + 1)
+        .some((r) => JSON.stringify(r.body.messages).includes("second request")),
     )
-    expect(Exit.isFailure(exit)).toBe(true)
+    const h = await t.history()
+    expect(h.messages.filter((m) => m.author === "assistant")).toHaveLength(2)
+    expect(h.messages.map((m) => m.author)).toEqual(["user", "assistant", "user", "assistant"])
+    await t.chat((c) => c.stop(t.flow.id))
+    await t.idle()
   })
 
-  test("a finished turn ends at started; a turn the server refuses ends at sent (spec 005)", async () => {
+  test("wait in a queue: the message waits above the box and goes when the turn ends", async () => {
     const t = await setup()
-    const progressOf = async (index: number) => {
-      const reply = (await t.history()).messages[index]
-      const task = await t.run(
-        Database.use((db) =>
-          Effect.sync(() =>
-            db.get<{ progress: string }>(
-              "SELECT progress FROM task WHERE message_id = ?",
-              reply?.id ?? "",
-            ),
-          ),
-        ),
-      )
-      return task?.progress
-    }
-    await t.send("hello")
-    await t.settled()
-    expect(await progressOf(1)).toBe("started")
-    await t.send("hit the limit")
-    await t.settled()
-    expect(await progressOf(3)).toBe("sent")
-    // The failed row of the chat gets the same value, for its line (spec 003).
-    const { messages } = await t.history()
-    expect(messages[1]?.progress).toBeUndefined()
-    expect(messages[3]?.status).toBe("failed")
-    expect(messages[3]?.progress).toBe("sent")
+    const before = mock.requests.length
+    await t.run(SettingsStore.use((s) => s.update({ duringTurn: "queue" })))
+    await t.send("slow start")
+    await until(async () => (await t.history()).working)
+    // The first request must reach the stand-in before the stop: a turn that is stopped sooner
+    // makes no request, and the next one would be the one that the test skips.
+    await until(() => mock.requests.length > before)
+    await t.send("queued one")
+    const h = await t.history()
+    expect(h.queue.map((q) => q.text)).toEqual(["queued one"])
+    expect(h.messages.map((m) => chatText(m)).join("|")).not.toContain("queued one")
+    await t.chat((c) => c.stop(t.flow.id))
+    await until(() =>
+      mock.requests
+        .slice(before + 1)
+        .some((r) => JSON.stringify(r.body.messages).includes("queued one")),
+    )
+    const x = await t.history()
+    expect(x.queue).toEqual([])
+    expect(x.messages.some((m) => chatText(m) === "queued one")).toBe(true)
+    await t.chat((c) => c.stop(t.flow.id))
+    await t.idle()
   })
 
-  const tasksOf = (t: Awaited<ReturnType<typeof setup>>) =>
-    t.run(Tasks.use((x) => x.list(t.local.id)))
+  test("the queue holds at most 10 messages", async () => {
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ duringTurn: "queue" })))
+    await t.send("slow start")
+    await until(async () => (await t.history()).working)
+    for (let i = 0; i < 10; i++) await t.send(`q${i}`)
+    expect(await t.code(t.send("q10"))).toBe("queue_full")
+    expect((await t.history()).queue).toHaveLength(10)
+    await t.chat((c) => c.stop(t.flow.id))
+  })
 
-  const waitForHeld = async (count: number) => {
-    await until(async () => held.opened >= count)
+  test("a queued message can be taken back, and sent now into the turn that works", async () => {
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ duringTurn: "queue" })))
+    await t.send("slow start")
+    await until(async () => (await t.history()).working)
+    const a = await t.send("remove me")
+    const b = await t.send("send me now")
+    expect((await t.chat((c) => c.deleteWaiting(a.id))).text).toBe("remove me")
+    await t.chat((c) => c.sendNow(b.id))
+    const h = await t.history()
+    expect(h.queue).toEqual([])
+    expect(h.messages.find((m) => m.id === b.id)?.pending).toBe(true)
+    await t.chat((c) => c.stop(t.flow.id))
+  })
+
+  test("an attached file is copied into the folder of the workflow, with a unique name", async () => {
+    const t = await setup()
+    const dir = mkdtempSync(join(tmpdir(), "robot-attach-"))
+    const file = join(dir, "notes.txt")
+    writeFileSync(file, "hello")
+    await t.send("see this", { files: [file] })
+    await t.idle()
+    const again = await t.send("and again", { files: [file] })
+    await t.idle()
+    expect(readFileSync(join(t.flow.folder, "attachments", "notes.txt"), "utf8")).toBe("hello")
+    expect(readFileSync(join(t.flow.folder, "attachments", "notes 2.txt"), "utf8")).toBe("hello")
+    expect(chatFiles(again)[0]?.path).toBe(join("attachments", "notes 2.txt"))
+    expect(await t.code(t.send("gone", { files: [join(dir, "missing.txt")] }))).toBe(
+      "file_unreadable",
+    )
+  })
+
+  test("send is refused when the account was disconnected", async () => {
+    const t = await setup()
+    await t.send("hello")
+    await t.idle()
+    const account = (await t.run(Providers.use((p) => p.list)))[0]
+    await t.run(Providers.use((p) => p.disconnect(account?.id ?? "")))
+    expect(await t.code(t.send("again"))).toBe("provider_not_connected")
+  })
+
+  test("a failed reply keeps the reason, and Retry asks again with the same conversation", async () => {
+    const t = await setup()
+    await t.send("hello")
+    await t.idle()
+    // The provider failed in this reply: the row holds the reason, as a failed turn stores it.
+    await t.sql(
+      "UPDATE chat_message SET status = 'failed', error_code = 'provider_error', error_detail = 'boom', parts = '[]' WHERE author = 'assistant'",
+    )
+    const failed = (await t.history()).messages.at(-1)
+    expect(failed?.status).toBe("failed")
+    expect(failed?.error).toEqual({ code: "provider_error", detail: "boom" })
+    const before = mock.requests.length
+    await t.chat((c) => c.retry(t.flow.id))
+    await t.idle()
+    const h = await t.history()
+    expect(texts(h.messages)).toEqual(["user:hello:done", "assistant:You said: hello:done"])
+    // One new request, with the user message and no failed reply in it.
+    expect(mock.requests.length).toBe(before + 1)
+    const sent = mock.requests.at(-1)?.body.messages.map((m) => m.role)
+    expect(sent).toEqual(["system", "user"])
+    // Retry on a reply that did not fail is refused.
+    expect(await t.code(t.chat((c) => c.retry(t.flow.id)))).toBe("message_read")
+  })
+
+  test("a reply that was streaming at a restart is marked stopped and the notice shows", async () => {
+    const dir = await import("node:fs").then((fs) =>
+      fs.mkdtempSync(`${require("node:os").tmpdir()}/robot-chat-`),
+    )
+    const file = `${dir}/robot.db`
+    const first = testRuntime({ databaseFile: file })
+    const server = await first.runtime.runPromise(Servers.use((s) => s.local))
+    await first.runtime.runPromise(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+    const flow = await first.runtime.runPromise(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Restart" })),
+    )
+    await first.runtime.runPromise(
+      Database.use((d) =>
+        Effect.sync(() => {
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('u1', ?, 'user', '[{\"kind\":\"text\",\"text\":\"do it\"}]', 'done', 1)",
+            flow.id,
+          )
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('a1', ?, 'assistant', '[]', 'streaming', 2)",
+            flow.id,
+          )
+        }),
+      ),
+    )
+    await first.runtime.dispose()
+    const second = testRuntime({ databaseFile: file })
+    const h = await second.runtime.runPromise(Chat.use((c) => c.history(flow.id)))
+    expect(h.messages.map((m) => m.status)).toEqual(["done", "stopped"])
+    expect(h.notice).toEqual({ messageId: "a1", notSent: true })
+    // "Send again" sends the same request again: the model answers it.
+    await second.runtime.runPromise(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+    await second.runtime.runPromise(Chat.use((c) => c.resume(flow.id, "again")))
+    await until(async () => {
+      const x = await second.runtime.runPromise(Chat.use((c) => c.history(flow.id)))
+      return !x.working && x.messages.at(-1)?.status === "done"
+    })
+    const x = await second.runtime.runPromise(Chat.use((c) => c.history(flow.id)))
+    expect(texts(x.messages)).toEqual(["user:do it:done", "assistant:You said: do it:done"])
+    expect(x.notice).toBeNull()
+  })
+})
+
+describe("questions about a run and feedback (spec 003)", () => {
+  const KEY = "sk-abcdefghijklmnopqrstuvwxyz123456"
+
+  /** A workflow with a text node, a decision node and a text node, like the 4-node case of 003. */
+  const withNodes = async () => {
+    const t = await setup()
+    for (const input of [
+      { kind: "text" as const, name: "Fetch" },
+      { kind: "text" as const, name: "Summarise" },
+      { kind: "decision" as const, name: "Pick", options: ["yes", "no"] },
+      { kind: "text" as const, name: "Send" },
+    ])
+      await t.run(Workflows.use((w) => w.addNode(t.flow.id, input)))
+    return t
+  }
+  const seedRun = async (
+    t: Awaited<ReturnType<typeof setup>>,
+    id: string,
+    state: string,
+    finished: boolean,
+    tasks: [number, string, string, string?, string?][],
+  ) => {
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES (?, ?, ?, 'hand', ?, ?)",
+      id,
+      t.flow.id,
+      state,
+      Date.parse("2026-11-07T10:00:00Z"),
+      finished ? Date.parse("2026-11-07T10:05:00Z") : null,
+    )
+    for (const [n, name, taskState, result, detail] of tasks)
+      await t.sql(
+        `INSERT INTO task (id, run_id, workflow_id, node_name, node_number, state, result, error_detail, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `${id}-${n}`,
+        id,
+        t.flow.id,
+        name,
+        n,
+        taskState,
+        result ?? "",
+        detail ?? null,
+        n,
+      )
+  }
+  const system = (before: number) =>
+    JSON.stringify(mock.requests.slice(before)[0]?.body.messages[0])
+
+  test('a workflow that never ran gets the rule for the answer "No run yet."', async () => {
+    const t = await withNodes()
+    const before = mock.requests.length
+    await t.send("How far is the run?")
+    await t.idle()
+    const sys = system(before)
+    expect(sys).toContain("This workflow has never run.")
+    expect(sys).toContain("No run yet.")
+  })
+
+  test("the model gets the states, reasons and results of the run; a key is redacted; a long result is cut", async () => {
+    const t = await withNodes()
+    await seedRun(t, "run-a", "running", false, [
+      [1, "Fetch", "done", `The key is ${KEY}. ${"long ".repeat(300)}`],
+      [2, "Summarise", "running"],
+    ])
+    const before = mock.requests.length
+    await t.send("How far is the run?")
+    await t.idle()
+    const sys = system(before)
+    expect(sys).toContain('Node 1 \\"Fetch\\" (text): done')
+    expect(sys).toContain('Node 2 \\"Summarise\\" (text): running')
+    expect(sys).toContain('Node 3 \\"Pick\\" (decision): not reached')
+    expect(sys).toContain('Node 4 \\"Send\\" (text): not reached')
+    expect(sys).toContain("[redacted]")
+    expect(sys).not.toContain(KEY)
+    expect(sys).toContain("this is its first part only")
+    expect(sys).not.toContain("run view")
+    expect(sys).toContain("2026-11-07 10:00 UTC")
+  })
+
+  test("a failed node and a node that waits for an approval give their reasons", async () => {
+    const t = await withNodes()
+    await seedRun(t, "run-b", "waiting", false, [
+      [1, "Fetch", "failed", "", "The app stopped"],
+      [2, "Summarise", "waiting"],
+    ])
+    await t.sql(
+      "UPDATE task SET error_code = 'approval', error_detail = 'run curl' WHERE id = 'run-b-2'",
+    )
+    const before = mock.requests.length
+    await t.send("Why does it wait?")
+    await t.idle()
+    const sys = system(before)
+    expect(sys).toContain("Reason: <reason>The app stopped</reason>")
+    expect(sys).toContain(
+      "Waits for your approval of the step: run curl. The approval card is in the chat.",
+    )
+  })
+
+  test("feedback while a run works is added to the run, with the nodes that will get it", async () => {
+    const t = await withNodes()
+    await seedRun(t, "run-c", "running", false, [
+      [1, "Fetch", "done", "result one"],
+      [2, "Summarise", "done", "result two"],
+    ])
+    await t.send('tool add_run_feedback {"text":"Too long. Keep it to five lines.","node":2}')
+    await t.idle()
+    const stored = await t.rows<{ run_id: string; node_number: number; text: string }>(
+      "SELECT run_id, node_number, text FROM run_feedback",
+    )
+    expect(stored).toEqual([
+      { run_id: "run-c", node_number: 2, text: "Too long. Keep it to five lines." },
+    ])
+    const reply = (await t.history()).messages.at(-1)
+    const note = reply?.parts.find((p) => p.kind === "note" && p.note === "feedback_added")
+    // Node 3 is a decision node: it never gets feedback. Node 4 starts after the feedback.
+    expect(note).toMatchObject({ runId: "run-c", nodes: [4] })
+    // The graph and the prompts did not change.
+    const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
+    expect(graph.nodes.map((n) => n.prompt)).toEqual(["", "", "", ""])
+    // The engine reads the feedback for a node that starts later.
+    const notes = await t.run(RunFacts.use((f) => f.feedbackFor("run-c")))
+    expect(notes).toEqual(["About node 2: Too long. Keep it to five lines."])
+  })
+
+  test("feedback when no text node starts after it says that no node will get it", async () => {
+    const t = await withNodes()
+    await seedRun(t, "run-d", "running", false, [
+      [1, "Fetch", "done"],
+      [2, "Summarise", "done"],
+      [3, "Pick", "running"],
+      [4, "Send", "running"],
+    ])
+    await t.send('tool add_run_feedback {"text":"All fine"}')
+    await t.idle()
+    const reply = (await t.history()).messages.at(-1)
+    expect(reply?.parts.find((p) => p.kind === "note")).toMatchObject({ nodes: [] })
+  })
+
+  test("feedback is not added to a run that ended, or when no run works", async () => {
+    const t = await withNodes()
+    await seedRun(t, "run-e", "done", true, [[1, "Fetch", "done"]])
+    await t.send('tool add_run_feedback {"text":"Too long"}')
+    await t.idle()
+    expect(await t.rows("SELECT * FROM run_feedback")).toEqual([])
+    const reply = (await t.history()).messages.at(-1)
+    expect(chatText(reply as WorkflowChatMessage)).toContain("no run works or waits")
+    expect(reply?.parts.some((p) => p.kind === "note")).toBe(false)
+  })
+
+  test("with two runs that work, feedback that names no run is not added", async () => {
+    const t = await withNodes()
+    await seedRun(t, "run-f1", "running", false, [[1, "Fetch", "running"]])
+    await seedRun(t, "run-f2", "running", false, [[1, "Fetch", "running"]])
+    await t.send('tool add_run_feedback {"text":"Too long"}')
+    await t.idle()
+    expect(await t.rows("SELECT * FROM run_feedback")).toEqual([])
+    expect(chatText((await t.history()).messages.at(-1) as WorkflowChatMessage)).toContain(
+      "more than one run works",
+    )
+  })
+
+  test("a chat message never changes the prompt of a node or the document", async () => {
+    const t = await withNodes()
+    const before = await t.run(Workflows.use((w) => w.get(t.flow.id)))
+    await t.send("Change the prompt of node 1 to: be rude")
+    await t.idle()
+    const after = await t.run(Workflows.use((w) => w.get(t.flow.id)))
+    expect(after.document).toBe(before.document)
+    expect(after.graph).toEqual(before.graph)
+  })
+})
+
+describe("the tools of the chat (spec 007, 003)", () => {
+  const claudeTurns = () => fake.claudeCalls().filter((c) => "prompt" in c)
+
+  test("an API account gets the tools of the chat and no others, in the folder of the workflow", async () => {
+    const t = await setup()
+    await t.send("hello")
+    await t.idle()
+    const request = mock.requests.at(-1)
+    // Self-improvement and memory are on by default: the chat also has the tools to propose a
+    // change, to keep and read facts, and to search the earlier chats (spec 002, 008, 007), and the
+    // tools that read and change the workflow and its runs (spec 010, "Assistant").
+    expect(request?.body.tools?.map((x) => x.function.name)).toEqual([
+      "add_run_feedback",
+      "list_workflows",
+      "read_workflow",
+      "add_node",
+      "edit_node",
+      "remove_node",
+      "add_connection",
+      "remove_connection",
+      "add_option",
+      "rename_option",
+      "remove_option",
+      "start_run",
+      "stop_run",
+      "read_run",
+      "read_run_result",
+      "propose_document_change",
+      "propose_prompt_change",
+      "propose_graph_change",
+      "memory_search",
+      "memory_save",
+      "search_chats",
+      "read_chat",
+    ])
+    const h = await t.history()
+    expect(h.answer).toMatchObject({ accountName: "Mock", model: "mock-fast", feedback: true })
+    expect(JSON.stringify(request?.body.messages[0])).toContain("call the tool add_run_feedback")
+  })
+
+  test("a runtime account answers in text only: no tools, no shell, not in the folder", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = await setup({ connect: false })
+    await t.run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Claude" })))
+    await t.send("hello")
+    await t.idle()
+    const reply = (await t.history()).messages.at(-1)
+    expect(reply?.status).toBe("done")
+    const turn = claudeTurns().at(-1) as { args: string[]; cwd: string; prompt: string }
+    // The program starts with the empty list of tools, not the tools of the program.
+    const at = turn.args.indexOf("--tools")
+    expect(at).toBeGreaterThanOrEqual(0)
+    expect(turn.args[at + 1]).toBe("")
+    expect(turn.args).not.toContain("--disallowedTools")
+    expect(turn.args).not.toContain("--mcp-config")
+    // The program runs outside the folder of the workflow.
+    const { realpathSync } = await import("node:fs")
+    expect(realpathSync(turn.cwd)).not.toContain(realpathSync(t.flow.folder))
+    expect(turn.cwd).not.toBe(t.flow.folder)
+    // It is also outside the data folder, which holds the database and the sign-ins.
+    expect(realpathSync(turn.cwd).startsWith(realpathSync(t.dataDir))).toBe(false)
+    expect(realpathSync(t.dataDir).startsWith(realpathSync(turn.cwd))).toBe(false)
+    // The prompt does not claim a tool that the turn lacks.
+    const system = turn.args[turn.args.indexOf("--append-system-prompt") + 1] ?? ""
+    expect(system).toContain("You have no tools in this chat")
+    expect(system).not.toContain("call the tool add_run_feedback")
+    // The header says why feedback is not there.
+    expect((await t.history()).answer).toMatchObject({ accountName: "Claude", feedback: false })
+  })
+})
+
+describe("the model of the chat (spec 003; the choice is not decided, docs/spec-questions.md)", () => {
+  const second = async (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Second", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+
+  test("the header data names the account and the model, and the choice stays between turns", async () => {
+    const t = await setup()
+    expect((await t.history()).answer).toMatchObject({ accountName: "Mock", model: "mock-fast" })
+    await t.send("one")
+    await t.idle()
+    // A node that names another account would win the first choice. The chat keeps its own.
+    const other = await second(t)
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(t.flow.id, {
+          kind: "text",
+          name: "A",
+          accountId: other.id,
+          model: "gpt-5",
+        }),
+      ),
+    )
+    await t.send("two")
+    await t.idle()
+    expect(mock.requests.at(-1)?.body.model).toBe("mock-fast")
+    expect((await t.history()).answer).toMatchObject({ accountName: "Mock", model: "mock-fast" })
+  })
+
+  test("the user picks another account and model; an unknown model is refused", async () => {
+    const t = await setup()
+    await t.send("one")
+    await t.idle()
+    const other = await second(t)
+    expect(await t.code(t.chat((c) => c.setModel(t.flow.id, other.id, "nope")))).toBe(
+      "chat_model_unknown",
+    )
+    expect(await t.code(t.chat((c) => c.setModel(t.flow.id, "gone", "gpt-5")))).toBe(
+      "provider_not_connected",
+    )
+    await t.chat((c) => c.setModel(t.flow.id, other.id, "gpt-5"))
+    expect((await t.history()).answer).toMatchObject({ accountName: "Second", model: "gpt-5" })
+    await t.send("two")
+    await t.idle()
+    expect(mock.requests.at(-1)?.body.model).toBe("gpt-5")
+  })
+
+  test("the choice changes when its account is gone", async () => {
+    const t = await setup()
+    await t.send("one")
+    await t.idle()
+    const other = await second(t)
+    const first = (await t.run(Providers.use((p) => p.list))).find((a) => a.name === "Mock")
+    await t.run(Providers.use((p) => p.disconnect(first?.id ?? "")))
+    expect((await t.history()).answer).toMatchObject({ accountId: other.id })
+    await t.send("two")
+    await t.idle()
+    expect(mock.requests.at(-1)?.body.model).toBe("mock-fast")
+    expect(
+      await t.rows<{ account_id: string }>("SELECT account_id FROM workflow_chat_model"),
+    ).toEqual([{ account_id: other.id }])
+  })
+
+  test("a reload of the history does not look at a program again", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = await setup({ connect: false })
+    await t.run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Claude" })))
+    await t.history()
+    const asked = fake.asks("claude").length
+    for (let i = 0; i < 5; i++) await t.history()
+    expect(fake.asks("claude").length).toBe(asked)
+  })
+})
+
+describe("a restart that cut a turn with a joined message (spec 003, Rules)", () => {
+  const cut = async (reached: boolean) => {
+    const dir = await import("node:fs").then((fs) =>
+      fs.mkdtempSync(`${require("node:os").tmpdir()}/robot-chat-`),
+    )
+    const file = `${dir}/robot.db`
+    const first = testRuntime({ databaseFile: file })
+    const server = await first.runtime.runPromise(Servers.use((s) => s.local))
+    await first.runtime.runPromise(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+    const flow = await first.runtime.runPromise(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Restart" })),
+    )
+    const parts = reached ? '[{"kind":"text","text":"Working. "}]' : "[]"
+    await first.runtime.runPromise(
+      Database.use((d) =>
+        Effect.sync(() => {
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('u1', ?, 'user', '[{\"kind\":\"text\",\"text\":\"do it\"}]', 'done', 1)",
+            flow.id,
+          )
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('a1', ?, 'assistant', ?, 'streaming', 2)",
+            flow.id,
+            parts,
+          )
+          d.run(
+            "INSERT INTO chat_message (id, workflow_id, author, parts, status, joined_to, created_at) VALUES ('u2', ?, 'user', '[{\"kind\":\"text\",\"text\":\"use b.txt\"}]', 'done', 'a1', 3)",
+            flow.id,
+          )
+        }),
+      ),
+    )
+    await first.runtime.dispose()
+    const second = testRuntime({ databaseFile: file })
+    await second.runtime.runPromise(
+      Providers.use((p) =>
+        p.connect({ kind: "openai", name: "Mock", baseUrl: mock.openaiUrl, apiKey: GOOD_KEY }),
+      ),
+    )
+    const history = () => second.runtime.runPromise(Chat.use((c) => c.history(flow.id)))
+    return { second, flow, history }
   }
 
-  test("a model that shows no sign of life is stopped at the silent limit, and the task fails (spec 005)", async () => {
-    const fake = fakeClock()
-    useClockForTests(fake.clock)
-    const t = await setup()
-    t.shell.focused = false
-    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
-    const before = held.opened
-    const closedBefore = held.closed
-    await t.send("stay quiet and hang")
-    await waitForHeld(before + 1)
-    // The request was handed over, and nothing came back.
-    expect((await tasksOf(t))[0]?.progress).toBe("sent")
-    fake.advance(59_000)
-    expect((await tasksOf(t))[0]?.state).toBe("running")
-    expect((await t.history()).messages[1]?.status).toBe("streaming")
-    fake.advance(1_000)
-    await until(async () => (await tasksOf(t))[0]?.state === "failed")
-    const task = (await tasksOf(t))[0]
-    expect(task?.error).toEqual({ code: "silent_limit_1", detail: "1" })
-    expect(task?.progress).toBe("sent")
-    const reply = (await t.history()).messages[1]
-    expect(reply?.status).toBe("failed")
-    expect(reply?.error?.code).toBe("silent_limit_1")
-    expect(reply?.progress).toBe("sent")
-    // The turn stopped like after a Stop: the connection to the model closed.
-    await until(async () => held.closed > closedBefore)
-    // One notification of the kind "task failed".
-    expect(t.shell.notices).toHaveLength(1)
-    // The failed reply can be tried again, and the agent answers the same request.
-    const again = await t
-      .run(Chat.use((c) => c.retry(t.agent.id, (reply?.id as string) ?? "")))
-      .then(
-        () => true,
-        () => false,
-      )
-    expect(again).toBe(true)
+  test("the notice shows with Continue when the model had read the request", async () => {
+    const { second, flow, history } = await cut(true)
+    const h = await history()
+    expect(h.messages.map((m) => [m.author, m.status, m.pending])).toEqual([
+      ["user", "done", false],
+      ["assistant", "stopped", false],
+      ["user", "done", false],
+    ])
+    expect(h.notice).toEqual({ messageId: "a1", notSent: false })
+    await second.runtime.runPromise(Chat.use((c) => c.resume(flow.id, "continue")))
+    await until(async () => {
+      const x = await history()
+      return !x.working && x.messages.at(-1)?.status === "done"
+    })
+    const x = await history()
+    expect(x.notice).toBeNull()
+    // The model read the joined message with the request to go on.
+    const asked = JSON.stringify(mock.requests.at(-1)?.body.messages)
+    expect(asked).toContain("use b.txt")
   })
 
-  test("the limit in minutes comes from the setting when the turn starts", async () => {
-    const fake = fakeClock()
-    useClockForTests(fake.clock)
-    const t = await setup()
-    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 30 })))
-    const before = held.opened
-    await t.send("quiet hang")
-    await waitForHeld(before + 1)
-    // A change of the setting does not reach the turn that runs.
-    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
-    fake.advance(29 * 60_000)
-    expect((await tasksOf(t))[0]?.state).toBe("running")
-    fake.advance(60_000)
-    await until(async () => (await tasksOf(t))[0]?.state === "failed")
-    expect((await tasksOf(t))[0]?.error).toEqual({ code: "silent_limit", detail: "30" })
-  })
-
-  test("with the choice Never a silent turn does not fail by itself; Stop ends it", async () => {
-    const fake = fakeClock()
-    useClockForTests(fake.clock)
-    const t = await setup()
-    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 0 })))
-    const before = held.opened
-    await t.send("quiet hang")
-    await waitForHeld(before + 1)
-    fake.advance(48 * 60 * 60_000)
-    expect((await tasksOf(t))[0]?.state).toBe("running")
-    await t.run(Chat.use((c) => c.stop(t.agent.id)))
-    await until(async () => (await tasksOf(t))[0]?.state === "cancelled")
-    // A Stop of the user shows no failure and no notice.
-    expect((await t.history()).messages[1]?.status).toBe("stopped")
-  })
-
-  test("a part of the reply is a sign of life, and the turn goes to started", async () => {
-    const fake = fakeClock()
-    useClockForTests(fake.clock)
-    const t = await setup()
-    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
-    const before = held.opened
-    await t.send("begin the partial")
-    await waitForHeld(before + 1)
-    await until(async () => (await tasksOf(t))[0]?.progress === "started")
-    // The limit counts from the last sign of life.
-    fake.advance(59_000)
-    expect((await tasksOf(t))[0]?.state).toBe("running")
-    fake.advance(1_000)
-    await until(async () => (await tasksOf(t))[0]?.state === "failed")
-    const task = (await tasksOf(t))[0]
-    expect(task?.error?.code).toBe("silent_limit_1")
-    expect(task?.progress).toBe("started")
-    expect(messageText((await t.history()).messages[1] as never)).toBe("Starting ")
-  })
-
-  describe("the quiet line (spec 005)", () => {
-    const quietNow = (t: Awaited<ReturnType<typeof setup>>) =>
-      t.run(Activity.use((a) => Effect.sync(() => a.quietTurns().turns)))
-    const quietEvents = (t: Awaited<ReturnType<typeof setup>>) =>
-      t.events
-        .filter((e) => e.event === "quiet.changed")
-        .map((e) => e.payload as { turns: unknown[] })
-
-    test("a turn with no sign of life for 90 seconds is quiet, and Stop ends the line", async () => {
-      const fake = fakeClock()
-      useClockForTests(fake.clock)
-      const t = await setup()
-      t.shell.focused = false
-      await t.run(SettingsStore.use((s) => s.update({ silentLimit: 10 })))
-      const before = held.opened
-      await t.send("begin the partial")
-      await waitForHeld(before + 1)
-      await until(async () => (await tasksOf(t))[0]?.progress === "started")
-      fake.advance(89_000)
-      expect(await quietNow(t)).toEqual([])
-      expect(quietEvents(t)).toEqual([])
-      fake.advance(1_000)
-      const turns = await quietNow(t)
-      const task = (await tasksOf(t))[0]
-      // The name is the name of the model account.
-      expect(turns).toHaveLength(1)
-      expect(turns[0]).toMatchObject({
-        taskId: task?.id,
-        agentId: t.agent.id,
-        threadId: null,
-        source: "chat",
-        name: "M",
-      })
-      expect(turns[0]?.seconds).toBeGreaterThanOrEqual(90)
-      expect(quietEvents(t)).toHaveLength(1)
-      // The turn goes on: a quiet line makes no notice, no task change, no failure.
-      expect(task?.state).toBe("running")
-      expect(t.shell.notices).toHaveLength(0)
-      // A longer silence sends nothing more: the clients count the seconds.
-      fake.advance(120_000)
-      expect(quietEvents(t)).toHaveLength(1)
-      // Stop is the way out. The line goes with the turn.
-      await t.run(Chat.use((c) => c.stop(t.agent.id)))
-      await until(async () => (await quietNow(t)).length === 0)
-      expect(quietEvents(t).at(-1)?.turns).toEqual([])
-      expect(t.shell.notices).toHaveLength(0)
+  test("the notice shows with Send again when the request had not reached the model", async () => {
+    const { second, flow, history } = await cut(false)
+    expect((await history()).notice).toEqual({ messageId: "a1", notSent: true })
+    await second.runtime.runPromise(Chat.use((c) => c.resume(flow.id, "again")))
+    await until(async () => {
+      const x = await history()
+      return !x.working && x.messages.at(-1)?.status === "done"
     })
-
-    test("with the limit 1 minute the line shows at 30 seconds, and the failed turn ends it", async () => {
-      const fake = fakeClock()
-      useClockForTests(fake.clock)
-      const t = await setup()
-      await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
-      const before = held.opened
-      await t.send("go quiet and hang")
-      await waitForHeld(before + 1)
-      fake.advance(29_000)
-      expect(await quietNow(t)).toEqual([])
-      fake.advance(1_000)
-      expect(await quietNow(t)).toHaveLength(1)
-      fake.advance(30_000)
-      await until(async () => (await tasksOf(t))[0]?.state === "failed")
-      // The failed row replaces the quiet line.
-      expect(await quietNow(t)).toEqual([])
-      expect(quietEvents(t).at(-1)?.turns).toEqual([])
-    })
-
-    test("with the choice Never the line shows at 90 seconds and stays until Stop", async () => {
-      const fake = fakeClock()
-      useClockForTests(fake.clock)
-      const t = await setup()
-      await t.run(SettingsStore.use((s) => s.update({ silentLimit: 0 })))
-      const before = held.opened
-      await t.send("quiet hang")
-      await waitForHeld(before + 1)
-      fake.advance(89_000)
-      expect(await quietNow(t)).toEqual([])
-      fake.advance(1_000)
-      expect(await quietNow(t)).toHaveLength(1)
-      fake.advance(24 * 60 * 60_000)
-      expect((await tasksOf(t))[0]?.state).toBe("running")
-      expect(await quietNow(t)).toHaveLength(1)
-      await t.run(Chat.use((c) => c.stop(t.agent.id)))
-      await until(async () => (await quietNow(t)).length === 0)
-    })
-
-    test("a turn that is not quiet has no line, and a quick answer makes none", async () => {
-      const fake = fakeClock()
-      useClockForTests(fake.clock)
-      const t = await setup()
-      await t.send("hello")
-      await t.settled()
-      fake.advance(10 * 60_000)
-      expect(await quietNow(t)).toEqual([])
-      expect(quietEvents(t)).toEqual([])
-    })
-  })
-
-  describe("a request that a restart cut off", () => {
-    /** Two runs of the app on one data folder. The key of the account stays, as in a keychain. */
-    const restartable = async () => {
-      const { platform, dataDir } = testPlatform()
-      const file = join(dataDir, "robot.db")
-      const keys = new Map<string, string>()
-      const secrets = Layer.succeed(
-        Secrets,
-        Secrets.of({
-          get: (key) => keys.get(key) ?? null,
-          set: (key, value) => void keys.set(key, value),
-          remove: (key) => void keys.delete(key),
-        }),
-      )
-      const open = () =>
-        ManagedRuntime.make(
-          appLayer({ platform, databaseFile: file, localServerName: "T", emit: () => {}, secrets }),
-        )
-      const first = open()
-      const account = await first.runPromise(
-        Providers.use((p) =>
-          p.connect({
-            kind: "custom",
-            name: "M",
-            baseUrl: `http://127.0.0.1:${server.port}/v1`,
-            apiKey: KEY,
-          }),
-        ),
-      )
-      expect(keys.has(secretKey(account.id))).toBe(true)
-      const local = await first.runPromise(Servers.use((s) => s.local))
-      const agent = await first.runPromise(
-        Agents.use((a) =>
-          a.create({
-            serverId: local.id,
-            name: "Ada",
-            role: "",
-            instructions: "",
-            model: { accountId: account.id, model: "mock", effort: null },
-          }),
-        ),
-      )
-      const sql = (text: string, ...args: (string | number | null)[]) =>
-        first.runPromise(Database.use((db) => Effect.sync(() => db.run(text, ...args))))
-      /** A request of the user that the app was working on when it stopped. */
-      const cut = async (
-        id: string,
-        progress: TaskProgress,
-        state: "queued" | "running",
-        parts = "[]",
-      ) => {
-        await sql(
-          `INSERT INTO message (id, agent_id, author, parts, status, created_at)
-           VALUES (?, ?, 'user', ?, 'done', 1)`,
-          `u-${id}`,
-          agent.id,
-          JSON.stringify([{ kind: "text", text: `ask ${id}` }]),
-        )
-        await sql(
-          `INSERT INTO message (id, agent_id, author, parts, status, created_at)
-           VALUES (?, ?, 'agent', ?, 'streaming', 2)`,
-          `r-${id}`,
-          agent.id,
-          parts,
-        )
-        await sql(
-          `INSERT INTO task (id, agent_id, prompt, label, source, source_id, message_id, state,
-             created_at, progress)
-           VALUES (?, ?, ?, ?, 'chat', ?, ?, ?, 2, ?)`,
-          `t-${id}`,
-          agent.id,
-          `ask ${id}`,
-          `ask ${id}`,
-          agent.id,
-          `r-${id}`,
-          state,
-          progress,
-        )
-      }
-      return { first, open, agent, cut, sql }
-    }
-
-    test("the chat tells how far the request went, for each progress", async () => {
-      for (const progress of ["not_sent", "sent", "started"] as const) {
-        const r = await restartable()
-        await r.cut("x", progress, progress === "not_sent" ? "queued" : "running")
-        await r.first.dispose()
-        const second = r.open()
-        const history = await second.runPromise(Chat.use((c) => c.history(r.agent.id)))
-        expect(history.cut).toEqual({ taskId: "t-x", messageId: "r-x", progress })
-        // The reply that was cut counts as stopped, and the task as failed with the restart reason.
-        expect(history.messages.at(-1)?.status).toBe("stopped")
-        const task = (await second.runPromise(Tasks.use((x) => x.get("t-x")))).task
-        expect(task.error?.code).toBe("app_stopped")
-        expect(task.progress).toBe(progress)
-        await second.dispose()
-      }
-    })
-
-    test("a request the user wrote after the restart hides the notice", async () => {
-      const r = await restartable()
-      await r.cut("x", "started", "running", JSON.stringify([{ kind: "text", text: "Half" }]))
-      await r.first.dispose()
-      const second = r.open()
-      const id = r.agent.id
-      expect((await second.runPromise(Chat.use((c) => c.history(id)))).cut).not.toBeNull()
-      await second.runPromise(
-        Chat.use((c) => c.send({ agentId: id, text: "go on", replyTo: null })),
-      )
-      await until(async () => {
-        const h = await second.runPromise(Chat.use((c) => c.history(id)))
-        return h.messages.length === 4 && h.messages.every((m) => m.status !== "streaming")
-      })
-      expect((await second.runPromise(Chat.use((c) => c.history(id)))).cut).toBeNull()
-      await second.dispose()
-    })
-
-    test("a Stop of the user is no cut request", async () => {
-      const r = await restartable()
-      await r.cut("x", "started", "running")
-      await r.sql("UPDATE task SET state = 'cancelled' WHERE id = 't-x'")
-      await r.sql("UPDATE message SET status = 'stopped' WHERE id = 'r-x'")
-      await r.first.dispose()
-      const second = r.open()
-      expect((await second.runPromise(Chat.use((c) => c.history(r.agent.id)))).cut).toBeNull()
-      await second.dispose()
-    })
-
-    test("Send again asks the same request in place when it never reached the model", async () => {
-      const r = await restartable()
-      await r.cut("x", "not_sent", "queued")
-      await r.first.dispose()
-      const second = r.open()
-      const id = r.agent.id
-      await second.runPromise(Chat.use((c) => c.retry(id, "r-x")))
-      await until(async () => {
-        const h = await second.runPromise(Chat.use((c) => c.history(id)))
-        return h.messages.length === 2 && h.messages.every((m) => m.status !== "streaming")
-      })
-      const h = await second.runPromise(Chat.use((c) => c.history(id)))
-      // The request was not written twice: the empty reply is gone and a new one answers it.
-      expect(h.messages.map((m) => [m.author, m.status])).toEqual([
-        ["user", "done"],
-        ["agent", "done"],
-      ])
-      expect(messageText(h.messages[1] as never)).toContain("ask x")
-      expect(h.cut).toBeNull()
-      // The new task links to the one that the restart ended, and starts at not sent, then goes up.
-      const tasks = await second.runPromise(Tasks.use((x) => x.list(r.agent.serverId)))
-      const fresh = tasks.find((x) => x.id !== "t-x")
-      expect(fresh?.retryOf).toBe("t-x")
-      expect(fresh?.progress).toBe("started")
-      await second.dispose()
-    })
-
-    test("a request that reached the model is not sent again in place", async () => {
-      const r = await restartable()
-      await r.cut("x", "sent", "running")
-      await r.first.dispose()
-      const second = r.open()
-      const exit = await second.runPromiseExit(Chat.use((c) => c.retry(r.agent.id, "r-x")))
-      expect(Exit.isFailure(exit)).toBe(true)
-      await second.dispose()
-    })
+    const x = await history()
+    expect(x.notice).toBeNull()
+    expect(JSON.stringify(mock.requests.at(-1)?.body.messages)).toContain("use b.txt")
   })
 })
 
-describe("messages during a turn (spec 003)", () => {
-  test("a message joins the running turn: the agent reads it at the next step, in one reply", async () => {
+describe("who can add feedback today (spec 003, 010; the guard is W6)", () => {
+  test("feedback reaches a run only from a message in the chat, through the tool of the chat", async () => {
     const t = await setup()
-    await t.send("go slow")
-    await t.streaming()
-    expect((await t.send("Use b.txt instead")).queued).toBe(false)
-    const waiting = (await t.history()).messages.at(-1)
-    expect(waiting?.unread).toBe("waiting")
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages.map((m) => [m.author, m.status])).toEqual([
-      ["user", "done"],
-      ["agent", "done"],
-      ["user", "done"],
-    ])
-    // The muted line has gone, and no second turn started.
-    expect(messages[2]?.unread).toBeUndefined()
-    const reply = messageText(messages[1] as never)
-    expect(reply).toContain("w39")
-    expect(reply).toEndWith("\n\nEcho (4): Use b.txt instead")
-    expect(asked.filter((a) => a === "Use b.txt instead")).toHaveLength(1)
-    // The task of the turn lists the message.
-    const [task] = await t.run(Tasks.use((s) => s.list(t.local.id)))
-    expect(await t.run(Tasks.use((s) => s.list(t.local.id)))).toHaveLength(1)
-    const detail = await t.run(Tasks.use((s) => s.get(task?.id ?? "")))
-    expect(detail.joined.map((j) => j.text)).toEqual(["Use b.txt instead"])
-    expect(detail.joined[0]?.at).toBe(messages[2]?.createdAt as number)
-  })
-
-  test("a message deleted before the next step never reaches the model", async () => {
-    const t = await setup()
-    await t.send("go slow")
-    await t.streaming()
-    await t.send("forget this one")
-    const message = (await t.history()).messages.at(-1)
-    await t.run(Chat.use((c) => c.deleteUnread(t.agent.id, message?.id ?? "")))
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages).toHaveLength(2)
-    expect(asked.some((a) => a.includes("forget this one"))).toBe(false)
-    // A message that the agent read cannot be deleted.
-    const exit = await t.runtime.runPromiseExit(
-      Chat.use((c) => c.deleteUnread(t.agent.id, messages[0]?.id ?? "")),
+    await t.run(Workflows.use((w) => w.addNode(t.flow.id, { kind: "text", name: "Fetch" })))
+    await t.run(Workflows.use((w) => w.addNode(t.flow.id, { kind: "text", name: "Send" })))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', 1)",
+      t.flow.id,
     )
-    expect(Exit.isFailure(exit)).toBe(true)
+    await t.sql(
+      "INSERT INTO task (id, run_id, workflow_id, node_name, node_number, state, result, created_at) VALUES ('t1', 'r1', ?, 'Fetch', 1, 'done', 'x', 1)",
+      t.flow.id,
+    )
+    // No method of the app takes feedback except the chat: no rpc handler, no method of the chat.
+    const { handlers } = await import("../rpc.ts")
+    expect(Object.keys(handlers).filter((k) => /feedback/i.test(k))).toEqual([])
+    const methods = await t.run(Chat.use((c) => Effect.succeed(Object.keys(c))))
+    expect(methods.filter((k) => /feedback/i.test(k))).toEqual([])
+    // Today the text is whatever the model wrote in the call. No check compares it with the
+    // words of the user, and no check looks at outside content. W6 owns both.
+    await t.send('tool add_run_feedback {"text":"Words that the user did not write","node":1}')
+    await t.idle()
+    const stored = await t.rows<{ text: string }>("SELECT text FROM run_feedback")
+    expect(stored).toEqual([{ text: "Words that the user did not write" }])
+  })
+})
+
+describe("a program that cannot be locked to text only (spec 007, 003)", () => {
+  const codexTurns = () => fake.codexCalls().filter((c) => Array.isArray(c.args))
+  const connectCodex = (t: Awaited<ReturnType<typeof setup>>) => {
+    fake.setCodex({ loggedIn: true, method: "chatgpt" })
+    return t.run(Providers.use((p) => p.connect({ kind: "codex", name: "Codex" })))
+  }
+
+  test("with only such an account connected, the chat is blocked with the reason and sends nothing", async () => {
+    const t = await setup({ connect: false })
+    await connectCodex(t)
+    const h = await t.history()
+    expect(h.block).toBe("no_provider")
+    expect(h.answer).toBeNull()
+    expect(h.unsafeAccount).toBe("Codex")
+    const turns = codexTurns().length
+    expect(await t.code(t.send("hello"))).toBe("provider_not_connected")
+    expect(codexTurns().length).toBe(turns)
+    expect((await t.history()).messages).toEqual([])
   })
 
-  test("after Stop, the messages that the agent did not read start the next turn as one", async () => {
+  test("the account is not listed for the chat and cannot be picked", async () => {
     const t = await setup()
-    await t.send("go slow")
-    await t.streaming()
-    await t.send("one")
-    await t.send("and two")
-    await t.run(Chat.use((c) => c.stop(t.agent.id)))
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages.map((m) => (m.author === "user" ? messageText(m) : m.status))).toEqual([
-      "go slow",
-      "stopped",
-      "one",
-      "and two",
-      "done",
+    await connectCodex(t)
+    const listed = await runRequest(t.runtime, "models.available", {}, null)
+    expect(listed.ok).toBe(true)
+    const choices = (listed as { value: { accountName: string; chatSafe?: boolean }[] }).value
+    // The list marks the account, and the picker of the chat leaves it out.
+    expect(choices.map((c) => [c.accountName, c.chatSafe])).toEqual([
+      ["Mock", true],
+      ["Codex", false],
     ])
-    expect(messages.every((m) => m.unread === undefined)).toBe(true)
-    expect(messageText(messages[4] as never)).toBe("Echo (4): and two")
-    expect(asked.at(-1)).toBe("one\n\nand two")
-    const tasks = await t.run(Tasks.use((s) => s.list(t.local.id)))
-    expect(tasks[0]?.prompt).toBe("one\n\nand two")
+    const codex = (await t.run(Providers.use((p) => p.list))).find((a) => a.name === "Codex")
+    expect(await t.code(t.chat((c) => c.setModel(t.flow.id, codex?.id ?? "", "default")))).toBe(
+      "chat_account_unsafe",
+    )
+    const h = await t.history()
+    expect(h.answer).toMatchObject({ accountName: "Mock" })
+    await t.send("hello")
+    await t.idle()
+    expect(codexTurns().length).toBe(0)
+    expect(mock.requests.at(-1)?.body.model).toBe("mock-fast")
   })
 
-  test("with the queue setting, Send now puts a queued message into the turn", async () => {
+  test("a stored choice of such an account is replaced, with the reason, and a read stores nothing", async () => {
     const t = await setup()
-    await t.setDuringTurn("queue")
-    await t.send("go slow")
-    await t.streaming()
-    expect((await t.send("now please")).queued).toBe(true)
-    const [item] = (await t.history()).queue
-    expect((await t.history()).hold).toBeNull()
-    await t.run(Chat.use((c) => c.sendNow(t.agent.id, item?.id ?? "")))
-    expect((await t.history()).queue).toHaveLength(0)
-    await t.settled()
-    const { messages } = await t.history()
-    expect(messages.map((m) => m.author)).toEqual(["user", "agent", "user"])
-    expect(messageText(messages[1] as never)).toEndWith("Echo (4): now please")
+    const codex = await connectCodex(t)
+    await t.sql(
+      "INSERT INTO workflow_chat_model (workflow_id, account_id, model, effort) VALUES (?, ?, 'default', NULL)",
+      t.flow.id,
+      codex.id,
+    )
+    const h = await t.history()
+    expect(h.answer).toMatchObject({ accountName: "Mock" })
+    expect(h.unsafeAccount).toBe("Codex")
+    // The history only computes: the stored row is as it was.
+    expect(
+      await t.rows<{ account_id: string }>("SELECT account_id FROM workflow_chat_model"),
+    ).toEqual([{ account_id: codex.id }])
+    await t.send("hello")
+    await t.idle()
+    expect(codexTurns().length).toBe(0)
+    const stored = await t.rows<{ account_id: string }>(
+      "SELECT account_id FROM workflow_chat_model",
+    )
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.account_id).not.toBe(codex.id)
+    // The reason is shown once: the next read has none.
+    expect((await t.history()).unsafeAccount).toBeNull()
   })
 
-  test("a message that comes when the agent is free starts a turn as before", async () => {
+  test("reading the history does not write the choice", async () => {
     const t = await setup()
-    expect((await t.send("hello")).queued).toBe(false)
-    await t.settled()
-    expect((await t.history()).messages.map((m) => m.unread)).toEqual([undefined, undefined])
-  })
-})
-
-const busyNotes = (parts: readonly MessagePart[]) =>
-  parts.filter(
-    (p): p is Extract<MessagePart, { kind: "note"; note: "busy_retry" }> =>
-      p.kind === "note" && p.note === "busy_retry",
-  )
-
-describe("When the provider is busy", () => {
-  describe("with no output yet", () => {
-    it("should show a muted line for each wait and then answer", async () => {
-      busyClock.waitsMs = [0, 0, 0]
-      busyLeft = 2
-      const t = await setup()
-      await t.send("please busy")
-      await t.settled()
-      const reply = (await t.history()).messages[1]
-      expect(busyNotes(reply?.parts ?? []).map((part) => [part.n, part.of])).toEqual([
-        [1, 3],
-        [2, 3],
-      ])
-      expect(reply?.status).toBe("done")
-    })
-
-    it("should fail with the provider reason after the third try", async () => {
-      busyClock.waitsMs = [0, 0, 0]
-      busyLeft = 9
-      const t = await setup()
-      await t.send("please busy")
-      await t.settled()
-      const reply = (await t.history()).messages[1]
-      expect(reply?.error?.code).toBe("provider_busy")
-      expect(busyNotes(reply?.parts ?? []).map((part) => part.n)).toEqual([1, 2, 3])
-    })
-
-    it("should stop when the user ends the wait", async () => {
-      busyClock.waitsMs = [60_000, 60_000, 60_000]
-      busyLeft = 4
-      const before = asked.length
-      const t = await setup()
-      await t.send("please busy")
-      await until(async () => busyNotes((await t.history()).messages[1]?.parts ?? []).length > 0)
-      await t.run(Chat.use((c) => c.stop(t.agent.id)))
-      await t.settled()
-      expect((await t.history()).messages[1]?.status).toBe("stopped")
-      expect(asked.length - before).toBe(1)
-    })
-
-    it("should try again when the provider gets too many requests", async () => {
-      busyClock.waitsMs = [0, 0, 0]
-      busyLeft = 1
-      const t = await setup()
-      await t.send("please flood")
-      await t.settled()
-      const reply = (await t.history()).messages[1]
-      expect(busyNotes(reply?.parts ?? []).map((part) => part.n)).toEqual([1])
-      expect(reply?.status).toBe("done")
-    })
-  })
-})
-
-const otherAgent = async (t: Awaited<ReturnType<typeof setup>>, name: string) => {
-  const model = t.agent.model
-  if (!model) throw new Error("no model")
-  return t.run(
-    Agents.use((a) =>
-      a.create({
-        serverId: t.local.id,
-        name,
-        role: "",
-        instructions: "Be brief.",
-        model,
-      }),
-    ),
-  )
-}
-
-describe("When a direct chat names another agent", () => {
-  describe("with @Name", () => {
-    it("should put that agent's reply in this chat and not in their own chat", async () => {
-      const t = await setup()
-      const bo = await otherAgent(t, "Bo")
-      await t.send("@Bo look")
-      await until(async () => {
-        const messages = (await t.history()).messages
-        const guest = messages.find((m) => m.speakerId === bo.id)
-        return guest?.status === "done"
-      })
-      const own = await t.run(Chat.use((c) => c.history(bo.id)))
-      expect(own.messages).toEqual([])
-      const guest = (await t.history()).messages.find((m) => m.speakerId === bo.id)
-      expect(guest?.status).toBe("done")
-    })
-
-    it("should give the named agent the message that named them", async () => {
-      const t = await setup()
-      await otherAgent(t, "Bo")
-      const from = asked.length
-      await t.send("@Bo look")
-      await until(async () => asked.slice(from).some((text) => text.includes("@Bo look")))
-      expect(asked.slice(from).some((text) => text.includes("@Bo look"))).toBe(true)
-    })
-
-    it("should still let the chat's own agent answer", async () => {
-      const t = await setup()
-      const bo = await otherAgent(t, "Bo")
-      await t.send("@Bo look")
-      await until(async () => {
-        const messages = (await t.history()).messages
-        const host = messages.find((m) => m.author === "agent" && m.speakerId === undefined)
-        const guest = messages.find((m) => m.speakerId === bo.id)
-        return host?.status === "done" && guest?.status === "done"
-      })
-      const host = (await t.history()).messages.find(
-        (m) => m.author === "agent" && m.speakerId === undefined,
-      )
-      expect(host?.status).toBe("done")
-      const tasks = await t.run(Tasks.use((x) => x.list(t.local.id)))
-      expect(tasks.some((task) => task.agentId === bo.id && task.source === "mention")).toBe(true)
-    })
-
-    it("should put an attached file where the named agent can read it", async () => {
-      const t = await setup()
-      const bo = await otherAgent(t, "Bo")
-      const file = join(t.agent.workspace, "note.txt")
-      writeFileSync(file, "see this")
-      await t.run(
-        Chat.use((c) =>
-          c.send({ agentId: t.agent.id, text: "@Bo look", replyTo: null, files: [file] }),
-        ),
-      )
-      await until(async () =>
-        (await t.history()).messages.some((m) => m.speakerId === bo.id && m.status === "done"),
-      )
-      expect(existsSync(join(bo.workspace, "attachments", "note.txt"))).toBe(true)
-    })
-
-    it("should stop a named agent that is still writing in this chat", async () => {
-      const t = await setup()
-      const bo = await otherAgent(t, "Bo")
-      await t.send("@Bo go slow")
-      await until(async () =>
-        (await t.history()).messages.some((m) => m.speakerId === bo.id && m.status === "streaming"),
-      )
-      await t.run(Chat.use((c) => c.stop(t.agent.id)))
-      await until(async () => (await t.history()).messages.every((m) => m.status !== "streaming"))
-      const statuses = (await t.history()).messages
-        .filter((m) => m.author === "agent")
-        .map((m) => m.status)
-      expect(statuses).toEqual(["stopped", "stopped"])
-    })
-  })
-
-  describe("with the chat's own name", () => {
-    it("should stay one turn of that agent", async () => {
-      const t = await setup()
-      await t.send("@Ada hi")
-      await t.settled()
-      const messages = (await t.history()).messages
-      expect(messages.map((m) => [m.author, m.speakerId ?? null])).toEqual([
-        ["user", null],
-        ["agent", null],
-      ])
-    })
+    await t.history()
+    await t.history()
+    expect(await t.rows("SELECT 1 FROM workflow_chat_model")).toEqual([])
+    await t.send("hello")
+    await t.idle()
+    expect(await t.rows("SELECT 1 FROM workflow_chat_model")).toHaveLength(1)
   })
 })

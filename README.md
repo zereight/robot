@@ -142,9 +142,6 @@ bun install
 bun run --cwd apps/mobile start     # then open the app in Expo Go on a phone or a simulator
 ```
 
-`apps/mobile/e2e/run-ios.ts` runs the flows on the iOS Simulator with Maestro. Its notes are at
-the top of that file.
-
 ## Development
 
 ### Requirements
@@ -171,7 +168,6 @@ bun run host:check   # host: rustfmt, clippy and cargo test
 bun run e2e          # build, then Playwright drives the real app
 bun run dist         # package for this computer into dist/desktop
 bun run sizes        # size of the built files against the baseline, by hand (docs/performance.md)
-bun run perf         # times, CPU use and memory by hand (docs/performance.md)
 ```
 
 `dev`, `build`, `e2e` and `dist` build the host first (`bun run --cwd apps/desktop build:host`).

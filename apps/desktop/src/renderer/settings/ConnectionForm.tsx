@@ -4,6 +4,7 @@ import {
   type ConnectionEntryInput,
   type ConnectionFailure,
   type ConnectionFormProblem,
+  type ConnectionScope,
   type ConnectionTestResult,
   charLength,
   checkConnection,
@@ -19,10 +20,10 @@ import { X } from "lucide-solid"
 import { createEffect, createSignal, For, Index, on, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
-import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import styles from "./connections.module.css"
 
 /** The parts of the form that can show a problem under them. */
@@ -34,7 +35,6 @@ const FIELDS = [
   "env",
   "address",
   "headers",
-  "agents",
   "confirm",
 ] as const
 type Field = (typeof FIELDS)[number]
@@ -78,7 +78,6 @@ export const ConnectionFormDialog = (props: {
   onClose: () => void
 }) => {
   const { t } = useApp()
-  const agents = useAgents()
   const was = props.connection
   const fromView = (list: ToolConnection["env"]): Entry[] =>
     list.map((e) => ({
@@ -97,11 +96,29 @@ export const ConnectionFormDialog = (props: {
   const [env, setEnv] = createSignal<Entry[]>(fromView(was?.env ?? []))
   const [address, setAddress] = createSignal(was?.address ?? "")
   const [headers, setHeaders] = createSignal<Entry[]>(fromView(was?.headers ?? []))
-  const [all, setAll] = createSignal(was ? was.agents === "all" : true)
-  const [chosen, setChosen] = createSignal<readonly string[]>(
-    was && was.agents !== "all" ? was.agents : [],
-  )
   const [confirmed, setConfirmed] = createSignal(false)
+  // The workflows that may use the connection (spec 018): all of them, or a list. A new connection
+  // is for all workflows.
+  const workflows = useWorkflowList()
+  const [scopeKind, setScopeKind] = createSignal<ConnectionScope["kind"]>(was?.scope.kind ?? "all")
+  const [chosen, setChosen] = createSignal<ReadonlySet<string>>(
+    new Set(was?.scope.kind === "workflows" ? was.scope.workflowIds : []),
+  )
+  const toggleWorkflow = (id: string, on: boolean) => {
+    const next = new Set(chosen())
+    if (on) next.add(id)
+    else next.delete(id)
+    setChosen(next)
+  }
+  const scope = (): ConnectionScope =>
+    scopeKind() === "all"
+      ? { kind: "all" }
+      : {
+          kind: "workflows",
+          // The service keeps only the workflows that exist, so a workflow that is gone leaves
+          // the list when the user saves.
+          workflowIds: [...chosen()],
+        }
   const [touched, setTouched] = createSignal<ReadonlySet<Field>>(new Set())
   const [problem, setProblem] = createSignal<{ field: Field | null; text: ErrorText }>()
   const [busy, setBusy] = createSignal(false)
@@ -134,7 +151,6 @@ export const ConnectionFormDialog = (props: {
     env: kind() === "program" ? entriesOf(env()) : [],
     address: address(),
     headers: kind() === "web" ? entriesOf(headers()) : [],
-    agents: all() ? "all" : chosen(),
   })
 
   // A Test shows the form as it was. A change makes it old, so it goes.
@@ -191,7 +207,6 @@ export const ConnectionFormDialog = (props: {
           kind() === "program" ? "connection_env_value_missing" : "connection_header_value_missing",
         ),
       }
-    if (!all() && chosen().length === 0) return { field: "agents", text: text("connection_agents") }
     return undefined
   }
 
@@ -219,6 +234,7 @@ export const ConnectionFormDialog = (props: {
         ...(was ? { id: was.id } : {}),
         connection: input(),
         confirmed: confirmed(),
+        scope: scope(),
       })
       props.onClose()
     } catch (e) {
@@ -236,7 +252,7 @@ export const ConnectionFormDialog = (props: {
     setTouched(new Set(FIELDS))
     try {
       const found = check()
-      if (found && found.field !== "agents") return setProblem(found)
+      if (found) return setProblem(found)
       // The result belongs to the form as it is when the Test starts.
       const answer = await call("connections.test", {
         ...(was ? { id: was.id } : {}),
@@ -249,9 +265,6 @@ export const ConnectionFormDialog = (props: {
       setTesting(false)
     }
   }
-
-  const toggleAgent = (id: string) =>
-    setChosen(chosen().includes(id) ? chosen().filter((x) => x !== id) : [...chosen(), id])
 
   const reason = (failure: ConnectionFailure) => t(`connections.failure.${failure}` as MessageKey)
 
@@ -409,6 +422,53 @@ export const ConnectionFormDialog = (props: {
             ]}
           />
         </div>
+        <div class={styles.field} data-testid="connection-scope">
+          <span class={styles.label}>{t("connections.form.scope")}</span>
+          <Segmented
+            label={t("connections.form.scope")}
+            testId="connection-scope-kind"
+            value={scopeKind()}
+            onChange={setScopeKind}
+            options={[
+              { value: "all", label: t("connections.scope.all") },
+              { value: "workflows", label: t("connections.scope.chosen") },
+            ]}
+          />
+          <Show when={scopeKind() === "workflows"}>
+            <Show
+              when={workflows.list().length > 0}
+              fallback={
+                <span class={styles.hint} data-testid="connection-scope-none">
+                  {t("connections.scope.noWorkflows")}
+                </span>
+              }
+            >
+              <ul
+                class={styles.agentList}
+                data-testid="connection-scope-list"
+                aria-label={t("connections.form.scope")}
+              >
+                <For each={workflows.list()}>
+                  {(w) => (
+                    <li>
+                      <label class={styles.agentRow}>
+                        <input
+                          type="checkbox"
+                          checked={chosen().has(w.id)}
+                          onChange={(e) => toggleWorkflow(w.id, e.currentTarget.checked)}
+                          data-testid="connection-scope-workflow"
+                          data-workflow={w.name}
+                        />
+                        <span>{w.name}</span>
+                      </label>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </Show>
+          <span class={styles.hint}>{t("connections.scope.hint")}</span>
+        </div>
         <Show
           when={kind() === "program"}
           fallback={
@@ -454,40 +514,6 @@ export const ConnectionFormDialog = (props: {
           {textField("connections.form.folder", folder, setFolder, "folder", "connection-folder")}
           {lines("connections.form.env", "connections.form.env.add", env, setEnv, "env", "env")}
         </Show>
-        <div class={styles.field} data-testid="connection-agents">
-          <span class={styles.label}>{t("connections.form.agents")}</span>
-          <Segmented
-            label={t("connections.form.agents")}
-            testId="connection-agents-mode"
-            value={all() ? "all" : "some"}
-            onChange={(value) => setAll(value === "all")}
-            options={[
-              { value: "all", label: t("connections.form.agents.all") },
-              { value: "some", label: t("connections.form.agents.some") },
-            ]}
-          />
-          <Show when={!all()}>
-            <ul class={styles.agentList} data-testid="connection-agent-list">
-              <For each={agents.agents()}>
-                {(agent) => (
-                  <li>
-                    <label class={styles.agentRow}>
-                      <input
-                        type="checkbox"
-                        checked={chosen().includes(agent.id)}
-                        onChange={() => toggleAgent(agent.id)}
-                        data-testid="connection-agent"
-                        data-agent={agent.name}
-                      />
-                      <span>{agent.name}</span>
-                    </label>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </Show>
-          {under("agents")}
-        </div>
         <Show when={kind() === "program"}>
           <div class={styles.field} data-testid="connection-program-warning">
             <span class={styles.label}>{t("connections.form.line")}</span>

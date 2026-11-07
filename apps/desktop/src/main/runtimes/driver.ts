@@ -53,6 +53,13 @@ export interface Driver {
   signOut?(bin: string, dir: string): Promise<Finished>
   /** Hosts whose pages may be opened for the sign-in. The program that opens its own page needs none. */
   readonly signInHosts?: readonly string[]
+  /**
+   * True only when the launcher can switch off shell, file reads, tool servers (MCP) and the web
+   * with flags that the program enforces itself, not with a line in the prompt. The chat of a
+   * workflow answers in text only (spec 007, 003), so it uses a program only when this is true.
+   * A program that is not proven here is false.
+   */
+  readonly chatSafe: boolean
   run(run: RuntimeRun): AsyncGenerator<AgentEvent>
 }
 
@@ -63,12 +70,17 @@ export const drivers: Record<RuntimeKind, Driver> = {
     usage: claudeUsage,
     signIn: (bin, signal, _onPrompt, dir) => claudeSignIn(bin, signal, dir),
     signOut: claudeSignOut,
+    // `--tools ""` removes every built-in tool; `--strict-mcp-config` with no file removes the
+    // servers of the user (claudeArgs).
+    chatSafe: true,
     run: runClaude,
   },
   codex: {
     probe: codexProbe,
     login: codexLogin,
     signIn: (bin, signal) => codexSignIn(bin, signal),
+    // `-s read-only` still runs shell and reads any file, and the servers of the user stay on.
+    chatSafe: false,
     run: runCodex,
   },
   muse: {
@@ -76,9 +88,18 @@ export const drivers: Record<RuntimeKind, Driver> = {
     login: museLogin,
     signIn: museSignIn,
     signInHosts: MUSE_SIGN_IN_HOSTS,
+    // The flags switch off write, shell and web, not the tools that read.
+    chatSafe: false,
     run: runMuse,
   },
-  pi: { probe: piProbe, login: piLogin, run: runPi },
-  opencode: { probe: opencodeProbe, login: opencodeLogin, run: runOpencode },
-  cursor: { probe: cursorProbe, login: cursorLogin, run: runCursor },
+  // `--no-tools` and `--no-mcp` (piArgs).
+  pi: { probe: piProbe, login: piLogin, chatSafe: true, run: runPi },
+  // The rules `{"*": "deny"}` take every tool away from the model (opencodePermission).
+  opencode: { probe: opencodeProbe, login: opencodeLogin, chatSafe: true, run: runOpencode },
+  // `--mode ask` can still read and search files.
+  cursor: { probe: cursorProbe, login: cursorLogin, chatSafe: false, run: runCursor },
 }
+
+/** True for an API account (`null`), and for a program that the chat may use (`chatSafe`). */
+export const chatMayUse = (kind: RuntimeKind | null): boolean =>
+  kind === null || drivers[kind].chatSafe

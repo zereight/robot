@@ -13,16 +13,35 @@ const PATTERNS: readonly RegExp[] = [
 
 export const REDACTED = "[redacted]"
 
-/** Hides anything in `text` that looks like a secret, and every value in `known`. */
-export const redactSecrets = (text: string, known: readonly string[] = []): string => {
+/**
+ * Hides anything in `text` that looks like a secret, and every value in `known`. `count` is the
+ * number of places that it hid, so a caller can say that a text shows less than it holds.
+ */
+export const redactCounted = (
+  text: string,
+  known: readonly string[] = [],
+): { readonly text: string; readonly count: number } => {
   let out = text
+  let count = 0
   for (const secret of known) {
     // Short values would hide ordinary words.
-    if (secret.length >= 8) out = out.split(secret).join(REDACTED)
+    if (secret.length >= 8) {
+      const parts = out.split(secret)
+      count += parts.length - 1
+      out = parts.join(REDACTED)
+    }
   }
-  for (const pattern of PATTERNS) out = out.replace(pattern, REDACTED)
-  return out
+  for (const pattern of PATTERNS)
+    out = out.replace(pattern, () => {
+      count++
+      return REDACTED
+    })
+  return { text: out, count }
 }
+
+/** Hides anything in `text` that looks like a secret, and every value in `known`. */
+export const redactSecrets = (text: string, known: readonly string[] = []): string =>
+  redactCounted(text, known).text
 
 /**
  * True when `text` looks like a secret (spec 014): it holds a stored value from `known`, or a key

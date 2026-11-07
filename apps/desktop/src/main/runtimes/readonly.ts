@@ -12,7 +12,9 @@ import { execute } from "./proc.ts"
  * author, and the public documentation of each vendor):
  * - Claude Code: `--tools` limits the built-in tools to Read, Grep, Glob, WebFetch and WebSearch.
  *   The program has no tool left that writes a file or runs a command.
- * - Codex: `--sandbox read-only`. The sandbox of the system blocks every write and delete.
+ * - Codex: `--sandbox read-only`. The sandbox of the system blocks every write and delete. The
+ *   sandbox does not limit an MCP server of the user, so the run also gets `-c mcp_servers={}`,
+ *   which replaces the servers of `config.toml` with none (see `codexArgs`).
  * - Muse Code: `--disable-write` and `--disable-shell`. The program removes the tools.
  * - pi: `--tools read,grep,find,ls`. The help text of the program names this as its read-only mode.
  * - Pi-Bolt: none. It was not on the computer, so no help text could show a mode.

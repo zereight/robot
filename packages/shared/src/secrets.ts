@@ -35,7 +35,7 @@ export type SecretAuth =
 /** One saved secret as the settings page and the agent see it. It never holds the value. */
 export interface SavedSecret {
   readonly id: string
-  readonly agentId: string
+  readonly workflowId: string
   readonly name: string
   readonly origin: string
   readonly auth: SecretAuth

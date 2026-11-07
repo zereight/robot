@@ -5,10 +5,7 @@ import {
   type ChatMessage,
   foldedToolsKey,
   groupParts,
-  handedOverOf,
-  handoverOf,
   isFoldableTool,
-  isNoteOnly,
   type MessagePart,
   messageText,
   pictureType,
@@ -113,37 +110,9 @@ describe("the choices of a card that waits", () => {
   })
 })
 
-describe("the handover card and its line (spec 003, 007)", () => {
-  const card: MessagePart = {
-    kind: "handover",
-    brief: "Handover from Ada\n\nFirst request:\nSECRET PLAN OF THE CARD",
-    fromName: "Ada",
-    fromAgentId: "a1",
-    fromThreadId: null,
-  }
-  const line: MessagePart = {
-    kind: "note",
-    note: "handed_over",
-    toName: "Bo",
-    toAgentId: "b1",
-    toThreadId: "t1",
-  }
-
-  test("a card and a line are found by their part", () => {
-    expect(handoverOf(msg("user", 1, { parts: [card] }))).toEqual(card)
-    expect(handoverOf(msg("user", 1))).toBeUndefined()
-    expect(handedOverOf(msg("agent", 1, { parts: [line] }))).toEqual(line)
-    expect(handedOverOf(msg("agent", 1, { parts: [card] }))).toBeUndefined()
-  })
-
-  test("the line is a muted note and no turn; the card is a turn of the chat for the model", () => {
-    expect(isNoteOnly([line])).toBe(true)
-    expect(isNoteOnly([card])).toBe(false)
-  })
-
-  test("the card is no words of the user: only the typed text and other messages of the user count", () => {
+describe("the words of the user (spec 007)", () => {
+  test("only the typed text and other messages of the user count", () => {
     const words = userWords([
-      msg("user", 1, { parts: [card] }),
       msg("user", 2, { parts: [{ kind: "text", text: "Finish the tests" }] }),
       msg("agent", 3, { parts: [{ kind: "text", text: "Echo" }] }),
       msg("user", 4, {
@@ -152,14 +121,6 @@ describe("the handover card and its line (spec 003, 007)", () => {
       msg("user", 5, { parts: [{ kind: "text", text: "   " }] }),
     ])
     expect(words).toEqual(["Finish the tests"])
-    expect(words.join("\n")).not.toContain("SECRET PLAN OF THE CARD")
-  })
-
-  test("the message after a card starts a new group, with its own header", () => {
-    const first = msg("user", 1_700_000_000_000, { parts: [card] })
-    const next = msg("user", 1_700_000_000_000 + 1000)
-    expect(startsGroup(first, next)).toBe(true)
-    expect(startsGroup(msg("user", 1_700_000_000_000), next)).toBe(false)
   })
 })
 
@@ -198,9 +159,7 @@ describe("folded tool steps", () => {
     expect(isFoldableTool(tool("done", { refused: "rule" }))).toBe(false)
     expect(isFoldableTool(tool("done", { reason: { code: "step_limit" } }))).toBe(false)
     expect(isFoldableTool(tool("done", { decision: { answer: "allow", by: "Mac" } }))).toBe(false)
-    expect(isFoldableTool(tool("done", { knowledge: { kind: "read", title: "T" } }))).toBe(false)
     expect(isFoldableTool(tool("done", { memory: { kind: "saved", historyId: "h" } }))).toBe(false)
-    expect(isFoldableTool(tool("done", { settings: { changes: [] } }))).toBe(false)
   })
 
   test("a card with a routine mark still folds", () => {

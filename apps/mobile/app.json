@@ -38,7 +38,7 @@
         "backgroundImage": "./assets/icon-background.png",
         "monochromeImage": "./assets/icon-monochrome.png"
       },
-      "permissions": ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"]
+      "permissions": ["android.permission.CAMERA"]
     },
     "plugins": [
       "expo-router",
@@ -52,15 +52,6 @@
           "recordAudioAndroid": false
         }
       ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "ROBot lets you pick photos to send to an agent.",
-          "cameraPermission": false,
-          "microphonePermission": false
-        }
-      ],
-      "expo-notifications",
       [
         "expo-build-properties",
         {

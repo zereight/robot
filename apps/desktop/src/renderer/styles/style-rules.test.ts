@@ -14,9 +14,7 @@ import { palettes } from "../theme/tokens.ts"
 
 const root = join(import.meta.dir, "..")
 
-// The status island is its own window with a fixed dark look that ignores the theme, so it has
-// no theme colours. It loads the motion tokens alone (motion.css), and the test below checks them.
-const skipped = new Set(["island/island.css"])
+const skipped = new Set<string>()
 
 type Declaration = { file: string; line: number; prop: string; value: string }
 
@@ -85,12 +83,7 @@ rule(
   "Use var(--text-xs) to var(--text-2xl).",
   // A size in em is relative to the text around it, so it follows the step of that text.
   (d) => d.prop === "font-size" && !/^(?:var\(--text-[a-z0-9]+\)|inherit|[0-9.]+em)$/.test(d.value),
-  [
-    "chat/chat.module.css | font-size: 1.25rem",
-    "chat/chat.module.css | font-size: 0.8rem",
-    "devices/devices.module.css | font-size: 2rem",
-    "shell/shell.module.css | font-size: 0.9rem",
-  ],
+  ["devices/devices.module.css | font-size: 2rem"],
 )
 
 // DESIGN.md, "The Prose Rule". The step scale is what carries the hierarchy, so the scale itself
@@ -133,13 +126,7 @@ rule(
   "radius",
   "Use var(--radius-s), var(--radius-m) or var(--radius-l).",
   (d) => /^border(?:-[a-z]+)*-radius$/.test(d.prop) && !radiusValue.test(d.value),
-  [
-    "shell/shell.module.css | border-radius: 30%",
-    "shell/shell.module.css | border-radius: 2px",
-    "shell/shell.module.css | border-radius: 9px",
-    "ui/controls.module.css | border-radius: 10px",
-    "workflows/workflows.module.css | border-radius: 10px",
-  ],
+  ["shell/shell.module.css | border-radius: 30%", "ui/controls.module.css | border-radius: 10px"],
 )
 
 const motionProps = /^(?:transition|animation)(?:-(?:duration|delay|timing-function))?$/
@@ -168,13 +155,7 @@ rule(
     const value = d.value.replace(/rgb\(0 0 0 \/ [0-9.]+\)/g, "")
     return /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(value)
   },
-  [
-    "workflows/workflows.module.css | border-color: #3a9b57",
-    "workflows/workflows.module.css | --note-tone: #e0b400",
-    "workflows/workflows.module.css | --note-tone: #3b82f6",
-    "workflows/workflows.module.css | --note-tone: #22a55b",
-    "workflows/workflows.module.css | --note-tone: #e0558f",
-  ],
+  [],
 )
 
 // DESIGN.md, "Don't": a focus ring is never removed without a replacement. `:focus-visible` in
@@ -186,22 +167,10 @@ rule(
   "Do not set outline: none. Replace the ring in the same sheet, or leave the global one.",
   (d) => d.prop === "outline" && /^none$/.test(d.value),
   [
-    "agents/agents.module.css | outline: none",
-    "agents/agents.module.css | outline: none",
-    "agents/role.module.css | outline: none",
-    "agents/role.module.css | outline: none",
-    "chat/chat.module.css | outline: none",
-    "chat/handover.module.css | outline: none",
-    "knowledge/knowledge.module.css | outline: none",
     "providers/providers.module.css | outline: none",
     "settings/connections.module.css | outline: none",
-    "settings/handbook.module.css | outline: none",
     "settings/settings.module.css | outline: none",
-    "shell/shell.module.css | outline: none",
-    "shell/shell.module.css | outline: none",
-    "shell/shell.module.css | outline: none",
     "ui/controls.module.css | outline: none",
-    "workflows/workflows.module.css | outline: none",
   ],
 )
 
@@ -277,18 +246,89 @@ rule(
   [],
 )
 
-describe("status island motion", () => {
-  const css = readFileSync(join(root, "island/island.css"), "utf8")
+// specs/039 (Looping motion). A mark that shows "work runs" moves with one period in every place:
+// every spinner uses --motion-spin, every pulse uses --motion-pulse, and a pulse is slower than a
+// spinner. No other animation repeats. Each looping rule has a rule that stops it with reduce
+// motion, and the mark stays in its place (the rule sets `animation: none` and nothing that hides).
+describe("looping motion (specs/039)", () => {
+  type Block = { file: string; selector: string; body: string }
 
-  test("it loads the shared motion tokens", () => {
-    expect(css).toContain('@import "../styles/motion.css"')
+  function blocks(): Block[] {
+    const found: Block[] = []
+    for (const path of sheets(root)) {
+      const text = readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, " ")
+      for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        found.push({
+          file: relative(root, path),
+          selector: (m[1] as string).replace(/\s+/g, " ").trim(),
+          body: (m[2] as string).replace(/\s+/g, " ").trim(),
+        })
+      }
+    }
+    return found
+  }
+
+  const all = blocks()
+  // The shorthand (`animation: x 1s infinite`) and the longhand (`animation-iteration-count`).
+  const isLoop = (body: string) =>
+    /(?:^|[;\s])animation(?:-iteration-count)?\s*:[^;]*\binfinite\b/.test(body)
+  const loops = all.filter((b) => isLoop(b.body))
+  const period = (name: string) => {
+    const css = readFileSync(join(root, "styles/motion.css"), "utf8")
+    const found = css.match(new RegExp(`${name}:\\s*([0-9.]+)ms`))
+    if (!found) throw new Error(`${name} is missing from motion.css`)
+    return Number.parseFloat(found[1] as string)
+  }
+
+  test("the finder of loops sees the shorthand and the longhand", () => {
+    expect(isLoop("animation: spin 1s linear infinite;")).toBe(true)
+    expect(isLoop("animation-name: spin; animation-iteration-count: infinite;")).toBe(true)
+    expect(isLoop("animation-iteration-count: 2;")).toBe(false)
+    expect(isLoop("animation: fade 1s both;")).toBe(false)
   })
 
-  test("its motion times and curves are tokens", () => {
-    const lines = css
-      .split("\n")
-      .filter((l) => /^\s*animation:\s*\S+\s/.test(l) && !l.includes("none"))
-    expect(lines.length).toBeGreaterThan(0)
-    for (const l of lines) expect(l).toMatch(/var\(--motion-[a-z]+\)\s+var\(--ease-[a-z-]+\)/)
+  test("the page has at least one spinner and one pulse", () => {
+    expect(loops.some((b) => b.body.includes("var(--motion-spin)"))).toBe(true)
+    expect(loops.some((b) => b.body.includes("var(--motion-pulse)"))).toBe(true)
+  })
+
+  test("a looping animation uses the period of the spinner or of the pulse, and no other", () => {
+    const bad = loops
+      .filter((b) => !/var\(--motion-(?:spin|pulse)\)/.test(b.body))
+      .map((b) => `${b.file} ${b.selector}`)
+    expect(bad).toEqual([])
+  })
+
+  test("a spinner turns, a pulse does not, and a pulse is slower than a spinner", () => {
+    for (const b of loops) {
+      if (b.body.includes("var(--motion-spin)")) expect(b.body).toMatch(/\blinear\b/)
+    }
+    expect(period("--motion-pulse")).toBeGreaterThan(period("--motion-spin"))
+  })
+
+  test("reduce motion makes the durations of the ending motions zero, not the loops", () => {
+    // The loops are not under these tokens; the next test stops them one by one.
+    const css = readFileSync(join(root, "styles/global.css"), "utf8")
+    const reduced = css.match(/:root\[data-reduce-motion="true"\]\s*\{([^}]*)\}/)
+    expect(reduced?.[1]).toBeDefined()
+    expect(reduced?.[1]).not.toContain("--motion-spin")
+    expect(reduced?.[1]).not.toContain("--motion-pulse")
+  })
+
+  test("every looping rule has a rule that stops it with reduce motion and leaves it in place", () => {
+    const missing: string[] = []
+    for (const loop of loops) {
+      // A rule like `.a .b` is stopped by `:root[data-reduce-motion="true"] .a .b`.
+      const stop = all.find(
+        (b) =>
+          b.file === loop.file &&
+          b.selector === `:root[data-reduce-motion="true"] ${loop.selector}` &&
+          /(?:^|[;\s])animation(?:-name)?\s*:\s*none\b/.test(b.body),
+      )
+      if (!stop) missing.push(`${loop.file} ${loop.selector}`)
+      else
+        expect(stop.body).not.toMatch(/\b(?:display|visibility|opacity)\s*:\s*(?:none|hidden|0)\b/)
+    }
+    expect(missing).toEqual([])
   })
 })

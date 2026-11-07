@@ -1,18 +1,19 @@
+import { writeFileSync } from "node:fs"
 import { hostname } from "node:os"
 import { join, resolve } from "node:path"
-import { EVENT_CHANNEL } from "@robot/shared"
+import { EVENT_CHANNEL, resolveLocale, translate } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, dialog } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
 import { importLoginPath } from "./runtimes/login-path.ts"
 import { Database } from "./services/Database.ts"
 import { Host } from "./services/Host.ts"
-import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { describeStartFailure } from "./startup.ts"
 
 // The data folder is "ROBot" in the system app data folder. Tests and portable runs can
 // point the app at another folder.
@@ -128,27 +129,49 @@ app.whenReady().then(async () => {
   // Electron icon, so show the app mark instead.
   else if (!app.isPackaged && process.platform === "darwin")
     app.dock?.setIcon(join(app.getAppPath(), "resources/icon.png"))
-  const runtime = makeRuntime()
-  // Keep native menus and dialogs in the chosen theme.
-  await runtime.runPromise(
-    Effect.gen(function* () {
-      const settings = yield* SettingsStore.use((s) => s.get)
-      yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
-      // The first start guide is for new users. A data folder that already holds an agent or an
-      // account, or a test run that asks to skip it, counts as done.
-      if (!settings.firstRunDone) {
-        const db = yield* Database
-        const used =
-          db.get("SELECT 1 FROM agent LIMIT 1") || db.get("SELECT 1 FROM provider_account LIMIT 1")
-        if (used || process.env.ROBOT_SKIP_FIRST_RUN)
-          yield* SettingsStore.use((s) => s.update({ firstRunDone: true }))
-      }
-    }),
-  )
+  const databaseFile = join(app.getPath("userData"), "robot.db")
+  let runtime: ReturnType<typeof makeRuntime> | undefined
+  try {
+    runtime = makeRuntime()
+    const started = runtime
+    // Keep native menus and dialogs in the chosen theme. This is the first use of the database, so
+    // a file that cannot be opened fails here, and a file from a newer version stays untouched.
+    await started.runPromise(
+      Effect.gen(function* () {
+        const settings = yield* SettingsStore.use((s) => s.get)
+        yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
+        // The first start guide is for new users. A data folder that already holds a workflow or an
+        // account, or a test run that asks to skip it, counts as done.
+        if (!settings.firstRunDone) {
+          const db = yield* Database
+          const used =
+            db.get("SELECT 1 FROM workflow LIMIT 1") ||
+            db.get("SELECT 1 FROM provider_account LIMIT 1")
+          if (used || process.env.ROBOT_SKIP_FIRST_RUN)
+            yield* SettingsStore.use((s) => s.update({ firstRunDone: true }))
+        }
+      }),
+    )
+  } catch (error) {
+    // The app must not stay alive with no window. It tells the user and quits.
+    const problem = describeStartFailure(databaseFile, error)
+    const locale = resolveLocale("system", process.env.ROBOT_SYSTEM_LOCALE ?? app.getLocale())
+    const title = translate(locale, problem.title, problem.params)
+    const message = translate(locale, problem.message, problem.params)
+    console.error("start failed", error)
+    // A test run cannot click a native dialog: it writes the text to a file instead.
+    if (isTestRun && process.env.ROBOT_TEST_ERROR_FILE)
+      writeFileSync(process.env.ROBOT_TEST_ERROR_FILE, JSON.stringify({ title, message }))
+    else dialog.showErrorBox(title, message)
+    // Close what opened, but do not wait for it for long. Then end the process.
+    if (runtime) await closeRuntime(runtime).catch(() => undefined)
+    app.exit(1)
+    return
+  }
+  const live: ReturnType<typeof makeRuntime> = runtime
   await loginPath
-  registerRpc(runtime)
+  registerRpc(live)
   createWindow()
-  await runtime.runPromise(Notifier.use((n) => Effect.sync(() => n.refresh())))
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -161,7 +184,7 @@ app.whenReady().then(async () => {
     closing = true
     // A late error of a socket or a timer must not open a dialog that stops the quit.
     process.on("uncaughtException", (error) => console.error("error while closing", error))
-    void closeRuntime(runtime).finally(() => app.exit(0))
+    void closeRuntime(live).finally(() => app.exit(0))
   })
 })
 

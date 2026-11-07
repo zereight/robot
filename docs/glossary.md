@@ -88,8 +88,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Task | One piece of work of one agent (005). | 작업 | job, run (except for a routine run) |
 | Turn | One request and the work of the agent that follows it, until the reply ends (003, 005). | — | message, session |
 | Blocked | A task that ended because the agent could not do the work (005). | 막힘 | failed (a blocked task did not fail) |
-| Shared folder | A workspace that two or more agents use (025). | 공유 폴더 (proposed) | shared workspace, project |
-| File claim | The mark that a task holds on a file that it changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
+| Shared folder | The folder of a workflow that is the folder of another workflow of the profile, is inside it, or holds it (025). | 공유 폴더 (proposed) | shared workspace, project |
+| File claim | The mark that a task of a workflow holds on a file that its text node changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
 | Own copy | A workspace that is a linked Git worktree (035). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
 | Setup action | A named command in `robot.json` that the app can run from the chat, at the start of a turn, or on the first turn in an own copy (035). | 준비 동작 (proposed) | script, hook, task |
 | Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |

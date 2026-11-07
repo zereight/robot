@@ -102,6 +102,7 @@ describe("client requests", () => {
       "usage.summary",
       // A linked device sees the line "Holds a sensitive read" and cannot clear it (spec 007, 012).
       "placeMarks.clear",
+      "chat.clearMarks",
       // A linked device cannot add, change or delete a permission rule, and the rules stay on the
       // computer (spec 007, 012, 019).
       "rules.list",
@@ -130,91 +131,40 @@ describe("client requests", () => {
       expect(isClientMethod(method)).toBe(false)
     }
     expect(CLIENT_METHODS).toContain("chat.send")
-    expect(CLIENT_METHODS).toContain("tools.respond")
+    expect(CLIENT_METHODS).toContain("cards.answer")
   })
 
-  test("the requests that make and change agents are listed, and each needs the switch", () => {
-    expect([...CHANGE_METHODS].sort() as string[]).toEqual(
-      [
-        "agents.archive",
-        "agents.create",
-        "agents.duplicate",
-        "agents.update",
-        "agents.useMain",
-        "channels.create",
-        "channels.setPicture",
-        "channels.update",
-        "handbook.restore",
-        "handbook.save",
-        "memory.add",
-        "memory.check.set",
-        "memory.delete",
-        "memory.list",
-        "memory.move",
-        "memory.scopes",
-        "memory.update",
-        "models.available",
-        "organizations.create",
-        "organizations.delete",
-        "organizations.update",
-        "workflows.create",
-        "workflows.update",
-        "workflows.delete",
-      ].sort(),
-    )
+  test("the requests that change workflows are listed, and each needs the switch", () => {
+    expect([...CHANGE_METHODS].sort() as string[]).toEqual([
+      "memory.add",
+      "memory.delete",
+      "memory.setEnabled",
+      "memory.setMode",
+      "memory.update",
+      "workflows.create",
+      "workflows.delete",
+    ])
     for (const method of CHANGE_METHODS) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(true)
     }
-    // Reading and sending do not need the switch. Deleting is not offered at all.
-    for (const method of ["chat.send", "agents.list", "agents.get", "tools.respond"]) {
-      expect(isChangeMethod(method)).toBe(false)
-    }
-    expect(isChangeMethod("agents.delete")).toBe(false)
     // Reading, running and stopping a workflow need only the link (spec 012, "Workflows").
     for (const method of [
+      "chat.send",
+      "cards.answer",
       "workflows.list",
-      "workflows.runs",
-      "workflows.runDetail",
-      "workflows.run",
-      "workflows.stop",
-      "workflows.approve",
+      "runs.list",
+      "runs.get",
+      "runs.start",
+      "runs.stop",
+      "models.available",
     ]) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(false)
     }
-    // A client reads the handbook and its history with the link only; it changes the handbook with
-    // the switch (spec 002, 012).
-    for (const method of ["handbook.get", "handbook.history"]) {
-      expect(isClientMethod(method)).toBe(true)
-      expect(isChangeMethod(method)).toBe(false)
-    }
-    for (const method of ["handbook.save", "handbook.restore"]) {
-      expect(isChangeMethod(method)).toBe(true)
-    }
-    // A client sees the choice of the memory check with the link only, and changes it only with the
-    // switch (spec 008, 012). "Check now" runs the model of the server, so a client has no such
-    // request.
-    expect(isClientMethod("memory.check")).toBe(true)
-    expect(isChangeMethod("memory.check")).toBe(false)
-    expect(isClientMethod("memory.check.set")).toBe(true)
-    expect(isChangeMethod("memory.check.set")).toBe(true)
-    expect(isClientMethod("memory.check.now")).toBe(false)
-    // A client reads the organizations, their tools and the tools that an agent has from them with
-    // the link only. It makes, edits and deletes an organization only with the switch (spec 012, 030).
-    for (const method of ["organizations.list", "orgTools.list", "orgTools.forAgent"]) {
-      expect(isClientMethod(method)).toBe(true)
-      expect(isChangeMethod(method)).toBe(false)
-    }
-    // The tools of an organization are kept on the computer that owns the skills and connections.
-    expect(isClientMethod("orgTools.set")).toBe(false)
     // A client hears about workflows and runs.
-    expect(CLIENT_METHODS).toContain("followups.list")
-    expect(CLIENT_METHODS).toContain("followups.remove")
-    expect(isChangeMethod("followups.remove")).toBe(false)
-    expect(PUSHED_EVENTS).toContain("followups.changed")
     expect(PUSHED_EVENTS).toContain("workflows.changed")
-    expect(PUSHED_EVENTS).toContain("workflows.run")
+    expect(PUSHED_EVENTS).toContain("runs.changed")
     // The event that tells one device about its switch goes to that device only.
     expect((PUSHED_EVENTS as readonly string[]).includes(ACCESS_EVENT)).toBe(false)
   })
@@ -244,6 +194,20 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "teams.readSenders",
     "teams.signOut",
     "teams.remove",
+    // Connections belong to this computer: a linked device cannot list, add, change, test, review
+    // or remove one, nor change the workflows that may use it (spec 018, 012).
+    "connections.list",
+    "connections.save",
+    "connections.test",
+    "connections.setEnabled",
+    "connections.setTool",
+    "connections.setTrust",
+    "connections.held",
+    "connections.accept",
+    "connections.delete",
+    "rules.add",
+    "rules.update",
+    "rules.delete",
     "places.move",
     "places.pin",
     "places.order",
@@ -285,9 +249,9 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
 
   test("the window sends none of them to a linked server", () => {
     for (const method of refused) expect(isRoutedMethod(method)).toBe(false)
-    // The list of places carries the sections and the section of each place, read only.
-    expect(isClientMethod("places.list")).toBe(true)
-    expect(isRoutedMethod("places.list")).toBe(true)
+    // Running and stopping a workflow go to the linked server (spec 012, "Workflows").
+    expect(isClientMethod("runs.start")).toBe(true)
+    expect(isRoutedMethod("runs.start")).toBe(true)
   })
 })
 

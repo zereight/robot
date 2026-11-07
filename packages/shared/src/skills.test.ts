@@ -1,17 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { charLength } from "./agents.ts"
+import { charLength } from "./chars.ts"
 import {
   copySkillName,
   numberedSkillName,
   SKILL_NAME_MAX,
   type Skill,
-  skillAfterAgentDelete,
   skillListLead,
   skillName,
   skillNameKey,
-  skillPickSource,
 } from "./skills.ts"
-import { TASK_SOURCES, type TaskSource } from "./task.ts"
 
 describe("skill names", () => {
   test("a slash at the start and spaces at both ends are removed", () => {
@@ -67,45 +64,12 @@ describe("the name of a copy (spec 017, flow 3)", () => {
   })
 })
 
-describe("a skill when an agent is deleted (spec 017)", () => {
-  const alive = new Set(["b", "c"])
-  const exists = (id: string) => alive.has(id)
-
-  test("a skill for all agents stays", () => {
-    expect(skillAfterAgentDelete(null, "a", exists)).toEqual({ kind: "same" })
-  })
-
-  test("a skill that does not name the agent stays", () => {
-    expect(skillAfterAgentDelete(["b", "c"], "a", exists)).toEqual({ kind: "same" })
-  })
-
-  test("the agent leaves the list of a skill that names other agents too", () => {
-    expect(skillAfterAgentDelete(["a", "b"], "a", exists)).toEqual({
-      kind: "shorter",
-      agentIds: ["b"],
-    })
-  })
-
-  test("a skill that was only for the agent is deleted", () => {
-    expect(skillAfterAgentDelete(["a"], "a", exists)).toEqual({ kind: "delete" })
-  })
-
-  test("an agent that went before this rule does not keep a skill alive", () => {
-    expect(skillAfterAgentDelete(["gone", "a"], "a", exists)).toEqual({ kind: "delete" })
-    expect(skillAfterAgentDelete(["gone", "a", "c"], "a", exists)).toEqual({
-      kind: "shorter",
-      agentIds: ["gone", "c"],
-    })
-  })
-})
-
 describe("the skill list of a turn (spec 017, flow 8)", () => {
   const skill = (name: string, description: string, instructions = "STEPS"): Skill => ({
     id: name,
     name,
     description,
     instructions,
-    agentIds: null,
     enabled: true,
     createdAt: 0,
   })
@@ -128,10 +92,5 @@ describe("the skill list of a turn (spec 017, flow 8)", () => {
     const lead = skillListLead([skill("Hidden", ""), skill("Shown", "Use me.")])
     expect(lead).not.toContain("Hidden")
     expect(lead).toContain('"Shown": Use me.')
-  })
-
-  test("only direct chats and threads read the list", () => {
-    const yes: TaskSource[] = ["chat", "handover", "teams", "follow_up"]
-    for (const source of TASK_SOURCES) expect(skillPickSource(source)).toBe(yes.includes(source))
   })
 })

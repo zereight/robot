@@ -1,12 +1,5 @@
-import {
-  type ClientEntry,
-  MAX_CLIENTS,
-  MAX_SERVERS,
-  type MessageKey,
-  type ServerEntry,
-} from "@robot/shared"
+import { type ClientEntry, MAX_CLIENTS, type MessageKey } from "@robot/shared"
 import { createSignal, For, Show } from "solid-js"
-import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import settingsStyles from "../settings/settings.module.css"
 import { useApp } from "../state/app.tsx"
@@ -14,10 +7,8 @@ import { useDevices } from "../state/devices.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
-import { ConnectDialog } from "./ConnectDialog.tsx"
 import styles from "./devices.module.css"
 import { PairDialog } from "./PairDialog.tsx"
-import { SyncRow } from "./SyncRow.tsx"
 
 const ClientRow = (props: { client: ClientEntry }) => {
   const { t } = useApp()
@@ -77,139 +68,11 @@ const ClientRow = (props: { client: ClientEntry }) => {
   )
 }
 
-const ServerRow = (props: { entry: ServerEntry }) => {
-  const { t } = useApp()
-  const [editing, setEditing] = createSignal(false)
-  const [text, setText] = createSignal("")
-  const [error, setError] = createSignal<ErrorText>()
-  // The danger button of the row asks first (spec 000, "Danger buttons").
-  const [removing, setRemoving] = createSignal(false)
-
-  const stateLine = () => {
-    const e = props.entry
-    if (e.state === "update_app") {
-      return e.updateSide === "this"
-        ? t("link.update.this")
-        : t("link.update.server", { name: e.name })
-    }
-    return t(`devices.state.${e.state}` as MessageKey)
-  }
-
-  const save = async () => {
-    setError(undefined)
-    try {
-      await call("devices.server.setAddresses", {
-        id: props.entry.id,
-        addresses: text()
-          .split("\n")
-          .map((a) => a.trim())
-          .filter(Boolean),
-      })
-      setEditing(false)
-    } catch (e) {
-      setError(describeError(e))
-    }
-  }
-
-  return (
-    <li class={styles.itemStack} data-testid="server-row" data-name={props.entry.name}>
-      <div class={styles.itemHead}>
-        <div class={styles.itemMain}>
-          <span class={styles.itemName}>{props.entry.name}</span>
-          <span
-            class={styles.itemMeta}
-            data-testid="server-row-state"
-            data-state={props.entry.state}
-          >
-            {stateLine()}
-          </span>
-          <Show
-            when={editing()}
-            fallback={
-              <span class={styles.itemMeta} data-testid="server-row-addresses">
-                {props.entry.addresses.join(", ")}
-              </span>
-            }
-          >
-            <label class={styles.field}>
-              <span class={styles.fieldLabel}>{t("devices.server.addresses")}</span>
-              <textarea
-                class={styles.textarea}
-                value={text()}
-                onInput={(e) => setText(e.currentTarget.value)}
-                data-testid="server-addresses-input"
-              />
-              <span class={styles.hint}>{t("devices.server.addresses.hint")}</span>
-            </label>
-            <Show when={error()}>
-              {(err) => (
-                <p class={styles.error} role="alert" data-testid="server-addresses-error">
-                  {t(err().key, err().params)}
-                </p>
-              )}
-            </Show>
-            <div class={styles.actions}>
-              <Button variant="primary" onClick={save} data-testid="server-addresses-save">
-                {t("devices.server.save")}
-              </Button>
-              <Button onClick={() => setEditing(false)}>{t("devices.server.cancel")}</Button>
-            </div>
-          </Show>
-        </div>
-        <Show when={!editing()}>
-          <div class={styles.actions}>
-            <Button
-              onClick={() => {
-                setText(props.entry.addresses.join("\n"))
-                setError(undefined)
-                setEditing(true)
-              }}
-              data-testid="server-edit"
-            >
-              {t("devices.server.edit")}
-            </Button>
-            <Show
-              when={removing()}
-              fallback={
-                <Button
-                  variant="danger"
-                  onClick={() => setRemoving(true)}
-                  data-testid="server-remove"
-                >
-                  {t("devices.server.remove")}
-                </Button>
-              }
-            >
-              <Confirm
-                ask={t("devices.server.remove.ask", { name: props.entry.name })}
-                confirm={t("devices.server.remove")}
-                keep={t("common.keep")}
-                onConfirm={() => {
-                  setRemoving(false)
-                  void call("devices.server.remove", { id: props.entry.id })
-                }}
-                onKeep={() => setRemoving(false)}
-                testId="server-remove-ask"
-                confirmTestId="server-remove-confirm"
-                keepTestId="server-remove-keep"
-              />
-            </Show>
-          </div>
-        </Show>
-      </div>
-      <Show when={!editing()}>
-        <SyncRow linkId={props.entry.id} name={props.entry.name} state={props.entry.state} />
-      </Show>
-    </li>
-  )
-}
-
 /** Settings > Devices (spec 013, 012). */
 export const DevicesSection = () => {
   const { t } = useApp()
   const devices = useDevices()
   const [pairOpen, setPairOpen] = createSignal(false)
-  const [connectOpen, setConnectOpen] = createSignal(false)
   const [name, setName] = createSignal<string>()
 
   const state = () => devices.state()
@@ -260,9 +123,6 @@ export const DevicesSection = () => {
                 <Button variant="primary" onClick={() => setPairOpen(true)} data-testid="pair-open">
                   {t("devices.pair")}
                 </Button>
-                <Button onClick={() => setConnectOpen(true)} data-testid="connect-open">
-                  {t("devices.connect")}
-                </Button>
               </div>
               <p class={styles.hint} data-testid="devices-vpn">
                 {t("devices.vpn")}
@@ -288,34 +148,11 @@ export const DevicesSection = () => {
                 <For each={s().clients}>{(client) => <ClientRow client={client} />}</For>
               </ul>
             </Show>
-
-            <h2 class={styles.title}>
-              {t("devices.servers")}
-              <span class={styles.count}>
-                {t("devices.count", { count: s().servers.length, max: MAX_SERVERS })}
-              </span>
-            </h2>
-            <p class={styles.hint}>{t("devices.limit.servers", { max: MAX_SERVERS })}</p>
-            <Show
-              when={s().servers.length > 0}
-              fallback={
-                <p class={styles.hint} data-testid="servers-empty">
-                  {t("devices.servers.empty")}
-                </p>
-              }
-            >
-              <ul class={styles.list} data-testid="servers-list">
-                <For each={s().servers}>{(entry) => <ServerRow entry={entry} />}</For>
-              </ul>
-            </Show>
           </>
         )}
       </Show>
       <Presence when={pairOpen()}>
         {() => <PairDialog accept={state()?.accept ?? false} onClose={() => setPairOpen(false)} />}
-      </Presence>
-      <Presence when={connectOpen()}>
-        {() => <ConnectDialog onClose={() => setConnectOpen(false)} />}
       </Presence>
     </div>
   )

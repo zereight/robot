@@ -1,0 +1,214 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-width: 760px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  max-width: 68ch;
+}
+
+.warn {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-m);
+  background: var(--c-selected);
+  font-size: var(--text-s);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-s);
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: var(--text-s);
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--c-focus);
+}
+
+.input {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  color: var(--c-text);
+  padding: 6px 8px;
+  min-width: 0;
+  user-select: text;
+  font: inherit;
+}
+
+textarea.input {
+  min-height: 72px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.count {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.count[data-over="true"] {
+  color: var(--c-danger);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+.itemText {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.meta {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+}
+
+/* The removed and the added words of a change. The marks are a strike and an underline, so the
+   difference shows without colour (spec 000, accessibility). */
+.text {
+  margin: 0;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-s);
+  max-height: 260px;
+  overflow: auto;
+  user-select: text;
+}
+
+.text del {
+  background: color-mix(in srgb, var(--c-danger) 18%, transparent);
+  text-decoration: line-through;
+}
+
+.text ins {
+  background: color-mix(in srgb, var(--c-focus) 22%, transparent);
+  text-decoration: underline;
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.group {
+  margin: 0;
+  padding-left: var(--spacing-lg);
+  font-size: var(--text-s);
+}
+
+.subTitle {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.state[data-state="applied"] {
+  font-weight: 600;
+}
+
+.state[data-state="failed"] {
+  color: var(--c-danger);
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-sm);
+}
+
+@media (max-width: 720px) {
+  .compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.details {
+  margin: var(--spacing-xs) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detail dt,
+.detail dd {
+  margin: 0;
+}
+
+.detailValue {
+  overflow-wrap: anywhere;
+  user-select: text;
+}

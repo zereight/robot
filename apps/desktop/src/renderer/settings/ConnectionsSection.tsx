@@ -9,12 +9,11 @@ import { createEffect, createResource, createSignal, For, onCleanup, Show } from
 import { createStore, reconcile } from "solid-js/store"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
-import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import { ConnectionFormDialog } from "./ConnectionForm.tsx"
 import { ConnectionReviewDialog } from "./ConnectionReview.tsx"
 import styles from "./connections.module.css"
@@ -23,16 +22,11 @@ import settings from "./settings.module.css"
 /**
  * Settings, Connections (spec 018): the outside tool providers of this computer. The user adds
  * one, tests it, turns it and single tools on or off, edits it and removes it after a confirm.
- * The page never shows a saved secret. This computer only: a linked computer shows one line.
+ * The page never shows a saved secret.
  */
 export const ConnectionsSection = () => {
   const { t } = useApp()
-  const ui = useUi()
-  const agents = useAgents()
-  const [fetched, { refetch }] = createResource(
-    () => (ui.linked() ? undefined : true),
-    () => call("connections.list"),
-  )
+  const [fetched, { refetch }] = createResource(() => call("connections.list"))
   // A store keeps each row as it is when the list is read again: an open list of tools, and the
   // question "Remove?" stay open, and only the text that changed is drawn again.
   const [store, setStore] = createStore<{ list: ToolConnection[] }>({ list: [] })
@@ -41,6 +35,7 @@ export const ConnectionsSection = () => {
     if (next) setStore("list", reconcile([...next], { key: "id" }))
   })
   const list = () => store.list
+  const workflows = useWorkflowList()
   onCleanup(window.robot.on("connections.changed", () => void refetch()))
 
   const [editing, setEditing] = createSignal<{ connection?: ToolConnection }>()
@@ -81,18 +76,6 @@ export const ConnectionsSection = () => {
         ? t("connections.state.error", { reason: reason(c.failure ?? "ended") })
         : t(`connections.state.${c.state}` as MessageKey)
 
-  /**
-   * Who may use the connection: "All agents", or the names of the agents that are still there
-   * (spec 018).
-   */
-  const forWhom = (c: ToolConnection) =>
-    c.agents === "all"
-      ? t("connections.agents.all")
-      : c.agents
-          .map((id) => agents.byId(id)?.name)
-          .filter((name): name is string => name !== undefined)
-          .join(", ")
-
   const row = (c: ToolConnection) => (
     <li
       class={styles.item}
@@ -106,9 +89,6 @@ export const ConnectionsSection = () => {
             {c.name}
           </span>
           <span class={styles.meta}>{t(`connections.kind.${c.kind}` as MessageKey)}</span>
-          <span class={styles.meta} data-testid="connection-row-agents">
-            {forWhom(c)}
-          </span>
           <span class={styles.state} data-state={c.state} data-testid="connection-row-state">
             {stateText(c)}
           </span>
@@ -142,6 +122,20 @@ export const ConnectionsSection = () => {
       <p class={styles.code} data-testid="connection-row-target">
         {c.kind === "program" ? commandLine(c.command, c.args) : c.address}
       </p>
+      {/* The workflows that may use the connection (spec 018, "Concepts"). */}
+      <span class={styles.meta} data-testid="connection-row-scope">
+        {c.scope.kind === "all"
+          ? t("connections.scope.all")
+          : c.scope.workflowIds.length === 0
+            ? t("connections.scope.none")
+            : t("connections.scope.list", {
+                names: c.scope.workflowIds
+                  .map((id) => workflows.byId(id)?.name)
+                  .filter((n): n is string => n !== undefined)
+                  .sort((x, y) => x.localeCompare(y))
+                  .join(", "),
+              })}
+      </span>
       {/* The switch "Trust read-only marks" (spec 018, "Rules"). Off by default. */}
       <div class={styles.trust} data-testid="connection-trust">
         <Switch
@@ -293,58 +287,48 @@ export const ConnectionsSection = () => {
 
   return (
     <div data-testid="connections-section">
+      <div class={styles.top}>
+        <p class={settings.note}>{t("connections.hint")}</p>
+        <Button variant="primary" onClick={() => setEditing({})} data-testid="connection-add">
+          {t("connections.add")}
+        </Button>
+      </div>
+      <Show when={error()}>
+        {(err) => (
+          <p class={settings.note} role="alert" data-testid="connections-error">
+            {t(err().key, err().params)}
+          </p>
+        )}
+      </Show>
       <Show
-        when={!ui.linked()}
+        when={list().length > 0}
         fallback={
-          // A linked computer keeps its own connections. This window has no control for them.
-          <p class={settings.note} data-testid="connections-linked">
-            {t("connections.linked", { name: ui.server()?.name ?? "" })}
+          <p class={settings.note} data-testid="connections-empty">
+            {t("connections.empty")}
           </p>
         }
       >
-        <div class={styles.top}>
-          <p class={settings.note}>{t("connections.hint")}</p>
-          <Button variant="primary" onClick={() => setEditing({})} data-testid="connection-add">
-            {t("connections.add")}
-          </Button>
-        </div>
-        <Show when={error()}>
-          {(err) => (
-            <p class={settings.note} role="alert" data-testid="connections-error">
-              {t(err().key, err().params)}
-            </p>
-          )}
-        </Show>
-        <Show
-          when={list().length > 0}
-          fallback={
-            <p class={settings.note} data-testid="connections-empty">
-              {t("connections.empty")}
-            </p>
-          }
-        >
-          <ul class={styles.list} data-testid="connections-list">
-            <For each={list()}>{row}</For>
-          </ul>
-        </Show>
-        <Presence when={reviewing()}>
-          {(open) => (
-            <ConnectionReviewDialog connection={open} onClose={() => setReviewing(undefined)} />
-          )}
-        </Presence>
-        <Presence when={editing()}>
-          {(open) => (
-            <ConnectionFormDialog
-              connection={open.connection}
-              others={list()
-                .filter((c) => c.id !== open.connection?.id)
-                .map((c) => c.name)}
-              count={list().length}
-              onClose={() => setEditing(undefined)}
-            />
-          )}
-        </Presence>
+        <ul class={styles.list} data-testid="connections-list">
+          <For each={list()}>{row}</For>
+        </ul>
       </Show>
+      <Presence when={reviewing()}>
+        {(open) => (
+          <ConnectionReviewDialog connection={open} onClose={() => setReviewing(undefined)} />
+        )}
+      </Presence>
+      <Presence when={editing()}>
+        {(open) => (
+          <ConnectionFormDialog
+            connection={open.connection}
+            others={list()
+              .filter((c) => c.id !== open.connection?.id)
+              .map((c) => c.name)}
+            count={list().length}
+            onClose={() => setEditing(undefined)}
+          />
+        )}
+      </Presence>
     </div>
   )
 }

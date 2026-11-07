@@ -15,7 +15,7 @@ import { Secrets } from "./Secrets.ts"
 
 interface Row {
   id: string
-  agent_id: string
+  workflow_id: string
   name: string
   origin: string
   auth: string
@@ -38,15 +38,15 @@ export type SecretMatch =
   | { readonly kind: "full" }
 
 export interface SavedSecretsService {
-  list(agentId?: string): readonly SavedSecret[]
-  find(agentId: string, name: string): StoredSecret | undefined
-  match(agentId: string, name: string, origin: string, auth: SecretAuth): SecretMatch
+  list(workflowId?: string): readonly SavedSecret[]
+  find(workflowId: string, name: string): StoredSecret | undefined
+  match(workflowId: string, name: string, origin: string, auth: SecretAuth): SecretMatch
   /**
    * Puts the value in the keychain and saves or updates the secret. A secret with the same name
    * keeps its id. Throws `AppError` when the value or the keychain fails.
    */
   save(
-    agentId: string,
+    workflowId: string,
     secret: { name: string; origin: string; auth: SecretAuth },
     value: string,
   ): SavedSecret
@@ -98,7 +98,7 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
           // The value is gone already.
         }
       }
-      /** Removes the values that a deleted agent left. */
+      /** Removes the values that a deleted workflow left. */
       const sweep = () => {
         for (const { value_ref } of db.all<{ value_ref: string }>(
           "SELECT value_ref FROM saved_secret_drop",
@@ -109,12 +109,12 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
       }
       sweep()
       bus.tap((event) => {
-        if (event === "agents.changed") sweep()
+        if (event === "workflows.changed") sweep()
       })
 
       const toStored = (r: Row): StoredSecret => ({
         id: r.id,
-        agentId: r.agent_id,
+        workflowId: r.workflow_id,
         name: r.name,
         origin: r.origin,
         auth: parseAuth(r.auth),
@@ -129,10 +129,10 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
       }
       const changed = () => bus.emit("secrets.changed", {})
       const byId = (id: string) => db.get<Row>("SELECT * FROM saved_secret WHERE id = ?", id)
-      const byName = (agentId: string, name: string) =>
+      const byName = (workflowId: string, name: string) =>
         db.get<Row>(
-          "SELECT * FROM saved_secret WHERE agent_id = ? AND name_key = ?",
-          agentId,
+          "SELECT * FROM saved_secret WHERE workflow_id = ? AND name_key = ?",
+          workflowId,
           secretNameKey(name),
         )
 
@@ -155,20 +155,20 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
       }
 
       return SavedSecrets.of({
-        list: (agentId) =>
-          (agentId
+        list: (workflowId) =>
+          (workflowId
             ? db.all<Row>(
-                "SELECT * FROM saved_secret WHERE agent_id = ? ORDER BY name_key",
-                agentId,
+                "SELECT * FROM saved_secret WHERE workflow_id = ? ORDER BY name_key",
+                workflowId,
               )
-            : db.all<Row>("SELECT * FROM saved_secret ORDER BY agent_id, name_key")
+            : db.all<Row>("SELECT * FROM saved_secret ORDER BY workflow_id, name_key")
           ).map(toView),
-        find: (agentId, name) => {
-          const row = byName(agentId, name)
+        find: (workflowId, name) => {
+          const row = byName(workflowId, name)
           return row ? toStored(row) : undefined
         },
-        match: (agentId, name, origin, auth) => {
-          const row = byName(agentId, name)
+        match: (workflowId, name, origin, auth) => {
+          const row = byName(workflowId, name)
           if (row) {
             const secret = toStored(row)
             return secret.origin === origin && sameAuth(secret.auth, auth)
@@ -177,14 +177,14 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
           }
           const count =
             db.get<{ n: number }>(
-              "SELECT COUNT(*) AS n FROM saved_secret WHERE agent_id = ?",
-              agentId,
+              "SELECT COUNT(*) AS n FROM saved_secret WHERE workflow_id = ?",
+              workflowId,
             )?.n ?? 0
           return count >= SECRETS_PER_AGENT ? { kind: "full" } : { kind: "new" }
         },
-        save: (agentId, secret, value) => {
+        save: (workflowId, secret, value) => {
           const now = Date.now()
-          const row = byName(agentId, secret.name)
+          const row = byName(workflowId, secret.name)
           if (row) {
             if (row.origin !== secret.origin || !sameAuth(parseAuth(row.auth), secret.auth))
               throw new AppError({ code: "secret_conflict" })
@@ -192,21 +192,21 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
             changed()
             return toView(byId(row.id) as Row)
           }
-          if (!db.get("SELECT 1 AS x FROM agent WHERE id = ?", agentId))
-            throw new AppError({ code: "agent_not_found" })
+          if (!db.get("SELECT 1 AS x FROM workflow WHERE id = ?", workflowId))
+            throw new AppError({ code: "workflow_not_found" })
           const count =
             db.get<{ n: number }>(
-              "SELECT COUNT(*) AS n FROM saved_secret WHERE agent_id = ?",
-              agentId,
+              "SELECT COUNT(*) AS n FROM saved_secret WHERE workflow_id = ?",
+              workflowId,
             )?.n ?? 0
           if (count >= SECRETS_PER_AGENT) throw new AppError({ code: "secret_full" })
           const ref = store(value)
           const id = randomUUID()
           db.run(
-            `INSERT INTO saved_secret (id, agent_id, name, name_key, origin, auth, value_ref, saved_at)
+            `INSERT INTO saved_secret (id, workflow_id, name, name_key, origin, auth, value_ref, saved_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
-            agentId,
+            workflowId,
             secret.name,
             secretNameKey(secret.name),
             secret.origin,
