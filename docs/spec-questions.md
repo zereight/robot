@@ -973,4 +973,4 @@ Two rows ask who changes these specs: one row of W2, for 006 and 009, and one ro
 | 005 | What does the quiet line count when the silent limit is "Never"? | 90 seconds. With a limit, the quiet time is the smaller of 90 seconds and half of the limit. The clock stops while a tool step runs or a card waits. It is not stored. |
 | 005 | A refused start (the 21st waiting task of a workflow) of a schedule run has no person to tell. | The run is made as Failed, with the reason text of the refusal. A start by hand or from the chat is refused with the name of the workflow. |
 | 005 | Retry note: does the list of steps show the computer where the first try ran, when it was not this computer? | Not yet. The note names no computer. The list shows at most 5 steps, newest first, and "and N more". To confirm with 011 and 012. |
-| 005 | The tab "Events" is on the page. What does it hold? | It is empty with the text "No events yet". The events come with slice B-events (016, 038). |
+| 005 | The tab "Events" is on the page. What does it hold? | It is empty with the text "No event yet.". The events come with slice B-events (016, 038). |
