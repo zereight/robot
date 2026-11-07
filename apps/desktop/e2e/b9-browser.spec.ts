@@ -611,7 +611,7 @@ test("browser data is kept for each workflow: a cookie of one workflow is not se
   await mock.close()
 })
 
-test("'Read only' refuses the browser, and a linked device has no call to the page", async () => {
+test("'Read only' refuses the browser: no page opens and the site sees no request", async () => {
   const mock = await startMockProvider()
   const site = await startSite()
   const { app, page } = await launch(undefined, env)
