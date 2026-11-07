@@ -16,6 +16,7 @@ import type { ApprovalRequest } from "../runtimes/types.ts"
 import { ActionLog } from "./ActionLog.ts"
 import type { CardReply } from "./Cards.ts"
 import { Database } from "./Database.ts"
+import { FileClaims } from "./FileClaims.ts"
 import { makeNodeTools, type NodeCard, type NodeToolContext, toolClock } from "./NodeTools.ts"
 import { Platform } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
@@ -33,7 +34,8 @@ const setup = async () => {
   const rules = await run(Rules.use((x) => Effect.succeed(x)))
   const actionLog = await run(ActionLog.use((x) => Effect.succeed(x)))
   const platform = await run(Platform.use((x) => Effect.succeed(x)))
-  const tools = makeNodeTools({ rules, actionLog, platform })
+  const claims = await run(FileClaims.use((x) => Effect.succeed(x)))
+  const tools = makeNodeTools({ rules, actionLog, platform, claims })
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "robot-tools-")))
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "robot-outside-")))
   const cards: NodeCard[] = []
@@ -446,5 +448,152 @@ describe("a step of a vendor program (spec 007)", () => {
       ["echo asked", "level"],
       ["echo free", "level"],
     ])
+  })
+})
+
+describe("file claims in a shared folder (spec 025)", () => {
+  /** Two workflows use the workspace. The first is `t.flow`; a task of each writes through the tools. */
+  const shared = async (level: PermissionLevel = "full") => {
+    const t = await setup()
+    const server = await t.run(Servers.use((s) => s.local))
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, t.workspace)))
+    const other = await t.run(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Other" })),
+    )
+    await t.run(Workflows.use((w) => w.setFolder(other.id, t.workspace)))
+    const claims = await t.run(FileClaims.use((c) => Effect.succeed(c)))
+    const db = await t.run(Database.use((d) => Effect.succeed(d)))
+    // The task that holds the file: workflow "Other", its node and its prompt.
+    db.run(
+      "INSERT INTO workflow_node (id, workflow_id, number, kind, name, prompt) VALUES ('n-o', ?, 1, 'text', 'Write the plan', 'Write the plan of the week into plan.md and stop')",
+      other.id,
+    )
+    db.run(
+      "INSERT INTO run (id, workflow_id, state, source, started_at, finished_at) VALUES ('r-o', ?, 'running', 'hand', 0, NULL)",
+      other.id,
+    )
+    db.run(
+      "INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, created_at) VALUES ('task-other', 'r-o', ?, 'n-o', 'Write the plan', 1, 'running', 0)",
+      other.id,
+    )
+    return { ...t, other, claims, db, ctx: t.make(level) }
+  }
+
+  test("a file that another workflow holds is refused: no card, the file is kept, the node reads the holder", async () => {
+    const t = await shared("ask_all")
+    const file = join(t.workspace, "plan.md")
+    writeFileSync(file, "text of Other")
+    t.claims.claim({ taskId: "task-other", workflowId: t.other.id, paths: [file] })
+    const result = await t.call(t.ctx, "write_file", { path: "plan.md", content: "mine" })
+    expect(result).toMatchObject({ failed: true, notRun: true, refused: "claim" })
+    expect(result.output).toContain("Refused: in use by Other")
+    expect(result.output).toContain('"Write the plan"')
+    expect(result.output).toContain("Write the plan of the week into plan.md")
+    expect(readFileSync(file, "utf8")).toBe("text of Other")
+    // The step is refused before a card asks the user.
+    expect(t.cards).toEqual([])
+    // The action log has the step with the result Refused, decided by the shared folder.
+    const row = t.db.get<{ decided_by: string; result: string; holder: string; target: string }>(
+      "SELECT decided_by, result, holder, target FROM action_log ORDER BY rowid DESC LIMIT 1",
+    )
+    expect(row).toEqual({
+      decided_by: "shared_folder",
+      result: "refused",
+      holder: "Other",
+      target: file,
+    })
+  })
+
+  test("a read is not limited, and other files can be written", async () => {
+    const t = await shared()
+    const file = join(t.workspace, "plan.md")
+    writeFileSync(file, "text of Other")
+    t.claims.claim({ taskId: "task-other", workflowId: t.other.id, paths: [file] })
+    const read = await t.call(t.ctx, "read_file", { path: "plan.md" })
+    expect(read).toMatchObject({ failed: false, output: "text of Other" })
+    const free = await t.call(t.ctx, "write_file", { path: "mine.md", content: "ok" })
+    expect(free.failed).toBe(false)
+    expect(readFileSync(join(t.workspace, "mine.md"), "utf8")).toBe("ok")
+  })
+
+  test("a task that writes gets the claim; after the task ends, another workflow may write", async () => {
+    const t = await shared()
+    const file = join(t.workspace, "notes.md")
+    const write = await t.call(t.ctx, "write_file", { path: "notes.md", content: "mine" })
+    expect(write.failed).toBe(false)
+    expect(t.claims.ofTask("task-1")).toEqual({ count: 1, paths: [file] })
+    // A task of Other is refused while the task holds the claim, also when it waits.
+    const refused = t.claims.check({ taskId: "task-other", workflowId: t.other.id, paths: [file] })
+    expect(refused).toMatchObject({ kind: "held", holder: { workflow: "Tools" } })
+    t.claims.release("task-1")
+    expect(
+      t.claims.claim({ taskId: "task-other", workflowId: t.other.id, paths: [file] }).kind,
+    ).toBe("ok")
+  })
+
+  test("the user denies the card: the file stays free for the other workflow", async () => {
+    const t = await shared("ask_all")
+    t.answer("deny")
+    const file = join(t.workspace, "notes.md")
+    const write = await t.call(t.ctx, "write_file", { path: "notes.md", content: "mine" })
+    expect(write.failed).toBe(true)
+    expect(t.claims.ofTask("task-1").count).toBe(0)
+    expect(
+      t.claims.check({ taskId: "task-other", workflowId: t.other.id, paths: [file] }).kind,
+    ).toBe("ok")
+  })
+
+  test("a claim that comes while the card waits refuses the step after the answer", async () => {
+    const t = await shared("ask_all")
+    const file = join(t.workspace, "notes.md")
+    const base = t.make("ask_all")
+    // While the user looks at the card, a task of Other takes the file.
+    const ctx: NodeToolContext = {
+      ...base,
+      ask: async (card) => {
+        t.claims.claim({ taskId: "task-other", workflowId: t.other.id, paths: [file] })
+        return base.ask(card)
+      },
+    }
+    t.answer("allow")
+    const write = await t.call(ctx, "write_file", { path: "notes.md", content: "mine" })
+    expect(write).toMatchObject({ failed: true, notRun: true, refused: "claim" })
+    expect(existsSync(file)).toBe(false)
+    expect((await t.log()).at(-1)).toMatchObject({ decided_by: "shared_folder", result: "refused" })
+  })
+
+  test("claim 1001 is refused with the reason about 1000 files", async () => {
+    const t = await shared()
+    const db = await t.run(Database.use((d) => Effect.succeed(d)))
+    db.transaction(() => {
+      for (let i = 0; i < 1000; i++)
+        db.run(
+          "INSERT INTO file_claim (task_id, workflow_id, path, path_key, at) VALUES ('task-1', ?, ?, ?, ?)",
+          t.flow.id,
+          join(t.workspace, `f${i}`),
+          `k${i}`,
+          i,
+        )
+    })
+    const result = await t.call(t.ctx, "write_file", { path: "one-more.md", content: "x" })
+    expect(result).toMatchObject({ failed: true, notRun: true, refused: "claim" })
+    expect(result.output).toBe("This task changed 1000 files. Finish it.")
+    expect(existsSync(join(t.workspace, "one-more.md"))).toBe(false)
+  })
+
+  test("a shell command is not checked by the claims", async () => {
+    const t = await shared()
+    const file = join(t.workspace, "plan.md")
+    t.claims.claim({ taskId: "task-other", workflowId: t.other.id, paths: [file] })
+    const result = await t.call(t.ctx, "run_command", { command: "echo shell > plan.md" })
+    expect(result.failed).toBe(false)
+    expect(readFileSync(file, "utf8").trim()).toBe("shell")
+  })
+
+  test("Read only refuses a write before the claims are asked", async () => {
+    const t = await shared("read_only")
+    const result = await t.call(t.ctx, "write_file", { path: "a.md", content: "x" })
+    expect(result.refused).toBe("read_only")
+    expect(t.claims.ofTask("task-1").count).toBe(0)
   })
 })

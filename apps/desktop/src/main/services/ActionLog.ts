@@ -43,6 +43,8 @@ export interface ActionLogInput {
   readonly check?: ActionCheck | null
   /** The linked device that answered the card of the step (spec 012). */
   readonly device?: string | null
+  /** The workflow that held the file, when a file claim refused the step (spec 025). */
+  readonly holder?: string | null
 }
 
 export interface ActionLogFilter {
@@ -90,6 +92,7 @@ interface Row {
   check_reason: string | null
   check_probability: number | null
   device: string | null
+  holder: string | null
 }
 
 /** The columns of an entry, and whether its rule still exists. */
@@ -147,6 +150,7 @@ const toEntry = (r: Row): ActionLogEntry => ({
   rule: toRule(r),
   check: toCheck(r),
   device: r.device,
+  holder: r.holder,
 })
 
 /** The target as the log keeps it: secrets hidden, then cut at 200 characters. */
@@ -183,8 +187,8 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
               )
             : undefined
           db.run(
-            `INSERT INTO action_log (id, at, workflow_id, workflow_name, node_name, node_number, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability, device)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, workflow_id, workflow_name, node_name, node_number, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability, device, holder)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
             input.workflowId,
@@ -210,6 +214,7 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
               : null,
             input.check?.probability ?? null,
             input.device ? logTarget(input.device) : null,
+            input.holder ? logTarget(input.holder) : null,
           )
           db.run("DELETE FROM action_log WHERE at < ?", at - ACTION_LOG_DAYS * DAY_MS)
           db.run(

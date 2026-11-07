@@ -38,6 +38,7 @@ import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { FileClaims } from "./FileClaims.ts"
 import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
 import { isMemoryTool, MEMORY_TOOL_DEFS, makeMemoryTool } from "./memoryTool.ts"
@@ -166,9 +167,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const facts = yield* RunFacts
       const rules = yield* Rules
       const actionLog = yield* ActionLog
+      const claims = yield* FileClaims
       const memory = yield* Memory
       const proposals = yield* Proposals
-      const tools = makeNodeTools({ rules, actionLog, platform })
+      const tools = makeNodeTools({ rules, actionLog, platform, claims })
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const endListeners: ((workflowId: string, runId: string) => void)[] = []
 
@@ -213,6 +215,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const taskRow = (id: string) => db.get<TaskRow>("SELECT * FROM task WHERE id = ?", id)
 
       // --- reading ------------------------------------------------------------------------
+
+      /** The steps of the task that a file claim of another workflow refused (spec 025). */
+      const refusalsOf = (taskId: string): RunTask["refusals"] =>
+        actionLog
+          .ofTask(taskId)
+          .filter((e) => e.decidedBy === "shared_folder" && e.result === "refused")
+          .map((e) => ({ path: e.target, holder: e.holder ?? "" }))
 
       const toTask = (t: TaskRow): RunTask => {
         let decisionView: RunTask["decision"] = null
@@ -271,6 +280,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
           steps: t.steps,
           memory: memory.ofTask(t.id),
+          claims: claims.ofTask(t.id),
+          refusals: refusalsOf(t.id),
         }
       }
 
@@ -628,6 +639,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         saveMarks(taskId, marks)
         finishTask(taskId, end)
+        // The claims of a task end when the task is final (spec 025, flow 4).
+        claims.release(taskId)
         changed(n.run.workflow_id, n.run.id)
         const done: Done = {
           node: n.node,
@@ -900,15 +913,19 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         // A text node on an API account has the memory tool while memory is on for the workflow. A
         // vendor program has tools of its own and none of the app (spec 008, 007).
         const memoryOn = !isProgram && memory.settings(n.run.workflow_id)?.enabled === true
-        const system = nodeSystem({
-          document: n.detail.document,
-          workflowName: n.detail.name,
-          nodeNumber: node.number,
-          nodeName: node.name,
-          folder: n.detail.folder,
-          tools: true,
-          memory: memoryOn,
-        })
+        // The shared folder note is made again at the start of each turn, so it holds the claims of
+        // that moment (spec 025). A program gets it too: the note is its only guard.
+        const systemNow = () =>
+          nodeSystem({
+            document: n.detail.document,
+            workflowName: n.detail.name,
+            nodeNumber: node.number,
+            nodeName: node.name,
+            folder: n.detail.folder,
+            tools: true,
+            memory: memoryOn,
+            sharedFolderNote: claims.note(n.run.workflow_id),
+          })
         const prompt = renderPrompt(node.prompt, input, n.trigger)
         const turns: Turn[] = [
           { role: "user", content: prompt === "" ? "Do the work of this node." : prompt },
@@ -935,7 +952,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                   {
                     model,
                     effort: node.effort,
-                    system,
+                    system: systemNow(),
                     turns,
                     signal,
                     workspace: n.detail.folder,

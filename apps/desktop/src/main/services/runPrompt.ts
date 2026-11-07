@@ -54,6 +54,8 @@ export const nodeSystem = (input: {
   readonly tools: boolean
   /** True when the node has the memory tool (spec 008). */
   readonly memory?: boolean
+  /** The shared folder note of the turn, or null when the folder is not shared (spec 025). */
+  readonly sharedFolderNote?: string | null
 }): string =>
   [
     input.document.trim() === "" ? null : input.document,
@@ -72,6 +74,7 @@ export const nodeSystem = (input: {
       "- You cannot change the folder, the permission level, the graph or the prompts of the workflow.",
       `- If you could not do the work, end the reply with a last line that starts with "${BLOCKED_PREFIX}" and gives the reason in one sentence. Write that line in no other case.`,
     ].join("\n"),
+    input.sharedFolderNote ?? null,
   ]
     .filter((p): p is string => p !== null)
     .join("\n\n")
