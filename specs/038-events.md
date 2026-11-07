@@ -119,8 +119,8 @@ workflow did nothing.
   with no id never counts as a duplicate.
 - The app keeps the id of each event for 7 days. A call with an id that it has starts nothing, and
   shows as **Duplicate** with the line "Same call as <time>."
-- A duplicate message of an outside program gets the answer that 023 gives. It starts no second
-  turn.
+- A duplicate message of an outside program gets the number of the first message with that id (023,
+  "Send a message"). It starts no second turn.
 - A call with an id that the sender used more than 7 days ago makes a new event.
 
 ## Limits and retention
@@ -183,8 +183,6 @@ workflow did nothing.
   outside program to send the message again.
 - Search of event text by the responsible document, with the tools of 007.
 - An event from a chat service other than Teams (028).
-- The source "Web hook" and the source "Watch". They are not decided in 010 (see the questions for
-  038).
 
 ## Acceptance
 
@@ -200,7 +198,7 @@ workflow did nothing.
 - A message from Teams arrives (028): one row shows the source "Teams", the name of the Teams chat
   in the summary line, and the result "Routed" with the name of the workflow.
 - A message of an outside program with an id that it used before: no second turn starts, the
-  program gets the answer that 023 gives, and the page shows "Duplicate" with "Same call as
+  program gets the number of the first message, and the page shows "Duplicate" with "Same call as
   <time>."
 - Two messages of an outside program with the same subject, while the turn of the first goes: the
   second row shows "Waits for <subject>.". The first turn ends: the second message starts its turn

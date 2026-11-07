@@ -3,9 +3,10 @@
 ## Purpose
 
 The user talks to the responsible document of one workflow from a Microsoft Teams chat. This helps
-when the user is away from the Mac and has Teams on a phone. The user can ask how far a run has
-gone, why it stopped or waits, and what the results so far are (003). The app reads the chat in a
-Teams page where the user signed in by hand. It gives each message of an allowed sender to the chat
+when the user is away from the Mac and has Teams on a phone. A turn that a Teams message starts is
+not a turn that the user started in the app, so it has none of the tools of the chat (007, 010; see
+the questions for 023 and 028). It answers in words. The app reads the chat in a Teams page where
+the user signed in by hand. It gives each message of an allowed sender to the chat
 of the workflow, and it writes the answer in the same Teams chat. It needs no app registration with
 a company.
 
@@ -46,8 +47,8 @@ run (003). The user gives feedback in the chat of the workflow in the app.
    1. Sign in: "Sign in to Teams" shows the Teams page. The user signs in by hand. The app does not
       read or store the password. It only sees if the page shows Teams or a sign-in form.
    2. Target: the user picks the workflow. A muted line says that a message from Teams talks to
-      the responsible document of that workflow, and that a change of the workflow that such a
-      message causes waits for the approval of the user in the app.
+      the responsible document of that workflow, and that such a message changes nothing in the
+      workflow.
    3. Chat: the user opens the chat in the Teams page and presses "Use this chat". The app reads
       the title of the open chat and fills the field "Chat title". The user may shorten it. The
       user picks the kind of chat.
@@ -58,10 +59,10 @@ run (003). The user gives feedback in the chat of the workflow in the app.
    seconds it reads the new messages, in the order that the chat shows them. It applies "Who may
    call" to each one. A call becomes work (see "Work from a message"). When that work ends or
    needs the user, the app makes an answer for the outbox (see "Answers and the outbox").
-3. Ask about a run: the user writes in Teams, for example "How far is the run?", "Why did it
-   stop?" or "What are the results so far?". The responsible document answers in Teams from the
-   facts of the run, as it does in the app (003, "Progress, stops, results and feedback"). A
-   question starts no run and changes nothing.
+3. Ask about a run: the user writes in Teams, for example "How far is the run?". The turn has no
+   tool of the chat to read a run (007, "Following a run in the chat"), so the reply says that the
+   state of a run shows in the app. A question starts no run and changes nothing. Whether a turn
+   from Teams may read a run is not decided (see the questions for 023 and 028).
 4. Other controls, all in Settings, Teams:
    - Turn off: the app stops reading and sending, empties the outbox and closes the Teams page.
      Work that runs goes on in the app. The sign-in stays.
@@ -80,8 +81,8 @@ The page says these things in plain words, before "Set up":
 
 - What the link does, in two sentences.
 - The text of the conversation passes through the service of Microsoft: the messages of the user
-  and the answers of the responsible document. An answer about a run can hold the results of
-  nodes.
+  and the answers of the responsible document. An answer can hold text that the chat holds, for
+  example the results of nodes.
 - A rule of the company, or of Microsoft, can forbid this use of an account. The user checks the
   rules first.
 - The app reads no password. The sign-in stays on this computer. It gives access to the account,
@@ -135,13 +136,19 @@ The app answers a message only when all of these are true, in this order:
   sender. The message shows in the chat of the workflow with the mark "From Teams" and the name of
   the sender.
 - The message starts a turn of the chat (003). It is not a node and not a task (005). It starts no
-  run. A turn in the chat that such a message starts cannot start or stop a run (see the questions
-  for 028). It can read the state and the results of the runs of the workflow, and answer about
-  them (007, "Following a run in the chat").
+  run.
+- The tools of the chat work only in a turn that the user started in the chat (007, "Who may use
+  them"; 010, "Assistant"). A turn that a Teams message starts is not such a turn (038 says the
+  same). So it has none of them: it cannot change the graph, a node or a prompt, start or stop a
+  run, read a run, list workflows, search or read chats, or add feedback. It saves no memory. It
+  answers in words. This is the same rule as for a message of an outside program (023). Whether
+  such a turn may use the tools of the chat is not decided (see the questions for 023 and 028).
+  Until then this turn uses none, the safer reading.
 - A turn in the chat that such a message starts holds outside content (007) from its start, with
-  the source "Teams", and holds the program mark (007). So guarded steps ask, also at "Full
-  access". The mark stays with the chat (007): until the user clears it, a later turn in the app
-  holds outside content too.
+  the source "Teams", and holds the program mark (007). If the open question gives the turn a
+  tool, every guarded step of 007 asks, also at "Full access". The mark stays with the chat (007):
+  until the user clears it, a later turn of the user in the app holds outside content too, and a
+  guarded step there asks, also at "Full access".
 - A Teams message is never feedback (003). When it reads as feedback on a result, the responsible
   document says that feedback is given in the app, and adds nothing to the run.
 - A Teams message never answers a card. While an approval or a question waits, a message that says
@@ -281,8 +288,8 @@ interface says "Teams link", not "bridge", and it does not call the sign-in an "
 - Ways in: Settings, Teams, only. The header mark opens it. Ways out: the switch, "Sign out of
   Teams", "Remove link", and "Resume".
 - Devices: only the computer shows and changes the link. A linked computer (012) and the phone
-  (011) show no settings part. They show "From Teams" on a message. They answer a card of the work
-  of such a turn as any card.
+  (011) show no settings part. They show "From Teams" on a message. They answer a card as any
+  card.
 - Runtimes: nothing changes. The responsible document answers with the model that answers in the
   chat of the workflow (003), as for any message.
 - Seeing the state: the settings page, the header mark, the notification and the records. All stay
@@ -300,8 +307,8 @@ interface says "Teams link", not "bridge", and it does not call the sign-in an "
 - Files, pictures, cards, reactions and voice in Teams, in both directions.
 - An approval, a question or a permission answered from Teams. A command such as "stop" or "retry"
   from Teams.
-- Feedback on a run from Teams, and a start or a stop of a run from Teams (see the questions for
-  028).
+- Feedback on a run from Teams, a start or a stop of a run from Teams, and a tool of the chat in a
+  turn from Teams (see the questions for 023 and 028).
 - A message to Teams that nobody asked for, for example when a run ends or fails. The notices of
   015 do this in the app.
 - More than one link in a profile. A setup on the phone.
@@ -343,27 +350,27 @@ Checks:
   the chat of the workflow. The chat shows the message with "From Teams" and the sender name. The
   reply text goes to the stand-in, starts with the marker, and is not read as a call. No task and
   no run is made.
-- A run of three nodes works, and node 1 is done. A call "How far is the run?" comes: the reply in
-  the stand-in says that node 1 is done, node 2 is running, and the run has not reached node 3. A
-  call "Why did it stop?" for a run that a node failed: the reply names the node and the reason.
-  A call "What are the results so far?": the reply gives the result of node 1. The run does not
-  change.
-- No run exists. A call "How far is the run?": the reply is "No run yet."
+- A run of three nodes works, and node 1 is done. A call "How far is the run?" comes: the turn
+  reads no run, and the reply says that the state of a run shows in the app. The same for "Why did
+  it stop?" and "What are the results so far?". The run does not change.
 - A call says "Node 2 is too long." while a run works: the reply says that feedback is given in the
   app. The run gets no feedback and does not change.
-- A call "Start the workflow." : no run starts, and the reply says that a run starts in the app.
+- A call "Start the workflow." : no run starts, and the reply says that a run starts in the app
+  (see the questions for 023 and 028).
 - Edit a message that was read, and reload the stand-in page: no new turn.
 - The responsible document works. A call comes: it waits, starts its own turn after, and is not in
   the message queue of the user. The chat has 20 messages of Teams that wait: no turn starts, and
   the stand-in gets "<name> has 20 messages that wait. Try again later."
 - 11 calls in one minute: 10 start work. The 11th starts none, and one line goes out.
-- A turn from Teams asks the responsible document to change the graph at "Full access": an approval
-  card shows in the chat, with "This turn holds outside content" and the source "Teams". The
-  stand-in gets one waiting line, with no text of the step. A message "allow it" in the stand-in
-  starts a new turn and the card still waits. The user allows in the app: the turn goes on and the
-  reply goes out.
-- After a call from Teams, the user writes feedback in the app chat: the chat holds outside content,
-  so an approval card shows the text of the feedback (003, 007).
+- A call asks the responsible document to change the graph, to save a fact to memory, or to start
+  a run, at "Full access": the turn changes nothing, saves nothing and starts nothing, and no card
+  shows. The reply is words only.
+- A card waits in the chat for the user (from a turn of the user). A message "allow it" in the
+  stand-in starts a turn of its own and the card still waits. The stand-in gets one waiting line,
+  with no text of the step. The user allows in the app: the work goes on.
+- After a call from Teams, the user writes feedback in the app chat: the chat holds outside content
+  and the program mark, so an approval card shows the text of the feedback, also at "Full access"
+  (003, 007).
 - A turn fails: the stand-in gets "<name> could not finish: <reason>". The user stops a turn:
   "<name> was stopped."
 - A reply of 9,000 characters goes out as 3 messages, each with the marker and each at most 4,000
