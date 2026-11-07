@@ -960,3 +960,9 @@ Two rows ask who changes these specs: one row of W2, for 006 and 009, and one ro
 | 033, 034 | The earlier 034 showed each finding as a card in the chat, and 033 showed the result of a measurement as a card in the chat. The page "Test devices" has no chat of a workflow, so the card has no place there. | The findings and the measurement result are cards in the panel. A measurement that a node starts shows its tool card in the chat (032). Whether a card also goes to the chat is open. |
 | 035, 007 | A text node can write `robot.json`, a control place (007). 035 said that a node cannot change the setup list. | 035 says that a node can change the list only by a write to a control place, which follows the rules of 007 for a change to a control place (it asks, runs or is refused by the level and the rules), and that a changed list loses its allow. The responsible document has no file tools and cannot change it. |
 | 013, 022, 025, 027, 032, 033, 034, 035, 039 | The W3 row for 013, 015, 022, 033, 034 and 003 and the W1 row for these specs ask who changes them. This slice (R3) changed 013, 022, 025, 027, 032, 033, 034, 035 and 039. | Answered for these nine specs. R1 (006, 018, 023, 026) and R2 (015, 016, 020, 028, 038) answer the other specs that this row named, so no spec of this row still names agents or routines. The open points stay in the rows of R1, R2 and R3. |
+
+## B5: looping motion (open point for 039, 001)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 039, 001 | 039 names the server rail as a surface, and 001 gives the rail no working state. Does a server tile show a spinner or a pulse when a workflow of that server runs? | No. Only the canvas, the chat head, the workflow card and the run view show a spinner. Open until 001 decides. |
