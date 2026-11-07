@@ -56,7 +56,7 @@ const stateWord = (n: RunNodeFact) =>
       : n.state
 
 export const nodeLines = (n: RunNodeFact): string[] => {
-  const lines = [`  Node ${n.number} "${n.name}" (${n.kind}): ${stateWord(n)}`]
+  const lines = [`  Node ${n.number} "${escapeOutside(n.name)}" (${n.kind}): ${stateWord(n)}`]
   if (n.reason) lines.push(`    Reason: ${reasonText(n.reason)}`)
   const mark = markText(n)
   if (mark) lines.push(`    Mark: ${mark}`)

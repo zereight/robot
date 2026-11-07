@@ -1,16 +1,24 @@
 import { randomUUID } from "node:crypto"
 import {
+  assistantStepText,
   type CheckProblem,
   carriesProgramMark,
+  GRAPH_PROPOSAL_TEXT_MAX,
+  graphChange,
+  graphChangeCardText,
+  graphChangeSize,
   graphFingerprint,
   guardVerdict,
   looksLikeSecret,
+  type MessageKey,
+  type MessageParams,
   NODES_MAX,
   OPTIONS_MIN,
   type OutsideSource,
   type PermissionLevel,
   redactSecrets,
   THRESHOLD_DEFAULT,
+  translate,
   type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
@@ -43,8 +51,12 @@ import type { WorkflowsService } from "./Workflows.ts"
  * 5. A change is tested (the form, the models of the accounts, secrets, the check) before it
  *    saves. Nothing is half saved: one change makes one version.
  * 6. A change, and the start of a run, in a turn that holds outside content ask the user first
- *    (`guardVerdict`).
+ *    (`guardVerdict`). The card shows the whole change as text, or the change is refused when it
+ *    is too long to read (`GRAPH_PROPOSAL_TEXT_MAX`).
  * 7. The text of a result never has a secret (`redactSecrets`) and names the marks of the task.
+ * 8. A change of the graph for a linked device needs the switch of that device. The switch is read
+ *    at each call and again after a card was answered (spec 012, "No switch"). A run needs no
+ *    switch: a client runs and stops with the right to send messages (spec 012, "Workflows").
  */
 
 // --- who may use the tools ------------------------------------------------------------------
@@ -73,12 +85,27 @@ export interface AssistantTurn {
   seen: string
   /** True after the turn started a run. A turn starts at most one (spec 010). */
   runStarted: boolean
+  /** True after the user denied the start of a run in this turn: the turn asks no more. */
+  runDenied: boolean
 }
+
+/**
+ * For whom the turn acts at this call (spec 012). `mayChange` is false when a linked device that
+ * sent a message of the turn has no switch "Can create and change workflows". `device` is the
+ * name of the linked device that sent the latest message, or null for the window of this computer:
+ * a change and a run are recorded with it. `server` names this computer, for the refusal.
+ */
+export type TurnActor =
+  | { readonly mayChange: true; readonly device: string | null }
+  | { readonly mayChange: false; readonly device: string | null; readonly server: string }
+
+type Translate = (key: MessageKey, params?: MessageParams) => string
 
 export const newAssistantTurn = (origin: TurnOrigin, graph: WorkflowGraph): AssistantTurn => ({
   origin,
   seen: graphFingerprint(graph),
   runStarted: false,
+  runDenied: false,
 })
 
 // --- the definitions ------------------------------------------------------------------------
@@ -106,7 +133,7 @@ const nodeFields = {
   accountId: {
     type: "string",
     description:
-      "A text node: the id of a connected account. A node that has an account keeps it. Set it only for a node that has none, together with the model.",
+      "A text node: the id of a connected account. Only a new node gets an account, together with a model. A node that exists keeps its account (or has none): you cannot set, change or clear the account of an existing node.",
   },
   model: {
     type: "string",
@@ -172,7 +199,7 @@ export const ASSISTANT_TOOL_DEFS: readonly ToolDef[] = [
   {
     name: EDIT_NODE_TOOL,
     description:
-      "Changes fields of one node. A field that you leave out stays. To clear a field, name it in clear: prompt, question, effort, or model (model clears the account, the model and the reasoning level together). You cannot set a permission level, and you cannot move a node to another account.",
+      "Changes fields of one node. A field that you leave out stays. To clear a field, name it in clear: prompt, question, effort, or model (model clears the model and the reasoning level together, and only for a node that has no account). You cannot set a permission level, and you cannot set, change or clear the account of a node.",
     schema: {
       type: "object",
       properties: {
@@ -315,6 +342,13 @@ export interface AssistantContext {
   readonly outside: OutsideSource | null
   readonly program: boolean
   readonly turn: AssistantTurn
+  /**
+   * For whom the turn acts. It is a function because the switch of a linked device can change in
+   * the turn: the tools call it at each call, and again after a card was answered.
+   */
+  readonly actor: () => TurnActor
+  /** The words of the interface, for the card and the action log. */
+  readonly t: Translate
   /** Asks the user before a guarded step in a turn that holds outside content. Rejects at Stop. */
   readonly ask?: (step: "change" | "run", summary: string) => Promise<CardReply>
 }
@@ -329,6 +363,8 @@ export interface AssistantResult {
     readonly device: string | null
     readonly target: string
   }
+  /** Set when a linked device asked for a change without the switch: the chat adds the note. */
+  readonly notAllowed?: { readonly server: string }
   /** Outside content that the result holds: the turn holds it from now on (spec 007). */
   readonly outside?: { readonly source: OutsideSource | null; readonly program: boolean }
 }
@@ -522,9 +558,17 @@ const editNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
   }
   if (a.accountId !== undefined && text(a.accountId) === undefined)
     return fail('"accountId" is a text.')
-  if (found.accountId !== null && a.accountId !== undefined && a.accountId !== found.accountId)
+  // The account of a node that exists never changes through the chat: not to another account, not
+  // from none to one, and not by a clear (the same rule as a graph proposal, "account_change").
+  if (a.accountId !== undefined && a.accountId !== found.accountId)
     return fail(
-      `Node ${found.number} keeps its account. You can change its model to one that the account offers. To use another account, add a new node.`,
+      found.accountId === null
+        ? `Node ${found.number} has no account, and an existing node cannot get one. To use an account, add a new node.`
+        : `Node ${found.number} keeps its account. You can change its model to one that the account offers. To use another account, add a new node.`,
+    )
+  if (clear.includes("model") && found.accountId !== null)
+    return fail(
+      `Node ${found.number} keeps its account, so its model cannot be cleared. Change the model to another one that the account offers.`,
     )
   let next: WorkflowNode = { ...found }
   const name = text(a.name)
@@ -544,7 +588,7 @@ const editNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
     if (c === "prompt") next = { ...next, prompt: "" }
     else if (c === "question") next = { ...next, question: "" }
     else if (c === "effort") next = { ...next, effort: null }
-    else next = { ...next, accountId: null, model: null, effort: null }
+    else next = { ...next, model: null, effort: null }
   }
   if (JSON.stringify(next) === JSON.stringify(found))
     return fail("Nothing changes: the node has these values already.")
@@ -855,13 +899,25 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
 
   // --- the guard ------------------------------------------------------------------------------
 
-  /** Asks the user when the turn holds outside content (spec 007). Null means: go on. */
+  /** The card of a guarded step: its text, or the reason why no card can show it. */
+  type CardText = { readonly summary: string } | { readonly refusal: string }
+
+  /**
+   * Asks the user when the turn holds outside content (spec 007). The card text is built only when
+   * a card shows, and it holds the whole change: a change that is too long to read on a card is
+   * refused, never cut. An empty result means: go on.
+   */
   const guard = async (
     ctx: AssistantContext,
     kind: "change" | "run",
     target: string,
     always: boolean,
-  ): Promise<{ stop?: AssistantResult; guarded?: AssistantResult["guarded"] }> => {
+    card: () => Promise<CardText>,
+  ): Promise<{
+    stop?: AssistantResult
+    guarded?: AssistantResult["guarded"]
+    denied?: boolean
+  }> => {
     const verdict = always
       ? ctx.outside !== null || ctx.program
         ? "ask"
@@ -887,12 +943,21 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
         ),
         guarded: note("refused", "level", null),
       }
+    const shown = await card()
+    if ("refusal" in shown)
+      return { stop: refused(shown.refusal), guarded: note("refused", "level", null) }
     let reply: CardReply
     try {
-      reply = await ctx.ask(kind, target)
+      reply = await ctx.ask(kind, shown.summary)
     } catch {
       return {
-        stop: refused("Nothing was done: the turn was stopped."),
+        stop: {
+          outcome: {
+            output: "Nothing was done: the turn was stopped.",
+            failed: true,
+            notRun: true,
+          },
+        },
         guarded: note("stopped", "user", null),
       }
     }
@@ -900,25 +965,57 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
       return {
         stop: {
           outcome: {
-            output: "Nothing was done: the user refused. Tell the user that nothing changed.",
-            failed: false,
+            output:
+              "Nothing was done: the user refused. Tell the user that nothing changed. Do not ask for the same step again in this turn.",
+            failed: true,
+            notRun: true,
           },
         },
         guarded: note("refused", "user", reply.device ?? null),
+        denied: true,
       }
     return {
       guarded: { kind, decidedBy: "user", result: "ran", device: reply.device ?? null, target },
     }
   }
 
+  /** The names of the accounts, for the card: the user reads the name, not the id. */
+  const accountNames = async (): Promise<(id: string) => string> => {
+    const all = await Effect.runPromise(providers.accounts)
+    return (id) => all.find((a) => a.id === id)?.name ?? id
+  }
+
+  /** A change that a linked device without the switch asked for (spec 012, "No switch"). */
+  const notAllowed = (who: Extract<TurnActor, { mayChange: false }>, target: string) => ({
+    outcome: {
+      output: `Not allowed: ${who.server} does not let this device change workflows. Turn it on in Settings → Devices on that computer. Nothing was saved, and the graph did not change. Tell the user the same.`,
+      failed: true,
+      notRun: true,
+    },
+    guarded: {
+      kind: "change" as const,
+      decidedBy: "level" as const,
+      result: "refused" as const,
+      device: who.device,
+      target,
+    },
+    notAllowed: { server: who.server },
+  })
+
+  /** The permission level of the workflow now: a level that the user changed in the turn applies. */
+  const levelNow = async (ctx: AssistantContext): Promise<PermissionLevel> =>
+    (await Effect.runPromise(workflows.get(ctx.workflowId))).permission
+
   // --- changes --------------------------------------------------------------------------------
 
   const change = async (ctx: AssistantContext, call: ToolCall): Promise<AssistantResult> => {
     const build = BUILDERS[call.name]
     if (!build) return refused(`Unknown tool: ${call.name}`)
-    const level = ctx.level === "read_only"
-    const target = `${call.name}: ${redactSecrets(call.input).slice(0, 160)}`
-    if (level)
+    const target = assistantStepText(ctx.t, call.name, call.input, "wanted") ?? call.name
+    // A change for a linked device needs its switch, also a change that the chat makes (spec 012).
+    const who = ctx.actor()
+    if (!who.mayChange) return notAllowed(who, target)
+    if (ctx.level === "read_only")
       return {
         outcome: {
           output:
@@ -954,12 +1051,34 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
       return refused(
         "Nothing was saved: the check could not finish for the new graph, so the change does not save.",
       )
-    const gate = await guard(ctx, "change", target, false)
+    const gate = await guard(ctx, "change", target, false, async () => {
+      // The card is the card of a graph proposal: the same nodes, fields and connections, in full.
+      const shown = graphChange(current, built.graph, await accountNames())
+      const size = graphChangeSize(shown)
+      if (size > GRAPH_PROPOSAL_TEXT_MAX)
+        return {
+          refusal: `Refused: the user must read this change on a card, and a card holds at most ${GRAPH_PROPOSAL_TEXT_MAX} characters of text (names, prompts, questions and options, the removed text and the added text together). This change has ${size}. Nothing was saved. Make the change in smaller steps, or tell the user.`,
+        }
+      return { summary: graphChangeCardText(ctx.t, shown, GRAPH_PROPOSAL_TEXT_MAX) }
+    })
     if (gate.stop) return { ...gate.stop, ...(gate.guarded ? { guarded: gate.guarded } : {}) }
-    // The user may have changed the workflow while the check worked or the card waited.
+    // The user may have changed the workflow, the level or the switch of the device while the check
+    // worked or the card waited (spec 010, 012): all of it is read again before the save.
+    const after = ctx.actor()
+    if (!after.mayChange) return notAllowed(after, target)
+    if ((await levelNow(ctx)) === "read_only")
+      return refused(
+        "Refused: the permission level of this workflow is Read only now. Nothing was saved. Tell the user.",
+      )
+    if (runs.active(ctx.workflowId))
+      return refused(
+        "Refused: a run works or waits, so the graph cannot change now. Nothing was saved.",
+      )
     if (graphFingerprint(await graphOf(ctx.workflowId)) !== graphFingerprint(current))
       return refused(staleText)
-    const applied = await attempt(workflows.applyGraph(ctx.workflowId, built.graph, "chat"))
+    const applied = await attempt(
+      workflows.applyGraph(ctx.workflowId, built.graph, "chat", after.device),
+    )
     if (!applied.ok) return refused(`Nothing was saved: ${appError(applied.error)}`)
     const saved = await graphOf(ctx.workflowId)
     ctx.turn.seen = graphFingerprint(saved)
@@ -971,7 +1090,7 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
         kind: "change",
         decidedBy: "level",
         result: "ran",
-        device: null,
+        device: after.device,
         target,
       },
     }
@@ -983,7 +1102,9 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
     ctx: AssistantContext,
     a: Record<string, unknown>,
   ): Promise<AssistantResult> => {
-    const target = `start_run${typeof a.trigger === "string" && a.trigger !== "" ? `: ${redactSecrets(a.trigger).slice(0, 160)}` : ""}`
+    const trigger = typeof a.trigger === "string" ? a.trigger : ""
+    const wanted = assistantStepText(ctx.t, "start_run", "{}", "wanted") ?? "start_run"
+    const target = trigger !== "" ? `${wanted}: ${redactSecrets(trigger).slice(0, 160)}` : wanted
     if (ctx.level === "read_only")
       return {
         outcome: {
@@ -995,6 +1116,10 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
         },
         guarded: { kind: "run", decidedBy: "level", result: "refused", device: null, target },
       }
+    if (ctx.turn.runDenied)
+      return refused(
+        "Refused: the user denied the start of a run in this turn. Do not ask again. Tell the user that no run started, and wait for the next message of the user.",
+      )
     if (ctx.turn.runStarted)
       return refused(
         "Refused: you started a run in this turn already. A turn starts at most one run.",
@@ -1005,16 +1130,37 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
       )
     if (runs.active(ctx.workflowId))
       return refused("Not started: a run works or waits. Wait for it to end, or stop it first.")
-    const trigger = typeof a.trigger === "string" ? a.trigger : ""
     if (trigger.length > 2000)
       return refused("Not started: the text for the trigger is at most 2000 characters.")
+    // The graph that the user sees on the card is the graph that runs: it is read again after.
+    const before = graphFingerprint(await graphOf(ctx.workflowId))
     // The spec does not list the start of a run as a guarded step. A turn that holds outside
     // content asks at every level, also at "Full access" (docs/spec-questions.md, 010).
-    const gate = await guard(ctx, "run", target, true)
+    const gate = await guard(ctx, "run", target, true, async () => ({
+      summary:
+        trigger !== ""
+          ? `${ctx.t("cards.run.start")}\n${ctx.t("cards.run.trigger")}\n${trigger}`
+          : `${ctx.t("cards.run.start")}\n${ctx.t("cards.run.noTrigger")}`,
+    }))
+    if (gate.denied) ctx.turn.runDenied = true
     if (gate.stop) return { ...gate.stop, ...(gate.guarded ? { guarded: gate.guarded } : {}) }
+    // The user may have started a run by hand, changed the graph or the level while the card waited.
+    if (runs.active(ctx.workflowId))
+      return refused("Not started: a run works or waits. Wait for it to end, or stop it first.")
+    if (graphFingerprint(await graphOf(ctx.workflowId)) !== before)
+      return refused(
+        "Not started: the user changed the workflow while the card waited. Read the workflow again and tell the user. Nothing started.",
+      )
+    if ((await levelNow(ctx)) === "read_only")
+      return refused(
+        "Refused: the permission level of this workflow is Read only now, and it refuses to start a run. Tell the user.",
+      )
+    // A run needs no switch: a client runs with the right to send messages. The run records the
+    // device that asked (spec 012: "Started by <device name>").
+    const device = ctx.actor().device
     ctx.turn.runStarted = true
     const started = await attempt(
-      runs.start({ workflowId: ctx.workflowId, ...(trigger ? { trigger } : {}) }, "chat"),
+      runs.start({ workflowId: ctx.workflowId, ...(trigger ? { trigger } : {}) }, "chat", device),
     )
     if (!started.ok) {
       ctx.turn.runStarted = false
@@ -1029,7 +1175,7 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
         kind: "run",
         decidedBy: "level",
         result: "ran",
-        device: null,
+        device,
         target,
       },
     }
@@ -1040,7 +1186,15 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
     a: Record<string, unknown>,
   ): Promise<AssistantResult> => {
     const all = (await Effect.runPromise(facts.runs(ctx.workflowId))).filter((r) => r.active)
-    if (all.length === 0) return say("No run works or waits. Nothing was stopped. Tell the user.")
+    // Nothing stopped: the card must not say "Stopped a run".
+    if (all.length === 0)
+      return {
+        outcome: {
+          output: "No run works or waits. Nothing was stopped. Tell the user.",
+          failed: false,
+          notRun: true,
+        },
+      }
     const want = typeof a.run === "string" ? a.run.trim() : ""
     const hit =
       want === ""

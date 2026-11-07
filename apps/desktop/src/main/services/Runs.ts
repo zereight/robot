@@ -79,7 +79,12 @@ export const runClock = {
 
 export interface RunsService {
   /** Starts a run by hand. The run works on and the call returns at once (spec 010). */
-  readonly start: (input: RunStart, source?: "hand" | "chat") => Effect.Effect<RunSummary, AppError>
+  readonly start: (
+    input: RunStart,
+    source?: "hand" | "chat",
+    /** The linked device that started the run: "Started by <device>" (spec 012). */
+    device?: string | null,
+  ) => Effect.Effect<RunSummary, AppError>
   /** Stops a run: its tasks are cancelled and a card that waits goes away (spec 005). */
   readonly stop: (runId: string) => Effect.Effect<void, AppError>
   readonly list: (workflowId: string) => Effect.Effect<readonly RunSummary[]>
@@ -1153,7 +1158,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           })
       }
 
-      const start = (input: RunStart, source: "hand" | "chat" = "hand") =>
+      const start = (
+        input: RunStart,
+        source: "hand" | "chat" = "hand",
+        device: string | null = null,
+      ) =>
         Effect.gen(function* () {
           const detail = yield* workflows.get(input.workflowId)
           const nodes = detail.graph.nodes
@@ -1172,13 +1181,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const id = randomUUID()
           const waits = busy.has(input.workflowId)
           db.run(
-            `INSERT INTO run (id, workflow_id, state, source, trigger_text, started_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.workflowId,
             waits ? "queued" : "running",
             source,
             input.trigger ?? "",
+            device,
             Date.now(),
           )
           changed(input.workflowId, id)

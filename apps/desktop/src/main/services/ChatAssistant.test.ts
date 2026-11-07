@@ -2,12 +2,15 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { ChatPart, WorkflowChatMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
+import { runRequest } from "../rpc.ts"
 import { Cards } from "./Cards.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
+import { Devices } from "./Devices.ts"
 import { Providers } from "./Providers.ts"
 import { Runs, runClock } from "./Runs.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -236,5 +239,235 @@ describe("the tools of the chat (spec 010, 'Assistant')", () => {
       ),
     )
     expect(rows).toEqual([{ kind: "change", decided_by: "level", result: "ran" }])
+  })
+})
+
+// A linked client reaches the chat through the handlers of the link (spec 012). The chat changes
+// the graph for a client only when the server lets that client change workflows.
+describe("the chat for a linked client (spec 012, 'No switch')", () => {
+  const link = async (t: Awaited<ReturnType<typeof setup>>, id: string, canChange: boolean) => {
+    await t.sql(
+      "INSERT INTO device_link (id, name, kind, public_key, inbound, position, created_at, can_change) VALUES (?, ?, 'phone', '', 1, ?, 0, ?)",
+      id,
+      id,
+      id.length,
+      canChange ? 1 : 0,
+    )
+  }
+  const asDevice = (t: Awaited<ReturnType<typeof setup>>, id: string) => (text: string) =>
+    runRequest(t.runtime, "chat.send", { workflowId: t.flow.id, text }, { id, name: id })
+  const server = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(Devices.use((d) => Effect.sync(() => d.deviceName())))
+  const notes = async (t: Awaited<ReturnType<typeof setup>>) =>
+    (await t.reply()).parts.filter((p) => p.kind === "note")
+  const lastVersion = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.get<{ source: string; device: string | null }>(
+            "SELECT source, device FROM workflow_version WHERE workflow_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            t.flow.id,
+          ),
+        ),
+      ),
+    )
+  /** The card of a tool in the last reply of the assistant (a joined message may follow it). */
+  const card = async (t: Awaited<ReturnType<typeof setup>>, name: string) =>
+    (await t.history()).messages
+      .filter((m) => m.author === "assistant")
+      .at(-1)
+      ?.parts.find(
+        (p): p is Extract<ChatPart, { kind: "tool" }> => p.kind === "tool" && p.name === name,
+      )
+  const ADD = 'tool add_node {"kind":"text","name":"Send","prompt":"Send the report."}'
+
+  test("a client without the switch asks the chat to add a node: not allowed, the graph does not change", async () => {
+    const t = await setup()
+    await link(t, "phone", false)
+    const sent = await asDevice(t, "phone")(ADD)
+    expect(sent.ok).toBe(true)
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await t.versions()).filter((v) => v.source === "chat")).toHaveLength(0)
+    const shown = await card(t, "add_node")
+    expect(shown).toMatchObject({ state: "failed", notRun: true })
+    expect(shown?.output).toContain("Not allowed")
+    expect(await notes(t)).toEqual([{ kind: "note", note: "not_allowed", server: await server(t) }])
+    // The user at the server sees the refusal in the action log, with the name of the device.
+    const log = await t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.all<{ kind: string; result: string; device: string | null; target: string }>(
+            "SELECT kind, result, device, target FROM action_log WHERE workflow_id = ?",
+            t.flow.id,
+          ),
+        ),
+      ),
+    )
+    expect(log).toEqual([
+      { kind: "change", result: "refused", device: "phone", target: "Add a node" },
+    ])
+  })
+
+  test("every changing tool is refused for a client without the switch", async () => {
+    const t = await setup()
+    await link(t, "phone", false)
+    const send = asDevice(t, "phone")
+    for (const message of [
+      'tool edit_node {"node":1,"prompt":"x"}',
+      'tool remove_node {"node":2}',
+      'tool add_connection {"from":2,"to":1}',
+      'tool remove_connection {"from":1,"to":2}',
+    ]) {
+      await send(message)
+      await t.idle()
+      expect(JSON.stringify((await t.reply()).parts)).toContain("Not allowed")
+    }
+    expect((await t.versions()).filter((v) => v.source === "chat")).toHaveLength(0)
+    expect((await t.graph()).nodes.map((n) => n.name)).toEqual(["Fetch", "Write"])
+  })
+
+  test("a client with the switch changes the graph, and the version names the client", async () => {
+    const t = await setup()
+    await link(t, "tablet", true)
+    await asDevice(t, "tablet")(ADD)
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(3)
+    expect((await card(t, "add_node"))?.state).toBe("done")
+    expect(await lastVersion(t)).toEqual({ source: "chat", device: "tablet" })
+  })
+
+  test("the window of the server needs no switch", async () => {
+    const t = await setup()
+    await t.send(ADD)
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(3)
+    expect(await lastVersion(t)).toEqual({ source: "chat", device: null })
+  })
+
+  test("a run that a client starts through the chat needs no switch and names the client", async () => {
+    const t = await setup()
+    await t.sql("UPDATE workflow_node SET prompt = 'slow' WHERE number = 1")
+    await link(t, "phone", false)
+    await asDevice(t, "phone")("tool start_run {}")
+    await t.idle()
+    expect((await t.tool("start_run"))?.state).toBe("done")
+    const started = await t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.get<{ source: string; device: string | null }>(
+            "SELECT source, device FROM run WHERE workflow_id = ?",
+            t.flow.id,
+          ),
+        ),
+      ),
+    )
+    expect(started).toEqual({ source: "chat", device: "phone" })
+    await asDevice(t, "phone")("tool stop_run {}")
+    await t.idle()
+    expect((await t.tool("stop_run"))?.output).toContain("stopped")
+  })
+
+  test("the switch is turned off while the turn works: the next change is refused", async () => {
+    const t = await setup()
+    await link(t, "phone", true)
+    await asDevice(t, "phone")(`tool-hold ${ADD.slice(5)}`)
+    await until(() => mock.held() === 1)
+    await t.run(Devices.use((d) => d.setCanChange("phone", false)))
+    mock.release()
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await card(t, "add_node"))?.output).toContain("Not allowed")
+  })
+
+  test("a device that is not linked any more has no switch: the change is refused", async () => {
+    const t = await setup()
+    await link(t, "phone", true)
+    await asDevice(t, "phone")(`tool-hold ${ADD.slice(5)}`)
+    await until(() => mock.held() === 1)
+    await t.sql("DELETE FROM device_link WHERE id = 'phone'")
+    mock.release()
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await card(t, "add_node"))?.output).toContain("Not allowed")
+  })
+
+  test("a turn that joins a message of the window and one of a client without the switch: the weakest wins", async () => {
+    const t = await setup()
+    await link(t, "phone", false)
+    // The window starts the turn, the client joins it.
+    await t.send(`tool-hold ${ADD.slice(5)}`)
+    await until(() => mock.held() === 1)
+    await asDevice(t, "phone")("please also tidy up")
+    mock.release()
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await card(t, "add_node"))?.output).toContain("Not allowed")
+  })
+
+  test("the client starts the turn and the window joins it: the weakest wins as well", async () => {
+    const t = await setup()
+    await link(t, "phone", false)
+    await asDevice(t, "phone")(`tool-hold ${ADD.slice(5)}`)
+    await until(() => mock.held() === 1)
+    await t.send("and do it now")
+    mock.release()
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await card(t, "add_node"))?.output).toContain("Not allowed")
+  })
+
+  test("a message that waits in the queue keeps its sender: the turn for it is the turn of the client", async () => {
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ duringTurn: "queue" })))
+    await link(t, "phone", false)
+    await t.send("tool-hold read_workflow {}")
+    await until(() => mock.held() === 1)
+    await asDevice(t, "phone")(ADD)
+    mock.release()
+    await t.idle()
+    await until(async () => (await t.history()).queue.length === 0 && !(await t.history()).working)
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await card(t, "add_node"))?.output).toContain("Not allowed")
+  })
+
+  test("a client with the switch and the window together: the change saves and names the client", async () => {
+    const t = await setup()
+    await link(t, "tablet", true)
+    await t.send(`tool-hold ${ADD.slice(5)}`)
+    await until(() => mock.held() === 1)
+    await asDevice(t, "tablet")("go on")
+    mock.release()
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(3)
+    expect(await lastVersion(t)).toEqual({ source: "chat", device: "tablet" })
+  })
+
+  test("a client without the switch can still read and ask: the chat answers", async () => {
+    const t = await setup()
+    await link(t, "phone", false)
+    await asDevice(t, "phone")("tool read_workflow {}")
+    await t.idle()
+    expect((await t.tool("read_workflow"))?.state).toBe("done")
+  })
+
+  test("a retry keeps the sender: the turn after a retry is still the turn of the client", async () => {
+    const t = await setup()
+    await link(t, "phone", false)
+    await asDevice(t, "phone")(ADD)
+    await t.idle()
+    // The reply is marked as failed, as a failed request would leave it. The retry asks again.
+    await t.sql(
+      "UPDATE chat_message SET status = 'failed', error_code = 'x' WHERE author = 'assistant'",
+    )
+    await runRequest(
+      t.runtime,
+      "chat.retry",
+      { workflowId: t.flow.id },
+      { id: "phone", name: "phone" },
+    )
+    await t.idle()
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await card(t, "add_node"))?.output).toContain("Not allowed")
   })
 })
