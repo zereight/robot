@@ -18,6 +18,7 @@ import { openImprovement } from "../state/improve.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import improve from "./improve.module.css"
 import { showsProposals } from "./improveView.ts"
@@ -33,6 +34,9 @@ const Badge = (props: { state: string; testId: string }) => {
   const { t } = useApp()
   return (
     <span class={styles.badge} data-state={props.state} data-testid={props.testId}>
+      <Show when={props.state === "running"}>
+        <Spinner />
+      </Show>
       {t(stateWord(props.state))}
     </span>
   )

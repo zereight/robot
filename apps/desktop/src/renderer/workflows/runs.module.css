@@ -69,6 +69,9 @@
 }
 
 .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
   padding: 1px var(--spacing-sm);
   border-radius: 999px;
   background: var(--c-selected);

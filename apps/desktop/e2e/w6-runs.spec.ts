@@ -210,6 +210,20 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await expect(page.getByTestId("run-state")).toHaveText("Waiting for you")
   await expect(page.getByTestId("run-node-reason-1")).toContainText("Waits for your approval")
   await shot(page, "w6-07-approval-card")
+  // The run waits for the user: no work runs, so no spinner turns at the chat head, on the canvas
+  // or on the card of the list (specs/039). The editor stays read-only.
+  await expect(page.getByTestId("chat-spinner")).toHaveCount(0)
+  await expect(page.getByTestId("run-node-state-1")).toHaveText("Waiting for you")
+  await page.getByTestId("tab-graph").click()
+  await expect(page.getByTestId("graph-node-running")).toHaveCount(0)
+  await page.getByTestId("workflow-back").click()
+  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-card-spinner")).toHaveCount(0)
+  await page.getByTestId("workflow-open").click()
+  await expect(page.getByTestId("chat-spinner")).toHaveCount(0)
+  await page.getByTestId("tab-runs").click()
+  await page.getByTestId("runs-list").locator("button").first().click()
+  await expect(page.getByTestId("run-state")).toHaveText("Waiting for you")
   await card.getByTestId("card-allow").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-node-result-1")).toContainText("card-ok")
@@ -223,6 +237,64 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-node-result-1")).not.toContainText("card-ok")
   await expect(page.getByTestId("card-answered").last()).toContainText("Denied")
+  await app.close()
+  await mock.close()
+})
+
+test("run: the card of the list keeps no spinner while the run waits for a card and turns again after the answer", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(undefined, env)
+  await newWorkflow(page, "Approvals")
+  const workflowId = await buildFlow(page, {
+    provider: { openaiUrl: mock.openaiUrl, key: GOOD_KEY },
+    level: "ask_all",
+    nodes: [
+      { name: "Shell", prompt: 'tool run_command {"command":"echo list-ok"}' },
+      { name: "Work", prompt: "[[hang]]" },
+    ],
+    edges: [[0, 1]],
+  })
+  // Stay on the list: the page never opens the workflow (specs/039).
+  await page.getByTestId("workflow-back").click()
+  const spinner = page.getByTestId("workflow-card-spinner")
+  await expect(page.getByTestId("workflow-row")).toBeVisible()
+  await expect(spinner).toHaveCount(0)
+  const { cardId } = await page.evaluate(
+    async ({ workflowId }) => {
+      type Invoke = (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }>
+      const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+      const started = await invoke("runs.start", { workflowId })
+      if (!started.ok) throw new Error(JSON.stringify(started))
+      const end = Date.now() + 10000
+      while (Date.now() < end) {
+        const history = await invoke("chat.history", { workflowId })
+        const card = (
+          history.value as { cards: { id: string; kind: string; answeredAt: number | null }[] }
+        ).cards.find((c) => c.kind === "approval" && c.answeredAt === null)
+        if (card) return { cardId: card.id }
+        await new Promise((r) => setTimeout(r, 50))
+      }
+      throw new Error("no card")
+    },
+    { workflowId },
+  )
+  // The run waits for the user: the card of the list stops turning.
+  await expect(spinner).toHaveCount(0)
+  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  // The answer: the second node works, so the spinner comes back.
+  await page.evaluate(
+    async ({ cardId }) => {
+      type Invoke = (m: string, i?: unknown) => Promise<{ ok: boolean }>
+      const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+      const r = await invoke("cards.answer", {
+        cardId,
+        answer: { kind: "approval", answer: "allow" },
+      })
+      if (!r.ok) throw new Error(JSON.stringify(r))
+    },
+    { cardId },
+  )
+  await expect(spinner).toHaveCount(1)
   await app.close()
   await mock.close()
 })

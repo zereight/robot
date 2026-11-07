@@ -460,7 +460,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           runId,
         )
         changed(r.workflow_id, runId)
-        if (finished) workflowsChanged(r.workflow_id)
+        // The working mark of the workflow follows the run state (spec 039): tell the lists
+        // when the state moves, never for a write that changes nothing.
+        if (finished || r.state !== state) workflowsChanged(r.workflow_id)
       }
 
       // --- the engine -----------------------------------------------------------------------

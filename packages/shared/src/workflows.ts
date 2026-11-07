@@ -59,6 +59,12 @@ export interface Workflow {
   readonly nodeCount: number
   /** True while a run works or waits. The editor is read-only then (spec 010, "Rules"). */
   readonly running: boolean
+  /**
+   * True while a task of a run really works. A run that only waits for the user or in the queue
+   * keeps `running` true (the editor stays read-only) but not `working`: the spinners of the card
+   * and of the chat follow `working` (specs/039: a spinner ends when the work ends).
+   */
+  readonly working: boolean
   /** The last run, or null when the workflow never ran. */
   readonly lastRun: LastRun | null
   /** The state of the check of the graph as it is now (spec 010, "Check"). */

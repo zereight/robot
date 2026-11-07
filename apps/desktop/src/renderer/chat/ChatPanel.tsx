@@ -24,6 +24,7 @@ import { outsideText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
 import { Composer } from "./Composer.tsx"
@@ -65,6 +66,7 @@ const WorkingLine = (props: { since: number }) => {
  * one. The list is read when the chat opens and when an account changes, not for every message.
  */
 const AnswerHeader = (props: {
+  running: boolean
   workflowId: string
   answer: ChatAnswer
   unsafeAccount: string | null
@@ -107,6 +109,9 @@ const AnswerHeader = (props: {
   return (
     <>
       <div class={styles.head}>
+        <Show when={props.running}>
+          <Spinner testId="chat-spinner" label={t("workflows.run.state.running")} />
+        </Show>
         <label for="chat-model">{t("chat.model.label")}</label>
         <select
           id="chat-model"
@@ -198,7 +203,11 @@ const MarksLine = (props: { workflowId: string; marks: ChatMarks }) => {
 }
 
 /** The chat of a workflow, beside its canvas (spec 001, 003). */
-export const ChatPanel = (props: { workflowId: string }) => {
+export const ChatPanel = (props: {
+  workflowId: string
+  /** True while a run of the workflow is not final: the head shows a spinner (specs/039). */
+  running?: boolean
+}) => {
   const { t, locale } = useApp()
   const { history, error } = createChatState(() => props.workflowId)
   const [replyTo, setReplyTo] = createSignal<WorkflowChatMessage>()
@@ -406,6 +415,7 @@ export const ChatPanel = (props: { workflowId: string }) => {
             <Show when={h().answer}>
               {(answer) => (
                 <AnswerHeader
+                  running={props.running === true}
                   workflowId={props.workflowId}
                   answer={answer()}
                   unsafeAccount={h().unsafeAccount}

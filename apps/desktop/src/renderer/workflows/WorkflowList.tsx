@@ -9,6 +9,7 @@ import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { Spinner } from "../ui/Spinner.tsx"
 import { showsProposals } from "./improveView.ts"
 import { checkStateKey, runStateKey } from "./labels.ts"
 import { NewWorkflowDialog } from "./NewWorkflowDialog.tsx"
@@ -36,6 +37,9 @@ const Card = (props: { flow: Workflow }) => {
           onClick={() => ui.selectPlace({ kind: "workflow", id: props.flow.id })}
         >
           <span class={styles.name}>{props.flow.name}</span>
+          <Show when={props.flow.working}>
+            <Spinner testId="workflow-card-spinner" />
+          </Show>
         </button>
         <IconButton
           label={t("workflows.delete")}
