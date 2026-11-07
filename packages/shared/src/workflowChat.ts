@@ -1,4 +1,6 @@
 import { Schema } from "effect"
+import type { OutsideSource } from "./outside.ts"
+import type { ChatMarks, RunCard } from "./runs.ts"
 
 /** The limits of the message box (spec 003). */
 export const CHAT_MESSAGE_MAX = 100_000
@@ -115,6 +117,13 @@ export interface WorkflowChatHistory {
    * replaces it), and when no other account is left. `null` otherwise.
    */
   readonly unsafeAccount: string | null
+  /**
+   * The cards that wait for the user, and the cards that the user answered lately: the approval
+   * cards, the question cards and the picks of decision nodes (spec 003, flow 6; spec 007).
+   */
+  readonly cards: readonly RunCard[]
+  /** The marks of the chat: outside content and a sensitive read (spec 007, "The mark of a place"). */
+  readonly marks: ChatMarks
 }
 
 export const WorkflowChatSend = Schema.Struct({
@@ -200,6 +209,10 @@ export interface RunNodeFact {
     readonly options: readonly { readonly label: string; readonly probability: number }[]
     readonly taken: string | null
   } | null
+  /** The first source of outside content that the task of the node held (spec 007), or none. */
+  readonly outside: OutsideSource | null
+  /** True when the task held the program mark (spec 007). */
+  readonly program: boolean
 }
 
 export interface RunFact {

@@ -448,4 +448,33 @@ export const migrations: readonly string[] = [
     effort TEXT
   );
   `,
+  `
+  -- The engine of the runs (spec 010, 005, 007).
+  -- A run keeps the code of its reason, so the window can translate it.
+  ALTER TABLE run ADD COLUMN reason_code TEXT;
+  -- A task keeps the marks of outside content, of the program and of a sensitive read (spec 007),
+  -- and the number of its steps (spec 005, "Limits of a task").
+  ALTER TABLE task ADD COLUMN outside_mark TEXT;
+  ALTER TABLE task ADD COLUMN program_mark INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE task ADD COLUMN sensitive_mark TEXT;
+  ALTER TABLE task ADD COLUMN steps INTEGER NOT NULL DEFAULT 0;
+  -- The numbers of the text nodes that got a feedback with their input, as JSON.
+  ALTER TABLE run_feedback ADD COLUMN nodes TEXT NOT NULL DEFAULT '[]';
+  -- A card in the chat that waits for the user, or that the user answered (spec 003, 007). A card of
+  -- a node has a task; a card of a turn of the chat (guarded feedback) has none.
+  CREATE TABLE task_card (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    run_id TEXT REFERENCES run (id) ON DELETE CASCADE,
+    task_id TEXT REFERENCES task (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    -- The data of the card as JSON: summary, step, choices, options, marks.
+    payload TEXT NOT NULL,
+    answer TEXT,
+    answered_in_chat INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    answered_at INTEGER
+  );
+  CREATE INDEX task_card_workflow ON task_card (workflow_id, created_at);
+  `,
 ]

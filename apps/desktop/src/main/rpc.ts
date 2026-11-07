@@ -31,6 +31,7 @@ import { ActionLog } from "./services/ActionLog.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
+import { Cards } from "./services/Cards.ts"
 import { Chat } from "./services/Chat.ts"
 import { Connections } from "./services/Connections.ts"
 import { Decision } from "./services/Decision.ts"
@@ -40,6 +41,7 @@ import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Rules } from "./services/Rules.ts"
+import { Runs } from "./services/Runs.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Servers } from "./services/Servers.ts"
@@ -654,6 +656,48 @@ export const handlers: Handlers = {
       Schema.Struct({ workflowId: Schema.String, mode: Schema.Literals(["continue", "again"]) }),
     )(input).pipe(
       Effect.flatMap(({ workflowId, mode }) => Chat.use((c) => c.resume(workflowId, mode))),
+      done,
+    ),
+  "chat.clearMarks": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.clearMarks(workflowId))),
+      done,
+    ),
+  "runs.start": (input) =>
+    decode(
+      Schema.Struct({
+        workflowId: Schema.String,
+        trigger: Schema.optionalKey(Schema.String),
+      }),
+    )(input).pipe(Effect.flatMap((v) => Runs.use((r) => r.start(v)))),
+  "runs.stop": (input) =>
+    decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ runId }) => Runs.use((r) => r.stop(runId))),
+      done,
+    ),
+  "runs.list": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Runs.use((r) => r.list(workflowId))),
+    ),
+  "runs.get": (input) =>
+    decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ runId }) => Runs.use((r) => r.get(runId))),
+    ),
+  "cards.answer": (input) =>
+    decode(
+      Schema.Struct({
+        cardId: Schema.String,
+        answer: Schema.Union([
+          Schema.Struct({
+            kind: Schema.Literal("approval"),
+            answer: Schema.Literals(["allow", "always", "deny"]),
+          }),
+          Schema.Struct({ kind: Schema.Literal("question"), text: Schema.String }),
+          Schema.Struct({ kind: Schema.Literal("pick"), optionId: Schema.String }),
+        ]),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ cardId, answer }) => Cards.use((c) => c.answer(cardId, answer))),
       done,
     ),
   "workflows.delete": (input) =>

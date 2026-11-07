@@ -43,10 +43,16 @@ const text = (content: unknown) =>
  * A stand-in for an OpenAI-compatible provider. What it answers depends on the last message:
  * - `slow`: 60 words, one every 50 ms, so a test can stop the reply;
  * - `tool <name> <json>`: one call of that tool; after the tool result it says "Tool said: ...";
+ * - `tools <n> <name> <json>`: the same call n times in a row, then "Tool said: ...";
+ * - `[[fail]]`: a server error, always. `[[flaky]]`: a server error for the first two requests with the
+ *   same last message, then the normal answer;
+ * - `[[hang]]`: no answer at all, until the app closes the request;
+ * - `[[blocked]]`: a reply whose last line is "Blocked: ...";
  * - anything else: "You said: <message>".
  */
 export const startMockProvider = async (): Promise<MockProvider> => {
   const requests: RecordedRequest[] = []
+  const flaky = new Map<string, number>()
   const server: Server = createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) {
       res.writeHead(401, { "content-type": "application/json" })
@@ -63,6 +69,17 @@ export const startMockProvider = async (): Promise<MockProvider> => {
       requests.push({ path: req.url, body })
       const last = body.messages.at(-1)
       const said = text(last?.content)
+      if (said.includes("[[fail]]") || (said.includes("[[flaky]]") && (flaky.get(said) ?? 0) < 2)) {
+        if (said.includes("[[flaky]]")) flaky.set(said, (flaky.get(said) ?? 0) + 1)
+        res.writeHead(500, { "content-type": "application/json" })
+        res.end(JSON.stringify({ error: { message: "mock failure" } }))
+        return
+      }
+      if (said.includes("[[hang]]")) {
+        res.writeHead(200, { "content-type": "text/event-stream" })
+        res.on("close", () => {})
+        return
+      }
       res.writeHead(200, { "content-type": "text/event-stream" })
       const send = (delta: object) =>
         res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`)
@@ -72,6 +89,25 @@ export const startMockProvider = async (): Promise<MockProvider> => {
         )
         res.write("data: [DONE]\n\n")
         res.end()
+      }
+      const first = body.messages.find((m) => m.role === "user")
+      const firstSaid = text(first?.content)
+      const many = /^tools (\d+) (\w+)\s*(.*)$/s.exec(firstSaid)
+      if (many) {
+        const done = body.messages.filter((m) => m.role === "tool").length
+        if (done < Number(many[1])) {
+          send({
+            tool_calls: [
+              {
+                index: 0,
+                id: `call-${requests.length}`,
+                function: { name: many[2], arguments: many[3] || "{}" },
+              },
+            ],
+          })
+        } else send({ content: `Tool said: ${said}` })
+        finish()
+        return
       }
       if (last?.role === "tool") {
         send({ content: `Tool said: ${said}` })
@@ -89,6 +125,11 @@ export const startMockProvider = async (): Promise<MockProvider> => {
             },
           ],
         })
+        finish()
+        return
+      }
+      if (said.includes("[[blocked]]")) {
+        send({ content: "I tried.\nBlocked: the file is missing" })
         finish()
         return
       }

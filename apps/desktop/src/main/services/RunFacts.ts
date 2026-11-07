@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto"
-import type { RunFact, RunNodeFact, RunNodeState } from "@robot/shared"
+import {
+  parseOutsideSource,
+  type RunFact,
+  type RunNodeFact,
+  type RunNodeState,
+} from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { AppError } from "./errors.ts"
@@ -67,6 +72,8 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
         result: string
         decision: string | null
         option_id: string | null
+        outside_mark: string | null
+        program_mark: number
       }
       interface NodeRow {
         id: string
@@ -127,7 +134,17 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
           if (!task) {
             // A node with no task of a run that ended with success was not on the path: skipped.
             const state: RunNodeState = ended && run.state === "done" ? "skipped" : "not_reached"
-            return { number, name, kind, state, reason: null, result: null, decision: null }
+            return {
+              number,
+              name,
+              kind,
+              state,
+              reason: null,
+              result: null,
+              decision: null,
+              outside: null,
+              program: false,
+            }
           }
           const finished = ["done", "failed", "blocked", "cancelled"].includes(task.state)
           let decision: RunNodeFact["decision"] = null
@@ -158,6 +175,8 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
             reason: reasonOf(task),
             result: finished && task.result !== "" ? task.result : null,
             decision,
+            outside: parseOutsideSource(task.outside_mark),
+            program: task.program_mark === 1,
           }
         }
         for (const n of nodes) {
@@ -214,8 +233,8 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
               )
               .map((n) => n.number)
             db.run(
-              `INSERT INTO run_feedback (id, run_id, workflow_id, node_number, text, message_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO run_feedback (id, run_id, workflow_id, node_number, text, message_id, created_at, nodes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
               randomUUID(),
               run.id,
               run.workflow_id,
@@ -223,6 +242,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
               input.text,
               input.messageId,
               Date.now(),
+              JSON.stringify(nodes),
             )
             return { nodes }
           }),

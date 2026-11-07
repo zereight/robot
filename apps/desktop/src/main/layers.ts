@@ -3,6 +3,7 @@ import { Layer } from "effect"
 import type { OpenSocket } from "./link/nearby.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
+import { Cards } from "./services/Cards.ts"
 import { Chat } from "./services/Chat.ts"
 import { Connections, type ConnectionsOptions } from "./services/Connections.ts"
 import { Database } from "./services/Database.ts"
@@ -14,6 +15,7 @@ import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Rules } from "./services/Rules.ts"
 import { RunFacts } from "./services/RunFacts.ts"
+import { Runs } from "./services/Runs.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import type { Secrets } from "./services/Secrets.ts"
@@ -78,7 +80,9 @@ export const appLayer = (options: AppLayerOptions) => {
   const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(rules))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(connections))
   const runFacts = RunFacts.layer.pipe(Layer.provideMerge(workflows))
-  const chat = Chat.layer.pipe(Layer.provideMerge(runFacts))
+  const cards = Cards.layer.pipe(Layer.provideMerge(runFacts))
+  const runs = Runs.layer.pipe(Layer.provideMerge(cards))
+  const chat = Chat.layer.pipe(Layer.provideMerge(runs))
   return BrowserProfiles.layer.pipe(Layer.provideMerge(chat))
 }
 

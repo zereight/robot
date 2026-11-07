@@ -6,13 +6,20 @@ import {
   CHAT_ATTACH_MAX,
   CHAT_QUEUE_MAX,
   type ChatAnswer,
+  type ChatMarks,
   type ChatNotice,
   type ChatPart,
   type ChatStatus,
   chatFiles,
   chatText,
+  guardVerdict,
+  isOutsideSource,
+  type OutsideSource,
+  type PermissionLevel,
   type QueuedChatMessage,
+  type RunFact,
   resolveLocale,
+  type SensitiveLabel,
   translate,
   type WorkflowChatHistory,
   type WorkflowChatMessage,
@@ -24,6 +31,8 @@ import type { ToolCall } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { chatMayUse } from "../runtimes/driver.ts"
+import { ActionLog } from "./ActionLog.ts"
+import { Cards } from "./Cards.ts"
 import { chatDir } from "./chatDir.ts"
 import { chatSystem, FEEDBACK_TOOL } from "./chatPrompt.ts"
 import { Database } from "./Database.ts"
@@ -71,6 +80,8 @@ export interface ChatService {
   readonly sendNow: (messageId: string) => Effect.Effect<void, AppError>
   /** Retry on a failed reply: asks again with the same conversation. */
   readonly retry: (workflowId: string) => Effect.Effect<void, AppError>
+  /** The user clears the marks of the chat: outside content and sensitive read (spec 007). */
+  readonly clearMarks: (workflowId: string) => Effect.Effect<void, AppError>
   /** The two buttons of the notice after a restart (spec 003, "Rules"). */
   readonly resume: (workflowId: string, mode: "continue" | "again") => Effect.Effect<void, AppError>
 }
@@ -112,6 +123,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const skills = yield* Skills
       const settings = yield* SettingsStore
       const facts = yield* RunFacts
+      const cards = yield* Cards
+      const actionLog = yield* ActionLog
 
       // A reply that was streaming when the app closed is marked as stopped (spec 003, "Rules").
       db.run(
@@ -343,6 +356,58 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return { messageId: last.id, notSent: !reached }
       }
 
+      // --- the marks of the chat (spec 007, "The mark of a place") ----------------------------
+
+      const readMarks = (workflowId: string): ChatMarks => {
+        const r = db.get<{ outside_mark: string | null; sensitive_mark: string | null }>(
+          "SELECT outside_mark, sensitive_mark FROM workflow WHERE id = ?",
+          workflowId,
+        )
+        let outside: OutsideSource | null = null
+        let program = false
+        if (r?.outside_mark) {
+          try {
+            const v = JSON.parse(r.outside_mark) as { source?: unknown; program?: unknown }
+            if (isOutsideSource(v.source)) outside = v.source
+            program = v.program === true
+          } catch {
+            // A mark that cannot be read counts as no mark.
+          }
+        }
+        return { outside, program, sensitive: (r?.sensitive_mark as SensitiveLabel | null) ?? null }
+      }
+
+      const writeMarks = (workflowId: string, marks: ChatMarks) => {
+        db.run(
+          "UPDATE workflow SET outside_mark = ?, sensitive_mark = ? WHERE id = ?",
+          marks.outside || marks.program
+            ? JSON.stringify({ source: marks.outside, program: marks.program })
+            : null,
+          marks.sensitive,
+          workflowId,
+        )
+        emitState(workflowId)
+      }
+
+      /**
+       * A turn of the chat that reads the result of a task holds what the task held (spec 007). The
+       * mark stays until the user clears it.
+       */
+      const markFromRuns = (workflowId: string, runs: readonly RunFact[]): ChatMarks => {
+        const now = readMarks(workflowId)
+        let outside = now.outside
+        let program = now.program
+        for (const run of runs)
+          for (const n of run.nodes) {
+            if (n.result === null || n.result === "") continue
+            outside ??= n.outside
+            program ||= n.program
+          }
+        const next: ChatMarks = { outside, program, sensitive: now.sensitive }
+        if (outside !== now.outside || program !== now.program) writeMarks(workflowId, next)
+        return next
+      }
+
       const history = (workflowId: string) =>
         Effect.gen(function* () {
           const workflow = yield* findWorkflow(workflowId)
@@ -363,6 +428,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             block: model ? null : "no_provider",
             answer: yield* answerOf(model),
             unsafeAccount: skipped,
+            cards: cards.list(workflowId),
+            marks: readMarks(workflowId),
           } satisfies WorkflowChatHistory
         })
 
@@ -397,9 +464,35 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           workflowId,
         )?.id ?? null
 
+      /** Spaces and line breaks of a text count as one space, for the check of the words. */
+      const squash = (text: string) => text.replace(/\s+/g, " ").trim()
+
+      /**
+       * The words that the user typed in this turn (spec 003, "Feedback"; spec 007): the messages of
+       * the user since the last reply before this turn, and the messages that joined it. Quotes,
+       * skill texts and file names are not words of the user. A result, a page or a message from an
+       * outside program is never in this list.
+       */
+      const turnUserWords = (workflowId: string, w: Working): string[] => {
+        const rows = visibleRows(workflowId)
+        const at = rows.findIndex((r) => r.id === w.assistantId)
+        const words: string[] = []
+        for (let i = (at === -1 ? rows.length : at) - 1; i >= 0; i--) {
+          const r = rows[i]
+          if (!r || r.author === "assistant") break
+          if (r.author === "user") words.push(chatText(toMessage(r)))
+        }
+        for (const r of rows.slice(at === -1 ? rows.length : at + 1))
+          if (r.author === "user" && r.joined_to === w.assistantId)
+            words.push(chatText(toMessage(r)))
+        return words.filter((t) => t.trim() !== "")
+      }
+
       /** Adds feedback to a run when the model calls the tool (spec 003, "Feedback"). */
       const feedbackTool = async (
         workflowId: string,
+        w: Working,
+        level: PermissionLevel,
         call: ToolCall,
         parts: ChatPart[],
         touch: () => void,
@@ -413,6 +506,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
         const text = typeof input.text === "string" ? input.text.trim() : ""
         if (text === "") return { output: "Not added: the feedback text is empty.", failed: true }
+        // Guard (a): only the words of the user, copied exactly (spec 003, 007). The check is on the
+        // text itself, so a result, a page or a program cannot pass its own words as feedback.
+        const wanted = squash(text)
+        if (!turnUserWords(workflowId, w).some((t) => squash(t).includes(wanted)))
+          return {
+            output:
+              "Not added: the text is not in the words that the user wrote in this turn. Feedback must be copied exactly from the message of the user. Tell the user that the feedback was not added.",
+            failed: true,
+          }
         const runs = (await Effect.runPromise(facts.runs(workflowId))).filter((r) => r.active)
         if (runs.length === 0) {
           const last = (await Effect.runPromise(facts.runs(workflowId)))[0]
@@ -437,6 +539,54 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }
         const nodeNumber =
           typeof input.node === "number" && Number.isInteger(input.node) ? input.node : null
+        // Guard (b): feedback is a guarded step. In a turn that holds outside content it asks the
+        // user, with the full text; at "Full access" it asks only with the program mark.
+        const marks = readMarks(workflowId)
+        const logStep = (decidedBy: "level" | "user", result: "ran" | "refused" | "stopped") =>
+          actionLog.add({
+            workflowId,
+            kind: "feedback",
+            target: text,
+            decidedBy,
+            result,
+            taskId: null,
+            outside: marks.outside,
+            sensitive: marks.sensitive,
+          })
+        if (
+          guardVerdict({ level, outside: marks.outside !== null, program: marks.program }) === "ask"
+        ) {
+          let reply: Awaited<ReturnType<typeof cards.ask>>
+          try {
+            reply = await cards.ask({
+              workflowId,
+              runId: run.id,
+              taskId: null,
+              nodeNumber,
+              nodeName: null,
+              kind: "approval",
+              summary: text,
+              step: "feedback",
+              once: true,
+              outside: marks.outside,
+              scope: "turn",
+              sensitive: marks.sensitive,
+              signal: w.controller.signal,
+            })
+          } catch {
+            logStep("user", "stopped")
+            return { output: "Not added: the turn was stopped.", failed: true }
+          }
+          if (reply.answer === "deny") {
+            logStep("user", "refused")
+            return {
+              output:
+                "Not added: the user refused the feedback. Tell the user that the feedback was not added.",
+              failed: false,
+            }
+          }
+          logStep("user", "ran")
+        } else logStep("level", "ran")
         const exit = await Effect.runPromiseExit(
           facts.addFeedback({ runId: run.id, nodeNumber, text, messageId: lastUserId(workflowId) }),
         )
@@ -488,6 +638,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // shell and file tools of its own, so it answers in text only, outside the folder.
           const withTools = chatHasTools(model.accountId)
           const runs = await Effect.runPromise(facts.runs(workflowId))
+          // The results in the prompt are outside content: the chat takes their marks (spec 007).
+          markFromRuns(workflowId, runs)
           const turns = visibleRows(workflowId)
             .filter((r) => r.id !== w.assistantId && !(r.joined_to !== null && r.read_at === null))
             .map(toMessage)
@@ -529,7 +681,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               {
                 execute: async (call) => {
                   if (call.name === FEEDBACK_TOOL.name)
-                    return feedbackTool(workflowId, call, parts, touch)
+                    return feedbackTool(workflowId, w, workflow.permission, call, parts, touch)
                   return { output: `Unknown tool: ${call.name}`, failed: true }
                 },
                 approve: async () => false,
@@ -706,6 +858,27 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const workflow = yield* findWorkflow(input.workflowId)
           const model = yield* resolveModel(input.workflowId)
           if (!model) return yield* new AppError({ code: "provider_not_connected" })
+          // A question card of a task waits for an answer (spec 003): a message in the chat answers
+          // the oldest one, and no turn starts for it.
+          if (text !== "" && paths.length === 0 && !input.skillId && !input.replyTo) {
+            const id = randomUUID()
+            const open = cards.open(input.workflowId).some((c) => c.kind === "question")
+            if (open) {
+              insert({
+                id,
+                workflowId: input.workflowId,
+                author: "user",
+                parts: [{ kind: "text", text }],
+                status: "done",
+                replyTo: null,
+                joinedTo: null,
+              })
+              emitMessage(id)
+              cards.answerInChat(input.workflowId, text)
+              emitState(input.workflowId)
+              return toMessage(row(id) as MessageRow)
+            }
+          }
           const w = working.get(input.workflowId)
           const mode = (yield* settings.get).duringTurn
           if (w && mode === "queue") {
@@ -823,8 +996,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           yield* send({ workflowId, text: translate(locale, "chat.continue_text") })
         })
 
+      const clearMarks = (workflowId: string) =>
+        Effect.gen(function* () {
+          yield* findWorkflow(workflowId)
+          writeMarks(workflowId, { outside: null, program: false, sensitive: null })
+        })
+
       return Chat.of({
         history,
+        clearMarks,
         send,
         setModel,
         stop: (workflowId) =>

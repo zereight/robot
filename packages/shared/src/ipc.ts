@@ -18,6 +18,7 @@ import type {
   RuntimeTarget,
 } from "./providers.ts"
 import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
+import type { CardAnswer, RunDetail, RunStart, RunSummary } from "./runs.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
@@ -321,6 +322,18 @@ export interface RpcMethods {
   "chat.retry": { input: { workflowId: string }; output: undefined }
   /** The buttons of the notice after a restart: "Continue" and "Send again". */
   "chat.resume": { input: { workflowId: string; mode: "continue" | "again" }; output: undefined }
+  /** Removes the marks of the chat for the next turns, after a confirm in the window (spec 007). */
+  "chat.clearMarks": { input: { workflowId: string }; output: undefined }
+  /** Starts a run by hand (spec 010). The run works on, and the call returns at once. */
+  "runs.start": { input: RunStart; output: RunSummary }
+  /** Stops a run: its tasks are cancelled, a card that waits goes away (spec 005, 010). */
+  "runs.stop": { input: { runId: string }; output: undefined }
+  /** The runs of a workflow, newest first. */
+  "runs.list": { input: { workflowId: string }; output: readonly RunSummary[] }
+  /** One run with its nodes, tasks, results, feedback and usage. */
+  "runs.get": { input: { runId: string }; output: RunDetail }
+  /** Answers a card in the chat: Allow, Always allow or Deny, a question, or the pick of a decision. */
+  "cards.answer": { input: { cardId: string; answer: CardAnswer }; output: undefined }
   "decision.status": { input: undefined; output: DecisionStatus }
   /** Saves or removes the keys that the patch names; a key that is not named stays. */
   "decision.keys": { input: DecisionKeys; output: DecisionStatus }
@@ -369,6 +382,8 @@ export interface RpcEvents {
   /** A skill was made, turned on or off, or deleted. */
   "skills.changed": { serverId: string }
   "workflows.changed": { serverId: string }
+  /** A run, a task or a card of a workflow changed (spec 010, 005). */
+  "runs.changed": { workflowId: string; runId: string | null }
   /** A message of a chat was added or changed (spec 003). */
   "chat.message": { workflowId: string; message: WorkflowChatMessage }
   /** The queue, the notice or the working state of a chat changed: read the history again. */
