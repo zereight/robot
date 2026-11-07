@@ -179,6 +179,7 @@ describe("who may use the tools (spec 007, 'Who may use them'; spec 010)", () =>
       for (const name of [
         "list_workflows",
         "read_workflow",
+        "create_workflow",
         "add_node",
         "edit_node",
         "remove_node",
@@ -243,7 +244,56 @@ describe("reads (spec 010, 'Assistant')", () => {
     expect((await t.run(Workflows.use((w) => w.graph(other.id)))).nodes).toHaveLength(1)
     expect((await t.graph()).nodes.map((n) => n.name)).toContain("Mine")
   })
+})
 
+describe("making a workflow (spec 010, 'Assistant')", () => {
+  test("create_workflow makes one with the defaults, and the chat stays where it is", async () => {
+    const t = await setup()
+    const r = await t.call("create_workflow", { name: "Weekly" })
+    expect(r.outcome.failed).toBe(false)
+    expect(out(r)).toContain('Workflow "Weekly" was made')
+    expect(out(r)).toContain('This chat stays in "Report"')
+    const all = await t.run(Workflows.use((w) => w.list(t.server.id)))
+    const made = all.find((w) => w.name === "Weekly")
+    expect(made?.nodeCount).toBe(0)
+    const detail = await t.run(Workflows.use((w) => w.get(made?.id ?? "")))
+    expect(detail.permission).toBe("ask_risky")
+    expect(detail.document.length).toBeGreaterThan(0)
+  })
+
+  test("an empty name is refused, and a taken name is refused ignoring case", async () => {
+    const t = await setup()
+    const empty = await t.call("create_workflow", { name: "  " })
+    expect(empty.outcome.failed).toBe(true)
+    expect(out(empty)).toContain("the name is empty")
+    const taken = await t.call("create_workflow", { name: "report" })
+    expect(taken.outcome.failed).toBe(true)
+    expect(out(taken)).toContain("exists already")
+    const all = await t.run(Workflows.use((w) => w.list(t.server.id)))
+    expect(all).toHaveLength(1)
+  })
+
+  test("Read only refuses to make a workflow", async () => {
+    const t = await setup("read_only")
+    const r = await t.call("create_workflow", { name: "Weekly" })
+    expect(r.outcome.failed).toBe(true)
+    expect(out(r)).toContain("Read only")
+    const all = await t.run(Workflows.use((w) => w.list(t.server.id)))
+    expect(all).toHaveLength(1)
+  })
+
+  test("a linked device without the switch cannot make a workflow", async () => {
+    const t = await setup()
+    t.actAs({ mayChange: false, device: "Phone", server: "MacBook 2" })
+    const r = await t.call("create_workflow", { name: "Weekly" })
+    expect(r.outcome.failed).toBe(true)
+    expect(out(r)).toContain("does not let this device change workflows")
+    const all = await t.run(Workflows.use((w) => w.list(t.server.id)))
+    expect(all).toHaveLength(1)
+  })
+})
+
+describe("secrets are hidden", () => {
   test("secrets are hidden in what a tool gives back", async () => {
     const t = await setup()
     // A prompt can hold a secret that was written before the check of secrets existed.

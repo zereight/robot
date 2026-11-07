@@ -44,7 +44,8 @@ import type { WorkflowsService } from "./Workflows.ts"
  *
  * The rules, in the order that the code tests them:
  * 1. Only a turn that the user started in the chat may use them (`assistantGate`).
- * 2. A tool takes no id of a workflow. It works on the workflow of the chat. "List workflows" gives
+ * 2. A tool takes no id of a workflow. It works on the workflow of the chat, except
+ *    "create_workflow", which makes a new one on the same server. "List workflows" gives
  *    names and counts, never an id, a folder or a level.
  * 3. "Read only" refuses every change and the start of a run. Reads work at every level.
  * 4. A change is refused when the user changed the workflow after the turn last saw it, and while
@@ -113,6 +114,7 @@ export const newAssistantTurn = (origin: TurnOrigin, graph: WorkflowGraph): Assi
 
 export const LIST_WORKFLOWS_TOOL = "list_workflows"
 export const READ_WORKFLOW_TOOL = "read_workflow"
+export const CREATE_WORKFLOW_TOOL = "create_workflow"
 export const ADD_NODE_TOOL = "add_node"
 export const EDIT_NODE_TOOL = "edit_node"
 export const REMOVE_NODE_TOOL = "remove_node"
@@ -161,6 +163,18 @@ export const ASSISTANT_TOOL_DEFS: readonly ToolDef[] = [
     description:
       "Reads the graph of this workflow now: the nodes with their numbers, the connections and the triggers. Read it again after the user changed the workflow.",
     schema: { type: "object", properties: {} },
+  },
+  {
+    name: CREATE_WORKFLOW_TOOL,
+    description:
+      "Makes a new workflow with the name that the user gives. It has no node yet, the default responsible document and the default permission level. The chat stays in this workflow: tell the user to open the new one in the list.",
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The name of the new workflow." },
+      },
+      required: ["name"],
+    },
   },
   {
     name: ADD_NODE_TOOL,
@@ -773,6 +787,9 @@ const problemText = (problem: CheckProblem, graph: WorkflowGraph): string => {
 // --- the plain words of a failure of the app -------------------------------------------------
 
 const APP_ERRORS: Record<string, string> = {
+  workflow_name_empty: "The name is empty.",
+  workflow_name_taken:
+    "A workflow with this name exists already. Names ignore upper and lower case.",
   workflow_running: "A run works or waits, so the graph cannot change now.",
   workflow_not_found: "This workflow does not exist any more.",
   node_permission_looser: "A node cannot have a looser permission level than its workflow.",
@@ -834,6 +851,53 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
         ...lines,
       ].join("\n"),
     )
+  }
+
+  /** Makes a new workflow on this server. The chat stays in the open workflow (spec 010). */
+  const createWorkflow = async (
+    ctx: AssistantContext,
+    call: ToolCall,
+  ): Promise<AssistantResult> => {
+    const name = (text(parseArgs(call).name) ?? "").trim()
+    const target = assistantStepText(ctx.t, call.name, call.input, "wanted") ?? call.name
+    // Making a workflow is a change: it needs the switch of a linked device (spec 012).
+    const who = ctx.actor()
+    if (!who.mayChange) return notAllowed(who, target)
+    if (ctx.level === "read_only")
+      return {
+        outcome: {
+          output:
+            "Refused: the permission level of this workflow is Read only. Nothing was made. Tell the user.",
+          failed: true,
+          refused: "read_only",
+          notRun: true,
+        },
+        guarded: { kind: "change", decidedBy: "level", result: "refused", device: null, target },
+      }
+    if (name === "") return refused("Nothing was made: the name is empty. Ask the user for a name.")
+    const gate = await guard(ctx, "change", target, false, async () => ({ summary: target }))
+    if (gate.stop) return { ...gate.stop, ...(gate.guarded ? { guarded: gate.guarded } : {}) }
+    const after = ctx.actor()
+    if (!after.mayChange) return notAllowed(after, target)
+    if ((await levelNow(ctx)) === "read_only")
+      return refused(
+        "Refused: the permission level of this workflow is Read only now. Nothing was made. Tell the user.",
+      )
+    const own = await Effect.runPromise(workflows.get(ctx.workflowId))
+    const made = await attempt(workflows.create({ serverId: own.serverId, name }))
+    if (!made.ok) return refused(`Nothing was made: ${appError(made.error)} Tell the user why.`)
+    return {
+      ...say(
+        `Workflow "${escapeOutside(made.value.name)}" was made. It has no node yet. This chat stays in "${escapeOutside(own.name)}": tell the user to open the new workflow in the list.`,
+      ),
+      guarded: gate.guarded ?? {
+        kind: "change",
+        decidedBy: "level",
+        result: "ran",
+        device: after.device,
+        target,
+      },
+    }
   }
 
   const readWorkflow = async (ctx: AssistantContext): Promise<AssistantResult> => {
@@ -1228,6 +1292,8 @@ export const makeAssistantTools = (deps: AssistantDeps) => {
         return listWorkflows(ctx)
       case READ_WORKFLOW_TOOL:
         return readWorkflow(ctx)
+      case CREATE_WORKFLOW_TOOL:
+        return createWorkflow(ctx, call)
       case READ_RUN_TOOL:
         return readRun(ctx, a)
       case READ_RESULT_TOOL:

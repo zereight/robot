@@ -275,3 +275,38 @@ const outsideCard = async (locale: "en-US" | "ko-KR") => {
 test("the approval card shows the whole change, and a denied step is not shown as done", async () => {
   for (const locale of ["en-US", "ko-KR"] as const) await outsideCard(locale)
 })
+
+// Spec 010 ("Assistant"): the chat makes a new workflow with a name. The list shows it with 0
+// nodes, and the chat stays in the open workflow. A taken name is refused.
+const makeByChat = async (locale: "en-US" | "ko-KR") => {
+  const ko = locale === "ko-KR"
+  const open = ko ? "주간 보고" : "Weekly"
+  const made = ko ? "매일" : "Daily"
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: locale })
+  await newWorkflow(page, open)
+  await buildFlow(page, twoNodes(mock.openaiUrl))
+  await say(page, `tool create_workflow {"name":"${made}"}`)
+  const card = await details(page, 0)
+  await expect(card).toContainText(
+    ko ? `워크플로우 '${made}'을 만들었어요` : `Made workflow ${made}`,
+  )
+  await expect(card).toContainText("was made")
+  await expect(card).toContainText(`stays in "${open}"`)
+  await expect(page.getByTestId("workflow-row")).toHaveCount(2)
+  await expect(page.getByTestId("workflow-row").filter({ hasText: made })).toHaveCount(1)
+  await expect(page.getByTestId("workflow-header")).toContainText(open)
+  await shot(page, ko ? "b1-10-create-ko" : "b1-10-create")
+  // The same name again is refused, and the list does not grow.
+  await say(page, `tool create_workflow {"name":"${made}"}`)
+  const taken = await details(page, 1)
+  await expect(taken).toHaveAttribute("data-state", "failed")
+  await expect(taken).toContainText("exists already")
+  await expect(page.getByTestId("workflow-row")).toHaveCount(2)
+  await app.close()
+  await mock.close()
+}
+
+test("make a workflow by chat: the list shows it, and the chat stays where it is", async () => {
+  for (const locale of ["en-US", "ko-KR"] as const) await makeByChat(locale)
+})

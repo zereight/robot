@@ -65,6 +65,21 @@ describe("what the chat may change (spec 010, 012)", () => {
     expect(system).toContain("When the user asks for a change")
   })
 
+  test("with full rights the prompt names making a new workflow, and the chat stays", () => {
+    const system = chatSystem(base)
+    expect(system).toContain("call create_workflow")
+    expect(system).toContain("The chat stays in this workflow")
+  })
+
+  test("without rights the prompt forbids making a new workflow", () => {
+    const device = chatSystem({ ...base, cannotChange: { reason: "device", server: "Office" } })
+    expect(device).toContain("make a new workflow")
+    expect(device).not.toContain("call create_workflow")
+    const level = chatSystem({ ...base, cannotChange: { reason: "read_only" } })
+    expect(level).toContain("make a new workflow")
+    expect(level).not.toContain("call create_workflow")
+  })
+
   test("with the switch off the prompt does not deny a direct change of the graph", () => {
     const system = chatSystem({ ...base, may: { propose: false, memory: false } })
     expect(system).toContain("no tool to propose a change that waits for the user")
