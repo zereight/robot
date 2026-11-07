@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { ControlExpect } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
@@ -39,6 +40,10 @@ export interface FakeBrowserControl {
   goes?: string
   /** A select field: the options a choice may name. */
   options?: string[]
+  /** The tag of the element. Default: `a` for a link, `input` for a box, else `button`. */
+  tag?: string
+  /** A plain link, as the page proves it. Default: true for a link. */
+  plain?: boolean
 }
 
 /** What a test puts on a fake page before the agent acts: its controls, focus, errors, load. */
@@ -60,6 +65,8 @@ export interface FakeBrowserSeed {
   picture?: Uint8Array
   /** The page does not answer: the next action waits until the test calls the release. */
   hang?: boolean
+  /** A read or an inspect of the page fails with this reason, as a dead page does. */
+  fails?: string
 }
 
 /** A platform for unit tests: a temp data folder and a trash list. */
@@ -115,6 +122,7 @@ export const testPlatform = () => {
     audible: boolean
     picture: Uint8Array
     hang: boolean
+    fails: string | null
   }
   const browserSeeds = new Map<string, Seed>()
   const freshSeed = (): Seed => ({
@@ -129,6 +137,7 @@ export const testPlatform = () => {
     audible: false,
     picture: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
     hang: false,
+    fails: null,
   })
   const seedBrowserPage = (workflowId: string, seed: FakeBrowserSeed) => {
     browserSeeds.set(workflowId, {
@@ -144,6 +153,7 @@ export const testPlatform = () => {
       audible: seed.audible ?? false,
       picture: seed.picture ?? freshSeed().picture,
       hang: seed.hang ?? false,
+      fails: seed.fails ?? null,
     })
   }
   /** What a test may change on a page that is open. */
@@ -153,6 +163,7 @@ export const testPlatform = () => {
     let url = ""
     let dialog: BrowserDialog | null = null
     let chooser = false
+    let typed = ""
     let policy: NavigationPolicy | undefined
     let blocked: string[] = []
     const listeners: (() => void)[] = []
@@ -184,6 +195,17 @@ export const testPlatform = () => {
     const stall = async () => {
       if (!state().hang) return
       await new Promise<void>((resolve) => browserHang.set(workflowId, { release: resolve }))
+    }
+    const kindOf = (c: FakeBrowserControl) => ({
+      role: c.role,
+      label: c.label,
+      tag: c.tag ?? (c.role === "link" ? "a" : c.role === "textbox" ? "input" : "button"),
+    })
+    /** The control must still be the one that a card named (the page may change while it waits). */
+    const same = (c: FakeBrowserControl, expect: ControlExpect | undefined) => {
+      if (!expect) return true
+      const now = kindOf(c)
+      return now.role === expect.role && now.label === expect.label && now.tag === expect.tag
     }
     const fit = (target: string): FakeBrowserControl | BrowserAct => {
       const s = state()
@@ -224,10 +246,20 @@ export const testPlatform = () => {
         chooser,
       }
     }
-    const act = async (target: string, click: boolean): Promise<BrowserAct> => {
+    const act = async (
+      target: string,
+      click: boolean,
+      expect: ControlExpect | undefined,
+    ): Promise<BrowserAct> => {
       await stall()
+      // A page that was closed while the step waited does nothing.
+      if (!open) return { ok: false, reason: "none" }
       const found = fit(target)
       if (!("selector" in found)) return found
+      if (!same(found, expect)) return { ok: false, reason: "changed" }
+      browserLog.push(
+        `${workflowId}:${click ? "click" : "type"} ${target}${click ? "" : ` ${typed}`}`,
+      )
       if (click) {
         if (found.opens) dialog = found.opens
         if (found.chooser) chooser = true
@@ -250,6 +282,7 @@ export const testPlatform = () => {
       read: async () => {
         await stall()
         const s = state()
+        if (s.fails) throw new Error(s.fails)
         return {
           url,
           title: s.title,
@@ -260,13 +293,10 @@ export const testPlatform = () => {
           total: s.controls.length,
         }
       },
-      click: async (target) => {
-        browserLog.push(`${workflowId}:click ${target}`)
-        return act(target, true)
-      },
-      type: async (target, text) => {
-        browserLog.push(`${workflowId}:type ${target} ${text}`)
-        return act(target, false)
+      click: async (target, expect) => act(target, true, expect),
+      type: async (target, text, expect) => {
+        typed = text
+        return act(target, false, expect)
       },
       inspect: async (target): Promise<BrowserInspect> => {
         const found = fit(target)
@@ -274,19 +304,20 @@ export const testPlatform = () => {
         return {
           ok: true,
           facts: {
-            role: found.role,
-            label: found.label,
+            ...kindOf(found),
             submit: found.submit !== undefined,
             method: found.submit?.method ?? "get",
             secure: found.secure === true,
+            plain: found.plain ?? found.role === "link",
           },
           formHost: found.submit?.host ?? null,
         }
       },
-      select: async (target, value) => {
-        browserLog.push(`${workflowId}:select ${target} ${value}`)
+      select: async (target, value, expect) => {
         const found = fit(target)
         if (!("selector" in found)) return found
+        if (!same(found, expect)) return { ok: false, reason: "changed" }
+        browserLog.push(`${workflowId}:select ${target} ${value}`)
         if (!found.options?.includes(value)) return { ok: false, reason: "none" }
         return { ok: true, state: current() }
       },

@@ -1,15 +1,20 @@
 import { describe, expect, test } from "bun:test"
 import {
   BROWSER_LIMITS,
+  BROWSER_TEXT_MAX,
   BROWSER_TOOLS,
   browserAddress,
   browserHost,
-  changesPage,
+  CARD_HEAD_MAX,
+  cardSummary,
+  clickAsks,
   controlLine,
+  exactText,
   isBrowserTool,
   PAGE_TAG,
   pageData,
   plainLabel,
+  plainMiddle,
   plainPageText,
   readOnlyRefuses,
 } from "./index.ts"
@@ -76,24 +81,42 @@ describe("browserAddress (spec 007, addresses)", () => {
   })
 })
 
-describe("changesPage", () => {
-  const facts = (over: Partial<Parameters<typeof changesPage>[0]>) => ({
-    role: "button",
-    label: "Go",
+describe("clickAsks (spec 007; B9 click guard)", () => {
+  const facts = (over: Partial<Parameters<typeof clickAsks>[0]>) => ({
+    role: "link",
+    label: "Docs",
+    tag: "a",
     submit: false,
     method: "get",
     secure: false,
+    plain: true,
     ...over,
   })
 
-  test("a submit of a form that is not a GET changes a page, a GET form does not", () => {
-    expect(changesPage(facts({ submit: true, method: "post" }))).toBe(true)
-    expect(changesPage(facts({ submit: true, method: "dialog" }))).toBe(true)
-    expect(changesPage(facts({ submit: true, method: "get" }))).toBe(false)
-    expect(changesPage(facts({}))).toBe(false)
+  test("only a plain link whose name is harmless runs without a card", () => {
+    expect(clickAsks(facts({}))).toBe(false)
+    expect(clickAsks(facts({ label: "More", plain: true }))).toBe(false)
+    expect(clickAsks(facts({ label: "자세히" }))).toBe(false)
   })
 
-  test("a label that names a buy, a send, a post or a delete counts, in English and Korean", () => {
+  test("every control that is not a plain link asks, whatever its name says", () => {
+    for (const label of ["More", "Next", "Search", "Open menu", "자세히", "다음", ""]) {
+      expect(clickAsks(facts({ role: "button", tag: "button", plain: false, label }))).toBe(true)
+    }
+    // A button that says it is a button with an aria-label only.
+    expect(clickAsks(facts({ role: "button", tag: "div", plain: false, label: "Docs" }))).toBe(true)
+    expect(clickAsks(facts({ role: "textbox", tag: "input", plain: false, label: "Name" }))).toBe(
+      true,
+    )
+  })
+
+  test("a submit of a form that is not a GET asks, also for a link-like control", () => {
+    expect(clickAsks(facts({ submit: true, method: "post" }))).toBe(true)
+    expect(clickAsks(facts({ submit: true, method: "dialog" }))).toBe(true)
+    expect(clickAsks(facts({ submit: true, method: "get" }))).toBe(false)
+  })
+
+  test("a link whose name says a step that changes something asks, in English and Korean", () => {
     for (const label of [
       "Buy now",
       "Place order",
@@ -103,17 +126,59 @@ describe("changesPage", () => {
       "Publish",
       "Pay $5",
       "Sign up",
+      "Allow",
+      "Authorize",
+      "Authorise app",
+      "Accept all",
+      "Continue",
+      "Yes",
+      "OK",
+      "Save",
+      "Log out",
+      "Logout",
+      "Sign out",
       "결제하기",
       "주문",
       "삭제",
       "보내기",
       "가입",
+      "허용",
+      "계속",
+      "저장",
+      "로그아웃",
     ]) {
-      expect(changesPage(facts({ label }))).toBe(true)
+      expect(clickAsks(facts({ label }))).toBe(true)
     }
-    for (const label of ["More", "Next", "Search", "Open menu", "자세히", "다음"]) {
-      expect(changesPage(facts({ label }))).toBe(false)
-    }
+  })
+})
+
+describe("what a card shows of a browser step", () => {
+  test("plainMiddle cuts the middle and keeps the start and the end", () => {
+    expect(plainMiddle("short", 20)).toBe("short")
+    const cut = plainMiddle(`Open https://example.com/${"a".repeat(500)}/END`, 40)
+    expect([...cut].length).toBe(40)
+    expect(cut.startsWith("Open https://")).toBe(true)
+    expect(cut.endsWith("/END")).toBe(true)
+    expect(cut).toContain("…")
+  })
+
+  test("cardSummary never cuts the detail or the end, only the head", () => {
+    const end = " (an address on this computer or on a local network)"
+    const long = `Open http://127.0.0.1:8080/${"x".repeat(1900)}`
+    const summary = cardSummary(long, null, end)
+    expect(summary.endsWith(end)).toBe(true)
+    expect(summary.length).toBeLessThanOrEqual(CARD_HEAD_MAX + 1)
+    const typed = cardSummary("Type into textbox", exactText("y".repeat(1500)), " (note)")
+    expect(typed).toContain("y".repeat(1500))
+    expect(typed.endsWith(" (note)")).toBe(true)
+  })
+
+  test("exactText shows the whole text, writes what a person cannot see, and hides a secret", () => {
+    expect(exactText('say "hi"\nnow')).toBe('"say \\"hi\\"\\nnow"')
+    expect(exactText("a\u200bb")).toBe('"a\\u{200b}b"')
+    expect(exactText("a\u202eb")).toBe('"a\\u{202e}b"')
+    expect(exactText(`key sk-${"a1B2".repeat(8)}`)).toContain("[redacted]")
+    expect(BROWSER_TEXT_MAX).toBe(2000)
   })
 })
 

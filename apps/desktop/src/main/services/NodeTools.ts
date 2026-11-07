@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
   type ApprovalAnswer,
+  browserHost,
   type ControlPlace,
   classifyHostWriting,
   commandChangesControl,
@@ -33,7 +34,7 @@ import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { checkedFetch } from "../web/fetch.ts"
 import type { ActionLogService } from "./ActionLog.ts"
-import { BROWSER_TOOL_DEFS, makeBrowserTools } from "./browserTools.ts"
+import { BROWSER_TOOL_DEFS, browserTarget, makeBrowserTools } from "./browserTools.ts"
 import type { BrowserWork } from "./browserWork.ts"
 import type { CardReply } from "./Cards.ts"
 import type { ClaimOutcome, FileClaimsService } from "./FileClaims.ts"
@@ -215,7 +216,7 @@ const cut = (value: string, max: number) =>
     ? `${value.slice(0, max)}\n[cut: ${value.length - max} more characters]`
     : value
 
-type Kind = "file" | "shell" | "web"
+type Kind = "file" | "shell" | "web" | "browser"
 
 export const makeNodeTools = (deps: NodeToolsDeps) => {
   const { rules, actionLog, platform, claims, browsers } = deps
@@ -499,6 +500,8 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
     work: browsers,
     markOutside,
     credential: (ctx, path) => makePlaces(placeEnv(ctx)).credential(path),
+    record: (ctx, step) =>
+      log(ctx, "browser", null, step.target, { by: step.by, rule: null }, step.result),
     // A file that the node uploads is a file read that sends data out.
     readStep: async (ctx, path) => {
       try {
@@ -901,8 +904,27 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
     if (readOnlyRefuses(ctx.level, call.name)) {
       const args = parseArgs(call)
       const kind: Kind | null =
-        call.name === "write_file" ? "file" : call.name === "run_command" ? "shell" : null
-      if (kind)
+        call.name === "write_file"
+          ? "file"
+          : call.name === "run_command"
+            ? "shell"
+            : browser.handles(call.name)
+              ? "browser"
+              : null
+      // A browser step is logged with its host and its kind of step, never with its text.
+      if (kind === "browser")
+        log(
+          ctx,
+          kind,
+          null,
+          browserTarget(
+            call.name,
+            call.name === "browser_open" ? browserHost(text(args, "url")) : "",
+          ),
+          { by: "level", rule: null },
+          "refused",
+        )
+      else if (kind)
         log(
           ctx,
           kind,

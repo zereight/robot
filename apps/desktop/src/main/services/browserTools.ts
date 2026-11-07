@@ -1,14 +1,22 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import { mkdirSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import {
+  type ActionDecider,
+  type ActionResult,
   BROWSER_ADDRESS_TEXT,
   BROWSER_LIMITS,
+  BROWSER_TEXT_MAX,
+  BROWSER_TEXT_TOO_LONG,
   browserAddress,
   browserHost,
   type ControlFacts,
   type ControlPlace,
-  changesPage,
+  cardSummary,
+  clickAsks,
   controlLine,
+  exactText,
+  expectOf,
   insideWorkspace,
   isBrowserTool,
   levelForNode,
@@ -151,6 +159,9 @@ export const BROWSER_TOOL_DEFS: readonly ToolDef[] = [
   },
 ]
 
+/** The end of the card of an address on this computer: the user must always see it. */
+const LOCAL_END = " (an address on this computer or on a local network)"
+
 /** The words that the node reads for a refused or failed step. */
 const DENIED = "The user denied this step."
 const NO_PAGE = "No page is open. Call browser_open first."
@@ -178,6 +189,46 @@ export interface BrowserToolsHost {
   ) => Promise<ToolOutcome | null>
   /** The credential place that a real path lies in, or null. */
   readonly credential: (ctx: NodeToolContext, path: string) => SensitiveLabel | null
+  /** One entry of the action log for a browser step (spec 007, "Action log"). */
+  readonly record: (
+    ctx: NodeToolContext,
+    step: { target: string; by: ActionDecider; result: ActionResult },
+  ) => void
+}
+
+/** The step of the action log for a browser tool: its short name. */
+const STEP_NAME: Record<string, string> = {
+  browser_open: "open",
+  browser_read: "read",
+  browser_click: "click",
+  browser_type: "type",
+  browser_select: "select",
+  browser_upload: "upload",
+  browser_dialog: "dialog",
+  browser_screenshot: "screenshot",
+  browser_wait: "wait",
+  browser_take_control: "take control",
+  browser_close: "close",
+}
+
+/**
+ * The target of a browser step in the action log: the host and the kind of step. It never holds
+ * text of a page, a typed text, a path or a query.
+ */
+export const browserTarget = (tool: string, host: string): string =>
+  [host, STEP_NAME[tool] ?? tool].filter((part) => part !== "").join(" ")
+
+/** What one call knows about how it was decided, for the action log. */
+interface Trace {
+  by: ActionDecider
+}
+const traces = new AsyncLocalStorage<Trace>()
+
+/** A page that was kept from addresses: words of the app, and lines for the data mark. */
+interface BlockedNote {
+  readonly words: string[]
+  readonly lines: string[]
+  readonly any: boolean
 }
 
 /** The fixed words of one outcome: the page text is only ever inside the data mark. */
@@ -219,6 +270,7 @@ export const browserClock: { openMs: number; actionMs: number; waitMs: number; p
 
 export const makeBrowserTools = (host: BrowserToolsHost) => {
   const { work } = host
+  const hostRecord = host.record
 
   /**
    * Runs a page call with a time limit. Stop ends it at once with "stopped" (the task is over).
@@ -257,13 +309,16 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     if (!asks(ctx, risky)) return true
     const card: NodeCard = {
       kind: "approval",
-      summary: plainLabel(summary, 300),
+      // The caller built the summary with `cardSummary`: it cuts the head only.
+      summary,
       step: "browser",
       // The browser has no rules: the card has Allow once and Deny only.
       once: true,
       outside: ctx.marks.outside,
       sensitive: ctx.marks.sensitive,
     }
+    const trace = traces.getStore()
+    if (trace) trace.by = "user"
     const reply = await ctx.ask(card)
     return reply.answer !== "deny"
   }
@@ -271,7 +326,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
   const hostOfPage = (url: string) => browserHost(url)
 
   /** The state of an action as text: the keywords outside the mark, the text of the page inside. */
-  const stateText = (state: BrowserActionState, lead: string): string => {
+  const stateText = (state: BrowserActionState, lead: string, kept: BlockedNote): string => {
     const lines = [
       `Address: ${plainLabel(state.url, 300)}`,
       `Title: ${plainLabel(state.title, 200)}`,
@@ -283,6 +338,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
       ...(state.dialog
         ? [`Dialog (${state.dialog.kind}): ${plainLabel(state.dialog.text, 300)}`]
         : []),
+      ...kept.lines,
     ]
     const notes = [
       ...(state.dialog
@@ -297,25 +353,35 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
           ]
         : []),
     ]
-    return [lead, ...notes, pageData(hostOfPage(state.url), lines.join("\n"))].join("\n")
+    return [lead, ...kept.words, ...notes, pageData(hostOfPage(state.url), lines.join("\n"))].join(
+      "\n",
+    )
   }
 
   /** A result that carries text of a page: the task holds outside content from now on. */
   const outside = (ctx: NodeToolContext, url: string) =>
     host.markOutside(ctx, { kind: "page", host: hostOfPage(url) })
 
-  /** What the node gets when a page kept itself from addresses that are not allowed. */
-  const blockedNote = (page: BrowserPage): string => {
+  /**
+   * What the node gets when a page was kept from addresses that are not allowed. The count is a
+   * number of the app, so it stands outside of the data mark. The host names were chosen by the
+   * page (a redirect, a script), so they stand inside it.
+   */
+  const blockedNote = (page: BrowserPage): BlockedNote => {
     const blocked = page.drainBlocked()
-    return blocked.length === 0
-      ? ""
-      : `\nThe page was kept from ${blocked.length} request${blocked.length === 1 ? "" : "s"} to addresses that are not allowed (${[
-          ...new Set(blocked),
-        ]
-          .slice(0, 5)
-          .map((h) => plainLabel(h, 60))
-          .join(", ")}).`
+    if (blocked.length === 0) return { words: [], lines: [], any: false }
+    const hosts = [...new Set(blocked)].slice(0, 5).map((h) => plainLabel(h, 40))
+    return {
+      words: [
+        `The page was kept from ${blocked.length} request${blocked.length === 1 ? "" : "s"} to addresses that are not allowed. The data lists the hosts.`,
+      ],
+      lines: [`Kept from: ${hosts.join(", ")}`],
+      any: true,
+    }
   }
+  /** The note as one text with its own data mark, for a result that has no page text of its own. */
+  const blockedText = (kept: BlockedNote, host: string): string =>
+    kept.any ? `${kept.words.join("\n")}\n${pageData(host, kept.lines.join("\n"))}` : ""
 
   const candidatesText = (candidates: BrowserCandidate[], total: number, host: string) =>
     [
@@ -345,18 +411,23 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
   }
 
   /** A failure of the page itself: the step fails with a plain reason, the page loads again. */
-  const pageFailed = (ctx: NodeToolContext, tool: string, error: unknown): ToolOutcome => {
+  const pageFailed = (
+    ctx: NodeToolContext,
+    tool: string,
+    error: unknown,
+    url: string = work.page(ctx.workflowId).currentUrl(),
+  ): ToolOutcome => {
     if (ctx.signal.aborted) throw error
     const timeout = error instanceof PageTimeout
-    work.log("tool_failed", {
-      tool,
-      reason: timeout ? "timeout" : error instanceof Error ? error.message : String(error),
-    })
+    const reason = error instanceof Error ? error.message : String(error)
+    work.log("tool_failed", { tool, reason: timeout ? "timeout" : reason })
     if (timeout) work.unload(ctx.workflowId)
+    if (timeout) return fail(TIMEOUT_TEXT(Math.round(browserClock.actionMs / 1000)))
+    // The reason of a failed load can hold an address that the page chose (a redirect), so it
+    // stands inside the data mark and the task holds outside content.
+    outside(ctx, url)
     return fail(
-      timeout
-        ? TIMEOUT_TEXT(Math.round(browserClock.actionMs / 1000))
-        : `The step failed: ${plainLabel(error instanceof Error ? error.message : String(error), 200)}`,
+      `The step failed. The reason comes from the browser and may hold text of a page.\n${pageData(hostOfPage(url), plainLabel(reason, 200))}`,
     )
   }
 
@@ -366,8 +437,10 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     ctx: NodeToolContext,
     args: Record<string, unknown>,
   ): Promise<ToolOutcome> => {
+    const trace = traces.getStore()
     const checked = browserAddress(text(args, "url"))
     if (checked.kind === "refused") {
+      if (trace) trace.by = "app"
       work.log("open_refused", { reason: checked.reason })
       return refused(BROWSER_ADDRESS_TEXT[checked.reason], {
         ...(checked.reason === "address" ? { refused: "address" as const } : {}),
@@ -381,6 +454,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
       try {
         const kind = await work.kindOfName(checked.host)
         if (kind === "never") {
+          if (trace) trace.by = "app"
           work.log("open_refused", { reason: "address" })
           return refused(BROWSER_ADDRESS_TEXT.address, { refused: "address" })
         }
@@ -389,17 +463,15 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
         // A name that does not resolve fails to load below, as any page does.
       }
     }
-    const known = work.isLocalAllowed(ctx.workflowId, checked.host)
-    if (local && !known) {
-      const allowed = await approve(
-        ctx,
-        `Open ${checked.url} (an address on this computer or on a local network)`,
-        true,
-      )
+    // The allow for a local address holds for one page: each open of one asks again.
+    if (local) {
+      const allowed = await approve(ctx, cardSummary(`Open ${checked.url}`, null, LOCAL_END), true)
       if (!allowed) return refused(BROWSER_ADDRESS_TEXT.local)
-      work.allowLocal(ctx.workflowId, checked.host)
-    } else if (!(await approve(ctx, `Open ${checked.url}`, false))) {
-      return refused(DENIED)
+      work.allowLocal(ctx.workflowId, checked.url)
+    } else {
+      work.forgetLocal(ctx.workflowId)
+      if (!(await approve(ctx, cardSummary(`Open ${checked.url}`, null, ""), false)))
+        return refused(DENIED)
     }
     const page = work.page(ctx.workflowId)
     work.touch(ctx.workflowId)
@@ -407,28 +479,41 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     try {
       const opened = await bounded(ctx, page.open(checked.url), browserClock.openMs)
       work.touch(ctx.workflowId)
-      const note = blockedNote(page)
+      const kept = blockedNote(page)
       // A load that the rule cut leaves an empty page: the node learns why.
       if (opened.url === "" || opened.url === "about:blank") {
         work.log("open_refused", { reason: "moved" })
-        return refused(`${BROWSER_ADDRESS_TEXT.moved}${note}`, { refused: "address" })
+        return movedRefusal(ctx, kept, checked.url)
       }
+      work.observed(ctx.workflowId, opened.url)
       outside(ctx, opened.url)
       return ok(
         stateText(
           { url: opened.url, title: opened.title, loading: false, focus: null, errors: [] },
-          `Opened the page.${note}`,
+          "Opened the page.",
+          kept,
         ),
       )
     } catch (error) {
       // A load that the rule cut fails: the node learns why, in words that hold no page text.
-      const note = blockedNote(page)
-      if (note !== "" && !ctx.signal.aborted) {
+      const kept = blockedNote(page)
+      if (kept.any && !ctx.signal.aborted) {
         work.log("open_refused", { reason: "moved" })
-        return refused(`${BROWSER_ADDRESS_TEXT.moved}${note}`, { refused: "address" })
+        return movedRefusal(ctx, kept, checked.url)
       }
-      return pageFailed(ctx, "browser_open", error)
+      return pageFailed(ctx, "browser_open", error, checked.url)
     }
+  }
+
+  /**
+   * A load that went to an address that is not allowed. The host names in it were chosen by the
+   * site, so they stand in a data mark and the task holds outside content from the site.
+   */
+  const movedRefusal = (ctx: NodeToolContext, kept: BlockedNote, url: string): ToolOutcome => {
+    outside(ctx, url)
+    return refused(`${BROWSER_ADDRESS_TEXT.moved}\n${blockedText(kept, hostOfPage(url))}`, {
+      refused: "address",
+    })
   }
 
   const read = async (ctx: NodeToolContext): Promise<ToolOutcome> => {
@@ -451,7 +536,13 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
         ...(hidden > 0 ? [`[${hidden} more controls are not listed]`] : []),
       ].join("\n")
       outside(ctx, seen.url)
-      return ok(`${pageData(hostOfPage(seen.url), body)}${blockedNote(page)}`)
+      work.observed(ctx.workflowId, seen.url)
+      const kept = blockedNote(page)
+      return ok(
+        [...kept.words, pageData(hostOfPage(seen.url), [body, ...kept.lines].join("\n"))].join(
+          "\n",
+        ),
+      )
     } catch (error) {
       return pageFailed(ctx, "browser_read", error)
     }
@@ -469,16 +560,26 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
   ): Promise<ToolOutcome> => {
     work.touch(ctx.workflowId)
     if (!answer.ok) {
-      if (answer.reason === "many")
+      if (answer.reason === "many") {
+        // The candidates are labels of the page: the task holds outside content.
+        outside(ctx, page.currentUrl())
         return fail(candidatesText(answer.candidates, answer.total, hostOfPage(page.currentUrl())))
+      }
+      if (answer.reason === "changed")
+        return fail(
+          "Nothing was done: the control is not the one that the user was asked about, because the page changed. Call browser_read and choose the control again.",
+        )
       return fail("No control fits this target. Call browser_read and use a number of its list.")
     }
     outside(ctx, answer.state.url)
-    return ok(stateText(answer.state, `${lead}${blockedNote(page)}`))
+    work.observed(ctx.workflowId, answer.state.url)
+    return ok(stateText(answer.state, lead, blockedNote(page)))
   }
 
-  const summaryOf = (verb: string, facts: ControlFacts, url: string) =>
-    `${verb}: ${plainLabel(facts.role, 30)} "${plainLabel(facts.label, 80)}" on ${hostOfPage(url) || "the page"}`
+  /** The control as a card names it. The name is text of the page, and the card says so. */
+  const controlHead = (verb: string, facts: ControlFacts, url: string) =>
+    `${verb} ${plainLabel(facts.role, 30)} "${plainLabel(facts.label, 80)}" on ${hostOfPage(url) || "the page"}`
+  const NAME_END = " (the name of the control is text of the page)"
 
   const click = async (
     ctx: NodeToolContext,
@@ -491,12 +592,21 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     try {
       const found = await inspect(ctx, page, target)
       if (!found.ok) return actionResult(ctx, page, found, "")
-      // A click that changes something beyond the page (submit, buy, send, delete) is a guarded
-      // step: it asks at every level but "Full access" (docs/spec-questions.md, B9).
-      const changes = changesPage(found.facts)
-      const summary = `${summaryOf(changes ? "Click (changes data)" : "Click", found.facts, page.currentUrl())}${found.formHost ? ` — the form goes to ${found.formHost}` : ""}`
-      if (!(await approve(ctx, summary, changes))) return refused(DENIED)
-      const answer = await bounded(ctx, page.click(target), browserClock.actionMs)
+      // A click asks at every level but "Full access", unless the app can prove that it is a
+      // plain link (docs/spec-questions.md, B9). Fail closed.
+      const asking = clickAsks(found.facts)
+      const end = `${found.formHost ? ` — the form goes to ${plainLabel(found.formHost, 80)}` : ""}${NAME_END}`
+      const head = controlHead(
+        asking ? "Click (may change data):" : "Click:",
+        found.facts,
+        page.currentUrl(),
+      )
+      if (!(await approve(ctx, cardSummary(head, null, end), asking))) return refused(DENIED)
+      const answer = await bounded(
+        ctx,
+        page.click(target, expectOf(found.facts)),
+        browserClock.actionMs,
+      )
       return await actionResult(ctx, page, answer, "Clicked.")
     } catch (error) {
       return pageFailed(ctx, "browser_click", error)
@@ -510,7 +620,8 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     const target = text(args, "target")
     const value = text(args, "text")
     if (target === "") return fail("No target.")
-    if (value.length > 5000) return fail("The text is too long. Type at most 5000 characters.")
+    // The card shows the text whole, so a text that does not fit on it is refused before any card.
+    if (value.length > BROWSER_TEXT_MAX) return refused(BROWSER_TEXT_TOO_LONG)
     const page = await current(ctx)
     if (!page) return fail(NO_PAGE)
     try {
@@ -520,9 +631,14 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
         return refused(
           "Refused: this is a password, a code or a card field. You never type into it. Call browser_take_control and say what the user must do.",
         )
-      if (!(await approve(ctx, summaryOf("Type into", found.facts, page.currentUrl()), false)))
+      const head = controlHead("Type into", found.facts, page.currentUrl())
+      if (!(await approve(ctx, cardSummary(head, exactText(value), NAME_END), false)))
         return refused(DENIED)
-      const answer = await bounded(ctx, page.type(target, value), browserClock.actionMs)
+      const answer = await bounded(
+        ctx,
+        page.type(target, value, expectOf(found.facts)),
+        browserClock.actionMs,
+      )
       return await actionResult(ctx, page, answer, "Typed.")
     } catch (error) {
       return pageFailed(ctx, "browser_type", error)
@@ -536,20 +652,20 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     const target = text(args, "target")
     const value = text(args, "value")
     if (target === "" || value === "") return fail("No target or no value.")
+    if (value.length > BROWSER_TEXT_MAX) return refused(BROWSER_TEXT_TOO_LONG)
     const page = await current(ctx)
     if (!page) return fail(NO_PAGE)
     try {
       const found = await inspect(ctx, page, target)
       if (!found.ok) return actionResult(ctx, page, found, "")
-      if (
-        !(await approve(
-          ctx,
-          summaryOf("Choose an option in", found.facts, page.currentUrl()),
-          false,
-        ))
-      )
+      const head = controlHead("Choose an option in", found.facts, page.currentUrl())
+      if (!(await approve(ctx, cardSummary(head, exactText(value), NAME_END), false)))
         return refused(DENIED)
-      const answer = await bounded(ctx, page.select(target, value), browserClock.actionMs)
+      const answer = await bounded(
+        ctx,
+        page.select(target, value, expectOf(found.facts)),
+        browserClock.actionMs,
+      )
       return await actionResult(ctx, page, answer, "Chose the option.")
     } catch (error) {
       return pageFailed(ctx, "browser_select", error)
@@ -626,10 +742,17 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     const page = await current(ctx)
     if (!page) return fail(NO_PAGE)
     if (!page.dialog()) return fail("No dialog waits.")
+    // The text of a prompt goes to the page, so the card shows it whole.
+    const answerText = action === "accept" ? text(args, "text") : ""
+    if (answerText.length > BROWSER_TEXT_MAX) return refused(BROWSER_TEXT_TOO_LONG)
     if (
       !(await approve(
         ctx,
-        `${action === "accept" ? "Accept" : "Dismiss"} the dialog of the page`,
+        cardSummary(
+          `${action === "accept" ? "Accept" : "Dismiss"} the dialog of the page`,
+          answerText === "" ? null : exactText(answerText),
+          "",
+        ),
         false,
       ))
     )
@@ -637,7 +760,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     try {
       const answer = await bounded(
         ctx,
-        page.answerDialog(action === "accept", text(args, "text")),
+        page.answerDialog(action === "accept", answerText === "" ? undefined : answerText),
         browserClock.actionMs,
       )
       work.touch(ctx.workflowId)
@@ -647,6 +770,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
         stateText(
           answer.state,
           action === "accept" ? "Accepted the dialog." : "Dismissed the dialog.",
+          blockedNote(page),
         ),
       )
     } catch (error) {
@@ -726,6 +850,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
             : matched
               ? "The text is on the page."
               : "The text did not show.",
+          blockedNote(page),
         ),
       )
     } catch (error) {
@@ -770,6 +895,7 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
         stateText(
           { url: seen.url, title: seen.title, loading: false, focus: null, errors: [] },
           "The user gave the browser back. Read the page to see what changed.",
+          blockedNote(page),
         ),
       )
     } catch (error) {
@@ -784,8 +910,11 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
     return ok("Closed the page. The cookies and sign-ins stay.")
   }
 
-  const run = async (ctx: NodeToolContext, call: ToolCall): Promise<ToolOutcome> => {
-    const args = parseArgs(call)
+  const dispatch = (
+    ctx: NodeToolContext,
+    call: ToolCall,
+    args: Record<string, unknown>,
+  ): Promise<ToolOutcome> => {
     switch (call.name) {
       case "browser_open":
         return open(ctx, args)
@@ -810,7 +939,37 @@ export const makeBrowserTools = (host: BrowserToolsHost) => {
       case "browser_close":
         return close(ctx)
       default:
-        return fail(`Unknown tool: ${call.name}`)
+        return Promise.resolve(fail(`Unknown tool: ${call.name}`))
+    }
+  }
+
+  /**
+   * Runs one call and writes its entry in the action log (spec 007, "Action log"): the host and
+   * the kind of step, who decided, and the result. The entry holds no text of a page and no text
+   * that the node typed. Stop ends the call with the result Stopped.
+   */
+  const run = async (ctx: NodeToolContext, call: ToolCall): Promise<ToolOutcome> => {
+    const args = parseArgs(call)
+    const trace: Trace = { by: "level" }
+    const host =
+      call.name === "browser_open"
+        ? browserHost(text(args, "url"))
+        : hostOfPage(work.page(ctx.workflowId).currentUrl()) || work.state(ctx.workflowId).host
+    let outcome: ToolOutcome | undefined
+    try {
+      outcome = await traces.run(trace, () => dispatch(ctx, call, args))
+      return outcome
+    } finally {
+      const result: ActionResult = ctx.signal.aborted
+        ? "stopped"
+        : !outcome
+          ? "failed"
+          : outcome.notRun
+            ? "refused"
+            : outcome.failed
+              ? "failed"
+              : "ran"
+      hostRecord(ctx, { target: browserTarget(call.name, host), by: trace.by, result })
     }
   }
 

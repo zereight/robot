@@ -1,4 +1,4 @@
-import type { ControlFacts, ControlPlace } from "@robot/shared"
+import type { ControlExpect, ControlFacts, ControlPlace } from "@robot/shared"
 import { Context } from "effect"
 import type { Resolver } from "../web/fetch.ts"
 
@@ -61,10 +61,15 @@ export interface BrowserActionState {
   dismissed?: BrowserDialog
 }
 
-/** What a click or a type gives back: the new state, no fit, or up to 5 candidates. */
+/**
+ * What a click or a type gives back: the new state, no fit, up to 5 candidates, or that the
+ * control is not the one that was asked about (the page changed while a card waited). Nothing was
+ * done in the last case.
+ */
 export type BrowserAct =
   | { ok: true; state: BrowserActionState }
   | { ok: false; reason: "none" }
+  | { ok: false; reason: "changed" }
   | { ok: false; reason: "many"; candidates: BrowserCandidate[]; total: number }
 
 /** What the app knows about the one control that a target names, before an action on it. */
@@ -95,13 +100,13 @@ export interface BrowserPage {
    * Clicks the control that the target names: a number from the read list, or a CSS selector.
    * A selector that fits more than one control clicks nothing and names candidates instead.
    */
-  click(target: string): Promise<BrowserAct>
+  click(target: string, expect?: ControlExpect): Promise<BrowserAct>
   /** Types into the control that the target names, with the same fit rules as a click. */
-  type(target: string, text: string): Promise<BrowserAct>
+  type(target: string, text: string, expect?: ControlExpect): Promise<BrowserAct>
   /** Says what a click on this target would be, with the same fit rules as a click. */
   inspect(target: string): Promise<BrowserInspect>
   /** Chooses an option of a list: the option whose value or text is `value`. */
-  select(target: string, value: string): Promise<BrowserAct>
+  select(target: string, value: string, expect?: ControlExpect): Promise<BrowserAct>
   /** A picture of the page as PNG. */
   screenshot(): Promise<Uint8Array>
   /**

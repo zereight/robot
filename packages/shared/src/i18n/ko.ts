@@ -278,6 +278,7 @@ export const ko: Record<MessageKey, string> = {
   "permissions.log.kind.shell": "셸 명령",
   "permissions.log.kind.web": "웹 페이지",
   "permissions.log.kind.connection": "연결의 도구",
+  "permissions.log.kind.browser": "브라우저",
   "permissions.log.access.read": "읽기",
   "permissions.log.access.write": "쓰기",
   "permissions.log.decided.level": "권한 수준",

@@ -10,7 +10,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { BROWSER_LIMITS, type PermissionLevel } from "@robot/shared"
+import { BROWSER_LIMITS, BROWSER_TEXT_MAX, type PermissionLevel } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { ActionLog } from "./ActionLog.ts"
 import { Browsers } from "./Browsers.ts"
@@ -42,6 +42,7 @@ const setup = async (options: Parameters<typeof testRuntime>[0] = {}) => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "robot-web-")))
   const cards: NodeCard[] = []
   let answer: CardReply["answer"] = "allow"
+  let hook: (() => void) | undefined
   const make = (
     level: PermissionLevel,
     marks: NodeToolContext["marks"] = { outside: null, program: false, sensitive: null },
@@ -55,6 +56,8 @@ const setup = async (options: Parameters<typeof testRuntime>[0] = {}) => {
     marks,
     ask: async (card) => {
       cards.push(card)
+      // The user takes time to answer: the page may change meanwhile.
+      hook?.()
       return { answer } as CardReply
     },
     onMarks: () => {},
@@ -71,6 +74,12 @@ const setup = async (options: Parameters<typeof testRuntime>[0] = {}) => {
     answer: (a: CardReply["answer"]) => {
       answer = a
     },
+    /** Runs while a card waits for the user. */
+    whileAsking: (fn: (() => void) | undefined) => {
+      hook = fn
+    },
+    /** The entries of the action log, newest first. */
+    entries: () => run(actionLog.list({})),
     call: (ctx: NodeToolContext, name: string, args: Record<string, unknown> = {}) =>
       tools.execute(ctx, { id: `c-${Math.random()}`, name, input: JSON.stringify(args) }),
     log: () => {
@@ -190,8 +199,11 @@ describe("addresses (spec 007, 'Addresses of a web page fetch')", () => {
     expect(moved.failed).toBe(true)
     expect(moved.refused).toBe("address")
     expect(moved.output).toContain("kept from")
-    // The task holds no outside content: no text of a page reached the node.
-    expect(ctx.marks.outside).toBeNull()
+    // The host names were chosen by the site: they stand in the data mark, and the task holds
+    // outside content from the site (B9: every result that carries text of a page).
+    expect(moved.output.split("<page-data>")[0]).not.toContain("169.254.169.254")
+    expect(moved.output).toMatch(/<page-data>[\s\S]*169\.254\.169\.254[\s\S]*<\/page-data>/)
+    expect(ctx.marks.outside).toEqual({ kind: "page", host: "203.0.113.7" })
     // A page that was opened can be told apart: a link to a local address is cut as well.
     t.seed({
       controls: [
@@ -208,7 +220,8 @@ describe("addresses (spec 007, 'Addresses of a web page fetch')", () => {
     await open(t, ctx, "http://203.0.113.8/")
     const link = await t.call(ctx, "browser_click", { target: "a.home" })
     expect(link.output).toContain("kept from")
-    expect(link.output).toContain("127.0.0.1")
+    expect(link.output.split("<page-data>")[0]).not.toContain("127.0.0.1")
+    expect(link.output).toMatch(/<page-data>[\s\S]*127\.0\.0\.1[\s\S]*<\/page-data>/)
   })
 })
 
@@ -246,16 +259,16 @@ describe("permission levels (spec 007)", () => {
     expect(t.browserLog).toEqual([])
   })
 
-  test("'Ask for everything' asks for each step of the page; 'Ask for risky steps' asks for none that is plain", async () => {
+  test("'Ask for everything' asks for each step of the page; 'Ask for risky steps' asks for none that is a plain link", async () => {
     const all = await setup()
-    all.seed({ controls: [{ selector: "#b", role: "button", label: "More", x: 1, y: 1 }] })
+    all.seed({ controls: [{ selector: "#b", role: "link", label: "More", x: 1, y: 1 }] })
     const ctx = all.make("ask_all")
     await open(all, ctx)
     await all.call(ctx, "browser_read")
     await all.call(ctx, "browser_click", { target: "1" })
     expect(all.cards.map((c) => c.step)).toEqual(["browser", "browser", "browser"])
     const risky = await setup()
-    risky.seed({ controls: [{ selector: "#b", role: "button", label: "More", x: 1, y: 1 }] })
+    risky.seed({ controls: [{ selector: "#b", role: "link", label: "More", x: 1, y: 1 }] })
     const rctx = risky.make("ask_risky")
     await open(risky, rctx)
     await risky.call(rctx, "browser_read")
@@ -263,7 +276,7 @@ describe("permission levels (spec 007)", () => {
     expect(risky.cards).toEqual([])
   })
 
-  test("a step that changes a page (submit, buy, send, delete) asks at every level but 'Full access'", async () => {
+  test("a click asks at every level but 'Full access', unless the page proves a plain link (B9 click guard)", async () => {
     const controls = [
       {
         selector: "#post",
@@ -275,6 +288,7 @@ describe("permission levels (spec 007)", () => {
       },
       { selector: "#buy", role: "button", label: "Buy now", x: 1, y: 2 },
       { selector: "#kor", role: "button", label: "결제하기", x: 1, y: 3 },
+      // A GET form is no proof: the button may run a script of the page.
       {
         selector: "#search",
         role: "button",
@@ -284,21 +298,35 @@ describe("permission levels (spec 007)", () => {
         submit: { method: "get" },
       },
       { selector: "#more", role: "button", label: "More", x: 1, y: 5 },
+      // Names that a page uses for a step that changes something.
+      { selector: "#allow", role: "button", label: "Allow", x: 1, y: 6 },
+      { selector: "#authorize", role: "button", label: "Authorize", x: 1, y: 7 },
+      { selector: "#accept", role: "button", label: "Accept", x: 1, y: 8 },
+      { selector: "#continue", role: "button", label: "Continue", x: 1, y: 9 },
+      { selector: "#yes", role: "button", label: "Yes", x: 1, y: 10 },
+      { selector: "#ok", role: "button", label: "OK", x: 1, y: 11 },
+      { selector: "#save", role: "button", label: "Save", x: 1, y: 12 },
+      // A button with only an aria-label that looks harmless.
+      { selector: "#labelled", role: "button", tag: "input", label: "Next page", x: 1, y: 13 },
+      { selector: "#logout", role: "link", label: "Log out", x: 1, y: 14 },
+      { selector: "#docs", role: "link", label: "Documentation", x: 1, y: 15 },
     ]
+    const mustAsk = controls.map((c) => c.selector).filter((x) => x !== "#docs")
     for (const level of ["ask_risky", "ask_unsure"] as const) {
       const t = await setup()
       t.seed({ controls })
       const ctx = t.make(level)
       await open(t, ctx)
-      for (const target of ["#post", "#buy", "#kor"]) {
+      for (const target of mustAsk) {
         t.cards.length = 0
         t.answer("deny")
         const denied = await t.call(ctx, "browser_click", { target })
         expect(denied.failed).toBe(true)
         expect(denied.notRun).toBe(true)
         expect(t.cards.length).toBe(1)
-        // The page is outside content now: the card says so.
+        // The page is outside content now: the card says so, and says the name is page text.
         expect(t.cards[0]?.outside).toEqual({ kind: "page", host: "203.0.113.7" })
+        expect(t.cards[0]?.summary).toContain("text of the page")
       }
       expect(t.browserLog.filter((l) => l.includes(":click"))).toEqual([])
       t.cards.length = 0
@@ -306,26 +334,76 @@ describe("permission levels (spec 007)", () => {
       expect((await t.call(ctx, "browser_click", { target: "#post" })).failed).toBe(false)
       expect(t.cards[0]?.summary).toContain("pay.example.com")
       t.cards.length = 0
-      // A GET form and a plain button do not ask.
-      await t.call(ctx, "browser_click", { target: "#search" })
-      await t.call(ctx, "browser_click", { target: "#more" })
+      // A plain link does not ask.
+      expect((await t.call(ctx, "browser_click", { target: "#docs" })).failed).toBe(false)
       expect(t.cards).toEqual([])
     }
     const full = await setup()
     full.seed({ controls })
     const ctx = full.make("full")
     await open(full, ctx)
-    expect((await full.call(ctx, "browser_click", { target: "#post" })).failed).toBe(false)
+    for (const target of mustAsk) {
+      expect((await full.call(ctx, "browser_click", { target })).failed).toBe(false)
+    }
     expect(full.cards).toEqual([])
-    // The program mark wins over 'Full access' for a step that changes a page.
+    // The program mark wins over 'Full access' for a click that is not a plain link.
     const program = full.make("full", {
       outside: ctx.marks.outside,
       program: true,
       sensitive: null,
     })
     full.answer("deny")
-    expect((await full.call(program, "browser_click", { target: "#buy" })).failed).toBe(true)
+    expect((await full.call(program, "browser_click", { target: "#more" })).failed).toBe(true)
     expect(full.cards.length).toBe(1)
+    // 'Read only' refuses every click: no card and no page call.
+    const readOnly = await setup()
+    readOnly.seed({ controls })
+    const rctx = readOnly.make("read_only")
+    const refused = await readOnly.call(rctx, "browser_click", { target: "#docs" })
+    expect(refused.refused).toBe("read_only")
+    expect(readOnly.cards).toEqual([])
+  })
+
+  test("the card names one control: when the page changes while the card waits, nothing is clicked, typed or chosen", async () => {
+    const buy = { selector: "#buy", role: "button", label: "Buy now", x: 1, y: 1 }
+    const more = { selector: "#more", role: "button", label: "More", x: 1, y: 2 }
+    const name = { selector: "#name", role: "textbox", label: "Name", x: 1, y: 3 }
+    const mail = { selector: "#mail", role: "textbox", label: "Mail", x: 1, y: 4 }
+    const size = { selector: "#size", role: "combobox", label: "Size", x: 1, y: 5, options: ["S"] }
+    const color = {
+      selector: "#color",
+      role: "combobox",
+      label: "Color",
+      x: 1,
+      y: 6,
+      options: ["S"],
+    }
+    const t = await setup()
+    t.seed({ controls: [more, buy, name, mail, size, color] })
+    const ctx = t.make("ask_all")
+    await open(t, ctx)
+    // The card names number 1 ("More"). While it waits the page puts "Buy now" at number 1.
+    t.whileAsking(() => t.seed({ controls: [buy, more, mail, name, color, size] }))
+    const click = await t.call(ctx, "browser_click", { target: "1" })
+    expect(click.failed).toBe(true)
+    expect(click.output).toContain("Nothing was done")
+    expect(click.output).toContain("browser_read")
+    expect(t.cards.at(-1)?.summary).toContain("More")
+    // The same for a field (number 3) and a list (number 5).
+    t.seed({ controls: [more, buy, name, mail, size, color] })
+    const typed = await t.call(ctx, "browser_type", { target: "3", text: "Ada" })
+    expect(typed.failed).toBe(true)
+    expect(typed.output).toContain("Nothing was done")
+    t.seed({ controls: [more, buy, name, mail, size, color] })
+    const chosen = await t.call(ctx, "browser_select", { target: "5", value: "S" })
+    expect(chosen.failed).toBe(true)
+    expect(chosen.output).toContain("Nothing was done")
+    expect(t.browserLog.filter((l) => /:(click|type|select) /.test(l))).toEqual([])
+    // A page that did not change lets the step run.
+    t.whileAsking(undefined)
+    t.seed({ controls: [more, buy, name, mail, size, color] })
+    expect((await t.call(ctx, "browser_click", { target: "1" })).failed).toBe(false)
+    expect(t.browserLog.at(-1)).toBe(`${t.flow.id}:click 1`)
   })
 })
 
@@ -847,5 +925,382 @@ describe("idle work (spec 007)", () => {
     expect(t.browsers.state(t.flow.id).open).toBe(true)
     await t.run(Workflows.use((w) => w.remove(t.flow.id)))
     expect(t.browserLog.at(-1)).toBe(`${t.flow.id}:close`)
+  })
+})
+
+describe("the allow for a local address holds for one page (B9, spec 007)", () => {
+  const LOCAL = "http://127.0.0.1:8080/"
+
+  test("a later open of the same address asks again, also after an allow", async () => {
+    const t = await setup()
+    const ctx = t.make("ask_risky")
+    expect((await open(t, ctx, LOCAL)).failed).toBe(false)
+    expect(t.cards.length).toBe(1)
+    expect((await open(t, ctx, LOCAL)).failed).toBe(false)
+    expect(t.cards.length).toBe(2)
+    t.answer("deny")
+    expect((await open(t, ctx, LOCAL)).failed).toBe(true)
+    expect(t.cards.length).toBe(3)
+  })
+
+  test("the allow names the host and the port: another port of the same host stays shut", async () => {
+    const t = await setup()
+    t.seed({
+      controls: [
+        {
+          selector: "a.same",
+          role: "link",
+          label: "Same",
+          x: 1,
+          y: 1,
+          goes: "http://127.0.0.1:8080/b",
+        },
+        {
+          selector: "a.other",
+          role: "link",
+          label: "Other",
+          x: 1,
+          y: 2,
+          goes: "http://127.0.0.1:9/",
+        },
+      ],
+    })
+    const ctx = t.make("ask_risky")
+    await open(t, ctx, LOCAL)
+    const policy = t.browsers.policy(t.flow.id)
+    expect(await policy("http://127.0.0.1:8080/x")).toBe(true)
+    expect(await policy("http://127.0.0.1:9/")).toBe(false)
+    expect(await policy("http://127.0.0.1/")).toBe(false)
+    expect(await policy("ws://127.0.0.1:8080/socket")).toBe(true)
+    expect(await policy("ws://127.0.0.1:9/socket")).toBe(false)
+    const other = await t.call(ctx, "browser_click", { target: "a.other" })
+    expect(other.output).toContain("kept from")
+    // The default port of the scheme is a port as well.
+    const plain = await setup()
+    await open(plain, plain.make("full"), "http://127.0.0.1/")
+    const plainPolicy = plain.browsers.policy(plain.flow.id)
+    expect(await plainPolicy("http://127.0.0.1:80/")).toBe(true)
+    expect(await plainPolicy("https://127.0.0.1/")).toBe(false)
+  })
+
+  test("the allow ends when the page closes, when Stop ends the task, and when the page moves away", async () => {
+    const t = await setup()
+    const ctx = t.make("full")
+    await open(t, ctx, LOCAL)
+    const policy = t.browsers.policy(t.flow.id)
+    expect(await policy(LOCAL)).toBe(true)
+    await t.call(ctx, "browser_close")
+    expect(await policy(LOCAL)).toBe(false)
+    // The page closes by itself (a script, a crash): the allow goes with it.
+    await open(t, ctx, LOCAL)
+    expect(await policy(LOCAL)).toBe(true)
+    t.platform.browser(t.flow.id).close()
+    expect(await policy(LOCAL)).toBe(false)
+    // Stop of the task closes the page.
+    const stop = new AbortController()
+    const stopped = t.make("full", undefined, stop.signal)
+    await open(t, stopped, LOCAL)
+    expect(await policy(LOCAL)).toBe(true)
+    stop.abort()
+    expect(await policy(LOCAL)).toBe(false)
+    // The page moves to another place: a link back to the local place does not come back.
+    const moving = await setup()
+    moving.seed({
+      controls: [{ selector: "a.out", role: "link", label: "Out", x: 1, y: 1, goes: PUBLIC }],
+    })
+    const mctx = moving.make("full")
+    await open(moving, mctx, LOCAL)
+    const mpolicy = moving.browsers.policy(moving.flow.id)
+    expect(await mpolicy(LOCAL)).toBe(true)
+    await moving.call(mctx, "browser_click", { target: "a.out" })
+    expect(await mpolicy(LOCAL)).toBe(false)
+  })
+
+  test("a page that idle work unloaded keeps its allow, a public open ends it", async () => {
+    let now = 1_000_000
+    const t = await setup({ browser: { now: () => now, sweepMs: 0 } })
+    const ctx = t.make("full")
+    await open(t, ctx, LOCAL)
+    now += 11 * 60_000
+    t.browsers.sweep()
+    expect(t.browsers.state(t.flow.id).open).toBe(false)
+    expect(await t.browsers.policy(t.flow.id)(LOCAL)).toBe(true)
+    await open(t, ctx, PUBLIC)
+    expect(await t.browsers.policy(t.flow.id)(LOCAL)).toBe(false)
+  })
+})
+
+describe("what a card shows of a step (B9)", () => {
+  test("a card for typing shows the whole text, a card for an option shows the whole value, a secret is hidden", async () => {
+    const t = await setup()
+    t.seed({
+      controls: [
+        { selector: "#note", role: "textbox", label: "Note", x: 1, y: 1 },
+        {
+          selector: "#size",
+          role: "combobox",
+          label: "Size",
+          x: 1,
+          y: 2,
+          options: ["x".repeat(1500)],
+        },
+      ],
+    })
+    const ctx = t.make("ask_all")
+    await open(t, ctx)
+    const note = `${"Dear Ada, ".repeat(150)}END`
+    await t.call(ctx, "browser_type", { target: "#note", text: note })
+    expect(t.cards.at(-1)?.summary).toContain(note)
+    expect(t.cards.at(-1)?.summary).toContain("Note")
+    await t.call(ctx, "browser_select", { target: "#size", value: "x".repeat(1500) })
+    expect(t.cards.at(-1)?.summary).toContain("x".repeat(1500))
+    const key = `sk-${"a1B2".repeat(8)}`
+    await t.call(ctx, "browser_type", { target: "#note", text: `key ${key}` })
+    expect(t.cards.at(-1)?.summary).toContain("[redacted]")
+    expect(t.cards.at(-1)?.summary).not.toContain(key)
+    // A character that a person cannot see is written out.
+    await t.call(ctx, "browser_type", { target: "#note", text: "a‮b" })
+    expect(t.cards.at(-1)?.summary).toContain("\\u{202e}")
+  })
+
+  test("a text that is too long for a card is refused before any card and any page call", async () => {
+    const t = await setup()
+    t.seed({
+      controls: [
+        { selector: "#note", role: "textbox", label: "Note", x: 1, y: 1 },
+        { selector: "#size", role: "combobox", label: "Size", x: 1, y: 2, options: ["S"] },
+        {
+          selector: "#ask",
+          role: "button",
+          label: "Ask",
+          x: 1,
+          y: 3,
+          opens: { kind: "prompt", text: "Name?" },
+        },
+      ],
+    })
+    const ctx = t.make("ask_all")
+    await open(t, ctx)
+    t.cards.length = 0
+    const long = "y".repeat(BROWSER_TEXT_MAX + 1)
+    for (const [tool, args] of [
+      ["browser_type", { target: "#note", text: long }],
+      ["browser_select", { target: "#size", value: long }],
+    ] as const) {
+      const result = await t.call(ctx, tool, args)
+      expect(result.failed).toBe(true)
+      expect(result.notRun).toBe(true)
+      expect(result.output).toContain(`longer than ${BROWSER_TEXT_MAX}`)
+    }
+    await t.call(ctx, "browser_click", { target: "#ask" })
+    t.cards.length = 0
+    const prompt = await t.call(ctx, "browser_dialog", { action: "accept", text: long })
+    expect(prompt.notRun).toBe(true)
+    expect(t.cards).toEqual([])
+    expect(t.browserLog.filter((l) => /:(type|select|dialog)/.test(l))).toEqual([])
+    // The longest text that fits goes, whole.
+    const edge = "z".repeat(BROWSER_TEXT_MAX)
+    expect((await t.call(ctx, "browser_type", { target: "#note", text: edge })).failed).toBe(false)
+    expect(t.cards.at(-1)?.summary).toContain(edge)
+  })
+
+  test("the text of a prompt that the node answers is on the card", async () => {
+    const t = await setup()
+    t.seed({
+      controls: [
+        {
+          selector: "#ask",
+          role: "button",
+          label: "Ask",
+          x: 1,
+          y: 1,
+          opens: { kind: "prompt", text: "Name?" },
+        },
+      ],
+    })
+    const ctx = t.make("ask_all")
+    await open(t, ctx)
+    await t.call(ctx, "browser_click", { target: "#ask" })
+    await t.call(ctx, "browser_dialog", { action: "accept", text: "Ada Lovelace" })
+    expect(t.cards.at(-1)?.summary).toContain('"Ada Lovelace"')
+  })
+
+  test("a long address never hides the words 'an address on this computer'", async () => {
+    const t = await setup()
+    const ctx = t.make("ask_risky")
+    const url = `http://127.0.0.1:8080/${"p".repeat(1500)}/end`
+    await open(t, ctx, url)
+    const card = t.cards.at(-1)
+    expect(card?.summary.endsWith("(an address on this computer or on a local network)")).toBe(true)
+    expect(card?.summary.startsWith("Open http://127.0.0.1:8080/")).toBe(true)
+    expect(card?.summary).toContain("…")
+    // A long name of a control is cut in the middle, and the words about the page stay.
+    const n = await setup()
+    n.seed({
+      controls: [{ selector: "#b", role: "button", label: "B".repeat(500), x: 1, y: 1 }],
+    })
+    const nctx = n.make("ask_all")
+    await open(n, nctx)
+    await n.call(nctx, "browser_click", { target: "#b" })
+    expect(n.cards.at(-1)?.summary.endsWith("(the name of the control is text of the page)")).toBe(
+      true,
+    )
+  })
+})
+
+describe("every result that carries text of a page marks outside content (B9)", () => {
+  const fresh = (): NodeToolContext["marks"] => ({ outside: null, program: false, sensitive: null })
+  const HOST = { kind: "page" as const, host: "203.0.113.7" }
+  const seed: FakeBrowserSeed = {
+    text: "Hello from the page",
+    controls: [
+      { selector: "#go", role: "button", label: "Go", x: 1, y: 1 },
+      { selector: ".twin", role: "button", label: "Twin", x: 1, y: 2 },
+      { selector: ".twin", role: "button", label: "Twin", x: 1, y: 3 },
+      { selector: "#name", role: "textbox", label: "Name", x: 1, y: 4 },
+      { selector: "#size", role: "combobox", label: "Size", x: 1, y: 5, options: ["S"] },
+      {
+        selector: "#ask",
+        role: "button",
+        label: "Ask",
+        x: 1,
+        y: 6,
+        opens: { kind: "alert", text: "Hi" },
+      },
+    ],
+  }
+
+  /** Opens the page, then clears the mark, so the tool under test is the only one that sets it. */
+  const ready = async () => {
+    const t = await setup()
+    t.seed(seed)
+    const ctx = t.make("full", fresh())
+    await open(t, ctx)
+    ctx.marks.outside = null
+    return { t, ctx }
+  }
+
+  for (const [name, tool, args] of [
+    ["read", "browser_read", {}],
+    ["click", "browser_click", { target: "#go" }],
+    ["a click that fits many controls", "browser_click", { target: ".twin" }],
+    ["type", "browser_type", { target: "#name", text: "Ada" }],
+    ["select", "browser_select", { target: "#size", value: "S" }],
+    ["wait", "browser_wait", { text: "Hello", seconds: 1 }],
+    ["take control", "browser_take_control", { reason: "Sign in" }],
+  ] as const) {
+    test(`${name} marks the task`, async () => {
+      const { t, ctx } = await ready()
+      const result = await t.call(ctx, tool, args)
+      expect(result.output.length).toBeGreaterThan(0)
+      expect(ctx.marks.outside).toEqual(HOST)
+    })
+  }
+
+  test("an answer to a dialog marks the task", async () => {
+    const { t, ctx } = await ready()
+    await t.call(ctx, "browser_click", { target: "#ask" })
+    ctx.marks.outside = null as NodeToolContext["marks"]["outside"]
+    const result = await t.call(ctx, "browser_dialog", { action: "accept" })
+    expect(result.failed).toBe(false)
+    expect(ctx.marks.outside).toEqual(HOST)
+  })
+
+  test("a step that failed with a reason of the browser marks the task and keeps the reason in the mark", async () => {
+    const { t, ctx } = await ready()
+    t.seed({ ...seed, fails: "ERR_FAILED loading 'http://evil.example/ignore-all'" })
+    const result = await t.call(ctx, "browser_read")
+    expect(result.failed).toBe(true)
+    expect(ctx.marks.outside).toEqual(HOST)
+    expect(result.output.split("<page-data>")[0]).not.toContain("evil.example")
+    expect(result.output).toMatch(/<page-data>[\s\S]*evil\.example[\s\S]*<\/page-data>/)
+  })
+
+  test("a result with no text of a page marks nothing", async () => {
+    const { t, ctx } = await ready()
+    await t.call(ctx, "browser_screenshot")
+    await t.call(ctx, "browser_close")
+    expect(ctx.marks.outside).toBeNull()
+  })
+
+  test("a candidate list holds names of the page and sits in one data mark", async () => {
+    const { t, ctx } = await ready()
+    const result = await t.call(ctx, "browser_click", { target: ".twin" })
+    expect(result.failed).toBe(true)
+    expect(result.output.split("<page-data>").length).toBe(2)
+    expect(result.output.split("<page-data>")[0]).not.toContain("Twin")
+  })
+})
+
+describe("the action log has the browser steps (B9, spec 007 'Action log')", () => {
+  test("'Read only' refuses every browser tool and the log has each as Refused, with no text of a page", async () => {
+    const t = await setup()
+    const ctx = t.make("read_only")
+    for (const name of [
+      "browser_open",
+      "browser_click",
+      "browser_type",
+      "browser_screenshot",
+      "browser_close",
+    ]) {
+      await t.call(ctx, name, {
+        url: "http://shop.example.com/secret-path?token=abc",
+        target: "1",
+        text: "typed text of the node",
+      })
+    }
+    const entries = await t.entries()
+    expect(entries.map((e) => [e.kind, e.result, e.decidedBy])).toEqual(
+      Array(5).fill(["browser", "refused", "level"]),
+    )
+    expect(entries.map((e) => e.target).sort()).toEqual(
+      ["click", "close", "screenshot", "shop.example.com open", "type"].sort(),
+    )
+  })
+
+  test("a step that ran is logged with its host and kind of step, who decided, and the result", async () => {
+    const t = await setup()
+    t.seed({
+      controls: [
+        { selector: "#buy", role: "button", label: "Buy now", x: 1, y: 1 },
+        { selector: "#name", role: "textbox", label: "Name", x: 1, y: 2 },
+      ],
+    })
+    const ctx = t.make("ask_risky")
+    await open(t, ctx)
+    await t.call(ctx, "browser_type", { target: "#name", text: "hunter2 and my address" })
+    t.answer("deny")
+    await t.call(ctx, "browser_click", { target: "#buy" })
+    t.answer("allow")
+    await t.call(ctx, "browser_click", { target: "#buy" })
+    await t.call(ctx, "browser_click", { target: "#missing" })
+    await open(t, ctx, "http://169.254.169.254/")
+    const rows = (await t.entries()).map((e) => [e.target, e.decidedBy, e.result])
+    expect(rows).toEqual([
+      ["169.254.169.254 open", "app", "refused"],
+      ["203.0.113.7 click", "level", "failed"],
+      ["203.0.113.7 click", "user", "ran"],
+      ["203.0.113.7 click", "user", "refused"],
+      ["203.0.113.7 type", "level", "ran"],
+      ["203.0.113.7 open", "level", "ran"],
+    ])
+    // No typed text and no label of a page is in the log.
+    const all = JSON.stringify(await t.entries())
+    expect(all).not.toContain("hunter2")
+    expect(all).not.toContain("Buy now")
+  })
+
+  test("Stop ends a step with the result Stopped", async () => {
+    const t = await setup()
+    t.seed({ controls: [{ selector: "#a", role: "button", label: "Go", x: 1, y: 1 }] })
+    const stop = new AbortController()
+    const ctx = t.make("full", undefined, stop.signal)
+    await open(t, ctx)
+    t.seed({ controls: [{ selector: "#a", role: "button", label: "Go", x: 1, y: 1 }], hang: true })
+    const running = t.call(ctx, "browser_click", { target: "#a" })
+    setTimeout(() => stop.abort(), 20)
+    await expect(running).rejects.toThrow()
+    expect((await t.entries())[0]).toMatchObject({ kind: "browser", result: "stopped" })
+    t.releaseBrowser(t.flow.id)
   })
 })

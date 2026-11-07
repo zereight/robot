@@ -124,34 +124,59 @@ export const BROWSER_ADDRESS_TEXT = {
     "Refused: the page tried to go to an address that is not allowed (a local address, a link-local address or a scheme other than http and https).",
 } as const
 
-// --- which actions change a page --------------------------------------------------------------
+// --- which clicks ask --------------------------------------------------------------------------
 
-/** What the app knows about a control before an action on it. */
+/** What the app knows about a control before an action on it. All of it comes from the DOM. */
 export interface ControlFacts {
   readonly role: string
+  /** The name of the control. It is text of the page: the page chose it. */
   readonly label: string
+  /** The tag of the element, lower case. */
+  readonly tag: string
   /** A button or an input that submits a form. */
   readonly submit: boolean
   /** The method of that form, lower case. */
   readonly method: string
   /** True for a password, a code or a card field. */
   readonly secure: boolean
+  /**
+   * True for a plain link: an `a` with an http, https or relative address, with no `onclick`
+   * attribute, no `download` and no other role. The app can prove no more than this about a click.
+   */
+  readonly plain: boolean
 }
 
+/** The control that a card named: an action refuses a control that is no longer this one. */
+export interface ControlExpect {
+  readonly role: string
+  readonly label: string
+  readonly tag: string
+}
+
+export const expectOf = (facts: ControlFacts): ControlExpect => ({
+  role: facts.role,
+  label: facts.label,
+  tag: facts.tag,
+})
+
 const CHANGE_EN =
-  /\b(?:submit|send|buy|purchase|pay|order|checkout|check\s*out|confirm|delete|remove|post|publish|transfer|subscribe|sign\s*up|register|donate|book|reserve|apply|unsubscribe|cancel\s+(?:order|subscription|booking))\b/i
+  /\b(?:submit|send|buy|purchase|pay|order|checkout|check\s*out|confirm|delete|remove|post|publish|transfer|subscribe|sign\s*up|register|donate|book|reserve|apply|unsubscribe|cancel|allow|authori[sz]e|accept|agree|approve|grant|continue|yes|ok|okay|save|log\s*out|logout|sign\s*out|signout|unlock|install|reset|deactivate|disable|enable)\b/i
 const CHANGE_KO =
-  /제출|전송|보내기|발송|구매|결제|주문|삭제|확인|게시|등록|가입|신청|예약|송금|구독|기부|취소/u
+  /제출|전송|보내기|발송|구매|결제|주문|삭제|확인|게시|등록|가입|신청|예약|송금|구독|기부|취소|허용|승인|동의|수락|계속|저장|로그아웃|로그\s*아웃/u
+
+/** True when the name of a control is one that a click could use to change something. */
+export const labelChanges = (label: string): boolean =>
+  CHANGE_EN.test(label) || CHANGE_KO.test(label)
 
 /**
- * True when a click on this control changes something beyond the page: it submits a form that is
- * not a plain GET, or its label names a buy, a send, a post or a delete (spec 007; the open rows
- * of B9). Fail closed: a label that only looks like such a word counts.
+ * True when a click on this control asks at the levels that ask (spec 007; the open rows of B9).
+ * Fail closed: a click runs without a card only when the app can prove that it is harmless, and
+ * that is a plain link whose name does not say a step that changes something. Every other control
+ * (a button, a field, a box, a control that says it is a button) asks, whatever its name says,
+ * because the page chose the name and its scripts are not seen.
  */
-export const changesPage = (facts: ControlFacts): boolean =>
-  (facts.submit && facts.method !== "get") ||
-  CHANGE_EN.test(facts.label) ||
-  CHANGE_KO.test(facts.label)
+export const clickAsks = (facts: ControlFacts): boolean =>
+  !facts.plain || (facts.submit && facts.method !== "get") || labelChanges(facts.label)
 
 // --- what the page gives to the node ----------------------------------------------------------
 
@@ -184,6 +209,53 @@ export const plainLabel = (text: string, max: number = BROWSER_LIMITS.labelMax):
   const flat = plainPageText(text, max * 4).replace(/\s+/gu, " ")
   const chars = [...flat]
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : flat
+}
+
+/** One label as one short line, cut in the middle: the start and the end stay. */
+export const plainMiddle = (text: string, max: number): string => {
+  const flat = plainPageText(text, text.length + 1).replace(/\s+/gu, " ")
+  const chars = [...flat]
+  if (chars.length <= max) return flat
+  const room = Math.max(max - 1, 2)
+  const head = Math.ceil(room / 2)
+  return `${chars.slice(0, head).join("")}…${chars.slice(chars.length - (room - head)).join("")}`
+}
+
+/** The most characters of text that the node types into a field, or of a value that it picks. */
+export const BROWSER_TEXT_MAX = 2000
+/** What the node reads when the text is too long for a card to show it whole. */
+export const BROWSER_TEXT_TOO_LONG = `Refused: the text is longer than ${BROWSER_TEXT_MAX} characters, so the user cannot check it on a card. Nothing was typed. Call the tool again with shorter text.`
+
+/**
+ * The text that a node types or picks, as a card shows it: whole, in quotes, with the characters
+ * that a person cannot see written as `\u{...}`, and a secret hidden. The card never shows less
+ * than the page gets, except a secret.
+ */
+export const exactText = (text: string): string =>
+  redactSecrets(
+    `"${[...text]
+      .map((ch) => {
+        if (ch === '"') return '\\"'
+        if (ch === "\\") return "\\\\"
+        if (ch === "\n") return "\\n"
+        if (/[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Zl}\p{Zp}]/u.test(ch))
+          return `\\u{${ch.codePointAt(0)?.toString(16)}}`
+        return ch
+      })
+      .join("")}"`,
+  )
+
+/** The most characters of the first part of a card line. The detail and the end are never cut. */
+export const CARD_HEAD_MAX = 300
+
+/**
+ * The summary of a card of a browser step: the head (what the step is, cut in the middle when it
+ * is long), then the detail that the step sends (whole), then the end (words of the app that the
+ * user must see, such as that an address is on this computer). Only the head is ever cut.
+ */
+export const cardSummary = (head: string, detail: string | null, end: string): string => {
+  const room = Math.max(CARD_HEAD_MAX - end.length, 60)
+  return `${plainMiddle(head, room)}${detail === null ? "" : `: ${detail}`}${end}`
 }
 
 /**

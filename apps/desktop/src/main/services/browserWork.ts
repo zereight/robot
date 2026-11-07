@@ -6,6 +6,7 @@ import {
   browserHost,
   kindOfAddress,
   redactSecrets,
+  ruleHost,
   worstKind,
 } from "@robot/shared"
 import { appendLog } from "./logs.ts"
@@ -29,8 +30,12 @@ interface Entry {
   held: boolean
   /** The window shows the page now. */
   shown: boolean
-  /** The hosts of local addresses that the user allowed for this page. */
-  localHosts: Set<string>
+  /**
+   * The places (host and port) of local addresses that the user allowed for this page. The allow
+   * holds for the page that the user was asked about: a new open asks again, and a close, a Stop
+   * or a move of the page to another place ends it.
+   */
+  localPlaces: Set<string>
   /** True while `unload` closes the page, so that the close does not forget the address. */
   unloading: boolean
   /** The tasks whose Stop closes the page, by signal. */
@@ -49,6 +54,14 @@ export interface BrowserWorkOptions {
 
 /** A name leads to local addresses for this long, as the page rule remembers it. */
 const RESOLVE_KEEP_MS = 30_000
+/** The names that the page rule remembers. The oldest go first. */
+const RESOLVE_KEEP_MAX = 200
+
+/** The place of an address as a rule names it: the host and the port (the default of the scheme). */
+export const placeOf = (url: URL): string => {
+  const secure = url.protocol === "https:" || url.protocol === "wss:"
+  return `${ruleHost(url.hostname)}:${url.port || (secure ? "443" : "80")}`
+}
 
 export type BrowserWork = ReturnType<typeof makeBrowserWork>
 
@@ -66,7 +79,7 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
         unloadedUrl: null,
         held: false,
         shown: false,
-        localHosts: new Set(),
+        localPlaces: new Set(),
         unloading: false,
         stops: new WeakSet(),
       }
@@ -89,16 +102,23 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
     if (known && now() - known.at < RESOLVE_KEEP_MS) return known.kind
     const found = await platform.resolveHost(host)
     const kind = worstKind(found.map((f) => kindOfAddress(f.address)))
+    resolved.delete(host)
     resolved.set(host, { at: now(), kind })
+    // A map keeps the order of insertion, so the first key is the oldest.
+    while (resolved.size > RESOLVE_KEEP_MAX) {
+      const oldest = resolved.keys().next().value
+      if (oldest === undefined) break
+      resolved.delete(oldest)
+    }
     return kind
   }
 
   /**
    * The rule for the addresses of one page (spec 007, "Addresses of a web page fetch"): only
    * `http` and `https` load, with `data:` and `blob:` for the page itself. A link-local or a
-   * metadata address never loads. A local address loads only when the user allowed that host for
-   * this page, in the card for an address that the node opened. A name that leads to an address
-   * is judged by the address.
+   * metadata address never loads. A local address loads only when the user allowed that host and
+   * port for this page, in the card for an address that the node opened. A name that leads to an
+   * address is judged by the address.
    */
   const policyOf =
     (workflowId: string): NavigationPolicy =>
@@ -116,13 +136,14 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
       } else if (scheme !== "http:" && scheme !== "https:") return false
       const checked = browserAddress(parsed.href)
       if (checked.kind === "refused") return false
-      const allowed = entry(workflowId).localHosts
-      if (checked.writing.kind === "local") return allowed.has(checked.host)
+      const allowed = entry(workflowId).localPlaces
+      const place = placeOf(parsed)
+      if (checked.writing.kind === "local") return allowed.has(place)
       if (checked.writing.kind === "name") {
         try {
           const kind = await kindOfName(checked.host)
           if (kind === "never") return false
-          if (kind === "local") return allowed.has(checked.host)
+          if (kind === "local") return allowed.has(place)
         } catch {
           // A name that does not resolve does not load. Fail closed.
           return false
@@ -142,7 +163,12 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
         const e = entry(workflowId)
         e.held = false
         e.shown = false
-        if (!e.unloading) e.unloadedUrl = null
+        if (!e.unloading) {
+          e.unloadedUrl = null
+          // The page is gone, and so is the allow for its local address. A page that idle work
+          // unloaded keeps its tab, and so its allow.
+          e.localPlaces.clear()
+        }
         options.changed(workflowId)
       })
     }
@@ -246,7 +272,10 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
   /** Closes the page of a workflow now, and forgets what idle work knew about it. */
   const forget = (workflowId: string) => {
     const e = entries.get(workflowId)
-    if (e) e.unloadedUrl = null
+    if (e) {
+      e.unloadedUrl = null
+      e.localPlaces.clear()
+    }
     if (pages.has(workflowId)) platform.browser(workflowId).close()
     entries.delete(workflowId)
     options.changed(workflowId)
@@ -268,6 +297,7 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
       if (e.held) p?.allowUserInput(false)
       e.held = false
       e.unloadedUrl = null
+      e.localPlaces.clear()
       p?.close()
       log("stop", { open: was, ms: now() - started })
       options.changed(workflowId)
@@ -280,13 +310,43 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
   const close = (workflowId: string) => {
     const e = entry(workflowId)
     e.unloadedUrl = null
+    e.localPlaces.clear()
     if (pages.has(workflowId)) platform.browser(workflowId).close()
     options.changed(workflowId)
   }
 
-  /** The user allows a local host for this page, on the card of an address. */
-  const allowLocal = (workflowId: string, host: string) => {
-    entry(workflowId).localHosts.add(host)
+  /**
+   * The user allows a local place (host and port) for the page that is about to open, on the card
+   * of an address. The allow of an earlier page ends first: it holds for this page only.
+   */
+  const allowLocal = (workflowId: string, url: string) => {
+    const e = entry(workflowId)
+    e.localPlaces.clear()
+    try {
+      e.localPlaces.add(placeOf(new URL(url)))
+    } catch {
+      // An address that is not an address allows nothing.
+    }
+  }
+
+  /**
+   * The page showed this address. A page that moved to another place than the one the user
+   * allowed lost the allow: it does not come back by a link to the place.
+   */
+  const observed = (workflowId: string, url: string) => {
+    const e = entries.get(workflowId)
+    if (!e || e.localPlaces.size === 0) return
+    try {
+      if (!e.localPlaces.has(placeOf(new URL(url)))) e.localPlaces.clear()
+    } catch {
+      // A page with no address (about:blank) is a page that moved away.
+      e.localPlaces.clear()
+    }
+  }
+
+  /** Ends the allow of a local place now: the next page that opens there asks again. */
+  const forgetLocal = (workflowId: string) => {
+    entries.get(workflowId)?.localPlaces.clear()
   }
 
   platform.onLowMemory(() => sweep(true))
@@ -307,8 +367,16 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
     forget,
     closeOnStop,
     allowLocal,
+    forgetLocal,
+    observed,
     log,
-    isLocalAllowed: (workflowId: string, host: string) => entry(workflowId).localHosts.has(host),
+    isLocalAllowed: (workflowId: string, url: string) => {
+      try {
+        return entry(workflowId).localPlaces.has(placeOf(new URL(url)))
+      } catch {
+        return false
+      }
+    },
     policy: policyOf,
   }
 }

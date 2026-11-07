@@ -278,6 +278,7 @@ export const en = {
   "permissions.log.kind.shell": "Shell command",
   "permissions.log.kind.web": "Web page",
   "permissions.log.kind.connection": "Tool of a connection",
+  "permissions.log.kind.browser": "Browser",
   "permissions.log.access.read": "Read",
   "permissions.log.access.write": "Write",
   "permissions.log.decided.level": "Permission level",
