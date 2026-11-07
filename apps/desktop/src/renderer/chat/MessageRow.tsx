@@ -99,6 +99,45 @@ const NoteLine = (props: { note: Note; workflowId: string }) => {
   )
 }
 
+/** The tools of the chat that read and change the workflow and its runs (spec 007, "Tool cards"). */
+const ASSISTANT_CARDS = new Set([
+  "list_workflows",
+  "read_workflow",
+  "add_node",
+  "edit_node",
+  "remove_node",
+  "add_connection",
+  "remove_connection",
+  "add_option",
+  "rename_option",
+  "remove_option",
+  "start_run",
+  "stop_run",
+  "read_run",
+  "read_run_result",
+])
+
+/** The line of the card of such a tool, in the words of the interface. Plain text, never markup. */
+const assistantCardText = (
+  part: Tool,
+  t: (key: MessageKey, params?: MessageParams) => string,
+): string | null => {
+  if (!ASSISTANT_CARDS.has(part.name)) return null
+  let args: Record<string, unknown> = {}
+  try {
+    const v: unknown = JSON.parse(part.input || "{}")
+    if (typeof v === "object" && v !== null) args = v as Record<string, unknown>
+  } catch {
+    // Arguments that are not JSON show with the number "?".
+  }
+  const n = (v: unknown) => (typeof v === "number" && Number.isInteger(v) ? v : "?")
+  return t(`chat.tool.${part.name}` as MessageKey, {
+    node: n(args.node),
+    from: n(args.from),
+    to: n(args.to),
+  })
+}
+
 /** A tool step as a compact card: its name and its state. A click opens the details. */
 const ToolCard = (props: { part: Tool }) => {
   const { t } = useApp()
@@ -117,7 +156,7 @@ const ToolCard = (props: { part: Tool }) => {
     <details class={styles.tool} data-testid="tool-card" data-state={props.part.state}>
       <summary>
         <Wrench size={14} aria-hidden="true" />
-        <span class={styles.toolName}>{props.part.label}</span>
+        <span class={styles.toolName}>{assistantCardText(props.part, t) ?? props.part.label}</span>
         <span class={styles.toolState}>{t(`chat.tool.${props.part.state}`)}</span>
       </summary>
       <pre class={styles.toolBody}>{props.part.input}</pre>

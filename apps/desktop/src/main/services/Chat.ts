@@ -34,6 +34,13 @@ import { ProviderFailure } from "../providers/client.ts"
 import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { chatMayUse } from "../runtimes/driver.ts"
 import { ActionLog } from "./ActionLog.ts"
+import {
+  ASSISTANT_TOOL_DEFS,
+  type AssistantTurn,
+  isAssistantTool,
+  makeAssistantTools,
+  newAssistantTurn,
+} from "./assistantTools.ts"
 import { Cards } from "./Cards.ts"
 import { chatDir } from "./chatDir.ts"
 import { chatSystem, FEEDBACK_TOOL, reflectText } from "./chatPrompt.ts"
@@ -52,6 +59,7 @@ import { RunFacts } from "./RunFacts.ts"
 import { Runs } from "./Runs.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
+import { WorkflowCheck } from "./WorkflowCheck.ts"
 import { Workflows } from "./Workflows.ts"
 
 /** The model that answers in the chat of a workflow. */
@@ -148,9 +156,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const memory = yield* Memory
       const proposals = yield* Proposals
       const runs = yield* Runs
+      const check = yield* WorkflowCheck
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const proposeTools = makeProposeTools({ proposals })
       const chatSearch = makeChatSearch(db)
+      const assistant = makeAssistantTools({ workflows, runs, facts, check, providers })
 
       // A reply that was streaming when the app closed is marked as stopped (spec 003, "Rules").
       db.run(
@@ -666,6 +676,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           may,
           defs: [
             FEEDBACK_TOOL,
+            ...ASSISTANT_TOOL_DEFS,
             ...(may.propose ? PROPOSE_TOOL_DEFS : []),
             ...(memoryOn ? [...MEMORY_TOOL_DEFS, ...CHAT_SEARCH_TOOL_DEFS] : []),
           ],
@@ -808,6 +819,77 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return { output: `Unknown tool: ${call.name}`, failed: true }
       }
 
+      /**
+       * A tool of the chat that reads or changes the workflow, or starts, stops and reads a run
+       * (spec 010, "Assistant"; spec 007). A change and the start of a run in a turn that holds
+       * outside content ask the user first. A result that holds outside content marks the turn.
+       */
+      const assistantTool = async (
+        workflowId: string,
+        w: Working,
+        turn: AssistantTurn,
+        call: ToolCall,
+        touch: () => void,
+      ): Promise<ToolOutcome> => {
+        const marks = readMarks(workflowId)
+        // The level is read at the call, so a level that the user changed in the turn applies. A
+        // workflow that cannot be read counts as "Read only" (fail closed).
+        const level =
+          db.get<{ permission: PermissionLevel }>(
+            "SELECT permission FROM workflow WHERE id = ?",
+            workflowId,
+          )?.permission ?? "read_only"
+        const result = await assistant.execute(
+          {
+            workflowId,
+            level,
+            outside: marks.outside,
+            program: marks.program,
+            turn,
+            ask: (step, summary) =>
+              cards.ask({
+                workflowId,
+                runId: null,
+                taskId: null,
+                nodeNumber: null,
+                nodeName: null,
+                kind: "approval",
+                summary,
+                step,
+                once: true,
+                outside: marks.outside,
+                scope: "turn",
+                sensitive: marks.sensitive,
+                signal: w.controller.signal,
+              }),
+          },
+          call,
+        )
+        if (result.guarded)
+          actionLog.add({
+            workflowId,
+            kind: result.guarded.kind,
+            target: result.guarded.target,
+            decidedBy: result.guarded.decidedBy,
+            result: result.guarded.result,
+            taskId: null,
+            outside: marks.outside,
+            sensitive: marks.sensitive,
+            ...(result.guarded.device ? { device: result.guarded.device } : {}),
+          })
+        // The result of a node that held outside content makes this turn hold it (spec 007).
+        if (result.outside && marks.outside === null && result.outside.source !== null)
+          writeMarks(workflowId, {
+            ...marks,
+            outside: result.outside.source,
+            program: marks.program || result.outside.program,
+          })
+        else if (result.outside?.program && !marks.program)
+          writeMarks(workflowId, { ...marks, program: true })
+        touch()
+        return result.outcome
+      }
+
       const runTurn = async (workflowId: string, w: Working, model: AnswerModel): Promise<void> => {
         const parts: ChatPart[] = []
         let timer: ReturnType<typeof setTimeout> | null = null
@@ -848,6 +930,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             )
             .filter((t) => t.content.trim() !== "")
           const toolSet = chatToolSet(workflowId, workflow)
+          // Only a turn that the user started in the chat has the tools (spec 007, "Who may use them").
+          const turnState = newAssistantTurn("user", workflow.graph)
           const events = await Effect.runPromise(
             providers.events(
               model.accountId,
@@ -859,7 +943,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   document: workflow.document,
                   runs,
                   feedback: withTools,
-                  ...(withTools ? { graph: workflow.graph, may: toolSet.may } : {}),
+                  ...(withTools
+                    ? { graph: workflow.graph, may: toolSet.may, assistant: true }
+                    : {}),
                 }),
                 turns,
                 signal: w.controller.signal,
@@ -881,6 +967,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 execute: async (call) => {
                   if (call.name === FEEDBACK_TOOL.name)
                     return feedbackTool(workflowId, w, workflow.permission, call, parts, touch)
+                  if (isAssistantTool(call.name))
+                    return assistantTool(workflowId, w, turnState, call, touch)
                   return improveTool(workflowId, w, workflow.permission, call, parts, touch)
                 },
                 approve: async () => false,
