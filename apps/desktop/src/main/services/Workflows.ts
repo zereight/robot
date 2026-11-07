@@ -13,12 +13,14 @@ import {
   type DocumentVersion,
   type GraphVersion,
   isLooser,
+  isRuntimeKind,
   NODES_MAX,
   type NodeInput,
   type NodePatch,
   nameKey,
   OPTIONS_MIN,
   type PermissionLevel,
+  programName,
   redactSecrets,
   resolveLocale,
   THRESHOLD_DEFAULT,
@@ -37,8 +39,28 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { SettingsStore } from "./Settings.ts"
+import { sharingWorkflows } from "./sharedFolders.ts"
 
 export type { GraphVersion, NodeInput, NodePatch }
+
+/**
+ * The programs of the text nodes of a workflow that take no part in file claims (spec 025,
+ * "Rules"): a vendor runtime runs its own file steps, and the app cannot see or refuse them. One
+ * name for each program, in order of first use.
+ */
+const claimlessPrograms = (db: DatabaseService, workflowId: string): readonly string[] => {
+  const names: string[] = []
+  for (const row of db.all<{ kind: string }>(
+    `SELECT a.kind FROM workflow_node n JOIN provider_account a ON a.id = n.account_id
+     WHERE n.workflow_id = ? AND n.kind = 'text' ORDER BY n.number`,
+    workflowId,
+  )) {
+    if (!isRuntimeKind(row.kind)) continue
+    const name = programName(row.kind)
+    if (!names.includes(name)) names.push(name)
+  }
+  return names
+}
 
 export interface WorkflowsService {
   readonly list: (serverId: string) => Effect.Effect<readonly Workflow[]>
@@ -100,6 +122,8 @@ export interface WorkflowsService {
     id: string,
     graph: WorkflowGraph,
     source: VersionSource,
+    /** The linked device that asked for the change: "Last changed by <device>" (spec 012). */
+    device?: string | null,
   ) => Effect.Effect<{ versionId: string }, AppError>
   /** Changes the prompt of one node and keeps the graph as it was as a version (spec 002). */
   readonly applyPrompt: (
@@ -292,11 +316,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       }
       const detail = (r: WorkflowRow): WorkflowDetail => {
         const graph = readGraph(db, r.id)
+        const sharedWith = sharingWorkflows(db, r.id).map((w) => w.name)
         return {
           ...toWorkflow(r, graph),
           document: r.document,
           graph,
           checkOutcome: readStoredCheck(db, r.id, graph),
+          sharedWith,
+          claimless: sharedWith.length === 0 ? [] : claimlessPrograms(db, r.id),
         }
       }
       const nameTaken = (serverId: string, name: string, exceptId?: string) =>
@@ -319,14 +346,19 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           : null
 
       /** Keeps the graph as it is now as a version, before a change (spec 010). */
-      const keepVersion = (workflowId: string, source: VersionSource): string => {
+      const keepVersion = (
+        workflowId: string,
+        source: VersionSource,
+        device: string | null = null,
+      ): string => {
         const id = randomUUID()
         db.run(
-          "INSERT INTO workflow_version (id, workflow_id, graph, source, created_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO workflow_version (id, workflow_id, graph, source, device, created_at) VALUES (?, ?, ?, ?, ?, ?)",
           id,
           workflowId,
           JSON.stringify(readGraph(db, workflowId)),
           source,
+          device,
           Date.now(),
         )
         return id
@@ -479,11 +511,12 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         row: WorkflowRow,
         graph: WorkflowGraph,
         source: VersionSource,
+        device: string | null = null,
       ): string => {
         const id = row.id
         let versionId = ""
         db.transaction(() => {
-          versionId = keepVersion(id, source)
+          versionId = keepVersion(id, source, device)
           const links = db.all<{ id: string; node_id: string }>(
             "SELECT id, node_id FROM task WHERE workflow_id = ? AND node_id IS NOT NULL",
             id,
@@ -983,14 +1016,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             writeGraph(row, graph, "restore")
             return readGraph(db, id)
           }),
-        applyGraph: (id, graph, source) =>
+        applyGraph: (id, graph, source, device) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
             const busy = checkIdle(id)
             if (busy) return yield* busy
             if (loosestNode(graph.nodes, row.permission))
               return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
-            return { versionId: writeGraph(row, graph, source) }
+            return { versionId: writeGraph(row, graph, source, device ?? null) }
           }),
         applyPrompt: (nodeId, prompt, source) =>
           Effect.gen(function* () {

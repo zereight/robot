@@ -184,4 +184,45 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT id FROM proposal")).toEqual([])
     expect(db.all("SELECT id FROM memory")).toEqual([])
   })
+
+  test("a database built from the first 11 migrations opens at version 12, keeps its rows and gets the claims, the holder and the device", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-11-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const before = migrations.slice(0, 11)
+    expect(before).toHaveLength(11)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', 'w1', 'done', 'hand', 1);
+      INSERT INTO action_log (id, at, workflow_id, workflow_name, kind, target, decided_by, result)
+        VALUES ('a1', 1, 'w1', 'Report', 'file', '/tmp/w1/a.md', 'level', 'Allowed');
+    `)
+    expect(old.prepare("SELECT name FROM sqlite_master WHERE name = 'file_claim'").all()).toEqual(
+      [],
+    )
+    old.close()
+    expect(fileState(file)).toBe("current")
+    const db = openDatabase(file)
+    expect(migrations).toHaveLength(12)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(12)
+    // The rows stay.
+    expect(db.get<{ document: string }>("SELECT document FROM workflow")?.document).toBe("Doc.")
+    expect(db.all("SELECT id FROM run")).toEqual([{ id: "r1" }])
+    expect(db.all("SELECT id, holder FROM action_log")).toEqual([{ id: "a1", holder: null }])
+    // The columns of the 11th migration and of the 12th are there.
+    expect(db.get<{ device: string | null }>("SELECT device FROM run")?.device).toBeNull()
+    expect(db.all("SELECT device FROM workflow_version")).toEqual([])
+    // The table of claims takes a claim and goes with the workflow.
+    db.run(
+      "INSERT INTO file_claim (task_id, workflow_id, path, path_key, at) VALUES ('t1', 'w1', '/tmp/w1/a.md', '/tmp/w1/a.md', 1)",
+    )
+    db.run("UPDATE action_log SET holder = 'Other' WHERE id = 'a1'")
+    expect(db.all("SELECT holder FROM action_log")).toEqual([{ holder: "Other" }])
+    db.run("DELETE FROM workflow WHERE id = 'w1'")
+    expect(db.all("SELECT task_id FROM file_claim")).toEqual([])
+  })
 })

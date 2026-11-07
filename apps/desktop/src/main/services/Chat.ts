@@ -34,11 +34,21 @@ import { ProviderFailure } from "../providers/client.ts"
 import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { chatMayUse } from "../runtimes/driver.ts"
 import { ActionLog } from "./ActionLog.ts"
+import { type Actor, CurrentActor } from "./actor.ts"
+import {
+  ASSISTANT_TOOL_DEFS,
+  type AssistantTurn,
+  isAssistantTool,
+  makeAssistantTools,
+  newAssistantTurn,
+  type TurnActor,
+} from "./assistantTools.ts"
 import { Cards } from "./Cards.ts"
 import { chatDir } from "./chatDir.ts"
 import { chatSystem, FEEDBACK_TOOL, reflectText } from "./chatPrompt.ts"
 import { CHAT_SEARCH_TOOL_DEFS, isChatSearchTool, makeChatSearch } from "./chatSearch.ts"
 import { Database } from "./Database.ts"
+import { Devices } from "./Devices.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { appendLog } from "./logs.ts"
@@ -52,6 +62,7 @@ import { RunFacts } from "./RunFacts.ts"
 import { Runs } from "./Runs.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
+import { WorkflowCheck } from "./WorkflowCheck.ts"
 import { Workflows } from "./Workflows.ts"
 
 /** The model that answers in the chat of a workflow. */
@@ -120,6 +131,9 @@ interface MessageRow {
   created_at: number
   finished_at: number | null
   read_at: number | null
+  /** The linked device that sent a message of the user, or null for the window of this computer. */
+  actor_id: string | null
+  actor_name: string | null
 }
 
 interface Working {
@@ -136,6 +150,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
     Chat,
     Effect.gen(function* () {
       const db = yield* Database
+      const devices = yield* Devices
       const bus = yield* EventBus
       const platform = yield* Platform
       const providers = yield* Providers
@@ -148,9 +163,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const memory = yield* Memory
       const proposals = yield* Proposals
       const runs = yield* Runs
+      const check = yield* WorkflowCheck
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const proposeTools = makeProposeTools({ proposals })
       const chatSearch = makeChatSearch(db)
+      const assistant = makeAssistantTools({ workflows, runs, facts, check, providers })
 
       // A reply that was streaming when the app closed is marked as stopped (spec 003, "Rules").
       db.run(
@@ -198,10 +215,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         joinedTo?: string | null
         model?: string | null
         createdAt?: number
+        /** The linked device that sent the message (spec 012). Null: the window of this computer. */
+        actor?: Actor | null
       }) =>
         db.run(
-          `INSERT INTO chat_message (id, workflow_id, author, parts, status, reply_to, joined_to, model, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO chat_message (id, workflow_id, author, parts, status, reply_to, joined_to, model, created_at, actor_id, actor_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           m.id,
           m.workflowId,
           m.author,
@@ -211,6 +230,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           m.joinedTo ?? null,
           m.model ?? null,
           m.createdAt ?? Date.now(),
+          m.actor?.id ?? null,
+          m.actor?.name ?? null,
         )
 
       /** The choice that was made for this chat, or null. */
@@ -666,6 +687,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           may,
           defs: [
             FEEDBACK_TOOL,
+            ...ASSISTANT_TOOL_DEFS,
             ...(may.propose ? PROPOSE_TOOL_DEFS : []),
             ...(memoryOn ? [...MEMORY_TOOL_DEFS, ...CHAT_SEARCH_TOOL_DEFS] : []),
           ],
@@ -808,6 +830,129 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return { output: `Unknown tool: ${call.name}`, failed: true }
       }
 
+      /**
+       * The linked devices whose messages the turn answers, oldest first (spec 012). These are the
+       * messages of the user since the last reply that ended well, and the messages that joined the
+       * turn, read or not. A reply that failed or stopped does not close the list, so a retry, a
+       * resume and a "continue" answer the same senders. A message of the window of this computer
+       * has no device.
+       */
+      const turnSenders = (workflowId: string, w: Working): { id: string; name: string }[] => {
+        const rows = visibleRows(workflowId)
+        const at = rows.findIndex((r) => r.id === w.assistantId)
+        const tail: MessageRow[] = []
+        for (let i = (at === -1 ? rows.length : at) - 1; i >= 0; i--) {
+          const r = rows[i]
+          if (!r) break
+          if (r.author === "assistant" && r.status === "done") break
+          tail.unshift(r)
+        }
+        const consumed = [...tail, ...rows.filter((r) => r.joined_to === w.assistantId)]
+        const senders = new Map<string, string>()
+        for (const r of consumed) {
+          if (r.author !== "user" || r.actor_id === null) continue
+          // The latest message of a device puts the device last.
+          senders.delete(r.actor_id)
+          senders.set(r.actor_id, r.actor_name ?? r.actor_id)
+        }
+        return [...senders].map(([id, name]) => ({ id, name }))
+      }
+
+      /**
+       * For whom the turn acts now (spec 012, "No switch"). The switch of each linked device that
+       * sent a message of the turn is read here, at the call, so a switch that was turned off in
+       * the turn applies at once. When the senders are several, the weakest one decides: one
+       * device without the switch takes it from the whole turn. A device that is not linked any
+       * more has no switch.
+       */
+      const turnActor = (workflowId: string, w: Working): TurnActor => {
+        const senders = turnSenders(workflowId, w)
+        const device = senders.at(-1)?.name ?? null
+        if (senders.every((s) => devices.canChange(s.id))) return { mayChange: true, device }
+        return { mayChange: false, device, server: devices.deviceName() }
+      }
+
+      /**
+       * A tool of the chat that reads or changes the workflow, or starts, stops and reads a run
+       * (spec 010, "Assistant"; spec 007). A change and the start of a run in a turn that holds
+       * outside content ask the user first. A result that holds outside content marks the turn.
+       */
+      const assistantTool = async (
+        workflowId: string,
+        w: Working,
+        turn: AssistantTurn,
+        call: ToolCall,
+        parts: ChatPart[],
+        touch: () => void,
+      ): Promise<ToolOutcome> => {
+        const marks = readMarks(workflowId)
+        const locale = resolveLocale(
+          (await Effect.runPromise(settings.get)).language,
+          platform.systemLocale(),
+        )
+        // The level is read at the call, so a level that the user changed in the turn applies. A
+        // workflow that cannot be read counts as "Read only" (fail closed).
+        const level =
+          db.get<{ permission: PermissionLevel }>(
+            "SELECT permission FROM workflow WHERE id = ?",
+            workflowId,
+          )?.permission ?? "read_only"
+        const result = await assistant.execute(
+          {
+            workflowId,
+            level,
+            outside: marks.outside,
+            program: marks.program,
+            turn,
+            actor: () => turnActor(workflowId, w),
+            t: (key, params) => translate(locale, key, params),
+            ask: (step, summary) =>
+              cards.ask({
+                workflowId,
+                runId: null,
+                taskId: null,
+                nodeNumber: null,
+                nodeName: null,
+                kind: "approval",
+                summary,
+                step,
+                once: true,
+                outside: marks.outside,
+                scope: "turn",
+                sensitive: marks.sensitive,
+                signal: w.controller.signal,
+              }),
+          },
+          call,
+        )
+        if (result.guarded)
+          actionLog.add({
+            workflowId,
+            kind: result.guarded.kind,
+            target: result.guarded.target,
+            decidedBy: result.guarded.decidedBy,
+            result: result.guarded.result,
+            taskId: null,
+            outside: marks.outside,
+            sensitive: marks.sensitive,
+            ...(result.guarded.device ? { device: result.guarded.device } : {}),
+          })
+        // A change that a device without the switch asked for: the chat says so (spec 012).
+        if (result.notAllowed && !parts.some((p) => p.kind === "note" && p.note === "not_allowed"))
+          parts.push({ kind: "note", note: "not_allowed", server: result.notAllowed.server })
+        // The result of a node that held outside content makes this turn hold it (spec 007).
+        if (result.outside && marks.outside === null && result.outside.source !== null)
+          writeMarks(workflowId, {
+            ...marks,
+            outside: result.outside.source,
+            program: marks.program || result.outside.program,
+          })
+        else if (result.outside?.program && !marks.program)
+          writeMarks(workflowId, { ...marks, program: true })
+        touch()
+        return result.outcome
+      }
+
       const runTurn = async (workflowId: string, w: Working, model: AnswerModel): Promise<void> => {
         const parts: ChatPart[] = []
         let timer: ReturnType<typeof setTimeout> | null = null
@@ -848,6 +993,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             )
             .filter((t) => t.content.trim() !== "")
           const toolSet = chatToolSet(workflowId, workflow)
+          // Only a turn that the user started in the chat has the tools (spec 007, "Who may use them").
+          const turnState = newAssistantTurn("user", workflow.graph)
           const events = await Effect.runPromise(
             providers.events(
               model.accountId,
@@ -859,7 +1006,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   document: workflow.document,
                   runs,
                   feedback: withTools,
-                  ...(withTools ? { graph: workflow.graph, may: toolSet.may } : {}),
+                  ...(withTools
+                    ? { graph: workflow.graph, may: toolSet.may, assistant: true }
+                    : {}),
                 }),
                 turns,
                 signal: w.controller.signal,
@@ -881,6 +1030,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 execute: async (call) => {
                   if (call.name === FEEDBACK_TOOL.name)
                     return feedbackTool(workflowId, w, workflow.permission, call, parts, touch)
+                  if (isAssistantTool(call.name))
+                    return assistantTool(workflowId, w, turnState, call, parts, touch)
                   return improveTool(workflowId, w, workflow.permission, call, parts, touch)
                 },
                 approve: async () => false,
@@ -905,6 +1056,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 state: event.state,
                 input: event.call.input,
                 output: event.state === "running" ? "" : event.output,
+                ...(event.state !== "running" && event.notRun ? { notRun: true } : {}),
               }
               if (index >= 0) parts[index] = part
               else parts.push(part)
@@ -1181,6 +1333,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const send = (input: WorkflowChatSend) =>
         Effect.gen(function* () {
+          // The device that sends the message (spec 012). It stays on the message, so the turn that
+          // answers it knows for whom it acts at each tool call.
+          const actor = yield* CurrentActor
           const text = input.text.trim()
           const paths = input.files ?? []
           if (text === "" && paths.length === 0 && !input.skillId)
@@ -1202,6 +1357,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 status: "done",
                 replyTo: null,
                 joinedTo: null,
+                actor,
               })
               emitMessage(id)
               cards.answerInChat(input.workflowId, text)
@@ -1232,6 +1388,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             status: queued ? "queued" : "done",
             replyTo: input.replyTo ?? null,
             joinedTo: w && !queued ? w.assistantId : null,
+            actor,
           })
           emitMessage(id)
           emitState(input.workflowId)

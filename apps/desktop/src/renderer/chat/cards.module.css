@@ -31,7 +31,8 @@
 
 .summary {
   margin: 0;
-  max-height: 200px;
+  /* The user reads the whole change here, so the box is tall; it scrolls beyond the window. */
+  max-height: 60vh;
   overflow: auto;
   padding: var(--spacing-sm);
   border-radius: var(--radius-m);

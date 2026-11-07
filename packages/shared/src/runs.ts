@@ -76,6 +76,22 @@ export interface RunTask {
   readonly steps: number
   /** What the task did with the memory: items it saved, facts it suggested (spec 008, "Flows", 1). */
   readonly memory: readonly TaskMemoryLine[]
+  /** The file claims that the task holds in a shared folder, newest first (spec 025). */
+  readonly claims: TaskClaims
+  /** The steps that a file claim of another workflow refused, oldest first (spec 025). */
+  readonly refusals: readonly TaskRefusal[]
+}
+
+/** The claims of a task: how many it holds, and the newest paths (at most 50). */
+export interface TaskClaims {
+  readonly count: number
+  readonly paths: readonly string[]
+}
+
+/** A step of a task that a file claim refused: the file and the workflow that held it. */
+export interface TaskRefusal {
+  readonly path: string
+  readonly holder: string
 }
 
 /** A muted line of the run view: "Saved to memory" with its undo, or "Suggested for memory" with "Review". */
@@ -145,7 +161,7 @@ export interface RunCard {
   /** What the node wants to do: the command, the path, the host, the question, the feedback text. */
   readonly summary: string
   /** The kind of step of an approval card, for the rules; "feedback" for the chat. */
-  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | null
+  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | "run" | null
   /** True when the card has Allow once and Deny only (no "Always allow"). */
   readonly once: boolean
   /** The first source of outside content, when the card says that the turn or task holds it. */

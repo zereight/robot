@@ -1,11 +1,4 @@
-import type {
-  CheckProblem,
-  GraphNodeChange,
-  GraphNodeRef,
-  GraphNodeValues,
-  MessageKey,
-  MessageParams,
-} from "@robot/shared"
+import type { CheckProblem, GraphNodeRef, MessageKey, MessageParams } from "@robot/shared"
 
 type Translate = (key: MessageKey, params?: MessageParams) => string
 
@@ -34,100 +27,7 @@ export const problemLine = (
   return t("improve.check.problem")
 }
 
-export const GRAPH_FIELD_KEYS = {
-  name: "improve.graph.field.name",
-  prompt: "improve.graph.field.prompt",
-  account: "improve.graph.field.account",
-  model: "improve.graph.field.model",
-  effort: "improve.graph.field.effort",
-  continueOnFailure: "improve.graph.field.continueOnFailure",
-  question: "improve.graph.field.question",
-  threshold: "improve.graph.field.threshold",
-  options: "improve.graph.field.options",
-  number: "improve.graph.field.number",
-} as const satisfies Record<string, MessageKey>
-
-/** One value of a node that the card shows. A changed field has the old value and the new value. */
-export interface NodeDetail {
-  readonly field: keyof typeof GRAPH_FIELD_KEYS
-  /** The value before the change, for a changed field; null for an added or a removed node. */
-  readonly old: string | null
-  readonly now: string
-  /** True for a text that the card shows in its own block: a prompt, a question, options. */
-  readonly long: boolean
-}
-
-type Shown = Exclude<keyof typeof GRAPH_FIELD_KEYS, "number">
-
-const SHOWN: readonly Shown[] = [
-  "name",
-  "prompt",
-  "question",
-  "options",
-  "account",
-  "model",
-  "effort",
-  "continueOnFailure",
-  "threshold",
-]
-
-const LONG: ReadonlySet<string> = new Set(["prompt", "question", "options"])
-
-const fieldValue = (t: Translate, v: GraphNodeValues, field: Shown): string => {
-  switch (field) {
-    case "name":
-      return v.name
-    case "prompt":
-      return v.prompt
-    case "question":
-      return v.question
-    case "options":
-      return v.options.join("\n")
-    case "account":
-      return v.account ?? ""
-    case "model":
-      return v.model ?? ""
-    case "effort":
-      return v.effort ?? ""
-    case "continueOnFailure":
-      return t(v.continueOnFailure ? "improve.graph.yes" : "improve.graph.no")
-    case "threshold":
-      return String(v.threshold)
-  }
-}
-
-/**
- * The values that the card of a graph change shows for a node (spec 002, "Card"): for an added or a
- * removed node, every value that is set; for a changed node, each changed field with the old value
- * and the new value. The card shows these as text, so the user reads the new text before "Accept".
- */
-export const nodeDetails = (t: Translate, n: GraphNodeChange): NodeDetail[] => {
-  const none = t("improve.graph.value.none")
-  const out: NodeDetail[] = []
-  if (n.was) {
-    for (const field of SHOWN) {
-      if (!n.fields.includes(field)) continue
-      out.push({
-        field,
-        old: fieldValue(t, n.was, field) || none,
-        now: fieldValue(t, n.now, field) || none,
-        long: LONG.has(field),
-      })
-    }
-    return out
-  }
-  for (const field of SHOWN) {
-    if (field === "continueOnFailure" || field === "threshold") {
-      // The flag "go on after a failure" works for both kinds of node; the threshold only for a decision.
-      if (field === "continueOnFailure" || n.kind === "decision")
-        out.push({ field, old: null, now: fieldValue(t, n.now, field), long: false })
-      continue
-    }
-    const value = fieldValue(t, n.now, field)
-    if (value !== "") out.push({ field, old: null, now: value, long: LONG.has(field) })
-  }
-  return out
-}
+export { GRAPH_FIELD_KEYS, type NodeDetail, nodeDetails } from "@robot/shared"
 
 const WORKFLOW_TABS = ["graph", "runs", "document", "memory", "improvement", "settings"] as const
 export type WorkflowTab = (typeof WORKFLOW_TABS)[number]
