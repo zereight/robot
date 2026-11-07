@@ -923,7 +923,12 @@ describe("small points of the backup engine", () => {
     expect(started).toEqual([])
     // The same call with a task that goes on starts the hold.
     const live = {
-      holds: { start: (...args: unknown[]) => (started.push(args), { fresh: true }) } as never,
+      holds: {
+        start: (...args: unknown[]) => {
+          started.push(args)
+          return { fresh: true }
+        },
+      } as never,
       ready: async () => true,
     }
     expect(
