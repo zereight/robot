@@ -1539,6 +1539,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const toolSet = chatToolSet(workflowId, workflow)
           // Only a turn that the user started in the chat has the tools (spec 007, "Who may use them").
           const turnState = newAssistantTurn("user", workflow.graph)
+          // The prompt states before the turn starts when the turn cannot change the workflow:
+          // a linked device without the switch (spec 012), or the level Read only. The tools
+          // still refuse at the call, so a switch or level that changes in the turn applies.
+          const turnWho = turnActor(workflowId, w)
+          const cannotChange = !turnWho.mayChange
+            ? { reason: "device" as const, server: turnWho.server }
+            : workflow.permission === "read_only"
+              ? { reason: "read_only" as const }
+              : undefined
           const events = await Effect.runPromise(
             providers.events(
               model.accountId,
@@ -1551,7 +1560,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   runs,
                   feedback: withTools,
                   ...(withTools
-                    ? { graph: workflow.graph, may: toolSet.may, assistant: true }
+                    ? {
+                        graph: workflow.graph,
+                        may: toolSet.may,
+                        assistant: true,
+                        ...(cannotChange ? { cannotChange } : {}),
+                      }
                     : {}),
                 }),
                 turns,
