@@ -109,6 +109,12 @@ export interface WorkflowChatHistory {
   readonly block: ChatBlock
   /** Who answers now. `null` when no account is connected. */
   readonly answer: ChatAnswer | null
+  /**
+   * The name of a connected account that the chat does not use, because its program cannot be
+   * locked to text only. Set while the stored choice is such an account (the next message or pick
+   * replaces it), and when no other account is left. `null` otherwise.
+   */
+  readonly unsafeAccount: string | null
 }
 
 export const WorkflowChatSend = Schema.Struct({

@@ -904,6 +904,10 @@ export const ko: Record<MessageKey, string> = {
   "chat.cancelReply": "답장 취소",
   "chat.skills": "스킬",
   "chat.skills.none": "맞는 스킬이 없어요.",
+  "chat.unsafeAccount":
+    "채팅에서는 {account} 계정을 쓸 수 없어요. 이 프로그램은 글로만 답하도록 잠글 수 없어요. 모델 계정을 써 주세요.",
+  "error.chat_account_unsafe":
+    "채팅에서는 {detail} 계정을 쓸 수 없어요. 이 프로그램은 글로만 답하도록 잠글 수 없어요. 모델 계정을 써 주세요.",
   "chat.noProvider": "채팅을 쓰려면 모델 제공자를 연결해 주세요.",
   "chat.connect": "연결하기",
   "chat.find.placeholder": "채팅에서 찾기",

@@ -6,6 +6,7 @@ import { chatFiles, chatText, type WorkflowChatMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
+import { runRequest } from "../rpc.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Providers } from "./Providers.ts"
@@ -18,14 +19,18 @@ import { Workflows } from "./Workflows.ts"
 let mock: MockProvider
 let fake: FakeRuntimes
 const savedClaudeBin = process.env.ROBOT_CLAUDE_BIN
+const savedCodexBin = process.env.ROBOT_CODEX_BIN
 beforeAll(async () => {
   mock = await startMockProvider()
   fake = makeFakeRuntimes()
   process.env.ROBOT_CLAUDE_BIN = fake.claude
+  process.env.ROBOT_CODEX_BIN = fake.codex
 })
 afterAll(async () => {
   if (savedClaudeBin === undefined) delete process.env.ROBOT_CLAUDE_BIN
   else process.env.ROBOT_CLAUDE_BIN = savedClaudeBin
+  if (savedCodexBin === undefined) delete process.env.ROBOT_CODEX_BIN
+  else process.env.ROBOT_CODEX_BIN = savedCodexBin
   await mock.close()
 })
 
@@ -534,6 +539,9 @@ describe("the tools of the chat (spec 007, 003)", () => {
     const { realpathSync } = await import("node:fs")
     expect(realpathSync(turn.cwd)).not.toContain(realpathSync(t.flow.folder))
     expect(turn.cwd).not.toBe(t.flow.folder)
+    // It is also outside the data folder, which holds the database and the sign-ins.
+    expect(realpathSync(turn.cwd).startsWith(realpathSync(t.dataDir))).toBe(false)
+    expect(realpathSync(t.dataDir).startsWith(realpathSync(turn.cwd))).toBe(false)
     // The prompt does not claim a tool that the turn lacks.
     const system = turn.args[turn.args.indexOf("--append-system-prompt") + 1] ?? ""
     expect(system).toContain("You have no tools in this chat")
@@ -725,5 +733,86 @@ describe("who can add feedback today (spec 003, 010; the guard is W6)", () => {
     await t.idle()
     const stored = await t.rows<{ text: string }>("SELECT text FROM run_feedback")
     expect(stored).toEqual([{ text: "Words that the user did not write" }])
+  })
+})
+
+describe("a program that cannot be locked to text only (spec 007, 003)", () => {
+  const codexTurns = () => fake.codexCalls().filter((c) => Array.isArray(c.args))
+  const connectCodex = (t: Awaited<ReturnType<typeof setup>>) => {
+    fake.setCodex({ loggedIn: true, method: "chatgpt" })
+    return t.run(Providers.use((p) => p.connect({ kind: "codex", name: "Codex" })))
+  }
+
+  test("with only such an account connected, the chat is blocked with the reason and sends nothing", async () => {
+    const t = await setup({ connect: false })
+    await connectCodex(t)
+    const h = await t.history()
+    expect(h.block).toBe("no_provider")
+    expect(h.answer).toBeNull()
+    expect(h.unsafeAccount).toBe("Codex")
+    const turns = codexTurns().length
+    expect(await t.code(t.send("hello"))).toBe("provider_not_connected")
+    expect(codexTurns().length).toBe(turns)
+    expect((await t.history()).messages).toEqual([])
+  })
+
+  test("the account is not listed for the chat and cannot be picked", async () => {
+    const t = await setup()
+    await connectCodex(t)
+    const listed = await runRequest(t.runtime, "models.available", {}, null)
+    expect(listed.ok).toBe(true)
+    const choices = (listed as { value: { accountName: string; chatSafe?: boolean }[] }).value
+    // The list marks the account, and the picker of the chat leaves it out.
+    expect(choices.map((c) => [c.accountName, c.chatSafe])).toEqual([
+      ["Mock", true],
+      ["Codex", false],
+    ])
+    const codex = (await t.run(Providers.use((p) => p.list))).find((a) => a.name === "Codex")
+    expect(await t.code(t.chat((c) => c.setModel(t.flow.id, codex?.id ?? "", "default")))).toBe(
+      "chat_account_unsafe",
+    )
+    const h = await t.history()
+    expect(h.answer).toMatchObject({ accountName: "Mock" })
+    await t.send("hello")
+    await t.idle()
+    expect(codexTurns().length).toBe(0)
+    expect(mock.requests.at(-1)?.body.model).toBe("mock-fast")
+  })
+
+  test("a stored choice of such an account is replaced, with the reason, and a read stores nothing", async () => {
+    const t = await setup()
+    const codex = await connectCodex(t)
+    await t.sql(
+      "INSERT INTO workflow_chat_model (workflow_id, account_id, model, effort) VALUES (?, ?, 'default', NULL)",
+      t.flow.id,
+      codex.id,
+    )
+    const h = await t.history()
+    expect(h.answer).toMatchObject({ accountName: "Mock" })
+    expect(h.unsafeAccount).toBe("Codex")
+    // The history only computes: the stored row is as it was.
+    expect(
+      await t.rows<{ account_id: string }>("SELECT account_id FROM workflow_chat_model"),
+    ).toEqual([{ account_id: codex.id }])
+    await t.send("hello")
+    await t.idle()
+    expect(codexTurns().length).toBe(0)
+    const stored = await t.rows<{ account_id: string }>(
+      "SELECT account_id FROM workflow_chat_model",
+    )
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.account_id).not.toBe(codex.id)
+    // The reason is shown once: the next read has none.
+    expect((await t.history()).unsafeAccount).toBeNull()
+  })
+
+  test("reading the history does not write the choice", async () => {
+    const t = await setup()
+    await t.history()
+    await t.history()
+    expect(await t.rows("SELECT 1 FROM workflow_chat_model")).toEqual([])
+    await t.send("hello")
+    await t.idle()
+    expect(await t.rows("SELECT 1 FROM workflow_chat_model")).toHaveLength(1)
   })
 })

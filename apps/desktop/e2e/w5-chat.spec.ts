@@ -321,3 +321,42 @@ test("chat: the tool card of feedback says 'Added feedback to the run'", async (
   await app.close()
   await mock.close()
 })
+
+test("chat: a program that cannot be locked to text only is not used, and the chat says why", async () => {
+  const mock = await startMockProvider()
+  const fake = makeFakeRuntimes()
+  fake.setCodex({ loggedIn: true, method: "chatgpt" })
+  const userData = freshUserData()
+  const env = { ROBOT_SYSTEM_LOCALE: "en-US", ROBOT_CODEX_BIN: fake.codex }
+  let { app, page } = await launch(userData, env)
+  await page.evaluate(async () => {
+    await window.robot.invoke("providers.connect", { kind: "codex", name: "Codex" })
+  })
+  await newWorkflow(page, "Weekly report")
+  // Only such an account is connected: the no-provider state, with the reason.
+  await expect(page.getByTestId("chat-blocked")).toBeVisible()
+  await expect(page.getByTestId("chat-blocked-reason")).toHaveText(
+    "The chat cannot use Codex: the program cannot be locked to text only. Use a model account.",
+  )
+  await shot(page, "w5-40-chat-unsafe-account")
+  await app.close()
+
+  // The same in Korean.
+  ;({ app, page } = await launch(userData, { ...env, ROBOT_SYSTEM_LOCALE: "ko-KR" }))
+  await expect(page.getByTestId("chat-blocked-reason")).toContainText("채팅에서는 Codex 계정을")
+  await shot(page, "w5-41-chat-unsafe-account-ko")
+  await app.close()
+
+  // A model account joins: the chat uses it, and the picker does not list the program.
+  ;({ app, page } = await launch(userData, env))
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await expect(page.getByTestId("chat-model")).toBeVisible()
+  const options = await page.getByTestId("chat-model").locator("option").allTextContents()
+  expect(options.length).toBeGreaterThan(0)
+  expect(options.some((o) => o.includes("Codex"))).toBe(false)
+  await say(page, "hello")
+  await expect(page.getByTestId("message").nth(1)).toContainText("You said: hello")
+  expect(fake.codexCalls().filter((c) => Array.isArray(c.args))).toHaveLength(0)
+  await app.close()
+  await mock.close()
+})

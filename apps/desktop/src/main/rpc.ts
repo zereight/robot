@@ -26,6 +26,7 @@ import {
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
+import { chatMayUse } from "./runtimes/driver.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
@@ -114,6 +115,7 @@ const modelChoices = Effect.gen(function* () {
       accountName: account.name,
       kind: account.kind,
       readOnly: yield* providers.readOnlySupported(account.id),
+      chatSafe: chatMayUse(providers.runtimeKind(account.id)),
       models,
     })
   }

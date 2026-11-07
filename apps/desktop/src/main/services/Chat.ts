@@ -23,6 +23,8 @@ import type { ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
+import { chatMayUse } from "../runtimes/driver.ts"
+import { chatDir } from "./chatDir.ts"
 import { chatSystem, FEEDBACK_TOOL } from "./chatPrompt.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -202,53 +204,72 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         )
 
       /**
-       * The model that answers in the chat. The choice of the chat stays while its account is
-       * connected and still offers the model. The spec does not say how the first choice is made
-       * (docs/spec-questions.md), so for now: the model of the first node that names an account
-       * and a model, when that account is connected; else the first connected account and its
-       * first model that the user did not hide. The caller keeps the result for the whole call.
+       * True when the chat may use the account: an API account, or a vendor program that the
+       * launcher can lock to text only with flags that the program enforces (`chatSafe`).
        */
-      const resolveModel = (workflowId: string) =>
+      const chatSafe = (accountId: string) => chatMayUse(providers.runtimeKind(accountId))
+      const usable = (accountId: string) => providers.isConnected(accountId) && chatSafe(accountId)
+
+      /**
+       * The model that answers in the chat, and the name of an account that the chat had to pass
+       * over because the program cannot be locked to text only. The choice of the chat stays while
+       * its account is usable and still offers the model. The spec does not say how the first
+       * choice is made (docs/spec-questions.md), so for now: the model of the first node that names
+       * an account and a model, when that account is usable; else the first usable account and its
+       * first model that the user did not hide. This only reads: the caller keeps the choice when
+       * the user sends a message or picks (`keepChoice`).
+       */
+      const resolveChoice = (workflowId: string) =>
         Effect.gen(function* () {
+          const accounts = yield* providers.accounts
+          const nameOf = (id: string) => accounts.find((a) => a.id === id)?.name ?? ""
           const stored = storedChoice(workflowId)
-          // A choice that is not usable any more is replaced, and the new one stays (below).
+          const storedUnsafe =
+            stored && providers.isConnected(stored.accountId) && !chatSafe(stored.accountId)
+              ? nameOf(stored.accountId)
+              : null
+          // The first account that the chat passed over, for the line that says why.
+          const firstUnsafe = () =>
+            accounts.find((a) => a.connected && !chatSafe(a.id))?.name ?? null
           if (
             stored &&
-            providers.isConnected(stored.accountId) &&
+            usable(stored.accountId) &&
             // A program lists its models by a look at the program: only an API list is read here.
             (providers.isRuntime(stored.accountId) ||
               (yield* offers(stored.accountId, stored.model)))
           )
-            return stored
+            return { model: stored, skipped: null as string | null }
           const node = db.get<{ account_id: string; model: string; effort: string | null }>(
             `SELECT account_id, model, effort FROM workflow_node
              WHERE workflow_id = ? AND account_id IS NOT NULL AND model IS NOT NULL
              ORDER BY number LIMIT 1`,
             workflowId,
           )
-          if (node && providers.isConnected(node.account_id)) {
-            const picked = {
-              accountId: node.account_id,
-              model: node.model,
-              effort: node.effort,
-            } satisfies AnswerModel
-            keepChoice(workflowId, picked)
-            return picked
-          }
+          if (node && usable(node.account_id))
+            return {
+              model: {
+                accountId: node.account_id,
+                model: node.model,
+                effort: node.effort,
+              } satisfies AnswerModel,
+              skipped: storedUnsafe,
+            }
           // The last known state of each account: no look at a program.
-          const accounts = yield* providers.accounts
           for (const account of accounts) {
-            if (!account.connected) continue
+            if (!account.connected || !chatSafe(account.id)) continue
             const models = yield* providers.models(account.id).pipe(Effect.orElseSucceed(() => []))
             const first = models.find((m) => m.hidden !== true)
-            if (first) {
-              const picked = { accountId: account.id, model: first.id, effort: null }
-              keepChoice(workflowId, picked)
-              return picked
-            }
+            if (first)
+              return {
+                model: { accountId: account.id, model: first.id, effort: null },
+                skipped: storedUnsafe,
+              }
           }
-          return null
+          return { model: null, skipped: storedUnsafe ?? firstUnsafe() }
         })
+
+      const resolveModel = (workflowId: string) =>
+        resolveChoice(workflowId).pipe(Effect.map((r) => r.model))
 
       /** A vendor program has its own tools: the chat gives it none (spec 007). */
       const chatHasTools = (accountId: string) => !providers.isRuntime(accountId)
@@ -327,8 +348,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const workflow = yield* findWorkflow(workflowId)
           const messages = visibleRows(workflowId).map(toMessage)
           const w = working.get(workflowId)
-          // The model is read once for the whole call.
-          const model = yield* resolveModel(workflowId).pipe(Effect.orElseSucceed(() => null))
+          // The model is read once for the whole call. A read does not write to the database.
+          const { model, skipped } = yield* resolveChoice(workflowId).pipe(
+            Effect.orElseSucceed(() => ({ model: null, skipped: null as string | null })),
+          )
           return {
             workflowId,
             workflowName: workflow.name,
@@ -339,6 +362,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             notice: w ? null : noticeOf(messages),
             block: model ? null : "no_provider",
             answer: yield* answerOf(model),
+            unsafeAccount: skipped,
           } satisfies WorkflowChatHistory
         })
 
@@ -488,7 +512,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 }),
                 turns,
                 signal: w.controller.signal,
-                workspace: withTools ? workflow.folder : join(platform.dataDir, "chat"),
+                workspace: withTools ? workflow.folder : chatDir(),
                 permission: withTools ? workflow.permission : "read_only",
                 ...(withTools ? { tools: [FEEDBACK_TOOL] } : {}),
                 useTools: withTools,
@@ -609,7 +633,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         Effect.gen(function* () {
           if (working.has(workflowId)) return
           const model = known ?? (yield* resolveModel(workflowId))
-          if (!model) return yield* new AppError({ code: "provider_not_connected" })
+          if (!model || !usable(model.accountId))
+            return yield* new AppError({ code: "provider_not_connected" })
+          // The choice is stored when a turn starts, not when the history is read.
           keepChoice(workflowId, model)
           const assistantId = randomUUID()
           insert({
@@ -716,6 +742,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           yield* findWorkflow(workflowId)
           if (!providers.isConnected(accountId))
             return yield* new AppError({ code: "provider_not_connected" })
+          if (!chatSafe(accountId))
+            return yield* new AppError({
+              code: "chat_account_unsafe",
+              detail: (yield* providers.accounts).find((a) => a.id === accountId)?.name ?? "",
+            })
           const listed = yield* providers.models(accountId)
           if (!listed.some((m) => m.id === model))
             return yield* new AppError({ code: "chat_model_unknown" })

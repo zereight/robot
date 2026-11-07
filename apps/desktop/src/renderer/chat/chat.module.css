@@ -400,6 +400,16 @@
   font-size: var(--text-s);
 }
 
+.blocked > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.blocked > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .replying {
   display: flex;
   align-items: center;

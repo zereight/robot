@@ -910,6 +910,10 @@ export const en = {
   "chat.cancelReply": "Cancel reply",
   "chat.skills": "Skills",
   "chat.skills.none": "No skill matches.",
+  "chat.unsafeAccount":
+    "The chat cannot use {account}: the program cannot be locked to text only. Use a model account.",
+  "error.chat_account_unsafe":
+    "The chat cannot use {detail}: the program cannot be locked to text only. Use a model account.",
   "chat.noProvider": "Connect a model provider to use the chat.",
   "chat.connect": "Connect",
   "chat.find.placeholder": "Find in the chat",

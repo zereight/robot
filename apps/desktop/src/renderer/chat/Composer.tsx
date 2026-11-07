@@ -344,7 +344,11 @@ export const Composer = (props: {
         when={!blocked()}
         fallback={
           <div class={styles.blocked} data-testid="chat-blocked">
-            <span>{t("chat.noProvider")}</span>
+            <span data-testid="chat-blocked-reason">
+              {props.history.unsafeAccount
+                ? t("chat.unsafeAccount", { account: props.history.unsafeAccount })
+                : t("chat.noProvider")}
+            </span>
             <Button
               variant="primary"
               onClick={() => ui.openSettings("providers")}

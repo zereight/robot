@@ -59,7 +59,11 @@ const WorkingLine = (props: { since: number }) => {
  * The header of the chat: the account and the model that answer now, and a list to pick another
  * one. The list is read when the chat opens and when an account changes, not for every message.
  */
-const AnswerHeader = (props: { workflowId: string; answer: ChatAnswer }) => {
+const AnswerHeader = (props: {
+  workflowId: string
+  answer: ChatAnswer
+  unsafeAccount: string | null
+}) => {
   const { t } = useApp()
   const [choices, { refetch }] = createResource(
     (): Promise<readonly ModelChoice[]> => call("models.available").catch(() => []),
@@ -69,7 +73,8 @@ const AnswerHeader = (props: { workflowId: string; answer: ChatAnswer }) => {
   const options = () => {
     const now = props.answer
     const out: { value: string; label: string }[] = []
-    for (const c of choices() ?? [])
+    // An account whose program cannot be locked to text only is not offered (spec 007).
+    for (const c of (choices() ?? []).filter((x) => x.chatSafe !== false))
       for (const m of c.models)
         if (m.hidden !== true || (c.accountId === now.accountId && m.id === now.model))
           out.push({
@@ -116,6 +121,13 @@ const AnswerHeader = (props: { workflowId: string; answer: ChatAnswer }) => {
           </For>
         </select>
       </div>
+      <Show when={props.unsafeAccount}>
+        {(account) => (
+          <p class={styles.noFeedback} role="status" data-testid="chat-unsafe-account">
+            {t("chat.unsafeAccount", { account: account() })}
+          </p>
+        )}
+      </Show>
       <Show when={!props.answer.feedback}>
         <p class={styles.noFeedback} role="status" data-testid="chat-no-feedback">
           {t("chat.noFeedback", { account: props.answer.accountName })}
@@ -332,7 +344,13 @@ export const ChatPanel = (props: { workflowId: string }) => {
         {(h) => (
           <>
             <Show when={h().answer}>
-              {(answer) => <AnswerHeader workflowId={props.workflowId} answer={answer()} />}
+              {(answer) => (
+                <AnswerHeader
+                  workflowId={props.workflowId}
+                  answer={answer()}
+                  unsafeAccount={h().unsafeAccount}
+                />
+              )}
             </Show>
             <div
               class={styles.scroll}
