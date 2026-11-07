@@ -18,6 +18,16 @@ export interface MockProvider {
   readonly openaiUrl: string
   /** Every chat request that the app sent, in order. */
   readonly requests: RecordedRequest[]
+  /**
+   * Makes the chat requests fail with `failure` (a spent limit, a key that is not valid, a busy
+   * model), or with null stops that. With `afterToolResults`, a request fails only when it already
+   * holds that many results of tools, so the first steps of a turn run and a later request fails.
+   * The failure of a limit carries `retryAfter` seconds as the header `retry-after`.
+   */
+  setFailure(
+    failure: { status: number; message: string; retryAfter?: number } | null,
+    afterToolResults?: number,
+  ): void
   /** How many requests wait for `release` (a message `tool-hold ...`). */
   held(): number
   /** Lets every request that waits go on. */
@@ -64,6 +74,8 @@ export const startMockProvider = async (): Promise<MockProvider> => {
   const requests: RecordedRequest[] = []
   const flaky = new Map<string, number>()
   let waiting: (() => void)[] = []
+  let failure: { status: number; message: string; retryAfter?: number } | null = null
+  let failAfter = 0
   const server: Server = createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) {
       res.writeHead(401, { "content-type": "application/json" })
@@ -80,6 +92,14 @@ export const startMockProvider = async (): Promise<MockProvider> => {
       requests.push({ path: req.url, body })
       const last = body.messages.at(-1)
       const said = text(last?.content)
+      if (failure && body.messages.filter((m) => m.role === "tool").length >= failAfter) {
+        res.writeHead(failure.status, {
+          "content-type": "application/json",
+          ...(failure.retryAfter ? { "retry-after": String(failure.retryAfter) } : {}),
+        })
+        res.end(JSON.stringify({ error: { message: failure.message } }))
+        return
+      }
       if (said.includes("[[fail]]") || (said.includes("[[flaky]]") && (flaky.get(said) ?? 0) < 2)) {
         if (said.includes("[[flaky]]")) flaky.set(said, (flaky.get(said) ?? 0) + 1)
         res.writeHead(500, { "content-type": "application/json" })
@@ -212,6 +232,10 @@ export const startMockProvider = async (): Promise<MockProvider> => {
   return {
     openaiUrl: `http://127.0.0.1:${port}/v1`,
     requests,
+    setFailure: (next, afterToolResults = 0) => {
+      failure = next
+      failAfter = afterToolResults
+    },
     held: () => waiting.length,
     release: () => {
       const go = waiting

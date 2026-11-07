@@ -5,6 +5,7 @@ import {
   effortsFor,
   limitReasonOf,
   nearestEffort,
+  safeResetTime,
   takesThinkingBudget,
 } from "@robot/shared"
 
@@ -39,6 +40,9 @@ export class ProviderFailure extends Error {
     readonly reason?: LimitReason,
   ) {
     super(detail ?? code)
+    // A reset time that is not a time of the calendar is dropped: a window shows a time (spec 006).
+    if (resetsAt !== undefined && !(Number.isFinite(resetsAt) && Math.abs(resetsAt) <= 8.64e15))
+      this.resetsAt = undefined
   }
 }
 
@@ -63,12 +67,15 @@ export const urlFor = (c: Connection, path: "models" | "chat") => {
   return join(c.baseUrl, path === "models" ? "/models" : "/chat/completions")
 }
 
-/** Reads the reset time from common rate limit headers. */
+/** Reads the reset time from common rate limit headers. A value that is not safe gives none. */
 const resetTime = (response: Response): number | undefined => {
+  const now = Date.now()
   const retryAfter = response.headers.get("retry-after")
-  if (retryAfter && /^\d+$/.test(retryAfter)) return Date.now() + Number(retryAfter) * 1000
+  // A header can hold any number: the time is capped at the longest hold (spec 006).
+  if (retryAfter && /^\d+$/.test(retryAfter))
+    return safeResetTime(now, now + Number(retryAfter) * 1000) ?? undefined
   const anthropicReset = response.headers.get("anthropic-ratelimit-requests-reset")
-  if (anthropicReset && !Number.isNaN(Date.parse(anthropicReset))) return Date.parse(anthropicReset)
+  if (anthropicReset) return safeResetTime(now, Date.parse(anthropicReset)) ?? undefined
   return undefined
 }
 

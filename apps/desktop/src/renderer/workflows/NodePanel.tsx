@@ -17,6 +17,7 @@ import { useApp } from "../state/app.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton, Switch } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { BackupField } from "./BackupField.tsx"
 import styles from "./graph.module.css"
 
 const levelKey = (level: PermissionLevel) => `permission.level.${level}` as MessageKey
@@ -306,6 +307,12 @@ export const NodePanel = (props: {
               </select>
             </Field>
           </Show>
+          <BackupField
+            workflowId={props.workflow.id}
+            node={props.node}
+            choices={props.choices}
+            patch={patch}
+          />
           <Field label={t("node.permission")} hint={t("node.permission.hint")}>
             <select
               class={styles.control}

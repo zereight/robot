@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   assistantStepText,
+  BACKUP_REFUSED_TEXT,
   type CheckProblem,
   carriesProgramMark,
   GRAPH_PROPOSAL_TEXT_MAX,
@@ -13,6 +14,7 @@ import {
   type MessageKey,
   type MessageParams,
   NODES_MAX,
+  namesBackup,
   OPTIONS_MIN,
   type OutsideSource,
   type PermissionLevel,
@@ -480,6 +482,7 @@ const addNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
     accountId: kind === "text" ? (text(a.accountId) ?? null) : null,
     model: kind === "text" ? (text(a.model) ?? null) : null,
     effort: kind === "text" ? (text(a.effort) ?? null) : null,
+    backup: null,
     permission: null,
     continueOnFailure: a.continueOnFailure === true,
     question: kind === "decision" ? (text(a.question) ?? "") : "",
@@ -488,6 +491,7 @@ const addNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
     x: graph.nodes.reduce((m, n) => Math.max(m, n.x), 0) + (graph.nodes.length > 0 ? 260 : 0),
     y: 0,
   }
+  if (namesBackup(a)) return fail(BACKUP_REFUSED_TEXT)
   if (kind === "text" && options.length > 0) return fail("A text node has no options.")
   if (kind === "decision" && (a.prompt || a.accountId || a.model || a.effort))
     return fail("A decision node has no prompt, account, model or reasoning level.")
@@ -534,6 +538,7 @@ const editNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
   const clear = Array.isArray(a.clear)
     ? a.clear.filter((x): x is string => typeof x === "string")
     : []
+  if (namesBackup(a, clear)) return fail(BACKUP_REFUSED_TEXT)
   if (clear.some((c) => !CLEARABLE.has(c)))
     return fail('"clear" may name: prompt, question, effort, model.')
   const decision = found.kind === "decision"

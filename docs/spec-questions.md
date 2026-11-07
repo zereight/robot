@@ -1034,3 +1034,26 @@ Two rows ask who changes these specs: one row of W2, for 006 and 009, and one ro
 | 003 | The picture of a pasted or dropped image "above the sent message" is in the acceptance list. The message row shows file chips only. | Not built in B4. The box shows the preview. To do with the file read of the workflow folder. |
 | 001 | The Help page listed Cmd+K, Cmd+[ and Cmd+] and the moves through a place list. None of them exists, and 001 leaves the search and the moves open. Cmd+Q (note on a second press) and Cmd+Shift+D (dictation, 027) are in 001, but are not built. | The page lists the keys that work: Cmd+F (Ctrl+F outside macOS), Enter and Shift+Enter in the box, and Enter, Shift+Enter and Esc in the find bar. Cmd+Q and Cmd+Shift+D come with their slices. |
 | 001 | Cmd+F on the Settings page "does nothing". Settings cover the chat, and the chat stayed under it. | The find bar of the chat ignores Cmd+F while Settings are open. |
+
+## B6: Backup model (open points for 006, 010, 005, 012, 007)
+
+R1 marks the optional backup model as "to confirm". This slice builds what 006 says, in separate modules (`packages/shared/src/backup.ts`, `ModelHolds.ts`, `backupRun.ts`, `BackupField.tsx`, `BackupHold.tsx`, `holds.ts`) so that it can be taken out. The rows below are not decided by the spec.
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 006, 000 | Is the optional backup model kept at all? R1 says "to confirm". | Built as 006 says, and kept in its own modules, so that it can be removed. To confirm. |
+| 006, 007, 010 | Can a proposal (W8) or a chat tool (B1) set, change or clear a backup account or model? The account is a choice of money and trust (the spec says only the user chooses it). | No. A proposal or a tool that names a backup is refused with one fixed text. A whole-graph rewrite that changes a backup is refused too (`backup_change_refused`). A new node made by a proposal has no backup. Only the user, in the editor of the node, can. |
+| 006, 012 | Can a linked computer or the phone set a backup? | No. The call is refused for a linked device (`not_allowed`). A restore of a version by a linked device keeps the backups of this computer. |
+| 006 | A failure that is not a limit reason (key not valid, model not found, request refused, busy provider after its tries). Does it move the turn to the backup? | No. Only a limit reason does (006 says so). The run fails as a run with no backup does. To confirm for a busy provider. |
+| 006 | Both the main and the backup model are at their limit. | The turn fails with the reason of the backup. The hold of the main model stays. |
+| 006 | The backup account is not connected, not Ready (program) or missing (sync). | The hold ends at once and the turn tries the main model. A limit of the main model then fails the turn with its own reason. |
+| 006 | A hold: what happens when the user changes or removes the backup, or changes the main account, model or reasoning level, while a hold counts? | The hold is of the main choice and the backup that it began with (006: "it holds the main model"). With another main choice or another backup it does not pass: it stops counting, is dropped and shows nowhere. The button reads the model that reached its limit. |
+| 006 | How long can a hold last? 006 gives the reset time of the provider and 15 minutes when there is none, but no upper limit. A provider, a program or a custom base URL can name any time. | At most 24 hours. A longer time is cut to 24 hours, and the main model is tried again then (a limit that is still there starts a new hold). A time that is not a number, not finite, or past gives 15 minutes. A row of the store with a time that no hold can have is dropped and logged at start. To confirm: a weekly limit may need a longer hold. |
+| 006 | A hold and a whole-graph rewrite or a restore of a version. | The hold is by node and stays, as long as the backup of the node is the same one. |
+| 006 | "Use <main model> now", and the main model is still at its limit. | The next turn starts the hold again. The task view shows no second line. A main model that answers ends the episode, and the next limit shows the line again. |
+| 006, 005 | A limit after the main model ran steps in the same turn. | The backup goes on from the work of that try, with the same go-on message as for a limit of a program. One task, one line. Usage is kept for each model that made it (table `task_usage`). |
+| 006, 012 | Where does the hold show? | In the editor of the node and in the run view of this computer. A linked computer and the phone show no hold: the list is empty for them, and the hold is not in sync or in the file. |
+| 006 | A decision node: does it have a backup? | No. The panel has no field, and a write that names one is refused (`decision_backup`). |
+| 006, 010 | The same choice for the main and for the backup. | Refused with a reason (`backup_same`). A backup needs a main choice (`backup_no_main`). |
+| 006 | A backup in an export, in sync or in a shared workflow file. | A node file carries the choice (account and model) as part of the graph version. The hold and the usage do not. Open until 019 and the file format name it. |
+| 006 | The usage page does not exist yet. | The usage per model is stored in `task_usage`, and no page shows it. The page comes with a later slice. |
