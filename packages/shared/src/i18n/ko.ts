@@ -742,6 +742,8 @@ export const ko: Record<MessageKey, string> = {
   "workflows.check.line": "검사: {state}",
   "workflows.check.not_checked": "검사 안 함",
   "workflows.check.problem": "문제 발견",
+  "workflows.check.passed": "통과",
+  "workflows.check.could_not": "검사할 수 없음",
   "workflows.new.hint":
     "워크플로우 이름을 정하세요. 짧은 담당 문서가 함께 만들어지고, 나중에 고칠 수 있어요.",
   "workflows.document.hint":
@@ -789,6 +791,30 @@ export const ko: Record<MessageKey, string> = {
   "graph.problem.decision_options": "노드 {number} “{name}”에는 선택지가 두 개 이상 있어야 해요.",
   "graph.problem.option_unconnected": "노드 {number} “{name}”의 선택지 “{option}”에 연결이 없어요.",
   "graph.problem.nodes_full": "워크플로우에는 노드를 30개까지 둘 수 있어요.",
+  "check.close": "검사 닫기",
+  "check.open": "검사 보기",
+  "check.heading": "검사",
+  "check.run": "검사",
+  "check.state.not_checked": "아직 검사하지 않았어요.",
+  "check.state.passed": "노드와 연결에서 문제를 찾지 못했어요.",
+  "check.scope":
+    "검사는 워크플로우의 모양, 즉 노드와 선택지와 연결을 읽어요. 모델이 쓰는 글, 선택 노드가 고르는 선택지, 도구가 잘 되는지는 읽지 않아요.",
+  "check.path": "문제까지의 경로",
+  "check.problem.deadlock": "이 노드들이 서로를 기다려서 실행이 끝날 수 없어요: {nodes}.",
+  "check.problem.never_runs":
+    "노드 {number} “{name}”은(는) 실행되지 않아요. 모든 실행에서 건너뛰어요.",
+  "check.step.ran": "노드 {number} “{name}” 실행",
+  "check.step.option": "노드 {number} “{name}”이(가) 선택지 “{option}”을(를) 골라요",
+  "check.step.skipped": "노드 {number} “{name}” 건너뜀",
+  "check.node": "{number} “{name}”",
+  "check.marked": "경로의 {line}번째 단계",
+  "check.marked.problem": "문제가 있는 노드",
+  "check.stopped.time": "검사가 {seconds}초 뒤에 멈췄어요. 워크플로우를 더 작게 나누세요.",
+  "check.stopped.states":
+    "이 워크플로우는 실행 경로가 너무 많아요. 검사는 {seconds}초 뒤에, 또는 상태를 약 {states}개 살펴보면 그 전에 멈춰요. 워크플로우를 더 작게 나누세요.",
+  "check.stopped.memory": "검사가 메모리를 너무 많이 써서 멈췄어요. 워크플로우를 더 작게 나누세요.",
+  "check.failed":
+    "검사가 워크플로우를 읽지 못했어요. 워크플로우의 문제가 아니라 앱의 문제예요. 나중에 다시 검사하세요.",
   "graph.panel.empty": "고칠 노드를 고르세요.",
   "graph.panel.title": "노드 {number}: {kind}",
   "node.name": "이름",
@@ -947,7 +973,9 @@ export const ko: Record<MessageKey, string> = {
   "chat.marks.clear.confirm": "표시 지우기",
   "error.run_empty": "이 워크플로우에 노드가 없어요. 먼저 노드를 추가하세요.",
   "error.run_loop": "이 워크플로우의 노드가 고리를 이뤄요. 실행을 시작할 수 없어요.",
-  "error.run_graph_problem": "선택 노드에 선택지가 2개보다 적어요. 먼저 고치세요.",
+  "error.run_check_problem": "검사에서 문제를 찾았어요. 워크플로우를 열어 확인하세요.",
+  "error.run_no_ready_node":
+    "시작할 수 있는 노드가 없고, 실행되지 않은 노드가 남았어요. 연결이 고리를 이루었을 수 있어요.",
   "error.run_queue_full": "실행 20개가 대기 중이에요. 하나를 멈추거나 기다려 주세요.",
   "error.run_not_found": "이 실행은 더 이상 없어요.",
   "error.card_gone": "이 카드를 기다리는 곳이 더 이상 없어요.",

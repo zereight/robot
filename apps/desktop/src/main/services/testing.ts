@@ -10,6 +10,7 @@ import type { ConnectionsOptions } from "./Connections.ts"
 import type { BrowserAct, BrowserPage, PlatformService } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
+import type { WorkflowCheckOptions } from "./WorkflowCheck.ts"
 
 /** One control of a fake page: the selector it answers, and its line in the read list. */
 export interface FakeBrowserControl {
@@ -262,6 +263,8 @@ export const testRuntime = (
     databaseFile?: string
     /** How connections are reached, and their time limits (spec 018). */
     connections?: ConnectionsOptions
+    /** The check of workflows (spec 010). A test turns the check in the background off. */
+    check?: WorkflowCheckOptions
   } = {},
 ) => {
   const {
@@ -292,6 +295,7 @@ export const testRuntime = (
       ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
       ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
       ...(options.connections ? { connections: options.connections } : {}),
+      check: { auto: false, ...options.check },
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.

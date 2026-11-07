@@ -269,12 +269,15 @@ export const buildFlow = async (page: Page, spec: FlowSpec) =>
     if (spec.level) await call("workflows.setPermission", { id: flow?.id, level: spec.level })
     type Made = { id: string; options: { id: string }[] }
     const made: Made[] = []
-    for (const n of spec.nodes) {
+    for (const [index, n] of spec.nodes.entries()) {
       const node = (await call("workflows.node.add", {
         workflowId: flow?.id,
         node: {
           kind: n.kind ?? "text",
           name: n.name,
+          // The grid of the editor (GraphEditor `placeFor`), so that the nodes do not stack.
+          x: 24 + (index % 4) * 216,
+          y: 24 + Math.floor(index / 4) * 120,
           ...(n.kind === "decision"
             ? { question: "Which way?", threshold: 0.9, options: n.options ?? ["Yes", "No"] }
             : {

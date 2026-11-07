@@ -7,9 +7,9 @@ const knownState = (state: string): state is (typeof RUN_STATES)[number] =>
 export const runStateKey = (state: string): MessageKey | undefined =>
   knownState(state) ? (`workflows.run.state.${state}` as MessageKey) : undefined
 
-/** The state of the check on a card (spec 001). The check on the TLA form is not built yet. */
-export const checkStateKey = (flow: Pick<Workflow, "problems">): MessageKey =>
-  flow.problems > 0 ? "workflows.check.problem" : "workflows.check.not_checked"
+/** The state of the check on a card (spec 001, 010). */
+export const checkStateKey = (flow: Pick<Workflow, "check">): MessageKey =>
+  `workflows.check.${flow.check}` as MessageKey
 
 export const documentSourceKey = (source: DocumentSource): MessageKey =>
   `workflows.document.source.${source}` as MessageKey

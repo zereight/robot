@@ -199,3 +199,55 @@ test("workflow settings: the folder and the level are read-only while a run work
   await app.close()
   await mock.close()
 })
+
+test("node panel: a background change keeps the focus and the typed text of a field", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await newWorkflow(page, "Weekly")
+  await page.getByTestId("graph-add-decision").click()
+  await expect(page.getByTestId("node-option")).toHaveCount(2)
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      robot: { on: (event: string, fn: () => void) => void }
+      changed: number
+    }
+    w.changed = 0
+    w.robot.on("workflows.changed", () => {
+      w.changed++
+    })
+  })
+  const changed = () => page.evaluate(() => (window as unknown as { changed: number }).changed)
+  // "Check" runs the check again: the main process sends "workflows.changed", the window reads
+  // the workflow again, and the new objects must not replace the field that holds the focus.
+  const check = () =>
+    page.evaluate(async () => {
+      const invoke = (
+        window as unknown as {
+          robot: { invoke: (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }> }
+        }
+      ).robot.invoke
+      const servers = (await invoke("servers.list")).value as { id: string; kind: string }[]
+      const local = servers.find((s) => s.kind === "local")
+      const flows = (await invoke("workflows.list", { serverId: local?.id })).value as {
+        id: string
+      }[]
+      for (const flow of flows) await invoke("workflows.check", { id: flow.id })
+    })
+  // The text is typed and not saved: a field saves when it loses the focus.
+  for (const id of ["node-option-label", "node-name", "node-question"]) {
+    const field = page.getByTestId(id).first()
+    await field.focus()
+    await field.pressSequentially(" half-typed")
+    await expect(field).toBeFocused()
+    const typed = await field.inputValue()
+    expect(typed).toContain("half-typed")
+    const before = await changed()
+    await check()
+    await expect
+      .poll(changed, { message: `no workflows.changed event arrived (${id})` })
+      .toBeGreaterThan(before)
+    await expect(page.getByTestId("check-state")).toHaveText("Problem found")
+    await expect(field).toBeFocused()
+    await expect(field).toHaveValue(typed)
+  }
+  await app.close()
+})

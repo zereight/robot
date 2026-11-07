@@ -6,6 +6,7 @@ import { call } from "../lib/rpc.ts"
 import { outsideText, reasonText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./runs.module.css"
 
@@ -174,7 +175,9 @@ const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void
         <p class={styles.reason}>{t("runs.stoppedAt", { number: props.run.stoppedAt ?? 0 })}</p>
       </Show>
       <ol class={styles.nodes}>
-        <For each={props.run.nodes}>{(node) => <NodeCard node={node} />}</For>
+        <Keyed each={props.run.nodes} by={(node) => node.number}>
+          {(node) => <NodeCard node={node()} />}
+        </Keyed>
       </ol>
       <Show when={props.run.feedback.length > 0}>
         <section class={styles.feedback} data-testid="run-feedback">
@@ -260,27 +263,27 @@ export const RunsPanel = (props: {
               }
             >
               <ul class={styles.list} data-testid="runs-list">
-                <For each={props.runs}>
-                  {(run) => (
+                <Keyed each={props.runs} by={(r) => r.id}>
+                  {(runOf) => (
                     <li>
                       <button
                         type="button"
                         class={styles.row}
-                        onClick={() => props.onSelect(run.id)}
-                        data-testid={`run-row-${run.id}`}
+                        onClick={() => props.onSelect(runOf().id)}
+                        data-testid={`run-row-${runOf().id}`}
                       >
-                        <Badge state={run.state} testId={`run-row-state-${run.id}`} />
-                        <span>{formatDateTime(locale(), run.startedAt)}</span>
+                        <Badge state={runOf().state} testId={`run-row-state-${runOf().id}`} />
+                        <span>{formatDateTime(locale(), runOf().startedAt)}</span>
                         <span class={styles.muted}>
-                          {t(`runs.source.${run.source}` as MessageKey)}
+                          {t(`runs.source.${runOf().source}` as MessageKey)}
                         </span>
                         <span class={styles.muted}>
-                          {t("runs.row.progress", { n: run.ended, m: run.total })}
+                          {t("runs.row.progress", { n: runOf().ended, m: runOf().total })}
                         </span>
                       </button>
                     </li>
                   )}
-                </For>
+                </Keyed>
               </ul>
             </Show>
           </>

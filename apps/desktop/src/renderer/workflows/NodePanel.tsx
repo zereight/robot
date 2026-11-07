@@ -10,12 +10,13 @@ import {
   type WorkflowNode,
 } from "@robot/shared"
 import { Plus, Trash2, X } from "lucide-solid"
-import { createSignal, For, type JSX, Show } from "solid-js"
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton, Switch } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import styles from "./graph.module.css"
 
 const levelKey = (level: PermissionLevel) => `permission.level.${level}` as MessageKey
@@ -62,6 +63,14 @@ export const NodePanel = (props: {
   }
   const patch = (change: NodePatch) =>
     guard(() => call("workflows.node.update", { id: props.node.id, patch: change }))
+
+  // A text field reads its value through a memo of the text. A refetch after a background event
+  // gives the panel a new copy of the node. Without the memo, the field sets its value again and
+  // the text that the user typed and did not save is gone.
+  const name = createMemo(() => props.node.name)
+  const question = createMemo(() => props.node.question)
+  const threshold = createMemo(() => props.node.threshold)
+  const prompt = createMemo(() => props.node.prompt)
 
   const choice = () => props.choices.find((c) => c.accountId === props.node.accountId)
   const modelInfo = () => choice()?.models.find((m) => m.id === props.node.model)
@@ -110,7 +119,7 @@ export const NodePanel = (props: {
         <Field label={t("node.name")}>
           <input
             class={styles.control}
-            value={props.node.name}
+            value={name()}
             aria-label={t("node.name")}
             data-testid="node-name"
             onChange={(e) => void patch({ name: e.currentTarget.value })}
@@ -124,7 +133,7 @@ export const NodePanel = (props: {
               <Field label={t("node.question")}>
                 <textarea
                   class={styles.control}
-                  value={props.node.question}
+                  value={question()}
                   aria-label={t("node.question")}
                   data-testid="node-question"
                   onChange={(e) => void patch({ question: e.currentTarget.value })}
@@ -137,7 +146,7 @@ export const NodePanel = (props: {
                   min="0"
                   max="1"
                   step="0.05"
-                  value={props.node.threshold}
+                  value={threshold()}
                   aria-label={t("node.threshold")}
                   data-testid="node-threshold"
                   onChange={(e) => void patch({ threshold: Number(e.currentTarget.value) })}
@@ -146,52 +155,58 @@ export const NodePanel = (props: {
               <p class={styles.hintText}>{t("node.decisionModel")}</p>
               <div class={styles.field}>
                 <span class={styles.fieldLabel}>{t("node.options")}</span>
-                <For each={props.node.options}>
-                  {(option, i) => (
-                    <div class={styles.optionRow} data-testid="node-option">
-                      <input
-                        class={styles.control}
-                        value={option.label}
-                        aria-label={t("node.option.label", { n: i() + 1 })}
-                        data-testid="node-option-label"
-                        onChange={(e) =>
-                          void guard(() =>
-                            call("workflows.option.rename", {
-                              id: option.id,
-                              label: e.currentTarget.value,
-                            }),
-                          )
-                        }
-                      />
-                      <select
-                        class={styles.control}
-                        aria-label={t("node.option.target", { n: i() + 1 })}
-                        data-testid="node-option-target"
-                        value={targetOf(option.id)?.to ?? ""}
-                        onChange={(e) => void setTarget(option.id, e.currentTarget.value)}
-                      >
-                        <option value="">{t("node.target.none")}</option>
-                        <For each={others()}>
-                          {(n) => (
-                            <option value={n.id} selected={targetOf(option.id)?.to === n.id}>
-                              {n.number}. {n.name}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                      <IconButton
-                        label={t("node.option.remove", { n: i() + 1 })}
-                        disabled={props.node.options.length <= OPTIONS_MIN}
-                        data-testid="node-option-remove"
-                        onClick={() =>
-                          void guard(() => call("workflows.option.remove", { id: option.id }))
-                        }
-                      >
-                        <X size={16} />
-                      </IconButton>
-                    </div>
-                  )}
-                </For>
+                <Keyed each={props.node.options} by={(o) => o.id}>
+                  {(option, i) => {
+                    const label = createMemo(() => option().label)
+                    return (
+                      <div class={styles.optionRow} data-testid="node-option">
+                        <input
+                          class={styles.control}
+                          value={label()}
+                          aria-label={t("node.option.label", { n: i() + 1 })}
+                          data-testid="node-option-label"
+                          onChange={(e) =>
+                            void guard(() =>
+                              call("workflows.option.rename", {
+                                id: option().id,
+                                label: e.currentTarget.value,
+                              }),
+                            )
+                          }
+                        />
+                        <select
+                          class={styles.control}
+                          aria-label={t("node.option.target", { n: i() + 1 })}
+                          data-testid="node-option-target"
+                          value={targetOf(option().id)?.to ?? ""}
+                          onChange={(e) => void setTarget(option().id, e.currentTarget.value)}
+                        >
+                          <option value="">{t("node.target.none")}</option>
+                          <Keyed each={others()} by={(n) => n.id}>
+                            {(n) => (
+                              <option
+                                value={n().id}
+                                selected={targetOf(option().id)?.to === n().id}
+                              >
+                                {n().number}. {n().name}
+                              </option>
+                            )}
+                          </Keyed>
+                        </select>
+                        <IconButton
+                          label={t("node.option.remove", { n: i() + 1 })}
+                          disabled={props.node.options.length <= OPTIONS_MIN}
+                          data-testid="node-option-remove"
+                          onClick={() =>
+                            void guard(() => call("workflows.option.remove", { id: option().id }))
+                          }
+                        >
+                          <X size={16} />
+                        </IconButton>
+                      </div>
+                    )
+                  }}
+                </Keyed>
                 <div>
                   <Button
                     data-testid="node-option-add"
@@ -214,7 +229,7 @@ export const NodePanel = (props: {
           <Field label={t("node.prompt")} hint={t("node.prompt.hint")}>
             <textarea
               class={styles.control}
-              value={props.node.prompt}
+              value={prompt()}
               aria-label={t("node.prompt")}
               data-testid="node-prompt"
               onChange={(e) => void patch({ prompt: e.currentTarget.value })}
@@ -231,13 +246,13 @@ export const NodePanel = (props: {
               }
             >
               <option value="">{t("node.provider.default")}</option>
-              <For each={props.choices}>
+              <Keyed each={props.choices} by={(c) => c.accountId}>
                 {(c) => (
-                  <option value={c.accountId} selected={props.node.accountId === c.accountId}>
-                    {c.accountName}
+                  <option value={c().accountId} selected={props.node.accountId === c().accountId}>
+                    {c().accountName}
                   </option>
                 )}
-              </For>
+              </Keyed>
             </select>
           </Field>
           <Show when={choice()}>
@@ -257,15 +272,16 @@ export const NodePanel = (props: {
                   }}
                 >
                   <option value="">{t("node.model.default")}</option>
-                  <For
+                  <Keyed
                     each={account().models.filter((m) => !m.hidden || m.id === props.node.model)}
+                    by={(m) => m.id}
                   >
                     {(m) => (
-                      <option value={m.id} selected={props.node.model === m.id}>
-                        {modelLabel(m)}
+                      <option value={m().id} selected={props.node.model === m().id}>
+                        {modelLabel(m())}
                       </option>
                     )}
-                  </For>
+                  </Keyed>
                 </select>
               </Field>
             )}
@@ -319,22 +335,22 @@ export const NodePanel = (props: {
               fallback={<p class={styles.hintText}>{t("node.next.none")}</p>}
             >
               <ul class={styles.list}>
-                <For each={outgoing()}>
+                <Keyed each={outgoing()} by={(c) => c.id}>
                   {(c) => (
                     <li class={styles.listRow} data-testid="node-next">
                       <span>
-                        {nodeOf(c.to)?.number}. {nodeOf(c.to)?.name}
+                        {nodeOf(c().to)?.number}. {nodeOf(c().to)?.name}
                       </span>
                       <IconButton
-                        label={t("node.next.remove", { name: nodeOf(c.to)?.name ?? "" })}
+                        label={t("node.next.remove", { name: nodeOf(c().to)?.name ?? "" })}
                         data-testid="node-next-remove"
-                        onClick={() => setRemoving(c.id)}
+                        onClick={() => setRemoving(c().id)}
                       >
                         <Trash2 size={16} />
                       </IconButton>
                     </li>
                   )}
-                </For>
+                </Keyed>
               </ul>
             </Show>
             <Show when={removing()}>
@@ -383,13 +399,16 @@ export const NodePanel = (props: {
               }}
             >
               <option value="">{t("node.next.add")}</option>
-              <For each={others().filter((n) => !outgoing().some((c) => c.to === n.id))}>
+              <Keyed
+                each={others().filter((n) => !outgoing().some((c) => c.to === n.id))}
+                by={(n) => n.id}
+              >
                 {(n) => (
-                  <option value={n.id}>
-                    {n.number}. {n.name}
+                  <option value={n().id}>
+                    {n().number}. {n().name}
                   </option>
                 )}
-              </For>
+              </Keyed>
             </select>
           </div>
           <div class={styles.row}>

@@ -23,6 +23,7 @@ import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Skills } from "./services/Skills.ts"
 import { UiStore } from "./services/UiStore.ts"
+import { WorkflowCheck, type WorkflowCheckOptions } from "./services/WorkflowCheck.ts"
 import { Workflows } from "./services/Workflows.ts"
 
 export interface AppLayerOptions {
@@ -44,6 +45,8 @@ export interface AppLayerOptions {
   readonly cacheHosts?: readonly string[]
   /** The limits and the way to reach a connection (spec 018). Only tests set them. */
   readonly connections?: ConnectionsOptions
+  /** The limits of the check and its background run (spec 010). Only tests set them. */
+  readonly check?: WorkflowCheckOptions
 }
 
 /** Every main process service, wired together. */
@@ -79,7 +82,10 @@ export const appLayer = (options: AppLayerOptions) => {
   // The connections use the rules, to remove the rules of a connection that is removed (spec 018).
   const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(rules))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(connections))
-  const runFacts = RunFacts.layer.pipe(Layer.provideMerge(workflows))
+  const workflowCheck = WorkflowCheck.layer({ auto: true, ...options.check }).pipe(
+    Layer.provideMerge(workflows),
+  )
+  const runFacts = RunFacts.layer.pipe(Layer.provideMerge(workflowCheck))
   const cards = Cards.layer.pipe(Layer.provideMerge(runFacts))
   const runs = Runs.layer.pipe(Layer.provideMerge(cards))
   const chat = Chat.layer.pipe(Layer.provideMerge(runs))

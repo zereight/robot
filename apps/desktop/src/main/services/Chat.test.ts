@@ -168,6 +168,9 @@ describe("chat of a workflow (spec 003)", () => {
     const before = mock.requests.length
     await t.send("slow start")
     await until(async () => (await t.history()).working)
+    // The first request must reach the stand-in before the stop: a turn that is stopped sooner
+    // makes no request, and the next one would be the one that the test skips.
+    await until(() => mock.requests.length > before)
     await t.send("second request")
     await t.chat((c) => c.stop(t.flow.id))
     // The second turn asks the model with the unread message (the stand-in streams slowly again,
@@ -190,6 +193,9 @@ describe("chat of a workflow (spec 003)", () => {
     await t.run(SettingsStore.use((s) => s.update({ duringTurn: "queue" })))
     await t.send("slow start")
     await until(async () => (await t.history()).working)
+    // The first request must reach the stand-in before the stop: a turn that is stopped sooner
+    // makes no request, and the next one would be the one that the test skips.
+    await until(() => mock.requests.length > before)
     await t.send("queued one")
     const h = await t.history()
     expect(h.queue.map((q) => q.text)).toEqual(["queued one"])

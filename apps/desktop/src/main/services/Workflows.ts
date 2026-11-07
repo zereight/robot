@@ -2,14 +2,16 @@ import { randomUUID } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import {
+  type CheckOutcome,
   charLength,
+  checkGraphKey,
+  checkStateOf,
   DEFAULT_PERMISSION,
   DOCUMENT_MAX,
   DOCUMENT_VERSIONS_MAX,
   type DocumentSource,
   type DocumentVersion,
   type GraphVersion,
-  graphProblems,
   isLooser,
   NODES_MAX,
   type NodeInput,
@@ -153,6 +155,27 @@ export const effectivePermission = (
   node: PermissionLevel | null,
 ): PermissionLevel => (node === null || isLooser(node, workflow) ? workflow : node)
 
+/**
+ * The result of the check that was stored for this graph, or null. A result of another graph is not
+ * valid (see `checkGraphKey`).
+ */
+export const readStoredCheck = (
+  db: DatabaseService,
+  workflowId: string,
+  graph: WorkflowGraph,
+): CheckOutcome | null => {
+  const row = db.get<{ graph_key: string; outcome: string }>(
+    "SELECT graph_key, outcome FROM workflow_check WHERE workflow_id = ?",
+    workflowId,
+  )
+  if (!row || row.graph_key !== checkGraphKey(graph)) return null
+  try {
+    return JSON.parse(row.outcome) as CheckOutcome
+  } catch {
+    return null
+  }
+}
+
 /** The graph of a workflow, read from the tables. */
 export const readGraph = (db: DatabaseService, workflowId: string): WorkflowGraph => {
   const options = db.all<OptionRow>(
@@ -215,7 +238,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const nodeCount = (id: string) =>
         db.get<{ n: number }>("SELECT COUNT(*) AS n FROM workflow_node WHERE workflow_id = ?", id)
           ?.n ?? 0
-      const toWorkflow = (r: WorkflowRow): Workflow => {
+      const toWorkflow = (r: WorkflowRow, graph = readGraph(db, r.id)): Workflow => {
         const last = db.get<{ state: string; started_at: number }>(
           "SELECT state, started_at FROM run WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
           r.id,
@@ -230,16 +253,20 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           nodeCount: nodeCount(r.id),
           running: checkIdle(r.id) !== null,
           lastRun: last ? { state: last.state, startedAt: last.started_at } : null,
-          problems: graphProblems(readGraph(db, r.id)).length,
+          check: checkStateOf(readStoredCheck(db, r.id, graph)),
           createdAt: r.created_at,
           updatedAt: r.updated_at,
         }
       }
-      const detail = (r: WorkflowRow): WorkflowDetail => ({
-        ...toWorkflow(r),
-        document: r.document,
-        graph: readGraph(db, r.id),
-      })
+      const detail = (r: WorkflowRow): WorkflowDetail => {
+        const graph = readGraph(db, r.id)
+        return {
+          ...toWorkflow(r, graph),
+          document: r.document,
+          graph,
+          checkOutcome: readStoredCheck(db, r.id, graph),
+        }
+      }
       const nameTaken = (serverId: string, name: string, exceptId?: string) =>
         db.get(
           "SELECT 1 FROM workflow WHERE server_id = ? AND name_key = ? AND id != ?",
@@ -428,7 +455,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 "SELECT * FROM workflow WHERE server_id = ? ORDER BY created_at, rowid",
                 serverId,
               )
-              .map(toWorkflow),
+              .map((r) => toWorkflow(r)),
           ),
         get: (id) => findRow(id).pipe(Effect.map(detail)),
         create,

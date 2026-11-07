@@ -520,14 +520,14 @@ describe("the graph editor (spec 010, flow 2)", () => {
 })
 
 describe("the facts of a card of the list (spec 001)", () => {
-  test("a new workflow has no run, no problem, and does not run", async () => {
+  test("a new workflow has no run, no result of the check, and does not run", async () => {
     const t = await setup()
     const flow = await t.create("Report")
     const [card] = await t.w((x) => x.list(t.server.id))
     expect(card?.id).toBe(flow.id)
     expect(card?.lastRun).toBeNull()
     expect(card?.running).toBe(false)
-    expect(card?.problems).toBe(0)
+    expect(card?.check).toBe("not_checked")
   })
 
   test("the last run and the running mark follow the runs", async () => {
@@ -548,23 +548,6 @@ describe("the facts of a card of the list (spec 001)", () => {
     const [after] = await t.w((x) => x.list(t.server.id))
     expect(after?.lastRun).toEqual({ state: "done", startedAt: 300 })
     expect(after?.running).toBe(false)
-  })
-
-  test("a decision option with no connection counts as a problem of the graph", async () => {
-    const t = await setup()
-    const flow = await t.create("Report")
-    const d = await t.w((x) =>
-      x.addNode(flow.id, {
-        kind: "decision",
-        name: "Ok?",
-        question: "Fine?",
-        options: ["Yes", "No"],
-      }),
-    )
-    const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
-    expect((await t.w((x) => x.list(t.server.id)))[0]?.problems).toBe(2)
-    await t.w((x) => x.connect(flow.id, d.id, next.id, d.options[0]?.id ?? null))
-    expect((await t.w((x) => x.list(t.server.id)))[0]?.problems).toBe(1)
   })
 })
 

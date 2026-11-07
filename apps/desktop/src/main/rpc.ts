@@ -48,6 +48,7 @@ import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Skills } from "./services/Skills.ts"
 import { UiStore } from "./services/UiStore.ts"
+import { WorkflowCheck } from "./services/WorkflowCheck.ts"
 import { Workflows } from "./services/Workflows.ts"
 import { STAGE_ROOT, stageFile } from "./staging.ts"
 
@@ -521,6 +522,10 @@ export const handlers: Handlers = {
     ),
   "workflows.get": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.get(id)))),
+  "workflows.check": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => WorkflowCheck.use((c) => c.check(id, { force: true }))),
+    ),
   "workflows.create": (input) =>
     decode(WorkflowCreate)(input).pipe(Effect.flatMap((v) => Workflows.use((w) => w.create(v)))),
   "workflows.rename": (input) =>

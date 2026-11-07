@@ -5,7 +5,6 @@ import {
   blockedReason,
   type CardAnswer,
   catalogues,
-  graphProblems,
   isLooser,
   keepGoingMessage,
   type ListedStep,
@@ -54,6 +53,7 @@ import {
   stepLimitText,
 } from "./runPrompt.ts"
 import { SettingsStore } from "./Settings.ts"
+import { WorkflowCheck } from "./WorkflowCheck.ts"
 import { Workflows } from "./Workflows.ts"
 
 /**
@@ -151,6 +151,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const platform = yield* Platform
       const providers = yield* Providers
       const workflows = yield* Workflows
+      const check = yield* WorkflowCheck
       const decision = yield* Decision
       const settings = yield* SettingsStore
       const cards = yield* Cards
@@ -502,6 +503,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         if (runSignal.aborted && stop === null)
           stop = { state: "cancelled", text: "Stopped by you", code: "user" }
+        // No node is ready, and nodes that never ran remain: the run did not do its work. It must
+        // not end as "done" (a loop that came through, a graph that changed during the run).
+        if (stop === null && graph.nodes.some((n) => !ended.has(n.id)))
+          stop = {
+            state: "failed",
+            text: "No node could start, and some nodes did not run",
+            code: "run_no_ready_node",
+          }
         if (stop) setRun(runId, stop.state, { text: stop.text, code: stop.code }, true)
         else setRun(runId, "done", { text: null, code: null }, true)
       }
@@ -1096,9 +1105,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const detail = yield* workflows.get(input.workflowId)
           const nodes = detail.graph.nodes
           if (nodes.length === 0) return yield* new AppError({ code: "run_empty" })
-          const problems = graphProblems(detail.graph).filter((p) => p.code === "decision_options")
-          if (problems.length > 0) return yield* new AppError({ code: "run_graph_problem" })
+          // A loop never starts, whatever the checker says: this test does not use the checker,
+          // so a check that stopped or failed cannot let a loop through.
           if (hasLoop(detail)) return yield* new AppError({ code: "run_loop" })
+          // A run does not start when the check finds a problem (spec 010, "Check"). A check that
+          // stopped at a limit or could not read the form does not hold back a graph with no loop
+          // (docs/spec-questions.md, W1: the rows for the check before a run).
+          const outcome = yield* check.check(input.workflowId)
+          if (outcome.state === "problem") return yield* new AppError({ code: "run_check_problem" })
           const queued = queues.get(input.workflowId) ?? []
           if (busy.has(input.workflowId) && queued.length >= RUN_QUEUE_MAX)
             return yield* new AppError({ code: "run_queue_full", detail: detail.name })

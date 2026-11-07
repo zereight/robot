@@ -29,7 +29,7 @@ test("workflow list: the empty state, a new workflow, the card, the delete quest
   await expect(card).toHaveCount(1)
   await expect(card.getByTestId("workflow-nodes")).toHaveText("0 nodes")
   await expect(card.getByTestId("workflow-last-run")).toHaveText("No run yet")
-  await expect(card.getByTestId("workflow-check")).toHaveText("Check: Not checked")
+  await expect(card.getByTestId("workflow-check")).toHaveText("Check: Passed")
   await shot(page, "w5-03-list-card")
 
   // A second card; the list shows both.
@@ -65,7 +65,7 @@ test("workflow list in Korean: the words 워크플로우 and 담당 문서", asy
   await shot(page, "w5-05-document-ko")
   await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("아직 실행한 적이 없어요")
-  await expect(page.getByTestId("workflow-check")).toHaveText("검사: 검사 안 함")
+  await expect(page.getByTestId("workflow-check")).toHaveText("검사: 통과")
   await shot(page, "w5-06-list-ko")
   await app.close()
 })
@@ -109,5 +109,65 @@ test("workflow list: a state that this version does not know is not shown as 'No
   ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
   await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("Last run: state not known")
+  await app.close()
+})
+
+test("workflow list: a background event does not close the delete question", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await page.getByTestId("new-workflow-empty").click()
+  await page.getByTestId("new-workflow-name").fill("Weekly")
+  await page.getByTestId("new-workflow-name").press("Enter")
+  await expect(page.getByTestId("workflow-view")).toBeVisible()
+  await page.getByTestId("workflow-back").click()
+  await page.getByTestId("new-workflow").click()
+  await page.getByTestId("new-workflow-name").fill("Daily digest")
+  await page.getByTestId("new-workflow-name").press("Enter")
+  await expect(page.getByTestId("workflow-view")).toBeVisible()
+  await page.getByTestId("workflow-back").click()
+  await expect(page.getByTestId("workflow-row")).toHaveCount(2)
+
+  // Count the events "workflows.changed" that the window gets.
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      robot: { on: (event: string, fn: () => void) => void }
+      changed: number
+    }
+    w.changed = 0
+    w.robot.on("workflows.changed", () => {
+      w.changed++
+    })
+  })
+  const changed = () => page.evaluate(() => (window as unknown as { changed: number }).changed)
+
+  await page.getByTestId("workflow-card-delete").nth(1).click()
+  await expect(page.getByTestId("workflow-delete-ask")).toContainText("Daily digest")
+
+  // A background check ends and the main process sends "workflows.changed": the list is read
+  // again, and the open question stays where it is.
+  const before = await changed()
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        robot: { invoke: (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }> }
+      }
+    ).robot.invoke
+    const servers = (await invoke("servers.list")).value as { id: string; kind: string }[]
+    const local = servers.find((s) => s.kind === "local")
+    const flows = (await invoke("workflows.list", { serverId: local?.id })).value as {
+      id: string
+    }[]
+    for (const flow of flows) await invoke("workflows.check", { id: flow.id })
+  })
+  await expect
+    .poll(changed, { message: "no workflows.changed event arrived" })
+    .toBeGreaterThan(before)
+  // The list had time to read again: wait for the cards to show the check, then look at the question.
+  await expect(page.getByTestId("workflow-check")).toHaveText(["Check: Passed", "Check: Passed"])
+  await expect(page.getByTestId("workflow-delete-ask")).toHaveCount(1)
+  await expect(page.getByTestId("workflow-delete-ask")).toContainText("Daily digest")
+  await shot(page, "w5-07-delete-ask-after-event")
+  await page.getByTestId("workflow-delete-keep").click()
+  await expect(page.getByTestId("workflow-delete-ask")).toHaveCount(0)
+  await expect(page.getByTestId("workflow-row")).toHaveCount(2)
   await app.close()
 })

@@ -1,6 +1,15 @@
 import type { WorkflowDetail } from "@robot/shared"
 import { ArrowLeft, Play, Square, Trash2 } from "lucide-solid"
-import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+} from "solid-js"
 import { ChatPanel } from "../chat/ChatPanel.tsx"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -31,6 +40,7 @@ export const WorkflowView = (props: { id: string }) => {
       call("workflows.get", { id }).catch(() => undefined),
   )
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
+  const loaded = createMemo(() => detail() !== undefined)
   const [asking, setAsking] = createSignal(false)
   const [tab, setTab] = createSignal<Tab>("graph")
   const runs = createRunsState(() => props.id)
@@ -148,12 +158,12 @@ export const WorkflowView = (props: { id: string }) => {
             )}
           </Show>
         </div>
-        <Show when={detail()}>
-          {(flow) => (
-            <aside class={styles.chatColumn}>
-              <ChatPanel workflowId={flow().id} />
-            </aside>
-          )}
+        {/* The chat stays as it is when the workflow is read again: a new result of the check must
+            not take the focus out of the box of the chat. */}
+        <Show when={loaded()}>
+          <aside class={styles.chatColumn}>
+            <ChatPanel workflowId={props.id} />
+          </aside>
         </Show>
       </div>
     </>
