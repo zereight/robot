@@ -697,6 +697,11 @@ export const handlers: Handlers = {
       Effect.flatMap(({ workflowId }) => Chat.use((c) => c.clearMarks(workflowId))),
       done,
     ),
+  "chat.compact": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.compact(workflowId))),
+      done,
+    ),
   "runs.start": (input) =>
     decode(
       Schema.Struct({

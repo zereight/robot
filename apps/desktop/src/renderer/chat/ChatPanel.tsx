@@ -1,6 +1,7 @@
 import {
   type ChatAnswer,
   type ChatMarks,
+  type ChatMeter,
   type ModelChoice,
   sameChatDay,
   startsChatGroup,
@@ -18,16 +19,19 @@ import {
   onMount,
   Show,
 } from "solid-js"
-import { describeError } from "../lib/errors.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { outsideText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
+import { CompactedLine, compactedPart } from "./CompactedLine.tsx"
 import { Composer } from "./Composer.tsx"
+import { ContextMeter } from "./ContextMeter.tsx"
 import cards from "./cards.module.css"
 import styles from "./chat.module.css"
 import { findHits, locate, stepHit } from "./find.ts"
@@ -39,13 +43,15 @@ import { createChatState } from "./state.ts"
 const PHRASES = 20
 
 /** The line under the last row while the responsible document works (spec 003, "States"). */
-const WorkingLine = (props: { since: number }) => {
+const WorkingLine = (props: { since: number; compacting: boolean }) => {
   const { t } = useApp()
   const [now, setNow] = createSignal(Date.now())
   const timer = setInterval(() => setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(timer))
   // About half of the turns show a playful phrase. The turn keeps the one it got.
   const phrase = () => {
+    // A compact says what happens, with no playful phrase (spec 003, "Compact").
+    if (props.compacting) return t("chat.compacting")
     const seed = Math.floor(props.since / 7)
     return seed % 2 === 0
       ? t("chat.working")
@@ -70,8 +76,12 @@ const AnswerHeader = (props: {
   workflowId: string
   answer: ChatAnswer
   unsafeAccount: string | null
+  meter: ChatMeter
+  compacting: boolean
+  onCompact: () => void
 }) => {
   const { t } = useApp()
+  const ui = useUi()
   const [choices, { refetch }] = createResource(
     (): Promise<readonly ModelChoice[]> => call("models.available").catch(() => []),
   )
@@ -130,6 +140,12 @@ const AnswerHeader = (props: {
             )}
           </For>
         </select>
+        <ContextMeter
+          meter={props.meter}
+          compacting={props.compacting}
+          canCompact={ui.server()?.kind === "local"}
+          onCompact={props.onCompact}
+        />
       </div>
       <Show when={props.unsafeAccount}>
         {(account) => (
@@ -211,6 +227,7 @@ export const ChatPanel = (props: {
   const { t, locale } = useApp()
   const { history, error } = createChatState(() => props.workflowId)
   const [replyTo, setReplyTo] = createSignal<WorkflowChatMessage>()
+  const [compactError, setCompactError] = createSignal<ErrorText>()
   const [stick, setStick] = createSignal(true)
   const [finding, setFinding] = createSignal(false)
   const [query, setQuery] = createSignal("")
@@ -331,6 +348,13 @@ export const ChatPanel = (props: {
     const text = describeError(e)
     showToast("error", text.key, text.params)
   }
+  /** Compact (spec 003). A failure shows in the error line above the box. */
+  const compactNow = () => {
+    setCompactError(undefined)
+    call("chat.compact", { workflowId: props.workflowId }).catch((e: unknown) =>
+      setCompactError(describeError(e)),
+    )
+  }
   const retry = () => void call("chat.retry", { workflowId: props.workflowId }).catch(toastError)
   const resume = (mode: "continue" | "again") =>
     void call("chat.resume", { workflowId: props.workflowId, mode }).catch(toastError)
@@ -419,6 +443,9 @@ export const ChatPanel = (props: {
                   workflowId={props.workflowId}
                   answer={answer()}
                   unsafeAccount={h().unsafeAccount}
+                  meter={h().meter}
+                  compacting={h().compacting}
+                  onCompact={compactNow}
                 />
               )}
             </Show>
@@ -457,17 +484,22 @@ export const ChatPanel = (props: {
                             )}
                           </div>
                         </Show>
-                        <MessageRow
-                          message={message}
-                          name={h().workflowName}
-                          header={newDay() || startsChatGroup(previous(), message)}
-                          quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
-                          last={i() === h().messages.length - 1}
-                          working={h().working}
-                          onReply={setReplyTo}
-                          onJump={jump}
-                          onRetry={retry}
-                        />
+                        <Show
+                          when={compactedPart(message) === undefined}
+                          fallback={<CompactedLine message={message} />}
+                        >
+                          <MessageRow
+                            message={message}
+                            name={h().workflowName}
+                            header={newDay() || startsChatGroup(previous(), message)}
+                            quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
+                            last={i() === h().messages.length - 1}
+                            working={h().working}
+                            onReply={setReplyTo}
+                            onJump={jump}
+                            onRetry={retry}
+                          />
+                        </Show>
                       </>
                     )
                   }}
@@ -477,7 +509,7 @@ export const ChatPanel = (props: {
                 <RunCards cards={h().cards} />
               </Show>
               <Show when={h().working && h().workingSince !== null}>
-                <WorkingLine since={h().workingSince ?? 0} />
+                <WorkingLine since={h().workingSince ?? 0} compacting={h().compacting} />
               </Show>
             </div>
             <Show when={!stick()}>
@@ -516,7 +548,10 @@ export const ChatPanel = (props: {
               history={h()}
               replyTo={replyTo()}
               onCancelReply={() => setReplyTo(undefined)}
+              compactError={compactError()}
+              onCompact={compactNow}
               onSent={() => {
+                setCompactError(undefined)
                 setStick(true)
                 queueMicrotask(toBottom)
               }}

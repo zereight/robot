@@ -25,6 +25,7 @@ import { call, stageFile } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
+import { compactOffKey } from "./ContextMeter.tsx"
 import styles from "./chat.module.css"
 import { pastedFiles } from "./paste.ts"
 
@@ -43,6 +44,9 @@ export const Composer = (props: {
   readonly replyTo: WorkflowChatMessage | undefined
   readonly onCancelReply: () => void
   readonly onSent: () => void
+  /** The error of the last Compact, shown in the error line above the box (spec 003, flow 8). */
+  readonly compactError?: ErrorText | undefined
+  readonly onCompact: () => void
 }) => {
   const { t } = useApp()
   const ui = useUi()
@@ -69,6 +73,19 @@ export const Composer = (props: {
       .filter((s) => s.name.toLowerCase().replace(/^\//, "").includes(needle))
       .slice(0, SKILL_PICKER_MAX)
   })
+  // The one command, "compact", shows first (spec 003, flow 7). A linked computer and the phone have
+  // no Compact control, so they have no command (spec 012).
+  const commands = createMemo(() => {
+    const q = query()
+    if (q === null || ui.server()?.kind !== "local") return []
+    return "compact".includes(q.toLowerCase()) ? (["compact"] as const) : []
+  })
+  /** Why Compact is off, in words. It shows in place of the text of the command. */
+  const commandOff = () => {
+    const off = props.history.meter.off ?? (props.history.compacting ? "working" : null)
+    return off ? t(compactOffKey(off)) : null
+  }
+  const total = () => commands().length + matches().length
   createEffect(on(query, () => setActive(0)))
 
   const fit = () => {
@@ -165,24 +182,37 @@ export const Composer = (props: {
     setText("")
     box?.focus()
   }
+  /** Picks the command "compact": Compact runs at once and the slash text leaves the box. */
+  const pickCommand = () => {
+    if (commandOff() !== null) return
+    setText("")
+    props.onCompact()
+    box?.focus()
+  }
+  const pickAt = (index: number) => {
+    if (index < commands().length) pickCommand()
+    else {
+      const chosen = matches()[index - commands().length]
+      if (chosen) pickSkill(chosen)
+    }
+  }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    const list = matches()
-    if (query() !== null && list.length > 0) {
+    const count = total()
+    if (query() !== null && count > 0) {
       if (event.key === "ArrowDown") {
         event.preventDefault()
-        setActive((i) => (i + 1) % list.length)
+        setActive((i) => (i + 1) % count)
         return
       }
       if (event.key === "ArrowUp") {
         event.preventDefault()
-        setActive((i) => (i - 1 + list.length) % list.length)
+        setActive((i) => (i - 1 + count) % count)
         return
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault()
-        const chosen = list[active()]
-        if (chosen) pickSkill(chosen)
+        pickAt(active())
         return
       }
       if (event.key === "Escape") {
@@ -267,7 +297,7 @@ export const Composer = (props: {
           </div>
         )}
       </Show>
-      <Show when={error()}>
+      <Show when={error() ?? props.compactError}>
         {(e) => (
           <p class={styles.composerError} role="alert" data-testid="composer-error">
             {t(e().key, e().params)}
@@ -276,8 +306,27 @@ export const Composer = (props: {
       </Show>
       <Show when={query() !== null}>
         <ul class={styles.picker} aria-label={t("chat.skills")} data-testid="skill-picker">
+          <Show when={commands().length > 0}>
+            <li>
+              <button
+                type="button"
+                class={styles.pickerItem}
+                classList={{ [styles.pickerActive ?? ""]: active() === 0 }}
+                aria-disabled={commandOff() !== null}
+                data-testid="command-option"
+                data-off={commandOff() !== null}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  pickCommand()
+                }}
+              >
+                <span class={styles.pickerName}>/compact</span>
+                <span class={styles.pickerHint}>{commandOff() ?? t("chat.compact.command")}</span>
+              </button>
+            </li>
+          </Show>
           <Show
-            when={matches().length > 0}
+            when={total() > 0}
             fallback={<li class={styles.pickerNone}>{t("chat.skills.none")}</li>}
           >
             <For each={matches()}>
@@ -286,7 +335,9 @@ export const Composer = (props: {
                   <button
                     type="button"
                     class={styles.pickerItem}
-                    classList={{ [styles.pickerActive ?? ""]: i() === active() }}
+                    classList={{
+                      [styles.pickerActive ?? ""]: i() + commands().length === active(),
+                    }}
                     data-testid="skill-option"
                     onMouseDown={(e) => {
                       e.preventDefault()

@@ -185,7 +185,7 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT id FROM memory")).toEqual([])
   })
 
-  test("a database built from the first 11 migrations opens at version 12, keeps its rows and gets the claims, the holder and the device", () => {
+  test("a database built from the first 11 migrations opens at version 13, keeps its rows and gets the claims, the holder, the device and the context use", () => {
     const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-11-")), "robot.db")
     const old = new DatabaseSync(file)
     old.exec("PRAGMA foreign_keys = ON")
@@ -207,13 +207,14 @@ describe("the reset of a database from before the workflow model (owner decision
     old.close()
     expect(fileState(file)).toBe("current")
     const db = openDatabase(file)
-    expect(migrations).toHaveLength(12)
-    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(12)
+    expect(migrations).toHaveLength(13)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(13)
     // The rows stay.
     expect(db.get<{ document: string }>("SELECT document FROM workflow")?.document).toBe("Doc.")
     expect(db.all("SELECT id FROM run")).toEqual([{ id: "r1" }])
     expect(db.all("SELECT id, holder FROM action_log")).toEqual([{ id: "a1", holder: null }])
-    // The columns of the 11th migration and of the 12th are there.
+    // The columns of the 11th, the 12th and the 13th migration are there.
+    expect(db.all("SELECT context_tokens FROM chat_message")).toEqual([])
     expect(db.get<{ device: string | null }>("SELECT device FROM run")?.device).toBeNull()
     expect(db.all("SELECT device FROM workflow_version")).toEqual([])
     // The table of claims takes a claim and goes with the workflow.

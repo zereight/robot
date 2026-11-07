@@ -48,6 +48,16 @@ const NoteLine = (props: { note: Note; workflowId: string }) => {
     if (n.note === "proposals_full") return t("improve.full")
     if (n.note === "not_allowed") return t("chat.notAllowed", { server: n.server })
     if (n.note === "memory_saved") return t("chat.memory.saved", { text: n.text })
+    if (n.note === "compact_failed" && n.code === "compact_stopped")
+      return t("chat.compact.stopped")
+    if (n.note === "compact_failed") {
+      const key = `error.${n.code}`
+      // The note keeps the code, not the detail: drop the empty detail and its colon.
+      const reason = t(key in catalogues.en ? (key as MessageKey) : "error.unknown", {
+        detail: "",
+      })
+      return t("chat.compact.failed", { reason: reason.replace(/\s*[:：]\s*$/, ".") })
+    }
     if (n.note === "proposal")
       return n.proposalKind === "prompt"
         ? t("chat.proposal.prompt", { number: n.nodeNumber ?? 0 })
