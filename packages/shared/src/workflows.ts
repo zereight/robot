@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
+import type { CheckOutcome, CheckState } from "./workflowCheck.ts"
 
 // The data model of a workflow (spec 010): a graph of nodes, one responsible document (002), one
 // chat (003), one memory (008). Rules of the graph that the spec states are here as constants and
@@ -58,8 +59,8 @@ export interface Workflow {
   readonly running: boolean
   /** The last run, or null when the workflow never ran. */
   readonly lastRun: LastRun | null
-  /** The number of structural problems of the graph (see `graphProblems`). */
-  readonly problems: number
+  /** The state of the check of the graph as it is now (spec 010, "Check"). */
+  readonly check: CheckState
   readonly createdAt: number
   readonly updatedAt: number
 }
@@ -108,6 +109,8 @@ export interface WorkflowDetail extends Workflow {
   /** The responsible document (spec 002). */
   readonly document: string
   readonly graph: WorkflowGraph
+  /** The result of the check for this graph, or null when the graph is not checked yet. */
+  readonly checkOutcome: CheckOutcome | null
 }
 
 export interface DocumentVersion {
@@ -181,8 +184,8 @@ export type GraphProblem =
  * The faults of the shape of a graph that the rules of the graph name (spec 010, "File"): a
  * decision node with fewer than two options, an option with no connection, and more than 30 nodes.
  * A connection to a node that does not exist, and a connection of a node to itself, cannot exist
- * in the database. The check on the TLA form (a node that no run can reach, a deadlock) is not
- * here: it comes with the check of the workflow.
+ * in the database. The check on the TLA form (a deadlock, a node that no run reaches) is in
+ * `workflowCheck.ts`; the check reads these faults first.
  */
 export const graphProblems = (graph: WorkflowGraph): readonly GraphProblem[] => {
   const problems: GraphProblem[] = []

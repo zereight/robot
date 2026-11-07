@@ -242,3 +242,69 @@ textarea.control {
   border: 0;
   min-width: 0;
 }
+
+.checkPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+.checkHead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.checkHead h3 {
+  margin: 0;
+}
+
+.headSpacer {
+  flex: 1;
+}
+
+.pathList {
+  margin: 0;
+  padding-left: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.pathLine {
+  border: 0;
+  background: none;
+  color: var(--c-text);
+  padding: 2px 0;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.mark {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: var(--radius-l);
+  background: var(--c-accent);
+  color: var(--c-accent-text);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.mark[data-problem="true"] {
+  background: var(--c-danger);
+  color: var(--c-danger-text);
+}

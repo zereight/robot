@@ -29,7 +29,7 @@ test("workflow list: the empty state, a new workflow, the card, the delete quest
   await expect(card).toHaveCount(1)
   await expect(card.getByTestId("workflow-nodes")).toHaveText("0 nodes")
   await expect(card.getByTestId("workflow-last-run")).toHaveText("No run yet")
-  await expect(card.getByTestId("workflow-check")).toHaveText("Check: Not checked")
+  await expect(card.getByTestId("workflow-check")).toHaveText("Check: Passed")
   await shot(page, "w5-03-list-card")
 
   // A second card; the list shows both.
@@ -65,7 +65,7 @@ test("workflow list in Korean: the words 워크플로우 and 담당 문서", asy
   await shot(page, "w5-05-document-ko")
   await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("아직 실행한 적이 없어요")
-  await expect(page.getByTestId("workflow-check")).toHaveText("검사: 검사 안 함")
+  await expect(page.getByTestId("workflow-check")).toHaveText("검사: 통과")
   await shot(page, "w5-06-list-ko")
   await app.close()
 })

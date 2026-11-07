@@ -40,6 +40,11 @@
     "license": "MIT"
   },
   {
+    "name": "fflate",
+    "version": "0.8.3",
+    "license": "MIT"
+  },
+  {
     "name": "lucide-solid",
     "version": "1.66.0",
     "license": "ISC"
@@ -72,6 +77,11 @@
   {
     "name": "thunky",
     "version": "1.1.0",
+    "license": "MIT"
+  },
+  {
+    "name": "tla-ts",
+    "version": "0.0.8",
     "license": "MIT"
   },
   {

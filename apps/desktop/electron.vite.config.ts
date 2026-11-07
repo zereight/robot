@@ -5,7 +5,16 @@ import solid from "vite-plugin-solid"
 // Only `dependencies` stay outside the bundle (native code). Everything in devDependencies is bundled.
 export default defineConfig({
   main: {
-    build: { externalizeDeps: true },
+    build: {
+      externalizeDeps: true,
+      rollupOptions: {
+        // The worker of the check (spec 010) is its own file: the main process starts it by name.
+        input: {
+          index: resolve(import.meta.dirname, "src/main/index.ts"),
+          checkWorker: resolve(import.meta.dirname, "src/main/check/worker.ts"),
+        },
+      },
+    },
   },
   preload: {
     build: {

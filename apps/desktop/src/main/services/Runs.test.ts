@@ -189,7 +189,7 @@ describe("a run of a workflow (spec 010)", () => {
     expect(d.nodes[1]?.task?.result).toBe("You said: Second\n\nYou said: First")
   })
 
-  test("a workflow with no node, or with a loop, does not start", async () => {
+  test("a workflow with no node, or with a problem that the check finds, does not start", async () => {
     const t = await setup()
     expect(
       await t.start().then(
@@ -206,7 +206,7 @@ describe("a run of a workflow (spec 010)", () => {
         () => "ok",
         (e: { code?: string }) => e.code,
       ),
-    ).toBe("run_loop")
+    ).toBe("run_check_problem")
   })
 
   test("a node with no provider fails with a reason and the run stops", async () => {
@@ -323,9 +323,12 @@ describe("the decision node (spec 010, 013)", () => {
     const t = await setup()
     const d = await t.decisionNode("Choose", ["Yes", "No"])
     const a = await t.node({ name: "A", prompt: "a" })
+    const b = await t.node({ name: "B", prompt: "b" })
     const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
     const o = graph.nodes.find((n) => n.id === d.id)?.options ?? []
     await t.connect(d, a, o[0]?.id ?? null)
+    // An option with no connection is a problem of the graph, and the run would not start.
+    await t.connect(d, b, o[1]?.id ?? null)
     const run = await t.start()
     const card = await t.waitCard()
     expect(card.pickReason).toBe("off")

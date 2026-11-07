@@ -1,22 +1,31 @@
 import {
-  type GraphProblem,
   type GraphVersion,
-  graphProblems,
   type MessageKey,
   type ModelChoice,
-  NODES_MAX,
   type NodeKind,
   THRESHOLD_DEFAULT,
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { TriangleAlert } from "lucide-solid"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
+import { CheckPanel } from "./CheckPanel.tsx"
+import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
 import { NodePanel } from "./NodePanel.tsx"
 
@@ -98,8 +107,9 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
 /**
  * The editor of the graph (spec 010, flow 2). The canvas shows each node as a button at its place
  * and each connection as a line. A node moves with the pointer or with the arrow keys; it
- * connects through its side panel, so the whole editor works with the keyboard. The editor shows
- * the structural problems of the graph. The check on the TLA form is not part of it.
+ * connects through its side panel, so the whole editor works with the keyboard. The panel of the
+ * check shows the result of the check (spec 010, "Check"), and the canvas marks the nodes of the
+ * problem and of its path.
  */
 export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
   const { t } = useApp()
@@ -114,7 +124,16 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
   onCleanup(window.robot.on("providers.changed", () => void refetch()))
   const graph = () => props.workflow.graph
   const readOnly = () => props.workflow.running
-  const problems = createMemo(() => graphProblems(graph()))
+  // The panel opens again when the result changes.
+  const [checkOpen, setCheckOpen] = createSignal(true)
+  createEffect(
+    on(
+      () => props.workflow.checkOutcome,
+      () => setCheckOpen(true),
+      { defer: true },
+    ),
+  )
+  const marks = createMemo(() => marksOf(checkOpen() ? props.workflow.checkOutcome : null))
   const positionOf = (n: WorkflowNode) => {
     const d = dragging()
     return d && d.id === n.id ? { x: d.x, y: d.y } : { x: n.x, y: n.y }
@@ -200,19 +219,7 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
     void move(n, n.x + d[0], n.y + d[1])
   }
 
-  const problemText = (p: GraphProblem) => {
-    if (p.code === "nodes_full") return t("graph.problem.nodes_full", { max: NODES_MAX })
-    const n = graph().nodes.find((x) => x.id === p.nodeId)
-    if (!n) return ""
-    if (p.code === "decision_options")
-      return t("graph.problem.decision_options", { number: n.number, name: n.name })
-    return t("graph.problem.option_unconnected", {
-      number: n.number,
-      name: n.name,
-      option: n.options.find((o) => o.id === p.optionId)?.label ?? "",
-    })
-  }
-  const hasProblem = (n: WorkflowNode) => problems().some((p) => "nodeId" in p && p.nodeId === n.id)
+  const hasProblem = (n: WorkflowNode) => marks().faults.has(n.id)
 
   const lineFor = (from: WorkflowNode, to: WorkflowNode) => {
     const a = positionOf(from)
@@ -268,13 +275,6 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
               {t(p().key, p().params)}
             </p>
           )}
-        </Show>
-        <Show when={problems().length > 0}>
-          <section aria-label={t("graph.problems")}>
-            <ul class={styles.problems} data-testid="graph-problems">
-              <For each={problems()}>{(p) => <li>{problemText(p)}</li>}</For>
-            </ul>
-          </section>
         </Show>
         <section class={styles.canvas} aria-label={t("graph.canvas")} data-testid="graph-canvas">
           <Show
@@ -365,6 +365,21 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
                     onPointerDown={(e) => onPointerDown(n, e)}
                     onKeyDown={(e) => onKeyDown(n, e)}
                   >
+                    <Show when={marks().lines.get(n.id) !== undefined || hasProblem(n)}>
+                      <span
+                        class={styles.mark}
+                        data-problem={hasProblem(n)}
+                        data-testid="graph-node-mark"
+                        title={t(hasProblem(n) ? "check.marked.problem" : "check.marked", {
+                          line: marks().lines.get(n.id) ?? 0,
+                        })}
+                      >
+                        <Show when={hasProblem(n)}>
+                          <TriangleAlert size={12} aria-hidden="true" />
+                        </Show>
+                        {marks().lines.get(n.id)}
+                      </span>
+                    </Show>
                     <span class={styles.nodeName}>
                       {n.number}. {n.name}
                     </span>
@@ -377,6 +392,22 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
             </div>
           </Show>
         </section>
+        <Show
+          when={checkOpen()}
+          fallback={
+            <div>
+              <Button onClick={() => setCheckOpen(true)} data-testid="check-open">
+                {t("check.open")}
+              </Button>
+            </div>
+          }
+        >
+          <CheckPanel
+            workflow={props.workflow}
+            onSelect={setSelected}
+            onClose={() => setCheckOpen(false)}
+          />
+        </Show>
         <Show when={showVersions()}>
           <Versions workflow={props.workflow} readOnly={readOnly()} />
         </Show>

@@ -748,6 +748,8 @@ export const en = {
   "workflows.check.line": "Check: {state}",
   "workflows.check.not_checked": "Not checked",
   "workflows.check.problem": "Problem found",
+  "workflows.check.passed": "Passed",
+  "workflows.check.could_not": "Could not check",
   "workflows.new.hint":
     "Give the workflow a name. It gets a short responsible document that you can edit.",
   "workflows.document.hint":
@@ -795,6 +797,30 @@ export const en = {
   "graph.problem.option_unconnected":
     "The option “{option}” of node {number} “{name}” has no connection.",
   "graph.problem.nodes_full": "A workflow holds 30 nodes at most.",
+  "check.close": "Close the check",
+  "check.open": "Show the check",
+  "check.heading": "Check",
+  "check.run": "Check",
+  "check.state.not_checked": "Not checked yet.",
+  "check.state.passed": "The check found no problem in the nodes and connections.",
+  "check.scope":
+    "The check reads the shape of the workflow: the nodes, the options and the connections. It does not read what a model writes, which option a decision node takes, or whether a tool works.",
+  "check.path": "Path to the problem",
+  "check.problem.deadlock": "These nodes wait for each other, so no run can end: {nodes}.",
+  "check.problem.never_runs": "Node {number} “{name}” never runs. Every run skips it.",
+  "check.step.ran": "Node {number} “{name}” runs.",
+  "check.step.option": "Node {number} “{name}” takes the option “{option}”.",
+  "check.step.skipped": "Node {number} “{name}” is skipped.",
+  "check.node": "{number} “{name}”",
+  "check.marked": "Step {line} of the path",
+  "check.marked.problem": "Problem node",
+  "check.stopped.time":
+    "The check stopped after {seconds} seconds. Split the workflow into smaller ones.",
+  "check.stopped.states":
+    "This workflow has too many ways to run. The check stops at {states} states. Split the workflow, or let fewer nodes run at the same time.",
+  "check.stopped.memory":
+    "The check used too much memory and stopped. Split the workflow into smaller ones.",
+  "check.failed": "The check could not read the workflow: {message}",
   "graph.panel.empty": "Pick a node to edit it.",
   "graph.panel.title": "Node {number}: {kind}",
   "node.name": "Name",
@@ -951,8 +977,7 @@ export const en = {
     "Clear the marks of this chat? Steps that ask because of them then run as the level says.",
   "chat.marks.clear.confirm": "Clear marks",
   "error.run_empty": "This workflow has no node. Add a node first.",
-  "error.run_loop": "The nodes of this workflow make a loop. A run cannot start.",
-  "error.run_graph_problem": "A decision node has fewer than 2 options. Fix it first.",
+  "error.run_check_problem": "The check found a problem. Open the workflow to see it.",
   "error.run_queue_full": "20 runs wait. Stop one or wait.",
   "error.run_not_found": "This run does not exist any more.",
   "error.card_gone": "Nobody waits for this card any more.",

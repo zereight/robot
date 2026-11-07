@@ -32,6 +32,7 @@ import type { HeldToolView } from "./toolReview.ts"
 import type { PermissionLevel } from "./tools.ts"
 import type { Server, UiState, UiStatePatch } from "./ui.ts"
 import type { WorkflowChatHistory, WorkflowChatMessage, WorkflowChatSend } from "./workflowChat.ts"
+import type { CheckOutcome } from "./workflowCheck.ts"
 import type {
   DocumentVersion,
   GraphVersion,
@@ -270,6 +271,11 @@ export interface RpcMethods {
    */
   "workflows.list": { input: { serverId: string }; output: readonly Workflow[] }
   "workflows.get": { input: { id: string }; output: WorkflowDetail }
+  /**
+   * Checks the saved graph and returns the result (spec 010, "Check"). It runs the check again
+   * even when a result of this graph is stored.
+   */
+  "workflows.check": { input: { id: string }; output: CheckOutcome }
   "workflows.create": { input: WorkflowCreate; output: Workflow }
   "workflows.rename": { input: { id: string; name: string }; output: Workflow }
   /** Deletes the workflow with its graph, document, chat, runs and memory (spec 010). */

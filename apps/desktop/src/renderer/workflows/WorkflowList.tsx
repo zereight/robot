@@ -62,7 +62,7 @@ const Card = (props: { flow: Workflow }) => {
           <dd data-testid="workflow-last-run">{lastRun()}</dd>
         </div>
         <div>
-          <dd data-testid="workflow-check" data-problem={props.flow.problems > 0}>
+          <dd data-testid="workflow-check" data-problem={props.flow.check === "problem"}>
             {t("workflows.check.line", { state: t(checkStateKey(props.flow)) })}
           </dd>
         </div>

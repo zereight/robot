@@ -5,7 +5,6 @@ import {
   blockedReason,
   type CardAnswer,
   catalogues,
-  graphProblems,
   isLooser,
   keepGoingMessage,
   type ListedStep,
@@ -54,6 +53,7 @@ import {
   stepLimitText,
 } from "./runPrompt.ts"
 import { SettingsStore } from "./Settings.ts"
+import { WorkflowCheck } from "./WorkflowCheck.ts"
 import { Workflows } from "./Workflows.ts"
 
 /**
@@ -151,6 +151,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const platform = yield* Platform
       const providers = yield* Providers
       const workflows = yield* Workflows
+      const check = yield* WorkflowCheck
       const decision = yield* Decision
       const settings = yield* SettingsStore
       const cards = yield* Cards
@@ -1096,9 +1097,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const detail = yield* workflows.get(input.workflowId)
           const nodes = detail.graph.nodes
           if (nodes.length === 0) return yield* new AppError({ code: "run_empty" })
-          const problems = graphProblems(detail.graph).filter((p) => p.code === "decision_options")
-          if (problems.length > 0) return yield* new AppError({ code: "run_graph_problem" })
-          if (hasLoop(detail)) return yield* new AppError({ code: "run_loop" })
+          // A run does not start when the check finds a problem (spec 010, "Check"). A check that
+          // stopped at a limit or could not read the form does not hold the run back
+          // (docs/spec-questions.md, W1: the rows for the check before a run).
+          const outcome = yield* check.check(input.workflowId)
+          if (outcome.state === "problem") return yield* new AppError({ code: "run_check_problem" })
           const queued = queues.get(input.workflowId) ?? []
           if (busy.has(input.workflowId) && queued.length >= RUN_QUEUE_MAX)
             return yield* new AppError({ code: "run_queue_full", detail: detail.name })
@@ -1162,22 +1165,6 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       })
     }),
   )
-}
-
-/** True when the connections of the graph make a loop of nodes (docs/spec-questions.md, 010). */
-const hasLoop = (detail: WorkflowDetail): boolean => {
-  const next = new Map<string, string[]>()
-  for (const c of detail.graph.connections) next.set(c.from, [...(next.get(c.from) ?? []), c.to])
-  const state = new Map<string, 1 | 2>()
-  const visit = (id: string): boolean => {
-    if (state.get(id) === 1) return true
-    if (state.get(id) === 2) return false
-    state.set(id, 1)
-    for (const to of next.get(id) ?? []) if (visit(to)) return true
-    state.set(id, 2)
-    return false
-  }
-  return detail.graph.nodes.some((n) => visit(n.id))
 }
 
 export type { CardAnswer, RunCard }

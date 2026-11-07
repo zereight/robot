@@ -482,4 +482,15 @@ export const migrations: readonly string[] = [
   -- the user answered at this computer, or when no card decided the step.
   ALTER TABLE action_log ADD COLUMN device TEXT;
   `,
+  `
+  -- The result of the check of the graph of a workflow (spec 010, "Check"). "graph_key" names the
+  -- graph that was checked: a result is valid only while the graph has the same key. "outcome" is
+  -- JSON. The result stays on this computer and does not sync (spec 010, "Data").
+  CREATE TABLE workflow_check (
+    workflow_id TEXT PRIMARY KEY REFERENCES workflow (id) ON DELETE CASCADE,
+    graph_key TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    checked_at INTEGER NOT NULL
+  );
+  `,
 ]
