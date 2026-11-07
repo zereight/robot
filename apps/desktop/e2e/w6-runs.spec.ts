@@ -1,4 +1,6 @@
+import { createServer } from "node:http"
 import { expect, type Page, test } from "@playwright/test"
+import { makeFakeRuntimes } from "./fake-runtimes.ts"
 import { buildFlow, freshUserData, launch, shot, startRunCall } from "./harness.ts"
 import { GOOD_KEY, startMockDecision, startMockProvider } from "./mock-provider.ts"
 
@@ -201,6 +203,9 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await expect(card.getByTestId("card-summary")).toHaveText("echo card-ok")
   await expect(card).toContainText("Command")
   await expect(card).toContainText("Node 1 “Shell”")
+  // A screen reader hears the card: it is an alert, and its long text can take the focus.
+  await expect(card).toHaveAttribute("role", "alert")
+  await expect(card.getByTestId("card-summary")).toHaveAttribute("tabindex", "0")
   await expect(page.getByTestId("run-state")).toHaveText("Waiting for you")
   await expect(page.getByTestId("run-node-reason-1")).toContainText("Waits for your approval")
   await shot(page, "w6-07-approval-card")
@@ -241,6 +246,8 @@ test("run: feedback in the chat reaches the next text node, not the node that ha
   await expect(page.getByTestId("run-state")).toHaveText("Done", { timeout: 30_000 })
   await expect(page.getByTestId("run-feedback")).toContainText("Use fewer words")
   await expect(page.getByTestId("run-feedback")).toContainText("Goes to node 2")
+  // The entry shows its time.
+  await expect(page.getByTestId("run-feedback").locator("time")).toHaveAttribute("datetime", /Z$/)
   await expect(page.getByTestId("run-node-input-2")).toContainText("Use fewer words")
   await expect(page.getByTestId("run-node-input-1")).toHaveCount(0)
   await expect(page.getByTestId("run-node-result-2")).toContainText("Use fewer words")
@@ -274,6 +281,90 @@ test("run: after an app restart a waiting task fails with 'The app stopped' and 
   await expect(page.getByTestId("run-node-reason-1")).toContainText("The app stopped")
   await expect(page.getByTestId("workflow-stop")).toHaveCount(0)
   await shot(page, "w6-09-run-after-restart")
+  await app.close()
+  await mock.close()
+})
+
+test("run: a task that read a page shows the outside mark, in English and in Korean", async () => {
+  for (const locale of ["en-US", "ko-KR"] as const) await markLine(locale)
+})
+
+const markLine = async (locale: "en-US" | "ko-KR") => {
+  const mock = await startMockProvider()
+  const server = createServer((_req, res) => res.end("page text")).listen(0, "127.0.0.1")
+  await new Promise((r) => server.once("listening", r))
+  const port = (server.address() as { port: number }).port
+  const { app, page } = await launch(undefined, { ROBOT_SYSTEM_LOCALE: locale })
+  await newWorkflow(page, "Marks")
+  await buildFlow(page, {
+    provider: { openaiUrl: mock.openaiUrl, key: GOOD_KEY },
+    level: "full",
+    nodes: [
+      { name: "Reader", prompt: `tool fetch_url {"url":"http://127.0.0.1:${port}/"}` },
+      { name: "Plain", prompt: "Plain" },
+    ],
+  })
+  await page.getByTestId("workflow-run").click()
+  await expect(page.getByTestId("run-state")).toHaveText(locale === "en-US" ? "Done" : "완료")
+  // The task that fetched the page holds outside content, with the host. The other holds none.
+  await expect(page.getByTestId("run-node-outside-1")).toContainText(
+    locale === "en-US"
+      ? "Holds outside content: the web page 127.0.0.1"
+      : "외부 내용을 갖고 있어요: 웹 페이지 127.0.0.1",
+  )
+  await expect(page.getByTestId("run-node-marks-2")).toHaveCount(0)
+  await shot(page, locale === "en-US" ? "w6-10-run-mark-line" : "w6-10-run-mark-line-ko")
+  await app.close()
+  server.close()
+  await mock.close()
+}
+
+test("run: a node at Read only on a program with no read-only mode shows words, not a code", async () => {
+  const mock = await startMockProvider()
+  const fake = makeFakeRuntimes()
+  const { app, page } = await launch(undefined, { ...env, ROBOT_OPENCODE_BIN: fake.opencode })
+  await newWorkflow(page, "No mode")
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as { robot: { invoke: (m: string, i?: unknown) => Promise<unknown> } }
+    ).robot.invoke
+    await invoke("providers.connect", { kind: "opencode", name: "Open" })
+  })
+  await buildFlow(page, {
+    provider: { openaiUrl: mock.openaiUrl, key: GOOD_KEY },
+    nodes: [{ name: "Reader", prompt: "hi" }],
+  })
+  // The node uses the program account and the level Read only.
+  await page.evaluate(async () => {
+    type Invoke = (m: string, i?: unknown) => Promise<{ value?: unknown }>
+    const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+    const servers = ((await invoke("servers.list")).value ?? []) as { id: string; kind: string }[]
+    const local = servers.find((x) => x.kind === "local")
+    const flows = ((await invoke("workflows.list", { serverId: local?.id })).value ?? []) as {
+      id: string
+    }[]
+    const accounts = ((await invoke("providers.list")).value ?? []) as {
+      id: string
+      kind: string
+    }[]
+    const detail = (await invoke("workflows.get", { id: flows[0]?.id })).value as {
+      graph: { nodes: { id: string }[] }
+    }
+    await invoke("workflows.node.update", {
+      id: detail.graph.nodes[0]?.id,
+      patch: {
+        accountId: accounts.find((a) => a.kind === "opencode")?.id,
+        model: "default",
+        permission: "read_only",
+      },
+    })
+  })
+  await page.getByTestId("workflow-run").click()
+  await expect(page.getByTestId("run-state")).toHaveText("Failed")
+  const reason = page.getByTestId("run-node-reason-1")
+  await expect(reason).toContainText("Read only")
+  await expect(reason).not.toContainText("read_only_unsupported")
+  await shot(page, "w6-11-run-failure-words")
   await app.close()
   await mock.close()
 })
