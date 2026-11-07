@@ -2,14 +2,15 @@
 
 ## Purpose
 
-The user speaks to an agent and hears the answer, on the computer and on the phone, with no typing.
+The user speaks to the chat of a workflow and hears the answer, on the computer and on the phone,
+with no typing.
 
 ## Concepts
 
 - **Dictate**: speech that the app turns into text in the message box. The app does not send it.
-- **Read aloud**: the app speaks a finished message of an agent.
-- **Voice chat**: on the phone, a spoken talk with one agent. The user speaks and the app reads the
-  reply.
+- **Read aloud**: the app speaks a finished message of the chat of a workflow.
+- **Voice chat**: on the phone, a spoken talk with the chat of one workflow (003). The user speaks
+  and the app reads the reply of the responsible document.
 - **Recogniser**: the speech recognition of the system of the device. It must run on the device.
 
 ## Flows
@@ -24,28 +25,29 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
    - Dictation stops when the user presses the button, when the box loses the focus, when the user
      sends the message, and after 10 seconds of silence. After 10 seconds of silence a muted line
      says that nothing was heard.
-2. Read aloud: the actions of a finished message of an agent have "Read aloud" (the hover actions
+2. Read aloud: the actions of a finished message in the chat have "Read aloud" (the hover actions
    on the computer, the long press on the phone). While it reads, the action reads "Stop reading".
    - One message is read at a time. A new "Read aloud" stops the one that reads.
    - Leaving the chat, a new turn that the user starts by voice, and a call or an alarm of the
      system stop the reading.
-3. Voice chat (phone only): the header of a direct chat has a button "Voice chat". It opens a full
-   screen with the face of the agent, one word for the state (Listening, Thinking, Speaking,
-   Waiting for you) and the buttons "Mute" and "End".
+3. Voice chat (phone only): the header of the chat of a workflow has a button "Voice chat". It
+   opens a full screen with the name of the workflow, one word for the state (Listening, Thinking,
+   Speaking, Waiting for you) and the buttons "Mute" and "End".
    1. Listening: the user speaks. When the user stops and 1.5 seconds pass in silence, the
       recognised text is sent as a message of the user, as if typed.
-   2. Thinking: the agent works as for a typed message. The user sees its steps as in the chat.
+   2. Thinking: the responsible document works as for a typed message. The user sees its steps as
+      in the chat.
    3. Speaking: the app reads the reply sentence by sentence, from the first full sentence on,
       while the rest still arrives. It follows "Rules" for what it reads.
    4. When the user speaks while the app reads, the reading stops at once and listening starts.
    5. A question card is read aloud, and the user can answer it by voice: the text becomes the
-      answer, as in 003. An approval card is not read. The state is "Waiting for you" and the user
-      answers by touch. Then listening goes on.
+      answer, as in 003. An approval card, also the card of a decision node (010), is not read.
+      The state is "Waiting for you" and the user answers by touch. Then listening goes on.
    6. End closes the screen. Reading stops. Nothing else changes.
    - The screen stays awake while voice chat runs. When the app leaves the screen, voice chat ends.
-   - "Mute" turns the microphone off. The state reads "Muted", the agent goes on, and its reply
-     is still read. A second press turns listening on again.
-   - Voice chat is for a direct chat.
+   - "Mute" turns the microphone off. The state reads "Muted", the responsible document goes on,
+     and its reply is still read. A second press turns listening on again.
+   - Voice chat is for the chat of a workflow.
 4. Settings: Settings → General (013) has "Dictation language" (the language of the interface by
    default, or a language that the recogniser of the device offers) and "Reading speed" (slow,
    normal, fast). The phone has the same two settings in its Settings.
@@ -89,7 +91,7 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
   actions, "Voice chat" in the header on the phone.
 - Devices: computer (dictate, read aloud), linked computer (the same), phone (all three), a
   second profile (the same as the first).
-- Runtimes: nothing changes. The agent gets text only. An agent on a vendor runtime works as for a
+- Runtimes: nothing changes. The model gets text only. A model on a vendor runtime works as for a
   typed message.
 - Ways out: the same button, "Stop reading", "End".
 - Seeing the state: the active microphone, the word for the state in voice chat, "Stop reading".

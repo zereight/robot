@@ -4,7 +4,7 @@
 
 The user sees what an app saved on a test device, sees the screens of an app project and the links
 between them, and reads what an analysis of a performance file found. The panel of the test devices
-connection shows all three (032). This spec says what an agent may read, which rules of the app
+connection shows all three (032). This spec says what a text node may read, which rules of the app
 cover it, and where the data goes.
 
 ## Concepts
@@ -36,7 +36,7 @@ cover it, and where the data goes.
 3. **Watch changes**: the changes part lists the keys that change while the user uses the app, and
    says whether a key was added, changed or removed.
 4. **Clear one store**: the user presses "Clear" on a store, and confirms in the dialog of the panel.
-   This is an erase step (032). The panel asks before an agent does it.
+   This is an erase step (032). The panel asks before a node does it.
 5. **Reset app data**: the user presses "Reset all data" for an app, and confirms. This is an erase
    step.
 6. **Screen map**: the user opens the screen map part and picks a project folder. The panel reads the
@@ -46,17 +46,18 @@ cover it, and where the data goes.
    the project on a simulator and photographs each screen that it reaches. This is a change on a test
    device and it starts the app of the user, so it follows the rules of 032 for a risky change, and
    the card names the project folder.
-8. **Analyse a performance file**: the user picks a file with "Analyse a file" in the panel, or
-   attaches a file in the message box and asks an agent to analyse it. The app starts the analysis
-   program on this Mac. Each finding is a card in the chat. "Explore" opens the call tree, the
-   timeline and the flame graph inside the card. "Investigate" puts the finding with its measured
-   numbers in the message box as the message of the user. No source change happens before the user
-   presses "Investigate".
-9. **An agent reads app data**: the agent lists the stores of an app, reads a table with a column
+8. **Analyse a performance file**: the user picks a file with "Analyse a file" in the panel. The app
+   starts the analysis program on this Mac. Each finding is a card in the panel. "Explore" opens
+   the call tree, the timeline and the flame graph inside the card. "Investigate" puts the finding
+   with its measured numbers in the message box of the chat of the open workflow as the message of
+   the user. The analysis changes no source file. "Investigate" only puts text in the message box.
+   See docs/spec-questions.md, rows for 034.
+9. **A node reads app data**: the text node lists the stores of an app, reads a table with a column
    filter, reads a file, or searches. Its result is the same filtered result as the panel's.
-10. **An agent reads a screen map**: the agent reads the map of a project in its workspace.
-11. **An agent analyses a file**: the agent starts the analysis of a file that the user chose and
-    reads the findings. The card shows the file name and the numbers.
+10. **A node reads a screen map**: the text node reads the map of a project in the folder of its
+    workflow.
+11. **A node analyses a file**: the text node starts the analysis of a performance file in the
+    folder of its workflow and reads the findings. The card shows the file name and the numbers.
 
 ## States
 
@@ -80,7 +81,7 @@ cover it, and where the data goes.
 - **Sensitive read** (007): a read of app data is a sensitive read with the label "Test app data". A
   turn that reads app data holds the mark, and a later step that sends data out asks the user.
 - **Redaction**: the panel removes a value that looks like a secret (014) before the value leaves the
-  test device. The app shows "[REDACTED]" in the panel and in the chat, and gives the agent the same
+  test device. The app shows "[REDACTED]" in the panel and in the chat, and gives the node the same
   text. A binary value shows as "Binary value". The app does not decrypt a value: it shows that the
   store is locked.
 - **Erase steps**: "Clear", "Reset all data" and a screen walk are steps of 032. "Clear" and "Reset"
@@ -90,9 +91,9 @@ cover it, and where the data goes.
   screen.
 - **Platforms**: app data works on iOS simulators and on debuggable Android apps. It does not work on
   a connected phone in this version.
-- **Screen map folder**: the panel reads the folder that the user picked. An agent reads the map only
-  of a project in its workspace (007). A file step on another folder follows the rules of 007 for a
-  read outside the workspace.
+- **Screen map folder**: the panel reads the folder that the user picked. A text node reads the map
+  only of a project in the folder of its workflow (007). A file step on another folder follows the
+  rules of 007 for a read outside the folder.
 - **Screen walk needs a start script**: the walk runs the start script that the project already has.
   When the project has none, the part is off with the reason. The app does not write one.
 - **Performance files**: the app reads the file on this Mac and keeps it, in the data folder of the
@@ -105,22 +106,23 @@ cover it, and where the data goes.
 - **No upload**: no performance file, no profile and no finding leaves this Mac. The analysis runs on
   this computer. The panel gets its cards through the app, and the app gives the panel no address on
   the network (032, "The panel and the network").
-- **A finding is not outside content** (007): the user chose the file, and the analysis names code of
-  the project of the user. The screen map and its report are not outside content either: the user
+- **A finding is not outside content** (007): the file is the file of the user (the user picked it in
+  the panel, or it is in the folder of the workflow), and the analysis names code of the project of
+  the user. The screen map and its report are not outside content either: the user
   chose the folder. The names of the screens in a map, the values of app data and the log lines are
   outside content (032, 033).
 - **Investigate**: the message that "Investigate" puts in the message box is the text of the user.
-  The agent then works under its normal permission level (007).
+  It goes to the chat of the workflow, and the user presses Send (003).
 - **The app keeps no copy of app data**: only the screen maps and the performance files stay, in the
   folder of the program. None of them syncs (019), and none is in an export (014).
 
 ## Surfaces
 
 - **Ways in**: the app data part, the screen map part and the analysis part of the panel (032), and
-  the tools of the test devices connection. The button "Analyse a file" in the panel. A performance
-  file attached in the message box. The buttons "Explore" and "Investigate" of a finding card.
+  the tools of the test devices connection. The button "Analyse a file" in the panel. The buttons "Explore" and "Investigate" of a finding
+  card.
 - **Devices**: this computer only (032). App data needs a simulator or an emulator.
-- **Runtimes**: as 032. No agent on a vendor runtime gets these tools in this version.
+- **Runtimes**: as 032. No text node on a vendor runtime gets these tools in this version.
 - **Ways out**: close the part, "Clear" (confirms), "Reset all data" (confirms), delete a map,
   delete a performance file, stop an analysis, and "Delete the download" (032), which removes the
   maps and the files of the program.
@@ -144,10 +146,11 @@ cover it, and where the data goes.
 ## Acceptance
 
 - The stores of a debuggable test app are listed in the panel. A key with a token-like value shows
-  "[REDACTED]" in the panel and in what an agent reads.
+  "[REDACTED]" in the panel and in what a node reads.
 - "Clear" asks first. Cancel changes nothing. Confirm clears only that store.
-- An agent clears a store at "Full access": the card shows, and the step runs only after "Allow once".
-- An agent that reads app data holds the sensitive read mark: a later fetch asks (007).
+- A text node clears a store at "Full access": the card shows, and the step runs only after "Allow
+  once".
+- A text node that reads app data holds the sensitive read mark: a later fetch asks (007).
 - The screen map of a sample project shows its screens and links, and the map is there after a
   restart.
 - A screen walk of a project with no start script is off, with the reason.
@@ -157,4 +160,5 @@ cover it, and where the data goes.
 - A performance file over 200 MB is refused, and its size shows.
 - A test that logs the requests of the whole Mac while a performance file is analysed shows no
   request to any address that is not on this computer.
-- "Investigate" puts the finding and its numbers in the message box of the open chat.
+- "Investigate" puts the finding and its numbers in the message box of the chat of the open
+  workflow.

@@ -18,7 +18,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, run workflows, ask and give feedback, read and send, notifications](011-phone-app.md) | Draft |
 | 012 | [Device link: pair phones and computers, what a client does with workflows, messages, identity, offline behaviour](012-device-link.md) | Draft |
-| 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
+| 013 | [Settings, themes, languages, and the decision model](013-settings.md) | Draft |
 | 014 | [Local data, privacy, secrets, export, and the review before an import of a workflow file](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
@@ -26,16 +26,16 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where workflows run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
-| 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
+| 022 | [Profiles: separate spaces on one computer, with their own workflows; switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
-| 025 | [Shared folders: file claims between agents in one folder](025-shared-folders.md) | Draft |
+| 025 | [Shared folders: file claims between workflows that use one folder](025-shared-folders.md) | Draft |
 | 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which agents each one reaches](026-token-savings.md) | Draft |
-| 027 | [Voice: dictate into the message box, read a reply aloud, voice chat on the phone](027-voice.md) | Draft |
+| 027 | [Voice: dictate into the message box, read a reply aloud, voice chat with the chat of a workflow on the phone](027-voice.md) | Draft |
 | 028 | [Chat bridge: talk to one agent from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
-| 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
+| 033 | [Logs and measurements of test devices: what a text node may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
-| 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
+| 035 | [Setup actions: commands a repository names, run from the workflow view, at the start of a task, and on the first task in an own copy](035-setup-actions.md) | Draft |
 | 037 | [Manage tools: the responsible document and an outside program make workflows, each change a request that the user allows](037-manage-tools.md) | Draft |
 | 038 | [Events: what arrived from a schedule, a watch, a web hook, an outside program or Teams, which place took it, and the reason when nothing did](038-events.md) | Draft |
 | 039 | [Looping motion: spinners and pulses that show running work move at one pace and stop with reduce motion](039-looping-motion.md) | Draft |
