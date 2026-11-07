@@ -17,6 +17,8 @@ export const standIn = (tools: McpTool[]) => {
     tools,
     /** The reason that the next opens fail with, or undefined. */
     fail: undefined as Error | undefined,
+    /** An open waits for this before it answers: a start that takes a long time. */
+    hold: undefined as Promise<void> | undefined,
     opened: [] as McpSpec[],
     closed: 0,
     calls: [] as { name: string; args: Record<string, unknown> }[],
@@ -28,6 +30,7 @@ export const standIn = (tools: McpTool[]) => {
   }
   const open: McpOpener = async (spec) => {
     state.opened.push(spec)
+    if (state.hold) await state.hold
     if (state.fail) throw state.fail
     let end: () => void = () => {}
     const closed = new Promise<void>((resolve) => {

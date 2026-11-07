@@ -138,7 +138,7 @@ const TaskConnections = (props: { task: RunTask; number: number }) => {
             tool: plainLine(step.tool, NOTE_NAME_CHARS),
             result,
           })
-    if (step.how === "level") return label
+    if (step.how === "level" || step.how === "none") return label
     const how = t(`runs.tool.how.${step.how}` as MessageKey)
     return `${label} — ${how}`
   }

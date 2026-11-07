@@ -1481,6 +1481,22 @@ describe("the tools of connections for a text node (spec 018)", () => {
     ).toEqual(["stopped"])
   })
 
+  test("Stop while a connection starts: the task is cancelled at once, not after the start", async () => {
+    const { t, fake } = await withConnection()
+    // The program of the connection does not answer; the start would take up to 20 seconds.
+    fake.state.hold = new Promise<void>(() => {})
+    await t.node({ name: "Use", prompt: 'tool mcp__notes__echo {"text":"hi"}' })
+    const started = await t.start()
+    await until(() => fake.state.opened.length === 1)
+    const at = Date.now()
+    await t.run(Runs.use((r) => r.stop(started.id)))
+    const d = await t.ended(started.id)
+    expect(Date.now() - at).toBeLessThan(2_000)
+    expect(d.nodes[0]?.task?.state).toBe("cancelled")
+    // Nothing was called.
+    expect(fake.state.calls).toEqual([])
+  })
+
   test("at Ask for risky steps the card names the connection, the tool and the arguments; Always allow saves the rule for the workflow", async () => {
     const { t } = await withConnection({ level: "ask_risky" })
     await t.node({ name: "Use", prompt: 'tools 2 mcp__notes__echo {"text":"hi"}' })

@@ -972,6 +972,7 @@ export const en = {
   "runs.tool.how.user": "Allowed by you",
   "runs.tool.how.denied": "Denied by you",
   "runs.tool.how.unknown": "Unknown tool. Search for it first.",
+  "runs.tool.how.too_long": "The arguments are too long for the card",
   "runs.tool.search": "Searched tools: {words} · found {count}",
   "runs.refused": "Refused: in use by {holder}: {path}",
   "runs.refused.limit": "Refused: this task changed {count} files. Finish it. ({path})",

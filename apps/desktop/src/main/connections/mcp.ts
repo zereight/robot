@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import { createInterface } from "node:readline"
+import { StringDecoder } from "node:string_decoder"
 import {
   CONNECTION_TOOLS_MAX,
   type ConnectionFailure,
@@ -228,7 +228,13 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     // closed the connection, the timer of `close` ends the group for good.
     if (group !== null && !closing) {
       killGroup(group, "SIGTERM")
-      groups.delete(group)
+      // A process of the group that ignores the signal is stopped for good after one second. The
+      // group stays in the list until then, so the end of the app ends it too.
+      const hard = setTimeout(() => {
+        killGroup(group, "SIGKILL")
+        groups.delete(group)
+      }, 1_000)
+      hard.unref()
     }
     fail(spawnError ?? new McpError("ended", "The program ended."))
     resolveClosed()
@@ -253,7 +259,7 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
   child.stderr.on("data", () => {})
   child.stderr.on("error", () => {})
 
-  createInterface({ input: child.stdout }).on("line", (line) => {
+  const onLine = (line: string) => {
     if (!line.trim()) return
     let message: RpcMessage
     try {
@@ -274,7 +280,36 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     }
     const reply = serverReply(message)
     if (reply) send(reply)
+  }
+
+  // The lines are split here, not by a reader that keeps a line of any length in memory: a line
+  // longer than the limit for an answer ends the connection (spec 018, "Rules").
+  const decoder = new StringDecoder("utf8")
+  let buffer = ""
+  const tooLong = () => {
+    buffer = ""
+    spawnError = new McpError("invalid", "The answer is too long.")
+    if (group !== null) killGroup(group, "SIGKILL")
+    else child.kill("SIGKILL")
+    finish()
+  }
+  child.stdout.on("data", (chunk: Buffer) => {
+    if (ended) return
+    buffer += decoder.write(chunk)
+    for (let at = buffer.indexOf("\n"); at >= 0; at = buffer.indexOf("\n")) {
+      const line = buffer.slice(0, at)
+      buffer = buffer.slice(at + 1)
+      if (line.length > ANSWER_MAX) return tooLong()
+      onLine(line)
+    }
+    if (buffer.length > ANSWER_MAX) tooLong()
   })
+  child.stdout.on("end", () => {
+    const rest = buffer + decoder.end()
+    buffer = ""
+    if (!ended && rest.length <= ANSWER_MAX) onLine(rest)
+  })
+  child.stdout.on("error", () => {})
 
   return {
     closed,

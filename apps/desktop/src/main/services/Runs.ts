@@ -1112,11 +1112,27 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         let connectionTurn: ConnectionTurn | null = null
         if (!isProgram) {
           pause()
+          let stoppedAtStart = false
           try {
-            connectionTurn = await Effect.runPromise(connections.forTurn(n.run.workflow_id))
+            // Stop ends the wait for the start at once (the start itself may take up to 20
+            // seconds). A connection that is still starting is not kept by this task: it ends
+            // when it is idle (spec 018).
+            connectionTurn = await Effect.runPromise(connections.forTurn(n.run.workflow_id), {
+              signal,
+            })
+          } catch (error) {
+            if (!signal.aborted) throw error
+            stoppedAtStart = true
           } finally {
             resume()
           }
+          if (stoppedAtStart) {
+            flush.now()
+            if (timer) clearTimeout(timer)
+            quiet.stop()
+            return { state: "cancelled", code: "user", text: "Stopped by you", result: result.text }
+          }
+          if (!connectionTurn) throw new Error("The connections did not start.")
           notes.down = connectionTurn.down.map((name) => plainLine(name, NOTE_NAME_CHARS))
           notes.held = connectionTurn.held.map((name) => plainLine(name, NOTE_NAME_CHARS))
           if (notes.down.length > 0 || notes.held.length > 0) saveNotes()

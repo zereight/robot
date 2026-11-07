@@ -211,6 +211,46 @@ describe("a program on this computer", () => {
     expect(alive(pid)).toBe(false)
   })
 
+  test("a program that ends by itself and leaves a process that ignores the first signal: the process is stopped for good", async () => {
+    const pidFile = join(work, `ignorer-${Date.now()}.pid`)
+    const spec: McpSpec = {
+      ...program(),
+      command: "/bin/sh",
+      // `trap "" TERM` is kept by the child: it ignores the signal that the app sends first.
+      args: ["-c", `trap '' TERM; sleep 300 & echo $! > "${pidFile}"; exit 0`],
+    }
+    await openMcp(spec, { timeoutMs: 5_000 }).then(
+      (s) => s.close(),
+      () => {},
+    )
+    const pid = Number(readFileSync(pidFile, "utf8").trim())
+    expect(pid).toBeGreaterThan(1)
+    const alive = () => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+    const end = Date.now() + 6_000
+    while (alive() && Date.now() < end) await Bun.sleep(50)
+    expect(alive()).toBe(false)
+  })
+
+  test("a line of an answer longer than the limit ends the connection with the reason", async () => {
+    const spec: McpSpec = {
+      ...program(),
+      args: ["-e", "process.stdout.write('x'.repeat(21_000_000))"],
+    }
+    const error = await openMcp(spec, { timeoutMs: 20_000 }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(error).toBeInstanceOf(McpError)
+    expect((error as McpError).failure).toBe("invalid")
+  })
+
   test("a tool list with more than 1000 tools says that it holds more", async () => {
     const s = await open(program({ MCP_TEST_TOOLS: "1100" }))
     const { tools, more } = await s.listTools(10_000)

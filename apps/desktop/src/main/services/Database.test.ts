@@ -227,12 +227,15 @@ describe("the reset of a database from before the workflow model (owner decision
     db.run("DELETE FROM workflow WHERE id = 'w1'")
     expect(db.all("SELECT task_id FROM file_claim")).toEqual([])
   })
-  test("a database built from the first 12 migrations opens at version 13: the scope of a connection fails closed, and a deleted workflow leaves its list", () => {
+  test("a database built from the migrations before the scope of connections opens at the newest version: the scope fails closed, and a deleted workflow leaves its list", () => {
     const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
     const old = new DatabaseSync(file)
     old.exec("PRAGMA foreign_keys = ON")
-    const before = migrations.slice(0, 12)
-    expect(before).toHaveLength(12)
+    // The migration of the scope is found by what it makes, so a change of the count or the order
+    // of the migrations (another slice adds one) does not break this test.
+    const at = migrations.findIndex((sql) => sql.includes("tool_connection_workflow"))
+    expect(at).toBeGreaterThan(0)
+    const before = migrations.slice(0, at)
     for (const sql of before) old.exec(sql)
     old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
     old.exec(`
@@ -244,8 +247,9 @@ describe("the reset of a database from before the workflow model (owner decision
     `)
     old.close()
     const db = openDatabase(file)
-    expect(migrations).toHaveLength(13)
-    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(13)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
     // A connection from before has the scope "list", and the list is empty: no workflow uses it.
     expect(db.all("SELECT scope FROM tool_connection")).toEqual([{ scope: "workflows" }])
     expect(db.all("SELECT workflow_id FROM tool_connection_workflow")).toEqual([])

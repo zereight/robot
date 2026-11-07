@@ -966,6 +966,7 @@ export const ko: Record<MessageKey, string> = {
   "runs.tool.how.user": "내가 허용함",
   "runs.tool.how.denied": "내가 거부함",
   "runs.tool.how.unknown": "알 수 없는 도구예요. 먼저 도구를 찾아보세요.",
+  "runs.tool.how.too_long": "인수가 너무 길어서 카드에 다 보여 줄 수 없어요",
   "runs.tool.search": "도구 찾기: {words} · {count}개 찾음",
   "runs.refused": "거절됨: {holder}에서 사용 중이에요: {path}",
   "runs.refused.limit": "거절됨: 이 작업이 파일 {count}개를 바꿨어요. 끝내 주세요. ({path})",

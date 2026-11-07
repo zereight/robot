@@ -93,7 +93,8 @@ export const TASK_CONNECTION_STEPS_MAX = 100
  * mark. `rule`: an Allow rule. `denied_rule`: a Deny rule. `level`: the permission level.
  * `read_only_level`: the level "Read only" refuses a tool of a connection. `user`: the user
  * answered a card. `denied`: the user denied the card. `unknown`: the node named a tool that it
- * may not call.
+ * may not call. `too_long`: the arguments are too long to show whole on a card, so the app refused
+ * the call. `none`: Stop came before anyone decided the step.
  */
 export type ConnectionStepHow =
   | "mark"
@@ -104,6 +105,8 @@ export type ConnectionStepHow =
   | "user"
   | "denied"
   | "unknown"
+  | "too_long"
+  | "none"
 
 /** One tool line of a task: a call of a tool of a connection, or the step "Search tools". */
 export type TaskConnectionStep =

@@ -443,7 +443,11 @@ export const ConnectionFormDialog = (props: {
                 </span>
               }
             >
-              <ul class={styles.agentList} data-testid="connection-scope-list">
+              <ul
+                class={styles.agentList}
+                data-testid="connection-scope-list"
+                aria-label={t("connections.form.scope")}
+              >
                 <For each={workflows.list()}>
                   {(w) => (
                     <li>

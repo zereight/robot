@@ -464,14 +464,14 @@ export const searchResultText = (found: readonly SearchableTool[]): string =>
         `Found ${found.length} ${found.length === 1 ? "tool" : "tools"}. You can call them now, by the name in front.`,
         ...found.map(
           (t) =>
-            `- ${t.alias} (connection "${t.connection}", tool "${t.tool}"): ${t.description.trim() || "No description."}`,
+            `- ${t.alias} (connection ${JSON.stringify(t.connection)}, tool ${JSON.stringify(t.tool)}): ${t.description.trim() || "No description."}`,
         ),
       ].join("\n")
 
 /** The text that tells the agent what the step does, with the count and the connections. */
 export const searchStepDescription = (count: number, connections: readonly string[]): string =>
   `Finds tools of the outside connections. You may use ${count} such tools, from the connections ${connections
-    .map((c) => `"${c}"`)
+    .map((c) => JSON.stringify(c))
     .join(
       ", ",
     )}, and you get none of them until you search. Give some words; the step gives back at most ${TOOL_SEARCH_RESULTS_MAX} tools whose name or description holds one of them. A tool that you found works for the rest of this turn.`
