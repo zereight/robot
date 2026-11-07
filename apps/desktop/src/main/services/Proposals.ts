@@ -38,6 +38,7 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { modelsOfferedBy } from "./graphModels.ts"
 import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { WorkflowCheck } from "./WorkflowCheck.ts"
@@ -415,36 +416,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
         text,
       })
 
-      /** True when a model of the graph is one that the account of the node offers (spec 002, 006). */
-      const modelsOffered = (before: WorkflowGraph, after: WorkflowGraph) =>
-        Effect.gen(function* () {
-          const old = new Map(before.nodes.map((n) => [n.id, n]))
-          for (const n of after.nodes) {
-            if (n.kind !== "text") continue
-            const was = old.get(n.id)
-            const same =
-              was !== undefined &&
-              was.accountId === n.accountId &&
-              was.model === n.model &&
-              was.effort === n.effort
-            if (same) continue
-            if (n.accountId === null && n.model === null && n.effort === null) continue
-            if (n.accountId === null || n.model === null)
-              return `Node ${n.number}: set the account and the model together.`
-            const account = (yield* providers.accounts).find((a) => a.id === n.accountId)
-            if (!account?.connected) return `Node ${n.number}: the account is not connected.`
-            const models = yield* providers
-              .models(n.accountId)
-              .pipe(Effect.orElseSucceed(() => null))
-            if (models === null)
-              return `Node ${n.number}: the models of the account could not be read now.`
-            const info = models.find((m) => m.id === n.model)
-            if (!info) return `Node ${n.number}: the account does not offer the model "${n.model}".`
-            if (n.effort !== null && !info.efforts.includes(n.effort))
-              return `Node ${n.number}: the model "${n.model}" does not take the reasoning level "${n.effort}".`
-          }
-          return null
-        })
+      const modelsOffered = modelsOfferedBy(providers)
 
       const propose = (input: ProposeInput): Effect.Effect<ProposeOutcome> =>
         Effect.gen(function* () {

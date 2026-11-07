@@ -538,6 +538,19 @@ export const migrations: readonly string[] = [
   CREATE INDEX memory_task ON memory (task_id);
   `,
   `
+  -- Who asked for a change through the chat (spec 012, "Record"; "No switch"). A message of the
+  -- user keeps the linked device that sent it: NULL means the window of this computer. The turn
+  -- reads these rows at each tool call, so it knows for whom it acts, also after a retry, a queue
+  -- or a restart. The switch itself is read from the device at each call, never stored here.
+  ALTER TABLE chat_message ADD COLUMN actor_id TEXT;
+  ALTER TABLE chat_message ADD COLUMN actor_name TEXT;
+  -- The linked device that made a change of the graph through the chat ("Last changed by
+  -- <device name>"), and the linked device that started a run ("Started by <device name>"). NULL
+  -- means the user at this computer.
+  ALTER TABLE workflow_version ADD COLUMN device TEXT;
+  ALTER TABLE run ADD COLUMN device TEXT;
+  `,
+  `
   -- File claims in shared folders (spec 025). A task holds a claim on a file that its text node
   -- changed. 'path' is the real path; 'path_key' is the same path as the file system of the folder
   -- compares names (folded to lower case on a system that ignores case). A claim ends when its

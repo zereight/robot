@@ -32,6 +32,11 @@ export type ChatPart =
       readonly state: "running" | "done" | "failed"
       readonly input: string
       readonly output: string
+      /**
+       * True when the step did not happen: the user or a rule refused it, or there was nothing to
+       * do. The card then names the step as a wish, never as a deed (spec 007, "Tool cards").
+       */
+      readonly notRun?: boolean
     }
   /**
    * The muted line "Feedback added to the run" (spec 003, "Feedback"). `startedAt` is when the run
@@ -59,6 +64,12 @@ export type ChatPart =
       readonly proposalKind: "document" | "prompt" | "graph" | "memory"
       readonly nodeNumber: number | null
     }
+  /**
+   * The muted line after a change that a linked device asked for in the chat and that the server
+   * refused: "Not allowed. <server> does not let this device change workflows. Turn it on in
+   * Settings → Devices on that computer." (spec 012, "No switch"). The graph did not change.
+   */
+  | { readonly kind: "note"; readonly note: "not_allowed"; readonly server: string }
   /** The muted line "20 proposals wait. Answer some before the responsible document can propose more." */
   | { readonly kind: "note"; readonly note: "proposals_full" }
   /** The muted line "Saved to memory" with its undo control (spec 008, "Flows", 1). */

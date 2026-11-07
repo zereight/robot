@@ -187,14 +187,14 @@ describe("the chat proposes a change and applies none (spec 010, 'Assistant'; sp
     expect(names).not.toMatch(/accept|reject|undo|enable|switch|setting|permission/)
   })
 
-  test("the prompt of the chat lists the graph and says that a change is only a proposal", async () => {
+  test("the prompt of the chat lists the graph and says that a change of the document is only a proposal", async () => {
     const t = await setup()
     await t.send("hello")
     await t.idle()
     const system = String(mock.requests.at(-1)?.body.messages[0]?.content)
     expect(system).toContain("<graph>")
     expect(system).toContain("Fetch")
-    expect(system).toContain("You can only propose a change")
+    expect(system).toContain("A change of the document is a proposal only")
   })
 })
 

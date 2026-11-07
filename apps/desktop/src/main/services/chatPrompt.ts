@@ -56,8 +56,8 @@ const stateWord = (n: RunNodeFact) =>
       ? "waiting for the user"
       : n.state
 
-const nodeLines = (n: RunNodeFact): string[] => {
-  const lines = [`  Node ${n.number} "${n.name}" (${n.kind}): ${stateWord(n)}`]
+export const nodeLines = (n: RunNodeFact): string[] => {
+  const lines = [`  Node ${n.number} "${escapeOutside(n.name)}" (${n.kind}): ${stateWord(n)}`]
   if (n.reason) lines.push(`    Reason: ${reasonText(n.reason)}`)
   const mark = markText(n)
   if (mark) lines.push(`    Mark: ${mark}`)
@@ -132,6 +132,8 @@ export const chatSystem = (input: {
   feedback: boolean
   /** The graph, for a turn that may propose a change. Left out when the turn has no tools. */
   graph?: WorkflowGraph
+  /** True when the turn has the tools that read and change the workflow and its runs (spec 010). */
+  assistant?: boolean
   /** What the turn may do beyond feedback (spec 002, 008, 007). */
   may?: {
     /** The switch "Self-improvement" is on. */
@@ -173,16 +175,41 @@ export const chatSystem = (input: {
           "- You have no tools in this chat. You cannot add feedback to a run. When the message is feedback, say that this account cannot add feedback to a run, and that the user can pick another account in the header of the chat. Do not say that the feedback was added.",
         ]),
     "- Feedback never changes the graph, a node prompt, the document or the memory.",
-    ...(input.may ? improvementRules(input.may, input.graph) : []),
+    ...(input.assistant ? assistantRules(input.graph) : []),
+    ...(input.may ? improvementRules(input.may, input.graph, input.assistant === true) : []),
   ].join("\n")
+
+/** The rules for the tools that read and change the workflow and its runs (spec 010, 007). */
+const assistantRules = (graph: WorkflowGraph | undefined): string[] => [
+  "",
+  "Rules for the tools of the workflow:",
+  "- You work on this workflow only. list_workflows gives names and counts of the workflows on this server. You cannot read the graph of another workflow.",
+  "- To change the graph, use add_node, edit_node, remove_node, add_connection, remove_connection, add_option, rename_option and remove_option. Each call is one change. The app tests it and keeps the earlier graph as a version. Tell the user in one sentence what you changed and that the earlier graph is a version.",
+  "- When a tool refuses a change, tell the user why in plain words, and do not say that the change is made. When the tool says that the workflow changed, call read_workflow, tell the user, and change only what still fits.",
+  "- Set the model or the reasoning level of a node only to a value that the account of the node offers. You cannot set a permission level, a folder, a schedule or a web hook. When the user asks for a schedule, make the rest of the change, and tell the user to set the schedule on the canvas.",
+  "- start_run starts a run from its start. Start one only when the user asks. You start at most one run in a turn. Use stop_run only when the user asks to stop a run.",
+  "- To tell how a run is going, call read_run. To tell the result of a node, call read_run_result. A node that has not ended has no result.",
+  ...(graph
+    ? [
+        "",
+        "The nodes and the connections of the graph at the start of this turn:",
+        "<graph>",
+        graphText(graph),
+        "</graph>",
+      ]
+    : []),
+]
 
 const improvementRules = (
   may: { propose: boolean; memory: boolean },
   graph: WorkflowGraph | undefined,
+  assistant: boolean,
 ): string[] => [
   "",
   "Rules for changes of the workflow:",
-  "- You cannot change the document, a prompt, the graph, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You can only propose a change. The user decides on a card, and nothing changes before that.",
+  assistant
+    ? "- You cannot change the document, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You change the graph and the prompts of nodes with the tools above. A change of the document is a proposal only."
+    : "- You cannot change the document, a prompt, the graph, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You can only propose a change. The user decides on a card, and nothing changes before that.",
   ...(may.propose
     ? [
         "- To change the document, a node prompt or the graph, call propose_document_change, propose_prompt_change or propose_graph_change. Make at most one proposal in a turn. Change as little as the work needs, and give a reason of one line.",
@@ -201,7 +228,7 @@ const improvementRules = (
     : [
         "- Memory is off for this workflow. You have no tool to save, suggest, search or read facts or earlier messages.",
       ]),
-  ...(graph && may.propose
+  ...(graph && may.propose && !assistant
     ? [
         "",
         "The nodes and the connections of the graph now:",

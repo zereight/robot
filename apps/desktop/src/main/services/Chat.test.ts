@@ -521,9 +521,24 @@ describe("the tools of the chat (spec 007, 003)", () => {
     await t.idle()
     const request = mock.requests.at(-1)
     // Self-improvement and memory are on by default: the chat also has the tools to propose a
-    // change, to keep and read facts, and to search the earlier chats (spec 002, 008, 007).
+    // change, to keep and read facts, and to search the earlier chats (spec 002, 008, 007), and the
+    // tools that read and change the workflow and its runs (spec 010, "Assistant").
     expect(request?.body.tools?.map((x) => x.function.name)).toEqual([
       "add_run_feedback",
+      "list_workflows",
+      "read_workflow",
+      "add_node",
+      "edit_node",
+      "remove_node",
+      "add_connection",
+      "remove_connection",
+      "add_option",
+      "rename_option",
+      "remove_option",
+      "start_run",
+      "stop_run",
+      "read_run",
+      "read_run_result",
       "propose_document_change",
       "propose_prompt_change",
       "propose_graph_change",
