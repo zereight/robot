@@ -78,8 +78,8 @@ change now, and refuses a file step on a file that another workflow holds.
 ## Surfaces
 
 - **Ways in**: the folder field in the editor of the workflow. Claims need no action of the user.
-- **Ways out**: the user picks another folder for a workflow, or stops the task that holds the
-  claims.
+- **Ways out**: the user stops the task that holds the claims. The user can pick another folder
+  for a workflow only when no run of that workflow works (007).
 - **Devices**: a linked computer (012) and the phone (011) show the lines and the refused tool
   cards.
 - **Runtimes**: see "Rules".

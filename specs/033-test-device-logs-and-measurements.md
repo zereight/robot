@@ -26,7 +26,8 @@ shows both (032). This spec says what a text node may read, and which rules of t
 - "Save", which writes the lines of the view to a file that the user picks;
 - "Measure", with a length from 5 to 300 seconds, and "Stop";
 - a chart of a measurement, a comparison of two measurements, and a range with its numbers;
-- "Ask in the chat about this range", which puts the numbers of the range in the message box.
+- "Ask in the chat about this range", which puts the numbers of the range in the message box. The
+  words of both buttons are the words of the panel (032).
 
 ## Flows
 
@@ -36,13 +37,17 @@ shows both (032). This spec says what a text node may read, and which rules of t
    session that a node opened ends when the node closes it or when its task ends. Its result goes
    to the node as outside content (032, "Rules").
 3. **Measure**: the user starts a measurement in the panel. The panel shows the time left and keeps
-   the samples when the user stops it early. The result is a chart and a card in the chat.
+   the samples when the user stops it early. The result is a chart and a card in the panel.
+   A measurement that a node starts shows its tool card in the chat of the workflow (032).
 4. **A node measures**: the text node starts a measurement under the same limits, reads its result,
    and quotes the numbers.
 5. **Ask about a range**: the user selects a range and presses "Ask in the chat about this range".
-   The numbers of the range go into the message box of the chat of the open workflow as the message
-   of the user.
-6. **Send a line**: the user presses "Send to chat" on a line. The user presses Send.
+   The numbers of the range go into the message box of the chat of the workflow that the panel is
+   beside, as the message of the user. When no workflow chat is open (the page "Test devices"),
+   the button is off with the reason "Open a workflow first".
+6. **Send a line**: the user presses "Send to chat" on a line. The user presses Send. With no
+   workflow chat open, the function is off with the reason "Open a workflow first" (032, "Ways to
+   the chat").
 7. **Display FPS**: on a connected phone, a measurement can hold the Display FPS and the frame
    timing of the whole phone. A simulator and an emulator give none, and the panel says so.
 
@@ -97,7 +102,7 @@ shows both (032). This spec says what a text node may read, and which rules of t
 - **Ways out**: "Stop" (a measurement stops and keeps its samples), closing the part or the panel,
   and "Delete the download".
 - **Seeing the state**: the panel shows a mark on its log part and on its performance part while a
-  session or a measurement runs. A measurement card in the chat shows its state. After a restart, the
+  session or a measurement runs. A measurement card in the panel shows its state. After a restart, the
   card shows "Stopped when the app closed."
 - **Words**: "log session", "measurement", "chart", "range" and "Display FPS" (docs/glossary.md).
 
@@ -118,6 +123,8 @@ shows both (032). This spec says what a text node may read, and which rules of t
 - A text node that asks for a 301-second measurement is refused, with the reason in its card.
 - Asking for Display FPS on a simulator shows the panel's line and starts no session.
 - A measurement stopped early keeps its samples and keeps its state.
-- "Ask in the chat about this range" puts the numbers in the message box of the chat of the open
-  workflow.
+- Beside a workflow view, "Ask in the chat about this range" puts the numbers in the message box of
+  the chat of that workflow.
+- On the page "Test devices", "Ask in the chat about this range" and "Send to chat" are off with the
+  reason "Open a workflow first".
 - The action log has one entry for each measurement that a node started, and no line of the log.

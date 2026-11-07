@@ -39,7 +39,7 @@ and linked devices. A phone that is paired with one profile sees that profile an
 2. The user clicks it. A menu lists every profile with its face and name. The open profile has a
    check mark. A profile that has a task waiting for the user (005) has a dot.
    The menu ends with "Add profile" and "Manage profiles". The second opens Settings → Profiles.
-3. The user picks a profile. The whole window changes at once: the rail, the place list, the pages,
+3. The user picks a profile. The whole window changes at once: the rail, the workflow list, the pages,
    the settings and the activity panel. The window opens the page and the place where the user
    left that profile. If a form has text that is not saved, the app asks before it switches.
 4. At the next start the app opens the profile that was open when the user quit.
@@ -66,8 +66,8 @@ apart").
 2. The confirm says what goes: the workflows, chats, memory, accounts and keys, saved secrets, and
    the links of this profile. It says that every device linked to this profile loses access, that
    a sync of this profile ends and the other computer keeps its copy (019), that everything that
-   runs in this profile stops, and that the folders of its workflows move to the system trash
-   (007). The user types the name of the profile to confirm.
+   runs in this profile stops, and that the folders of its workflows stay on the disk. The
+   app does not remove or move them. The user types the name of the profile to confirm.
 3. After the delete, each linked device is treated as if the user had chosen "Remove access" for
    it (012). If the open profile was deleted, the app opens another profile.
 
@@ -169,7 +169,9 @@ The profiles of one computer share these things:
   The computer makes no notice. The profile menu shows a dot on "Parents" if the run waits for an
   approval, and phone B gets its notice.
 - Delete "Parents" and type its name. Phone B shows "Pair again". The folders of its
-  workflows are in the system trash. The first profile and phone A are as they were.
+  workflows stay where they were. The first profile and phone A are as they were.
+- Point a workflow of "Parents" at an existing project folder, then delete "Parents". The project
+  folder and its files are as they were. A folder that the user chose is never removed.
 - Quit and start the app: both profiles run, and the profile that was open is open.
 - Start the app on a computer that has data of an earlier version: the app makes the first profile
   as on a new computer, and nothing of the earlier data shows in it.

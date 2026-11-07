@@ -43,7 +43,8 @@ The user sets the app up the way they like in one place.
 - **Connections**: the outside tools that text nodes can use. See 018. A built-in connection has no
   row here; its feature holds its page and its switch.
 - **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
-- **Browser**: the browser profiles of this computer. See 007 and 028.
+- **Browser**: the browser profiles of this computer. See 007 and 028. Its content is open; see
+  the rows on browser profiles in docs/spec-questions.md.
 - **Teams**: the link to one Microsoft Teams chat, off at first. See 028.
 - **Setup actions**: the workflows of this computer, the setup list of the picked workflow, and its
   allow. See 035. It shows on the computer only.

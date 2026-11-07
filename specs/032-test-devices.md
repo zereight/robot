@@ -72,8 +72,10 @@ its parts, so that this spec says what the rules cover:
    for the user.
 7. **Send a note to the chat**: the user selects an element or a region of the picture and writes a
    note. "Send to chat" puts the note and the details of the element in the message box of the chat
-   of the open workflow, as the message of the user. A picture goes with it when the panel sends
-   one. The user presses Send. See docs/spec-questions.md, rows for 032.
+   of the workflow that the panel is beside, as the message of the user. A picture goes with it
+   when the panel sends one. The user presses Send. When the panel shows on the page "Test
+   devices" (step 4), no workflow chat is open: "Send to chat" is off, with the reason "Open a
+   workflow first". See docs/spec-questions.md, rows for 032.
 8. **Stop**: Stop of the run or of the task (005) ends the device step that runs. The test device
    stays on, and an app that runs stays on.
 9. **Check for a new version**: the user presses "Check for a new version" in settings. The app
@@ -100,7 +102,7 @@ its parts, so that this spec says what the rules cover:
   download and of its server: Off, Download needed, Downloading, Checking, Ready, or Error with the
   reason. A tool of a version that the user has not accepted is held, as 018 says.
 - **Server states**: Starting; Ready; Failed, with the reason (the program ended, or it gave no
-  answer in 20 seconds). The server of a profile that no turn needs stops after 10 minutes; the
+  answer in 20 seconds). The server of a profile that no task needs stops after 10 minutes; the
   next call starts it again, and the panel shows "Loading" in that time.
 - **Panel states**: Loading; Live; Closed, when the user closes it, and the stream stops; Failed,
   with the reason and "Try again".
@@ -114,6 +116,12 @@ its parts, so that this spec says what the rules cover:
 
 ## Rules
 
+- **Ways to the chat**: "Send to chat" (032), "Ask in the chat about this range" (033) and
+  "Investigate" (034) name the function. The words on the buttons are the words of the panel and
+  can differ (see "Out of scope"). The target is the chat of the workflow that the panel is beside.
+  When no workflow chat is open, such as on the page "Test devices", the app turns these functions
+  off and shows the reason "Open a workflow first". The functions only fill the message box; the
+  user presses Send.
 - **Download**: the app knows one address per version, on the public release page of the vendor, and
   one checksum for the file. A file with a wrong checksum is removed. No other file downloads, and
   the app does not check for a new version by itself.
@@ -170,7 +178,7 @@ its parts, so that this spec says what the rules cover:
   - Each card names the tool and the test device when the arguments name one. It shows the arguments
     of the step.
 - **Outside content** (007): a screen snapshot, a picture of a screen, a log line, a value of app
-  data and the name of an app that the program read are outside content. A turn that holds such text
+  data and the name of an app that the program read are outside content. A task that holds such text
   holds outside content from that step on, and so does a task whose input comes from that task (007). The screen map and the analysis of a performance file are
   not outside content: the user chose the folder and the file, and they hold the code of the user
   (034).
@@ -188,7 +196,7 @@ its parts, so that this spec says what the rules cover:
 - **Action log**: each device step has one entry (007). It holds the workflow and the node, the tool
   name, and who decided. It holds no argument and no picture.
 - **Profiles** (022): each profile has its own download, switch, server and folders. A server starts
-  when a turn of a node of that profile first needs its tools, or when the panel of that profile opens. It
+  when a task of a node of that profile first needs its tools, or when the panel of that profile opens. It
   stops when the switch goes off, when the app quits, or after 10 minutes with no call and no open
   panel. An open panel is not an idle time: the stream is a live connection, and it ends with the
   server.
@@ -258,8 +266,10 @@ its parts, so that this spec says what the rules cover:
 - A test that logs the requests of the whole Mac while a performance file is analysed shows requests
   to this computer only (034).
 - With a text node on an API provider and one on a vendor runtime, only the first gets the tools.
-- Annotate an element and press "Send to chat": the note is in the message box of the chat of the
-  open workflow, and Send puts it in the chat as the message of the user.
+- Beside a workflow view, annotate an element and press "Send to chat": the note is in the message
+  box of the chat of that workflow, and Send puts it in the chat as the message of the user.
+- On the page "Test devices", "Send to chat" is off with the reason "Open a workflow first", and
+  no message box changes.
 - Check for a new version, then update: the section shows a review of the tools of the new version,
   and no node gets one before the user accepts it.
 - Delete the download: the folders of the program leave the disk, the connection is off, and the

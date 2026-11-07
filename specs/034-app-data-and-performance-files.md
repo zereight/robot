@@ -49,8 +49,9 @@ cover it, and where the data goes.
 8. **Analyse a performance file**: the user picks a file with "Analyse a file" in the panel. The app
    starts the analysis program on this Mac. Each finding is a card in the panel. "Explore" opens
    the call tree, the timeline and the flame graph inside the card. "Investigate" puts the finding
-   with its measured numbers in the message box of the chat of the open workflow as the message of
-   the user. The analysis changes no source file. "Investigate" only puts text in the message box.
+   with its measured numbers in the message box of the chat of the workflow that the panel is
+   beside, as the message of the user. On the page "Test devices", "Investigate" is off with the
+   reason "Open a workflow first". The analysis changes no source file. "Investigate" only puts text in the message box.
    See docs/spec-questions.md, rows for 034.
 9. **A node reads app data**: the text node lists the stores of an app, reads a table with a column
    filter, reads a file, or searches. Its result is the same filtered result as the panel's.
@@ -79,7 +80,7 @@ cover it, and where the data goes.
 ## Rules
 
 - **Sensitive read** (007): a read of app data is a sensitive read with the label "Test app data". A
-  turn that reads app data holds the mark, and a later step that sends data out asks the user.
+  task that reads app data holds the mark, and a later step that sends data out asks the user.
 - **Redaction**: the panel removes a value that looks like a secret (014) before the value leaves the
   test device. The app shows "[REDACTED]" in the panel and in the chat, and gives the node the same
   text. A binary value shows as "Binary value". The app does not decrypt a value: it shows that the
@@ -160,5 +161,6 @@ cover it, and where the data goes.
 - A performance file over 200 MB is refused, and its size shows.
 - A test that logs the requests of the whole Mac while a performance file is analysed shows no
   request to any address that is not on this computer.
-- "Investigate" puts the finding and its numbers in the message box of the chat of the open
-  workflow.
+- Beside a workflow view, "Investigate" puts the finding and its numbers in the message box of the
+  chat of that workflow.
+- On the page "Test devices", "Investigate" is off with the reason "Open a workflow first".
