@@ -8,6 +8,7 @@ import {
   type RunNode,
   type RunSummary,
   type RunTask,
+  type TaskConnectionStep,
 } from "@robot/shared"
 import { createResource, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
@@ -121,6 +122,68 @@ const TaskClaims = (props: { task: RunTask; number: number }) => {
 }
 
 /**
+ * The notice lines and the tool lines of the connections that a task used (spec 018, "States",
+ * "Rules"): a connection that was down, a connection with tools that wait for review, and one
+ * muted line for each call of a tool or search of tools. The names are plain lines.
+ */
+const TaskConnections = (props: { task: RunTask; number: number }) => {
+  const { t } = useApp()
+  // A build on a linked computer (012) may be older and send a task with no such lines.
+  const notes = () => props.task.connections ?? { down: [], held: [], steps: [] }
+  const any = () => notes().down.length + notes().held.length + notes().steps.length > 0
+  const callLine = (step: Extract<TaskConnectionStep, { kind: "call" }>) => {
+    const result = t(`runs.tool.result.${step.result}` as MessageKey)
+    const label =
+      step.how === "unknown" || step.connection === ""
+        ? t("runs.tool.unknown", { tool: plainLine(step.tool, NOTE_NAME_CHARS), result })
+        : t("runs.tool.call", {
+            connection: plainLine(step.connection, NOTE_NAME_CHARS),
+            tool: plainLine(step.tool, NOTE_NAME_CHARS),
+            result,
+          })
+    if (step.how === "level" || step.how === "none") return label
+    const how = t(`runs.tool.how.${step.how}` as MessageKey)
+    return `${label} — ${how}`
+  }
+  return (
+    <Show when={any()}>
+      <ul class={styles.marks} data-testid={`run-node-connections-${props.number}`}>
+        <For each={notes().down}>
+          {(name) => (
+            <li data-testid="run-connection-down">
+              {t("runs.connection.down", { name: plainLine(name, NOTE_NAME_CHARS) })}
+            </li>
+          )}
+        </For>
+        <For each={notes().held}>
+          {(name) => (
+            <li data-testid="run-connection-held">
+              {t("runs.connection.held", { name: plainLine(name, NOTE_NAME_CHARS) })}
+            </li>
+          )}
+        </For>
+        <For each={notes().steps}>
+          {(step) => (
+            <li
+              data-testid="run-tool-line"
+              data-kind={step.kind}
+              data-how={step.kind === "call" ? step.how : undefined}
+            >
+              {step.kind === "search"
+                ? t("runs.tool.search", {
+                    words: plainLine(step.words, 100),
+                    count: step.found,
+                  })
+                : callLine(step)}
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  )
+}
+
+/**
  * The memory work of a task (spec 008, "Flows" 1): "Saved to memory" with an undo control, and
  * "Suggested for memory" with the link "Review". The lines are muted.
  */
@@ -213,6 +276,7 @@ const NodeCard = (props: { node: RunNode; workflowId: string; hold?: NodeHold | 
             </Show>
             <TaskMemory task={task()} workflowId={props.workflowId} number={props.node.number} />
             <TaskClaims task={task()} number={props.node.number} />
+            <TaskConnections task={task()} number={props.node.number} />
             <Show when={task().decision}>
               {(decision) => (
                 <div class={styles.decision} data-testid={`run-node-decision-${props.node.number}`}>

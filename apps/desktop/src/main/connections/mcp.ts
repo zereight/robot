@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import { createInterface } from "node:readline"
+import { StringDecoder } from "node:string_decoder"
 import {
   CONNECTION_TOOLS_MAX,
   type ConnectionFailure,
@@ -19,8 +19,8 @@ import {
 /** The protocol versions that the client knows. The first is the one that it asks for. */
 export const MCP_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const
 
-/** The longest answer that the client reads from one request, in characters. */
-const ANSWER_MAX = 20_000_000
+/** The longest answer that the client reads from one request, in bytes. */
+export const ANSWER_MAX = 20_000_000
 /** The most pages of tools that the client reads, and the most tools in all. */
 const PAGES_MAX = 20
 const TOOLS_READ_MAX = 1000
@@ -175,6 +175,17 @@ const limited = <T>(
 // A program on this computer: one JSON message on each line, in both directions.
 // ---------------------------------------------------------------------------------------------
 
+/** The groups of processes that the app started and that still run: all end when the app ends. */
+const groups = new Set<number>()
+let exitHooked = false
+const killGroup = (pid: number, signal: NodeJS.Signals) => {
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    // The group is gone already.
+  }
+}
+
 const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport => {
   if (!existsSync(spec.cwd)) throw new McpError("not_found", "The working folder is missing.")
   const child: ChildProcessWithoutNullStreams = spawn(spec.command, [...spec.args], {
@@ -182,10 +193,24 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     env: spec.env,
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
+    // The program leads its own group of processes, so the end of the connection ends the program
+    // and every process that it started (a launcher such as `npx` starts the real server).
+    detached: process.platform !== "win32",
   })
+  const group = process.platform !== "win32" && child.pid ? child.pid : null
+  if (group !== null) {
+    groups.add(group)
+    if (!exitHooked) {
+      exitHooked = true
+      process.once("exit", () => {
+        for (const g of groups) killGroup(g, "SIGKILL")
+      })
+    }
+  }
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   let nextId = 1
   let ended = false
+  let closing = false
   let spawnError: McpError | null = null
   let resolveClosed: () => void = () => {}
   const closed = new Promise<void>((resolve) => {
@@ -199,6 +224,18 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
   const finish = () => {
     if (ended) return
     ended = true
+    // A program that ended by itself may leave processes of its group. They end now. When the app
+    // closed the connection, the timer of `close` ends the group for good.
+    if (group !== null && !closing) {
+      killGroup(group, "SIGTERM")
+      // A process of the group that ignores the signal is stopped for good after one second. The
+      // group stays in the list until then, so the end of the app ends it too.
+      const hard = setTimeout(() => {
+        killGroup(group, "SIGKILL")
+        groups.delete(group)
+      }, 1_000)
+      hard.unref()
+    }
     fail(spawnError ?? new McpError("ended", "The program ended."))
     resolveClosed()
   }
@@ -222,7 +259,7 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
   child.stderr.on("data", () => {})
   child.stderr.on("error", () => {})
 
-  createInterface({ input: child.stdout }).on("line", (line) => {
+  const onLine = (line: string) => {
     if (!line.trim()) return
     let message: RpcMessage
     try {
@@ -243,7 +280,36 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     }
     const reply = serverReply(message)
     if (reply) send(reply)
+  }
+
+  // The lines are split here, not by a reader that keeps a line of any length in memory: a line
+  // longer than the limit for an answer ends the connection (spec 018, "Rules").
+  const decoder = new StringDecoder("utf8")
+  let buffer = ""
+  const tooLong = () => {
+    buffer = ""
+    spawnError = new McpError("invalid", "The answer is too long.")
+    if (group !== null) killGroup(group, "SIGKILL")
+    else child.kill("SIGKILL")
+    finish()
+  }
+  child.stdout.on("data", (chunk: Buffer) => {
+    if (ended) return
+    buffer += decoder.write(chunk)
+    for (let at = buffer.indexOf("\n"); at >= 0; at = buffer.indexOf("\n")) {
+      const line = buffer.slice(0, at)
+      buffer = buffer.slice(at + 1)
+      if (line.length > ANSWER_MAX) return tooLong()
+      onLine(line)
+    }
+    if (buffer.length > ANSWER_MAX) tooLong()
   })
+  child.stdout.on("end", () => {
+    const rest = buffer + decoder.end()
+    buffer = ""
+    if (!ended && rest.length <= ANSWER_MAX) onLine(rest)
+  })
+  child.stdout.on("error", () => {})
 
   return {
     closed,
@@ -266,15 +332,23 @@ const startProgram = (spec: Extract<McpSpec, { kind: "program" }>): Transport =>
     notify: (method, params) =>
       send({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }),
     close: () => {
-      if (ended) return
+      if (closing || ended) return
+      closing = true
       child.stdin.end()
-      child.kill("SIGTERM")
-      // A program that ignores the end of its input and the first signal is stopped for good.
+      if (group !== null) killGroup(group, "SIGTERM")
+      else child.kill("SIGTERM")
+      // A program that ignores the end of its input and the first signal is stopped for good, with
+      // the processes of its group that outlive it.
       const hard = setTimeout(() => {
-        if (!ended) child.kill("SIGKILL")
+        if (group !== null) {
+          killGroup(group, "SIGKILL")
+          groups.delete(group)
+        } else if (!ended) child.kill("SIGKILL")
       }, 1_000)
       hard.unref()
-      void closed.then(() => clearTimeout(hard))
+      void closed.then(() => {
+        if (group === null) clearTimeout(hard)
+      })
     },
   }
 }
@@ -395,6 +469,30 @@ const startWeb = (spec: Extract<McpSpec, { kind: "web" }>): Transport => {
       )
   }
 
+  /**
+   * The body as text. The bytes are counted as they come and the read stops at `ANSWER_MAX`, so a
+   * server that sends a huge body cannot fill the memory (spec 018). The rest of the body is
+   * dropped: the connection to the server ends.
+   */
+  const readCapped = async (res: Response): Promise<string> => {
+    if (!res.body) return ""
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let bytes = 0
+    let text = ""
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > ANSWER_MAX) {
+        await reader.cancel().catch(() => {})
+        throw new McpError("invalid", "The answer is too long.")
+      }
+      text += decoder.decode(value, { stream: true })
+    }
+    return text + decoder.decode()
+  }
+
   const answer = async (id: number, res: Response, signal: AbortSignal): Promise<unknown> => {
     const type = res.headers.get("content-type") ?? ""
     if (type.includes("text/event-stream") && res.body) {
@@ -416,8 +514,7 @@ const startWeb = (spec: Extract<McpSpec, { kind: "web" }>): Transport => {
       }
       throw new McpError("ended", "The answer ended with no result.")
     }
-    const text = await res.text()
-    if (text.length > ANSWER_MAX) throw new McpError("invalid", "The answer is too long.")
+    const text = await readCapped(res)
     let message: unknown
     try {
       message = JSON.parse(text)
@@ -591,7 +688,15 @@ const sessionOf = (transport: Transport): McpSession => ({
         { name, arguments: args },
         { signal: options.signal, timeoutMs: options.timeoutMs },
       )
-      return { text: resultText(result), isError: isObject(result) && result.isError === true }
+      // An answer that is not the shape of a result is an invalid answer, not an empty result:
+      // the node must not read "ok, nothing" from a server that sent something else.
+      if (
+        !isObject(result) ||
+        (result.content !== undefined && !Array.isArray(result.content)) ||
+        (result.isError !== undefined && typeof result.isError !== "boolean")
+      )
+        throw new McpError("invalid", "The answer is not valid.")
+      return { text: resultText(result), isError: result.isError === true }
     } catch (error) {
       if (error instanceof McpError) throw new McpCallError(error.message)
       throw error

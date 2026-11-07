@@ -621,4 +621,20 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (task_id, account_id, model)
   );
   `,
+  `
+  -- The workflows that may use a connection (spec 018, "Concepts"). 'all' is "All workflows"; the
+  -- other value 'workflows' is a list, kept in the table below. The default is the list, so a row
+  -- with no scope set is used by no workflow (fail closed). A deleted workflow leaves every list
+  -- through the cascade.
+  ALTER TABLE tool_connection ADD COLUMN scope TEXT NOT NULL DEFAULT 'workflows';
+  CREATE TABLE tool_connection_workflow (
+    connection_id TEXT NOT NULL REFERENCES tool_connection (id) ON DELETE CASCADE,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    PRIMARY KEY (connection_id, workflow_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX tool_connection_workflow_workflow ON tool_connection_workflow (workflow_id);
+  -- The notice lines and the tool lines of the connections that a task used (spec 018, "States"):
+  -- JSON text, or NULL.
+  ALTER TABLE task ADD COLUMN connection_notes TEXT;
+  `,
 ]

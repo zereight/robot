@@ -39,6 +39,24 @@ export const plainLine = (text: string, max: number = NOTE_PATH_CHARS): string =
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : safe
 }
 
+/** The characters that a person cannot see, or cannot tell apart, in a text. */
+const HIDDEN_CHARS = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu
+
+/**
+ * A text with every control character, format character (bidi controls, zero-width characters,
+ * tag characters), private-use or unassigned character, lone surrogate and other invisible
+ * character shown as an escape: `\uXXXX`, or `\u{XXXXX}` above U+FFFF. A character in `keep` stays
+ * as it is. Used where a person must see all of a text before it goes out (spec 018, 007). The
+ * caller must double the backslashes first (as JSON does), or a typed `\\u200b` looks like an escape.
+ */
+export const escapeInvisible = (text: string, keep = ""): string =>
+  text.replace(HIDDEN_CHARS, (ch) => {
+    if (keep.includes(ch)) return ch
+    const code = ch.codePointAt(0) ?? 0
+    const hex = code.toString(16)
+    return code > 0xffff ? `\\u{${hex}}` : `\\u${hex.padStart(4, "0")}`
+  })
+
 /** The reason of the refusal for claim 1001 (spec 025, "Rules"). */
 export const CLAIM_LIMIT_TEXT = `This task changed ${CLAIMS_MAX} files. Finish it.`
 

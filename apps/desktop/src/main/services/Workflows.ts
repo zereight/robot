@@ -671,6 +671,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               db.run("DELETE FROM workflow WHERE id = ?", id)
             })
             changed(row.server_id)
+            // The workflow left the list of every connection (spec 018, "Rules"): the page of
+            // connections reads its rows again.
+            bus.emit("connections.changed", {})
           }),
         setPermission: (id, level) =>
           Effect.gen(function* () {

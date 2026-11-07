@@ -300,4 +300,41 @@ describe("the reset of a database from before the workflow model (owner decision
     db.run("DELETE FROM task WHERE id = 't1'")
     expect(db.all("SELECT task_id FROM task_usage")).toEqual([])
   })
+
+  test("a database built from the migrations before the scope of connections opens at the newest version: the scope fails closed, and a deleted workflow leaves its list", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    // The migration of the scope is found by what it makes, so a change of the count or the order
+    // of the migrations (another slice adds one) does not break this test.
+    const at = migrations.findIndex((sql) => sql.includes("tool_connection_workflow"))
+    expect(at).toBeGreaterThan(0)
+    const before = migrations.slice(0, at)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO tool_connection (id, server_id, name, name_key, kind, created_at)
+        VALUES ('c1', 's1', 'Notes', 'notes', 'program', 1);
+    `)
+    old.close()
+    const db = openDatabase(file)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
+    // A connection from before has the scope "list", and the list is empty: no workflow uses it.
+    expect(db.all("SELECT scope FROM tool_connection")).toEqual([{ scope: "workflows" }])
+    expect(db.all("SELECT workflow_id FROM tool_connection_workflow")).toEqual([])
+    db.run("INSERT INTO tool_connection_workflow (connection_id, workflow_id) VALUES ('c1', 'w1')")
+    db.run("DELETE FROM workflow WHERE id = 'w1'")
+    expect(db.all("SELECT workflow_id FROM tool_connection_workflow")).toEqual([])
+    expect(db.all("SELECT id FROM tool_connection")).toEqual([{ id: "c1" }])
+    expect(
+      db.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM pragma_table_info('task') WHERE name = 'connection_notes'",
+      )?.n,
+    ).toBe(1)
+  })
 })

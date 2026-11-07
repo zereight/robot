@@ -2,6 +2,7 @@ import {
   ACTION_KINDS,
   BrowserProfileCreate,
   CHAT_MESSAGE_MAX,
+  CONNECTION_SCOPE_MAX,
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
@@ -86,6 +87,16 @@ const RuleInputSchema = Schema.Struct({
   detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
   decision: Schema.Literals(["allow", "deny"]),
 })
+/** The workflows that may use a connection: all of them, or a list (spec 018). */
+const ConnectionScopeSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("all") }),
+  Schema.Struct({
+    kind: Schema.Literal("workflows"),
+    workflowIds: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(
+      Schema.isMaxLength(CONNECTION_SCOPE_MAX),
+    ),
+  }),
+])
 /** A line of the connection form: an environment value or a header (spec 018). */
 const ConnectionEntrySchema = Schema.Struct({
   name: Schema.String.check(Schema.isMaxLength(1000)),
@@ -434,6 +445,7 @@ export const handlers: Handlers = {
         id: Schema.optionalKey(Schema.String),
         connection: ConnectionInputSchema,
         confirmed: Schema.Boolean,
+        scope: Schema.optionalKey(ConnectionScopeSchema),
       }),
     )(input).pipe(Effect.flatMap((saved) => Connections.use((c) => c.save(saved)))),
   "connections.test": (input) =>
