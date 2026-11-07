@@ -72,6 +72,8 @@ export const Settings = Schema.Struct({
   autoCompact: Schema.Boolean,
   /** "Keep going on open steps" (spec 005, 013). On by default. */
   keepGoing: Schema.Boolean,
+  /** "While an agent works, new messages" (spec 003, 013): join the current turn, or wait. */
+  duringTurn: Schema.Literals(["join", "queue"]),
 })
 export type Settings = typeof Settings.Type
 
@@ -97,6 +99,7 @@ export const defaultSettings: Settings = {
   permissionChecks: false,
   autoCompact: true,
   keepGoing: true,
+  duringTurn: "join",
 }
 
 export type Locale = "en" | "ko"

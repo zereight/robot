@@ -21,7 +21,7 @@ const Card = (props: { flow: Workflow }) => {
     const run = props.flow.lastRun
     if (!run) return t("workflows.run.none")
     const key = runStateKey(run.state)
-    return key ? t("workflows.run.last", { state: t(key) }) : t("workflows.run.none")
+    return key ? t("workflows.run.last", { state: t(key) }) : t("workflows.run.unknown")
   }
   return (
     <li class={styles.card} data-testid="workflow-row">

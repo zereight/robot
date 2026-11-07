@@ -30,6 +30,7 @@ import type {
 import type { HeldToolView } from "./toolReview.ts"
 import type { PermissionLevel } from "./tools.ts"
 import type { Server, UiState, UiStatePatch } from "./ui.ts"
+import type { WorkflowChatHistory, WorkflowChatMessage, WorkflowChatSend } from "./workflowChat.ts"
 import type {
   DocumentVersion,
   GraphVersion,
@@ -304,6 +305,22 @@ export interface RpcMethods {
     input: { id: string; versionId: string }
     output: WorkflowGraph
   }
+  /** The one chat of a workflow (spec 003). */
+  "chat.history": { input: { workflowId: string }; output: WorkflowChatHistory }
+  "chat.send": { input: WorkflowChatSend; output: WorkflowChatMessage }
+  /** The user picks the account and the model that answer in the chat. It takes effect at the next turn. */
+  "chat.setModel": {
+    input: { workflowId: string; accountId: string; model: string }
+    output: undefined
+  }
+  /** Stops the turn of the chat. It does not stop a run (spec 003, flow 2). */
+  "chat.stop": { input: { workflowId: string }; output: undefined }
+  /** Deletes a message that no turn has read, or a queued message. Gives back its text. */
+  "chat.delete": { input: { id: string }; output: { text: string } }
+  "chat.sendNow": { input: { id: string }; output: undefined }
+  "chat.retry": { input: { workflowId: string }; output: undefined }
+  /** The buttons of the notice after a restart: "Continue" and "Send again". */
+  "chat.resume": { input: { workflowId: string; mode: "continue" | "again" }; output: undefined }
   "decision.status": { input: undefined; output: DecisionStatus }
   /** Saves or removes the keys that the patch names; a key that is not named stays. */
   "decision.keys": { input: DecisionKeys; output: DecisionStatus }
@@ -352,6 +369,10 @@ export interface RpcEvents {
   /** A skill was made, turned on or off, or deleted. */
   "skills.changed": { serverId: string }
   "workflows.changed": { serverId: string }
+  /** A message of a chat was added or changed (spec 003). */
+  "chat.message": { workflowId: string; message: WorkflowChatMessage }
+  /** The queue, the notice or the working state of a chat changed: read the history again. */
+  "chat.state": { workflowId: string }
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
   "app.openPage": { page: "workflows"; serverId?: string }
 }

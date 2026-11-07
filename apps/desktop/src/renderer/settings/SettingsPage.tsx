@@ -91,6 +91,18 @@ const General = () => {
           onChange={(startAtLogin) => app.update({ startAtLogin })}
         />
       </Row>
+      <Row label={t("settings.duringTurn")}>
+        <Segmented
+          label={t("settings.duringTurn")}
+          testId="setting-during-turn"
+          value={app.settings.duringTurn}
+          onChange={(duringTurn) => app.update({ duringTurn })}
+          options={[
+            { value: "join", label: t("settings.duringTurn.join") },
+            { value: "queue", label: t("settings.duringTurn.queue") },
+          ]}
+        />
+      </Row>
       <Row
         label={t("settings.workspaceRoot")}
         hint={app.settings.workspaceRoot || app.info.defaultWorkspaceRoot}

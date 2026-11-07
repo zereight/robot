@@ -422,4 +422,30 @@ export const migrations: readonly string[] = [
     DELETE FROM saved_secret WHERE workflow_id = OLD.id;
   END;
   `,
+  `
+  -- Feedback of the user on the results of a run (spec 003, "Feedback"). A node that starts after
+  -- the feedback reads it with its input. The text is not part of the file of the workflow.
+  CREATE TABLE run_feedback (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES run (id) ON DELETE CASCADE,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    -- The number of the node that the feedback names. NULL: the run as a whole.
+    node_number INTEGER,
+    text TEXT NOT NULL,
+    message_id TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX run_feedback_run ON run_feedback (run_id, created_at);
+  `,
+  `
+  -- The account and the model that answer in the chat of a workflow. The choice stays between
+  -- turns. It changes when the account or the model is gone, or when the user picks another one.
+  -- It is local to this computer and is not part of the file of the workflow.
+  CREATE TABLE workflow_chat_model (
+    workflow_id TEXT PRIMARY KEY REFERENCES workflow (id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    effort TEXT
+  );
+  `,
 ]
