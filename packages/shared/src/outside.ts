@@ -2,8 +2,11 @@ import type { RuleKind } from "./rules.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import type { CheckReason } from "./unsure.ts"
 
-/** The step kinds that the action log lists: files, shell commands, web pages, tools of a connection. */
-export const LOGGED_KINDS = ["file", "shell", "web", "connection"] as const
+/**
+ * The step kinds that the action log lists: files, shell commands, web pages, tools of a
+ * connection, and steps of the browser.
+ */
+export const LOGGED_KINDS = ["file", "shell", "web", "connection", "browser"] as const
 export type LoggedKind = (typeof LOGGED_KINDS)[number]
 
 /** For a file step: whether the step read or wrote. Other kinds have none. */

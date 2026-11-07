@@ -12,6 +12,7 @@ import { Effect } from "effect"
 import { McpCallError, McpCallStopped, type McpTool } from "../connections/mcp.ts"
 import { standIn, tool } from "../connections/standIn.ts"
 import { ActionLog } from "./ActionLog.ts"
+import { Browsers } from "./Browsers.ts"
 import { type CardReply, Cards } from "./Cards.ts"
 import { Connections } from "./Connections.ts"
 import {
@@ -55,7 +56,8 @@ const setup = async (tools: McpTool[] = [tool("echo"), tool("lookup", { readOnly
   const actionLog = await run(ActionLog.use((x) => Effect.succeed(x)))
   const platform = await run(Platform.use((x) => Effect.succeed(x)))
   const claims = await run(FileClaims.use((x) => Effect.succeed(x)))
-  const nodeTools = makeNodeTools({ rules, actionLog, platform, claims })
+  const browsers = await run(Browsers.use((x) => Effect.succeed(x)))
+  const nodeTools = makeNodeTools({ rules, actionLog, platform, claims, browsers })
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "robot-conn-tools-")))
   const cards: NodeCard[] = []
   let answer: CardReply["answer"] = "allow"

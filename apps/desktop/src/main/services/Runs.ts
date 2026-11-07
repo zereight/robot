@@ -45,6 +45,7 @@ import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { goOnTurns } from "../providers/resume.ts"
 import { ActionLog } from "./ActionLog.ts"
+import { Browsers } from "./Browsers.ts"
 import {
   addModelUsage,
   type BackupDeps,
@@ -235,6 +236,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const rules = yield* Rules
       const actionLog = yield* ActionLog
       const claims = yield* FileClaims
+      const browsers = yield* Browsers
       const connections = yield* Connections
       const holds = yield* ModelHolds
       const memory = yield* Memory
@@ -244,7 +246,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         holds,
         ready: (accountId) => Effect.runPromise(providers.verify(accountId)),
       }
-      const tools = makeNodeTools({ rules, actionLog, platform, claims })
+      const tools = makeNodeTools({ rules, actionLog, platform, claims, browsers })
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const endListeners: ((workflowId: string, runId: string) => void)[] = []
 
@@ -1209,10 +1211,16 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 ...(card.unreadable ? { unreadable: true } : {}),
                 ...(card.hidden ? { hidden: card.hidden } : {}),
                 ...(card.choices ? { choices: card.choices } : {}),
+                ...(card.control ? { control: card.control } : {}),
               },
               signal,
               {
-                code: card.kind === "question" ? "question" : "approval",
+                code:
+                  card.kind === "question"
+                    ? "question"
+                    : card.kind === "control"
+                      ? "control"
+                      : "approval",
                 detail: card.summary,
               },
             ),

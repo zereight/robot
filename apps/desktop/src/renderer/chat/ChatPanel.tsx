@@ -30,6 +30,7 @@ import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
+import { BrowserStrip } from "./BrowserStrip.tsx"
 import { CompactedLine, compactedPart } from "./CompactedLine.tsx"
 import { Composer } from "./Composer.tsx"
 import { ContextMeter } from "./ContextMeter.tsx"
@@ -628,6 +629,7 @@ export const ChatPanel = (props: {
                 </div>
               )}
             </Show>
+            <BrowserStrip workflowId={props.workflowId} />
             <Composer
               history={h()}
               replyTo={replyTo()}

@@ -37,6 +37,7 @@ import {
   type WorkflowNode,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
+import { Browsers } from "./Browsers.ts"
 import { Database, type DatabaseService } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -302,6 +303,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const bus = yield* EventBus
       const platform = yield* Platform
       const settings = yield* SettingsStore
+      const browsers = yield* Browsers
 
       const findRow = (id: string) => {
         const row = db.get<WorkflowRow>("SELECT * FROM workflow WHERE id = ?", id)
@@ -670,6 +672,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               )
               db.run("DELETE FROM workflow WHERE id = ?", id)
             })
+            // The browser of a deleted workflow closes at once (spec 007, "Idle work").
+            browsers.forget(id)
             changed(row.server_id)
             // The workflow left the list of every connection (spec 018, "Rules"): the page of
             // connections reads its rows again.

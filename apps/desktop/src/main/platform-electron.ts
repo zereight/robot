@@ -1,7 +1,12 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
 import { homedir, arch as osArch, release as osRelease, type as osType } from "node:os"
 import { basename, join } from "node:path"
-import { PAGE_INPUT_CHANNEL, SCREEN_INPUT_CHANNEL } from "@robot/shared"
+import {
+  BROWSER_LIMITS,
+  type ControlPlace,
+  PAGE_INPUT_CHANNEL,
+  SCREEN_INPUT_CHANNEL,
+} from "@robot/shared"
 import {
   app,
   BaseWindow,
@@ -21,17 +26,25 @@ import { appendLog, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
   BrowserActionState,
+  BrowserDialog,
+  BrowserInspect,
   BrowserPage,
+  NavigationPolicy,
   PageBounds,
   PlatformService,
 } from "./services/Platform.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
 import {
+  PAGE_WORLD_ID,
   type PageActAnswer,
+  type PageInspectAnswer,
   type PageReadAnswer,
   type PageStateAnswer,
   pageActScript,
+  pageInspectScript,
   pageReadScript,
+  pageSecureScript,
+  pageSelectScript,
   pageStateScript,
 } from "./web/pageControls.ts"
 import {
@@ -79,6 +92,111 @@ const partitionOf = (agentId: string) => {
   const profile = browserProfiles.get(agentId)
   return profile ? `persist:browser-${profile}` : `persist:agent-${agentId}`
 }
+
+/**
+ * The rule for the addresses of each page that a workflow uses, by the id of its web contents
+ * (spec 007, "Addresses of a web page fetch"). A session is shared by the workflows that use the
+ * same browser profile, so the rule is looked up for each request.
+ */
+interface PageRule {
+  policy: () => NavigationPolicy | undefined
+  /** The page was kept from this address. */
+  blocked: (url: string) => void
+  /** A download that the page started was cancelled. */
+  download: (host: string) => void
+  /**
+   * Whether the page may have a permission of the system (a notification, the location, the
+   * camera, the clipboard). A page of a workflow has none; a page of the app itself names what it
+   * needs.
+   */
+  permit: (permission: string) => boolean
+}
+const pageRules = new Map<number, PageRule>()
+const guardedSessions = new WeakSet<Electron.Session>()
+/**
+ * The sessions that hold a page of a workflow, which has a rule for its addresses. A request that
+ * no page owns (a service worker, a shared worker) has no rule to ask in such a session, so it is
+ * cancelled: the rule is the only thing that keeps a worker of a page from a private address.
+ */
+const strictSessions = new WeakSet<Electron.Session>()
+
+/** The kinds of request that a page may use to run code outside of its own rule. */
+const WORKER_TYPES = new Set(["serviceWorker", "sharedWorker"])
+
+/**
+ * Puts the rule on a session once: every request of a page that has a rule is checked (the first
+ * load, a frame, a script, an image), and so is the target of each redirect. A request that no
+ * page owns is cancelled in a session of a workflow, and so is the script of a service worker or
+ * of a shared worker. A download is cancelled: the browser tools take no file from a page (the open
+ * rows of B9). Every permission is refused unless the page has a rule that names it.
+ */
+const guardSession = (data: Electron.Session) => {
+  if (guardedSessions.has(data)) return
+  guardedSessions.add(data)
+  const allowed = async (details: {
+    webContentsId?: number
+    resourceType?: string
+    url: string
+  }): Promise<boolean> => {
+    const strict = strictSessions.has(data)
+    const id = details.webContentsId
+    const rule = id === undefined ? undefined : pageRules.get(id)
+    if (
+      strict &&
+      (id === undefined || (details.resourceType && WORKER_TYPES.has(details.resourceType)))
+    ) {
+      // The worker has no rule of its own, and the page that started it cannot be told apart.
+      rule?.blocked(details.url)
+      return false
+    }
+    const policy = rule?.policy()
+    if (!rule || !policy) return true
+    const ok = await policy(details.url).catch(() => false)
+    if (!ok) rule.blocked(details.url)
+    return ok
+  }
+  data.webRequest.onBeforeRequest((details, callback) => {
+    void allowed(details).then((ok) => callback({ cancel: !ok }))
+  })
+  data.webRequest.onHeadersReceived((details, callback) => {
+    const headers = details.responseHeaders ?? {}
+    const found = Object.entries(headers).find(([name]) => name.toLowerCase() === "location")
+    const location = Array.isArray(found?.[1]) ? found?.[1][0] : undefined
+    if (details.statusCode < 300 || details.statusCode >= 400 || !location) {
+      callback({})
+      return
+    }
+    let target: string
+    try {
+      target = new URL(location, details.url).href
+    } catch {
+      callback({ cancel: true })
+      return
+    }
+    void allowed({ ...details, url: target }).then((ok) => callback(ok ? {} : { cancel: true }))
+  })
+  data.on("will-download", (event, item, wc) => {
+    const rule = wc ? pageRules.get(wc.id) : undefined
+    if (!rule) return
+    event.preventDefault()
+    item.cancel()
+    rule.download(hostOf(item.getURL()))
+  })
+  // Electron grants every permission that a page asks for, unless the app answers. The app
+  // answers no, for a page without a rule that names the permission, and for a worker.
+  const permitted = (wc: Electron.WebContents | null, permission: string) =>
+    (wc ? pageRules.get(wc.id) : undefined)?.permit(permission) === true
+  data.setPermissionRequestHandler((wc, permission, callback) => {
+    callback(permitted(wc, permission))
+  })
+  data.setPermissionCheckHandler((wc, permission) => permitted(wc, permission))
+  data.setDevicePermissionHandler(() => false)
+  data.setDisplayMediaRequestHandler((_request, callback) => callback(null))
+}
+
+/** The dialog that nobody answers is dismissed after this time. A test may make it shorter. */
+const dialogMs = () =>
+  (isTestRun && Number(process.env.ROBOT_BROWSER_DIALOG_MS)) || BROWSER_LIMITS.dialogMs
 
 /** What each page says about itself for the diagnostic report. */
 const snapshots = new Map<string, () => PageSnapshot>()
@@ -318,7 +436,12 @@ export const setMainWindow = (win: BrowserWindow) => {
  */
 const electronBrowser = (
   agentId: string,
-  options: { fixedLayout?: boolean; log?: DiagWrite } = {},
+  options: {
+    fixedLayout?: boolean
+    log?: DiagWrite
+    /** The permissions of the system that the page may have. Default: none. */
+    permit?: (permission: string) => boolean
+  } = {},
 ): BrowserPage => {
   /** The counts of input and the lines of the log about this page (the diagnostic report). */
   const diag = createInputDiagnostics(options.log ?? (() => {}))
@@ -334,6 +457,18 @@ const electronBrowser = (
   let sized = false
   let userInput = false
   const listeners: (() => void)[] = []
+  /** The rule for the addresses of this page, the hosts it was kept from, and its dialog. */
+  let policy: NavigationPolicy | undefined
+  let blocked: string[] = []
+  let dialogNow: BrowserDialog | null = null
+  let dismissed: BrowserDialog | null = null
+  let dialogTimer: ReturnType<typeof setTimeout> | undefined
+  const dialogWaiters: (() => void)[] = []
+  /** The errors of the page since the last action (up to 20), as the debugger told them. */
+  const pageErrors: string[] = []
+  /** The file input that a chooser belongs to, while a chooser waits. */
+  let chooserNode: number | null = null
+  let cdpReady = false
   const live = () => (view && !view.webContents.isDestroyed() ? view : undefined)
   const need = () => {
     const v = live()
@@ -341,20 +476,122 @@ const electronBrowser = (
     return v.webContents
   }
   const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  /**
+   * Runs a script of the controls in an isolated world: it sees the DOM of the page and none of
+   * its globals, so the page cannot forge what the script reads (`PAGE_WORLD_ID`).
+   */
+  const runIsolated = async <T>(code: string): Promise<T> =>
+    (await need().executeJavaScriptInIsolatedWorld(PAGE_WORLD_ID, [{ code }], true)) as T
   /** The short state after an action: address, title, load, focus and the new errors. */
   const actionState = async (): Promise<BrowserActionState> => {
     const wc = need()
     const url = wc.getURL()
     const title = wc.getTitle()
     const loading = wc.isLoading()
+    const extra = {
+      dialog: dialogNow,
+      chooser: chooserNode !== null,
+      ...(dismissed ? { dismissed } : {}),
+    }
+    dismissed = null
+    // The errors that the debugger told since the last action. Reading them clears them.
+    const errors = pageErrors.splice(0).slice(0, 5)
+    // A dialog blocks the page: no script runs until it is answered.
+    if (extra.dialog) return { url, title, loading, focus: null, errors, ...extra }
     try {
-      const seen = await run<PageStateAnswer>(pageStateScript())
-      return { url, title, loading, focus: seen.focus, errors: seen.errors }
+      const seen = await runIsolated<PageStateAnswer>(pageStateScript())
+      return { url, title, loading, focus: seen.focus, errors, ...extra }
     } catch {
       // The action moved to a new page: the state script has no document yet.
-      return { url, title, loading, focus: null, errors: [] }
+      return { url, title, loading, focus: null, errors, ...extra }
     }
   }
+  /**
+   * The debugger of the page, attached and ready: dialogs of the page come to the app (a dialog
+   * that the app does not see would block the page), and a file chooser does not open a window of
+   * the system. Undefined when the page has none.
+   */
+  const cdp = async () => {
+    const v = live()
+    if (!v) return undefined
+    const dbg = v.webContents.debugger
+    try {
+      if (!dbg.isAttached()) {
+        dbg.attach("1.3")
+        emulated = undefined
+        cdpReady = false
+      }
+    } catch {
+      return undefined
+    }
+    if (!cdpReady) {
+      cdpReady = true
+      try {
+        await dbg.sendCommand("Page.enable")
+        await dbg.sendCommand("Runtime.enable")
+        await dbg.sendCommand("DOM.enable")
+        await dbg.sendCommand("Page.setInterceptFileChooserDialog", { enabled: true })
+      } catch {
+        cdpReady = false
+      }
+    }
+    return dbg
+  }
+  const answerDialogNow = async (accept: boolean, text?: string) => {
+    const dbg = await cdp()
+    if (!dbg || !dialogNow) return false
+    clearTimeout(dialogTimer)
+    dialogNow = null
+    await dbg.sendCommand("Page.handleJavaScriptDialog", {
+      accept,
+      ...(text !== undefined ? { promptText: text } : {}),
+    })
+    return true
+  }
+  /** What the debugger tells: a dialog opens or closes, a file chooser opens. */
+  const onCdp = (_: unknown, method: string, params: Record<string, unknown>) => {
+    if (method === "Page.javascriptDialogOpening") {
+      const kind = String(params.type)
+      dialogNow = {
+        kind: kind === "alert" || kind === "confirm" || kind === "prompt" ? kind : "beforeunload",
+        text: String(params.message ?? ""),
+      }
+      clearTimeout(dialogTimer)
+      // A dialog that nobody answers in time is dismissed, and the node is told (spec 007).
+      dialogTimer = setTimeout(() => {
+        const was = dialogNow
+        void answerDialogNow(false).then((done) => {
+          if (done && was) dismissed = was
+        })
+      }, dialogMs())
+      for (const wake of dialogWaiters.splice(0)) wake()
+    } else if (method === "Page.javascriptDialogClosed") {
+      dialogNow = null
+      clearTimeout(dialogTimer)
+    } else if (method === "Runtime.exceptionThrown") {
+      // A script error or a promise that nobody caught. The page cannot write this list.
+      const details = (params.exceptionDetails ?? {}) as {
+        text?: string
+        exception?: { description?: string }
+      }
+      const message = (details.exception?.description ?? details.text ?? "error").split("\n")[0]
+      if (pageErrors.length < 20) pageErrors.push(String(message).slice(0, 200))
+    } else if (method === "Page.fileChooserOpened") {
+      chooserNode = typeof params.backendNodeId === "number" ? params.backendNodeId : null
+    }
+  }
+  const DIALOG = Symbol("dialog")
+  /** An action that opens a dialog of the page returns at once: the page waits for the answer. */
+  const withDialog = <T>(work: Promise<T>): Promise<T | typeof DIALOG> => {
+    if (dialogNow) return Promise.resolve(DIALOG)
+    return Promise.race([
+      work,
+      new Promise<typeof DIALOG>((resolve) => {
+        dialogWaiters.push(() => resolve(DIALOG))
+      }),
+    ])
+  }
+  const FILE_CHOOSER_WAIT_MS = 80
   /** How much the page is drawn smaller than its own size, in the place that it has now. */
   let scaleNow = 1
   /**
@@ -502,6 +739,13 @@ const electronBrowser = (
     started = false
     emulated = undefined
     userInput = false
+    dialogNow = null
+    dismissed = null
+    clearTimeout(dialogTimer)
+    chooserNode = null
+    cdpReady = false
+    pageErrors.length = 0
+    for (const wake of dialogWaiters.splice(0)) wake()
     const h = host
     host = undefined
     if (h && !h.isDestroyed()) {
@@ -614,6 +858,7 @@ const electronBrowser = (
         // such as Teams turn away the `Electron/` token that Electron adds.
         const data = session.fromPartition(partitionOf(agentId))
         data.setUserAgent(pageUserAgent(data.getUserAgent(), app.getName()))
+        guardSession(data)
         const created = new WebContentsView({
           webPreferences: {
             partition: partitionOf(agentId),
@@ -625,6 +870,23 @@ const electronBrowser = (
           },
         })
         const wc = created.webContents
+        // The rule for the addresses of this page: the session asks for it on each request.
+        const wcId = wc.id
+        pageRules.set(wcId, {
+          policy: () => policy,
+          blocked: (url) => {
+            const host = hostOf(url)
+            if (blocked.length < 50) blocked.push(host || url.slice(0, 40))
+            options.log?.("address_blocked", { host })
+          },
+          download: (host) => options.log?.("download_refused", { host }),
+          permit: (permission) => options.permit?.(permission) === true,
+        })
+        wc.debugger.on("message", onCdp)
+        // A new document starts with no errors.
+        wc.on("did-start-navigation", (details) => {
+          if (details.isMainFrame && !details.isSameDocument) pageErrors.length = 0
+        })
         wc.on("did-finish-load", () => {
           lastHost = hostOf(wc.getURL())
           diag.state("loaded", { host: lastHost })
@@ -690,11 +952,13 @@ const electronBrowser = (
         // The session of the debugger ends (a tool of the page took it, or the page crashed): the
         // page gets its size again.
         wc.debugger.on("detach", () => {
+          cdpReady = false
           emulated = undefined
           if (view === created && !wc.isDestroyed()) apply()
         })
         // The page can close itself.
         wc.once("destroyed", () => {
+          pageRules.delete(wcId)
           if (view === created) release()
         })
         diag.reset()
@@ -719,6 +983,7 @@ const electronBrowser = (
             emulate(scaleNow)
           }
           started = true
+          await cdp()
         }
         // A debugger that does not answer must not keep the agent from the page.
         await Promise.race([emulating, new Promise((resolve) => setTimeout(resolve, 2_000))])
@@ -757,7 +1022,7 @@ const electronBrowser = (
     },
     read: async () => {
       const wc = need()
-      const seen = await run<PageReadAnswer>(pageReadScript(PAGE_TEXT_MAX))
+      const seen = await runIsolated<PageReadAnswer>(pageReadScript(PAGE_TEXT_MAX))
       return {
         url: wc.getURL(),
         title: wc.getTitle(),
@@ -767,18 +1032,125 @@ const electronBrowser = (
       }
     },
     evaluate: <T>(code: string) => run<T>(code),
-    click: async (target): Promise<BrowserAct> => {
-      const answer = await run<PageActAnswer>(pageActScript("click", target))
+    currentUrl: () => live()?.webContents.getURL() ?? "",
+    click: async (target, expect): Promise<BrowserAct> => {
+      const running = runIsolated<PageActAnswer>(pageActScript("click", target, "", expect))
+      const answer = await withDialog(running)
+      returnFocusSoon()
+      if (answer === DIALOG) {
+        // The page waits for the answer to its dialog, so the script does not end yet.
+        running.catch(() => {})
+        return { ok: true, state: await actionState() }
+      }
+      if (!answer.ok) return answer as BrowserAct
+      // A file chooser opens a moment after the click.
+      await new Promise((resolve) => setTimeout(resolve, FILE_CHOOSER_WAIT_MS))
+      return { ok: true, state: await actionState() }
+    },
+    type: async (target, text, expect): Promise<BrowserAct> => {
+      const running = runIsolated<PageActAnswer>(pageActScript("type", target, text, expect))
+      const answer = await withDialog(running)
+      returnFocusSoon()
+      if (answer === DIALOG) {
+        running.catch(() => {})
+        return { ok: true, state: await actionState() }
+      }
+      if (!answer.ok) return answer as BrowserAct
+      return { ok: true, state: await actionState() }
+    },
+    inspect: async (target): Promise<BrowserInspect> => {
+      const answer = await runIsolated<PageInspectAnswer>(pageInspectScript(target))
+      if (answer.ok && answer.facts)
+        return { ok: true, facts: answer.facts, formHost: answer.formHost ?? null }
+      if (answer.reason === "many" && answer.candidates)
+        return {
+          ok: false,
+          reason: "many",
+          candidates: answer.candidates,
+          total: answer.total ?? answer.candidates.length,
+        }
+      return { ok: false, reason: "none" }
+    },
+    select: async (target, value, expect): Promise<BrowserAct> => {
+      const answer = await runIsolated<PageActAnswer>(pageSelectScript(target, value, expect))
       returnFocusSoon()
       if (!answer.ok) return answer as BrowserAct
       return { ok: true, state: await actionState() }
     },
-    type: async (target, text): Promise<BrowserAct> => {
-      const answer = await run<PageActAnswer>(pageActScript("type", target, text))
-      returnFocusSoon()
-      if (!answer.ok) return answer as BrowserAct
+    screenshot: async () => {
+      const dbg = await cdp()
+      if (dbg) {
+        try {
+          const shot = (await dbg.sendCommand("Page.captureScreenshot", { format: "png" })) as {
+            data: string
+          }
+          return new Uint8Array(Buffer.from(shot.data, "base64"))
+        } catch {
+          // The debugger could not make it: the window makes it below.
+        }
+      }
+      return new Uint8Array((await need().capturePage()).toPNG())
+    },
+    securePlace: async (): Promise<ControlPlace | null> => {
+      const wc = need()
+      if (await runIsolated<boolean>(pageSecureScript())) return { kind: "page" }
+      // A frame of another site can hold the field (spec 007, "Secure fields in frames").
+      for (const frame of wc.mainFrame.framesInSubtree) {
+        if (frame === wc.mainFrame) continue
+        try {
+          if (await frame.executeJavaScript(pageSecureScript(), true)) {
+            let site = frame.url
+            try {
+              site = new URL(frame.url).origin
+            } catch {
+              // The address of the frame is not an address: the card names it as it is.
+            }
+            return { kind: "frame", site }
+          }
+        } catch {
+          // A frame that is gone or does not answer holds nothing to name.
+        }
+      }
+      return null
+    },
+    dialog: () => dialogNow,
+    answerDialog: async (accept, text) => {
+      if (!(await answerDialogNow(accept, text))) return { ok: false }
+      // The page goes on once the dialog is answered; its state is read after that.
+      await new Promise((resolve) => setTimeout(resolve, 30))
       return { ok: true, state: await actionState() }
     },
+    chooserOpen: () => chooserNode !== null,
+    upload: async (paths) => {
+      const node = chooserNode
+      const dbg = await cdp()
+      if (node === null || !dbg) return { ok: false, reason: "no_chooser" }
+      try {
+        await dbg.sendCommand("DOM.setFileInputFiles", { files: paths, backendNodeId: node })
+        chooserNode = null
+        return { ok: true }
+      } catch {
+        return { ok: false, reason: "failed" }
+      }
+    },
+    setPolicy: (next) => {
+      policy = next
+      if (next) {
+        // A page with a rule for its addresses: its session turns strict, and a worker that an
+        // older page left in it goes.
+        const data = session.fromPartition(partitionOf(agentId))
+        if (!strictSessions.has(data)) {
+          strictSessions.add(data)
+          void data.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {})
+        }
+      }
+    },
+    drainBlocked: () => {
+      const list = blocked
+      blocked = []
+      return list
+    },
+    audible: () => live()?.webContents.isCurrentlyAudible() ?? false,
     place: (next) => {
       bounds = next
       apply()
@@ -806,6 +1178,22 @@ const electronBrowser = (
       listeners.push(l)
     },
   }
+}
+
+const lowMemoryListeners: (() => void)[] = []
+let memoryTimer: ReturnType<typeof setInterval> | undefined
+/**
+ * Electron has no event for low memory. The app looks at the free memory of the system every 30
+ * seconds, and a share under 3 % is low. On macOS the system keeps almost no memory free, because
+ * it fills it with the file cache, so the look never says low there (docs/spec-questions.md, B9).
+ */
+const watchMemory = () => {
+  if (memoryTimer || process.platform === "darwin") return
+  memoryTimer = setInterval(() => {
+    const info = process.getSystemMemoryInfo()
+    if (info.total > 0 && info.free / info.total < 0.03) for (const l of lowMemoryListeners) l()
+  }, 30_000)
+  memoryTimer.unref()
 }
 
 export const electronPlatform = (): PlatformService => {
@@ -1087,6 +1475,10 @@ export const electronPlatform = (): PlatformService => {
       const data = session.fromPartition(`persist:browser-${profileId}`)
       await data.clearStorageData()
       await data.clearCache()
+    },
+    onLowMemory: (listener) => {
+      lowMemoryListeners.push(listener)
+      watchMemory()
     },
   }
 }

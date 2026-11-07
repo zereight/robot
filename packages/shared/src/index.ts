@@ -1,5 +1,6 @@
 export * from "./addresses.ts"
 export * from "./backup.ts"
+export * from "./browser.ts"
 export * from "./browserProfiles.ts"
 export * from "./chars.ts"
 export * from "./chat.ts"

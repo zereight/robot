@@ -5,6 +5,8 @@ import { dirname, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
   type ApprovalAnswer,
+  browserHost,
+  type ControlPlace,
   classifyHostWriting,
   commandChangesControl,
   commandReads,
@@ -32,6 +34,8 @@ import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { checkedFetch } from "../web/fetch.ts"
 import type { ActionLogService } from "./ActionLog.ts"
+import { BROWSER_TOOL_DEFS, browserTarget, makeBrowserTools } from "./browserTools.ts"
+import type { BrowserWork } from "./browserWork.ts"
 import type { CardReply } from "./Cards.ts"
 import { type ConnectionTaskContext, makeConnectionTools } from "./connectionTools.ts"
 import type { ClaimOutcome, FileClaimsService } from "./FileClaims.ts"
@@ -138,6 +142,8 @@ export const NODE_TOOL_DEFS: readonly ToolDef[] = [
       required: ["question"],
     },
   },
+  // The browser (spec 007). Its tools live in `browserTools.ts`.
+  ...BROWSER_TOOL_DEFS,
 ]
 
 /** The marks that a task holds (spec 007, "Outside content" and "Sensitive places"). */
@@ -149,9 +155,9 @@ export interface TaskMarks {
 
 /** What a tool asks the engine to show: the engine adds the task and the run. */
 export interface NodeCard {
-  readonly kind: "approval" | "question"
+  readonly kind: "approval" | "question" | "control"
   readonly summary: string
-  readonly step: "file" | "shell" | "web" | "connection" | "ask" | "memory"
+  readonly step: "file" | "shell" | "web" | "browser" | "connection" | "ask" | "memory"
   readonly once: boolean
   readonly outside?: OutsideSource | null
   readonly sensitive?: SensitiveLabel | null
@@ -159,6 +165,8 @@ export interface NodeCard {
   /** The count of values of the arguments that the card hides (spec 018). */
   readonly hidden?: number
   readonly choices?: readonly string[]
+  /** A control card: the host of the page and the place of the secure field (spec 007). */
+  readonly control?: { readonly host: string; readonly place: ControlPlace | null }
 }
 
 export interface NodeToolContext {
@@ -186,6 +194,8 @@ export interface NodeToolsDeps {
   readonly platform: PlatformService
   /** The file claims of shared folders (spec 025). */
   readonly claims: FileClaimsService
+  /** The browser work of the workflows (spec 007). */
+  readonly browsers: BrowserWork
 }
 
 /** An error that carries a refusal to the node as a failed step. */
@@ -215,10 +225,10 @@ const cut = (value: string, max: number) =>
     ? `${value.slice(0, max)}\n[cut: ${value.length - max} more characters]`
     : value
 
-type Kind = "file" | "shell" | "web" | "connection"
+type Kind = "file" | "shell" | "web" | "browser" | "connection"
 
 export const makeNodeTools = (deps: NodeToolsDeps) => {
-  const { rules, actionLog, platform, claims } = deps
+  const { rules, actionLog, platform, claims, browsers } = deps
 
   const placeEnv = (ctx: NodeToolContext): PlaceEnv => ({
     home: platform.homeDir,
@@ -455,6 +465,119 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       throw error
     }
   }
+
+  /**
+   * A file write of a tool of the app (spec 007, 025): a file that another workflow holds is
+   * refused before any card; a control place is a risky step; the task claims the file once the
+   * user allowed it, and the check runs again with the claim.
+   */
+  const guardedWrite = async <A>(
+    ctx: NodeToolContext,
+    places: ReturnType<typeof makePlaces>,
+    full: string,
+    inside: boolean,
+    write: () => A,
+  ): Promise<A> => {
+    const control = places.control(full) || places.credential(full) === "robot"
+    // A file that another workflow holds is refused before any card asks the user (spec 025).
+    const held = claims.check({ taskId: ctx.taskId, workflowId: ctx.workflowId, paths: [full] })
+    if (held.kind !== "ok") {
+      const refusal = claimRefusal(held)
+      log(
+        ctx,
+        "file",
+        "write",
+        full,
+        { by: "shared_folder", rule: null },
+        "refused",
+        refusal.claim?.holder ?? null,
+      )
+      throw refusal
+    }
+    return guardedStep(
+      ctx,
+      {
+        kind: "file",
+        step: { kind: "file", path: full },
+        summary: full,
+        risky: control || !inside,
+        sends: false,
+        access: "write",
+        target: full,
+      },
+      async () => {
+        // The task holds the file from now on. The user may have waited on a card, so the check
+        // runs again with the claim (spec 025, "Rules").
+        const outcome = claims.claim({
+          taskId: ctx.taskId,
+          workflowId: ctx.workflowId,
+          paths: [full],
+        })
+        if (outcome.kind !== "ok") throw claimRefusal(outcome)
+        return write()
+      },
+    )
+  }
+
+  /** The outcome that a refusal gives to the node, or null for any other error. */
+  const refusalOutcome = (error: unknown): ToolOutcome | null =>
+    error instanceof Refusal
+      ? {
+          output: error.text,
+          failed: true,
+          notRun: true,
+          ...(error.reason ? { refused: error.reason } : {}),
+        }
+      : null
+
+  /** The browser tools (spec 007), in their own module. */
+  const browser = makeBrowserTools({
+    work: browsers,
+    markOutside,
+    credential: (ctx, path) => makePlaces(placeEnv(ctx)).credential(path),
+    record: (ctx, step) =>
+      log(ctx, "browser", null, step.target, { by: step.by, rule: null }, step.result),
+    // A file that the node uploads is a file read that sends data out.
+    readStep: async (ctx, path) => {
+      try {
+        await guardedStep(
+          ctx,
+          {
+            kind: "file",
+            step: { kind: "file", path },
+            summary: path,
+            risky: !insideWorkspace(path, realOf(ctx.workspace)),
+            sends: true,
+            access: "read",
+            target: path,
+          },
+          async () => undefined,
+        )
+        return null
+      } catch (error) {
+        const outcome = refusalOutcome(error)
+        if (outcome) return outcome
+        throw error
+      }
+    },
+    writeStep: async (ctx, path, write) => {
+      try {
+        const places = makePlaces(placeEnv(ctx))
+        await guardedWrite(
+          ctx,
+          places,
+          path,
+          insideWorkspace(realOf(path), realOf(ctx.workspace)),
+          write,
+        )
+        return null
+      } catch (error) {
+        const outcome = refusalOutcome(error)
+        if (outcome) return outcome
+        throw error
+      }
+    },
+  })
 
   /** The tools of the connections (spec 018): this file lends them the gate, the log and the marks. */
   const connectionTools = makeConnectionTools({
@@ -753,52 +876,12 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       }
       case "write_file": {
         const p = place(ctx, text(args, "path"))
-        const control = places.control(p.full) || places.credential(p.full) === "robot"
-        // A file that another workflow holds is refused before any card asks the user (spec 025).
-        const held = claims.check({
-          taskId: ctx.taskId,
-          workflowId: ctx.workflowId,
-          paths: [p.full],
+        return guardedWrite(ctx, places, p.full, p.inside, () => {
+          const content = text(args, "content")
+          mkdirSync(dirname(p.full), { recursive: true })
+          writeFileSync(p.full, content)
+          return { output: `Wrote ${content.length} characters to ${p.full}`, failed: false }
         })
-        if (held.kind !== "ok") {
-          const refusal = claimRefusal(held)
-          log(
-            ctx,
-            "file",
-            "write",
-            p.full,
-            { by: "shared_folder", rule: null },
-            "refused",
-            refusal.claim?.holder ?? null,
-          )
-          throw refusal
-        }
-        return guardedStep(
-          ctx,
-          {
-            kind: "file",
-            step: { kind: "file", path: p.full },
-            summary: p.full,
-            risky: control || !p.inside,
-            sends: false,
-            access: "write",
-            target: p.full,
-          },
-          async () => {
-            // The task holds the file from now on. The user may have waited on a card, so the check
-            // runs again with the claim (spec 025, "Rules").
-            const outcome = claims.claim({
-              taskId: ctx.taskId,
-              workflowId: ctx.workflowId,
-              paths: [p.full],
-            })
-            if (outcome.kind !== "ok") throw claimRefusal(outcome)
-            mkdirSync(dirname(p.full), { recursive: true })
-            const content = text(args, "content")
-            writeFileSync(p.full, content)
-            return { output: `Wrote ${content.length} characters to ${p.full}`, failed: false }
-          },
-        )
       }
       case "search_files": {
         const query = text(args, "query")
@@ -876,6 +959,7 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
         return { output: reply.answer, failed: false }
       }
       default:
+        if (browser.handles(call.name)) return browser.run(ctx, call)
         if (connectionTools.owns(ctx, call.name)) return connectionTools.execute(ctx, call)
         return { output: `Unknown tool: ${call.name}`, failed: true }
     }
@@ -888,8 +972,27 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
     if (!connectionTools.owns(ctx, call.name) && readOnlyRefuses(ctx.level, call.name)) {
       const args = parseArgs(call)
       const kind: Kind | null =
-        call.name === "write_file" ? "file" : call.name === "run_command" ? "shell" : null
-      if (kind)
+        call.name === "write_file"
+          ? "file"
+          : call.name === "run_command"
+            ? "shell"
+            : browser.handles(call.name)
+              ? "browser"
+              : null
+      // A browser step is logged with its host and its kind of step, never with its text.
+      if (kind === "browser")
+        log(
+          ctx,
+          kind,
+          null,
+          browserTarget(
+            call.name,
+            call.name === "browser_open" ? browserHost(text(args, "url")) : "",
+          ),
+          { by: "level", rule: null },
+          "refused",
+        )
+      else if (kind)
         log(
           ctx,
           kind,
@@ -903,13 +1006,8 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
     try {
       return await run(ctx, call)
     } catch (error) {
-      if (error instanceof Refusal)
-        return {
-          output: error.text,
-          failed: true,
-          notRun: true,
-          ...(error.reason ? { refused: error.reason } : {}),
-        }
+      const refused = refusalOutcome(error)
+      if (refused) return refused
       if (ctx.signal.aborted) throw error
       return { output: error instanceof Error ? error.message : String(error), failed: true }
     }
