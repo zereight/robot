@@ -13,12 +13,14 @@ import {
   type DocumentVersion,
   type GraphVersion,
   isLooser,
+  isRuntimeKind,
   NODES_MAX,
   type NodeInput,
   type NodePatch,
   nameKey,
   OPTIONS_MIN,
   type PermissionLevel,
+  programName,
   redactSecrets,
   resolveLocale,
   THRESHOLD_DEFAULT,
@@ -37,8 +39,28 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { SettingsStore } from "./Settings.ts"
+import { sharingWorkflows } from "./sharedFolders.ts"
 
 export type { GraphVersion, NodeInput, NodePatch }
+
+/**
+ * The programs of the text nodes of a workflow that take no part in file claims (spec 025,
+ * "Rules"): a vendor runtime runs its own file steps, and the app cannot see or refuse them. One
+ * name for each program, in order of first use.
+ */
+const claimlessPrograms = (db: DatabaseService, workflowId: string): readonly string[] => {
+  const names: string[] = []
+  for (const row of db.all<{ kind: string }>(
+    `SELECT a.kind FROM workflow_node n JOIN provider_account a ON a.id = n.account_id
+     WHERE n.workflow_id = ? AND n.kind = 'text' ORDER BY n.number`,
+    workflowId,
+  )) {
+    if (!isRuntimeKind(row.kind)) continue
+    const name = programName(row.kind)
+    if (!names.includes(name)) names.push(name)
+  }
+  return names
+}
 
 export interface WorkflowsService {
   readonly list: (serverId: string) => Effect.Effect<readonly Workflow[]>
@@ -289,11 +311,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       }
       const detail = (r: WorkflowRow): WorkflowDetail => {
         const graph = readGraph(db, r.id)
+        const sharedWith = sharingWorkflows(db, r.id).map((w) => w.name)
         return {
           ...toWorkflow(r, graph),
           document: r.document,
           graph,
           checkOutcome: readStoredCheck(db, r.id, graph),
+          sharedWith,
+          claimless: sharedWith.length === 0 ? [] : claimlessPrograms(db, r.id),
         }
       }
       const nameTaken = (serverId: string, name: string, exceptId?: string) =>

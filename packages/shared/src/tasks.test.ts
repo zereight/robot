@@ -164,6 +164,7 @@ describe("the retry note (spec 005, Retry note)", () => {
     sensitive: null,
     rule: null,
     check: null,
+    holder: null,
     device: null,
   })
   test("a file write, a shell command and a tool of a connection may change things", () => {

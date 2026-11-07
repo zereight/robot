@@ -117,7 +117,8 @@ export const parseOutsideSource = (text: string | null | undefined): OutsideSour
  * Who decided a step of the action log (spec 007, "Action log"). `app` is the app itself, for an
  * address that is never allowed (spec 007, "Sensitive places"). `unreadable_rule` is a rule that
  * the app could not read, followed by the user on a card. `check` is the check of "Ask when
- * unsure": it was sure that the user asked for the step (spec 007).
+ * unsure": it was sure that the user asked for the step (spec 007). `shared_folder` is a file claim
+ * of another workflow that refused the step (spec 025).
  */
 export type ActionDecider =
   | "level"
@@ -127,6 +128,7 @@ export type ActionDecider =
   | "app"
   | "unreadable_rule"
   | "check"
+  | "shared_folder"
 
 /** The decider values, for a column that stores them. */
 export const ACTION_DECIDERS = [
@@ -137,6 +139,7 @@ export const ACTION_DECIDERS = [
   "app",
   "unreadable_rule",
   "check",
+  "shared_folder",
 ] as const satisfies readonly ActionDecider[]
 
 /**
@@ -216,6 +219,8 @@ export interface ActionLogEntry {
   readonly check: ActionCheck | null
   /** The name of the linked device that answered the card of the step (spec 012), or null. */
   readonly device: string | null
+  /** The workflow that held the file, for a step that a file claim refused (spec 025), or null. */
+  readonly holder: string | null
 }
 
 export const ACTION_LOG_DAYS = 90
@@ -246,3 +251,10 @@ export const guardVerdict = (input: {
   if (!input.outside) return "run"
   return input.level === "full" ? "run" : "ask"
 }
+
+/**
+ * Makes a text from a run safe to put in a prompt as data (spec 003, 007): the characters of a tag
+ * cannot close the mark around it, so the text cannot pose as the rest of the prompt.
+ */
+export const escapeOutside = (text: string): string =>
+  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")

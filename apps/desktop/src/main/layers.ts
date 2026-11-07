@@ -10,6 +10,7 @@ import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { FileClaims } from "./services/FileClaims.ts"
 import { Host } from "./services/Host.ts"
 import { Memory } from "./services/Memory.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
@@ -79,6 +80,7 @@ export const appLayer = (options: AppLayerOptions) => {
   ).pipe(Layer.provideMerge(runtimes))
   const rules = Layer.mergeAll(
     ActionLog.layer,
+    FileClaims.layer,
     Rules.layer,
     SavedSecrets.layer,
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),

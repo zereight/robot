@@ -29,4 +29,19 @@ describe("the prompt of a text node (spec 010)", () => {
     expect(system.indexOf("Rules of the app")).toBeGreaterThan(system.indexOf("My document"))
     expect(system).toContain("Blocked:")
   })
+  test("the shared folder note comes after the rules, and only when the folder is shared (spec 025)", () => {
+    const base = {
+      document: "Doc",
+      workflowName: "W",
+      nodeNumber: 1,
+      nodeName: "N",
+      folder: "/tmp/w",
+      tools: true,
+    }
+    expect(nodeSystem({ ...base, sharedFolderNote: null })).not.toContain("Shared folder")
+    expect(nodeSystem(base)).not.toContain("Shared folder")
+    const system = nodeSystem({ ...base, sharedFolderNote: "Shared folder. Note text." })
+    expect(system.endsWith("Shared folder. Note text.")).toBe(true)
+    expect(system.indexOf("Shared folder")).toBeGreaterThan(system.indexOf("Rules of the app"))
+  })
 })

@@ -21,6 +21,7 @@ import {
   type RuleVerdict,
   readOnlyRefuses,
   readOnlyRefusesKey,
+  refusalText,
   riskyReason,
   ruleOutcome,
   type SensitiveLabel,
@@ -32,6 +33,7 @@ import type { ApprovalRequest } from "../runtimes/types.ts"
 import { checkedFetch } from "../web/fetch.ts"
 import type { ActionLogService } from "./ActionLog.ts"
 import type { CardReply } from "./Cards.ts"
+import type { ClaimOutcome, FileClaimsService } from "./FileClaims.ts"
 import type { PlatformService } from "./Platform.ts"
 import { programStep } from "./programSteps.ts"
 import type { RulesService } from "./Rules.ts"
@@ -173,6 +175,8 @@ export interface NodeToolsDeps {
   readonly rules: RulesService
   readonly actionLog: ActionLogService
   readonly platform: PlatformService
+  /** The file claims of shared folders (spec 025). */
+  readonly claims: FileClaimsService
 }
 
 /** An error that carries a refusal to the node as a failed step. */
@@ -180,6 +184,8 @@ class Refusal extends Error {
   constructor(
     readonly text: string,
     readonly reason?: RefusalReason,
+    /** Set when a file claim of another workflow refused the step (spec 025). */
+    readonly claim?: { readonly holder: string | null },
   ) {
     super(text)
   }
@@ -203,7 +209,7 @@ const cut = (value: string, max: number) =>
 type Kind = "file" | "shell" | "web"
 
 export const makeNodeTools = (deps: NodeToolsDeps) => {
-  const { rules, actionLog, platform } = deps
+  const { rules, actionLog, platform, claims } = deps
 
   const placeEnv = (ctx: NodeToolContext): PlaceEnv => ({
     home: platform.homeDir,
@@ -229,6 +235,16 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
     } else seen.set(target, { result, times: 1 })
     return null
   }
+
+  /**
+   * The refusal of a file claim (spec 025): the step does not run. The node reads the line of the
+   * card, the name of the holder, its node and the first words of its prompt, or the reason of the
+   * limit of 1000 files.
+   */
+  const claimRefusal = (outcome: Exclude<ClaimOutcome, { kind: "ok" }>): Refusal =>
+    outcome.kind === "held"
+      ? new Refusal(refusalText(outcome.holder), "claim", { holder: outcome.holder.workflow })
+      : new Refusal(outcome.text, "claim", { holder: null })
 
   /** What one gate decided, for the log. */
   interface Decided {
@@ -313,6 +329,7 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
     target: string,
     decided: Decided,
     result: "ran" | "failed" | "refused" | "stopped",
+    holder: string | null = null,
   ) =>
     actionLog.add({
       workflowId: ctx.workflowId,
@@ -326,6 +343,7 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       sensitive: ctx.marks.sensitive,
       ...(decided.rule ? { rule: decided.rule } : {}),
       ...(decided.device ? { device: decided.device } : {}),
+      ...(holder ? { holder } : {}),
     })
 
   const markSensitive = (ctx: NodeToolContext, label: SensitiveLabel | null) => {
@@ -378,6 +396,19 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       log(ctx, input.kind, input.access, input.target, decided, "ran")
       return value
     } catch (error) {
+      // A file claim refused the step after the gate: the log names who decided (spec 025).
+      if (error instanceof Refusal && error.claim) {
+        log(
+          ctx,
+          input.kind,
+          input.access,
+          input.target,
+          { by: "shared_folder", rule: null },
+          "refused",
+          error.claim.holder,
+        )
+        throw error
+      }
       log(
         ctx,
         input.kind,
@@ -658,6 +689,25 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       case "write_file": {
         const p = place(ctx, text(args, "path"))
         const control = places.control(p.full) || places.credential(p.full) === "robot"
+        // A file that another workflow holds is refused before any card asks the user (spec 025).
+        const held = claims.check({
+          taskId: ctx.taskId,
+          workflowId: ctx.workflowId,
+          paths: [p.full],
+        })
+        if (held.kind !== "ok") {
+          const refusal = claimRefusal(held)
+          log(
+            ctx,
+            "file",
+            "write",
+            p.full,
+            { by: "shared_folder", rule: null },
+            "refused",
+            refusal.claim?.holder ?? null,
+          )
+          throw refusal
+        }
         return guardedStep(
           ctx,
           {
@@ -670,6 +720,14 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
             target: p.full,
           },
           async () => {
+            // The task holds the file from now on. The user may have waited on a card, so the check
+            // runs again with the claim (spec 025, "Rules").
+            const outcome = claims.claim({
+              taskId: ctx.taskId,
+              workflowId: ctx.workflowId,
+              paths: [p.full],
+            })
+            if (outcome.kind !== "ok") throw claimRefusal(outcome)
             mkdirSync(dirname(p.full), { recursive: true })
             const content = text(args, "content")
             writeFileSync(p.full, content)
