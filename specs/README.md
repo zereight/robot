@@ -20,24 +20,24 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 012 | [Device link: pair phones and computers, what a client does with workflows, messages, identity, offline behaviour](012-device-link.md) | Draft |
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
 | 014 | [Local data, privacy, secrets, export, and the review before an import of a workflow file](014-local-data.md) | Draft |
-| 015 | [Notifications and the status island](015-notifications.md) | Draft |
-| 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
+| 015 | [Notifications and the status island: notices of replies, approvals, failed nodes, finished runs and proposals, each leading to the chat of the workflow](015-notifications.md) | Draft |
+| 016 | [Knowledge: linked articles that the nodes of a workflow write, cite and read again](016-knowledge.md) | Draft |
 | 017 | [Skills: saved instructions that the user calls with a slash, and that a prompt can include](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where workflows run](019-sync.md) | Draft |
-| 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
+| 020 | [Saved secrets: keys and passwords that the nodes of a workflow use and the model never sees](020-saved-secrets.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
 | 025 | [Shared folders: file claims between agents in one folder](025-shared-folders.md) | Draft |
 | 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which agents each one reaches](026-token-savings.md) | Draft |
 | 027 | [Voice: dictate into the message box, read a reply aloud, voice chat on the phone](027-voice.md) | Draft |
-| 028 | [Chat bridge: talk to one agent from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
+| 028 | [Chat bridge: talk to the responsible document of one workflow from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
 | 037 | [Manage tools: the responsible document and an outside program make workflows, each change a request that the user allows](037-manage-tools.md) | Draft |
-| 038 | [Events: what arrived from a schedule, a watch, a web hook, an outside program or Teams, which place took it, and the reason when nothing did](038-events.md) | Draft |
+| 038 | [Events: what arrived from a schedule, an outside program or Teams, which workflow took it, and the reason when nothing did](038-events.md) | Draft |
 | 039 | [Looping motion: spinners and pulses that show running work move at one pace and stop with reduce motion](039-looping-motion.md) | Draft |
 
 ## Milestones
@@ -94,6 +94,7 @@ not apply now.
 | M41 | The changes to 002, 010 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S144 to S146: the owner of a workflow and the participants of its agent steps, the workflows of organizations and agents, and the button "New agent" in the form of an organization |
 | W1 | The changes to 000, 001 and 010. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W1". | Slice W1: the workflow is the product. It is a graph of nodes with a responsible document, one chat and one memory, and a TLA file that the check reads. |
 | W2 | The changes to 002, 003, 005, 007, 008, 017 and 037, and the end of 009. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W2". | Slice W2: the agent is no longer an object. The responsible document, the chat, the memory and self-improvement belong to the workflow. Spec 009 is deleted (decision 12). |
+| R2 | The changes to 015, 016, 020, 028 and 038. The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "R2". | Slice R2: a secret, an article, a notice, an event and a Teams chat belong to a workflow or to the user. A Teams message talks to the responsible document of one workflow. |
 
 ## Surfaces check
 
