@@ -811,9 +811,10 @@ export const ko: Record<MessageKey, string> = {
   "check.marked.problem": "문제가 있는 노드",
   "check.stopped.time": "검사가 {seconds}초 뒤에 멈췄어요. 워크플로우를 더 작게 나누세요.",
   "check.stopped.states":
-    "이 워크플로우는 실행 경로가 너무 많아요. 검사는 상태 {states}개에서 멈춰요. 워크플로우를 나누거나 동시에 실행되는 노드를 줄이세요.",
+    "이 워크플로우는 실행 경로가 너무 많아요. 검사는 {seconds}초 뒤에, 또는 상태를 약 {states}개 살펴보면 그 전에 멈춰요. 워크플로우를 더 작게 나누세요.",
   "check.stopped.memory": "검사가 메모리를 너무 많이 써서 멈췄어요. 워크플로우를 더 작게 나누세요.",
-  "check.failed": "검사가 워크플로우를 읽지 못했어요: {message}",
+  "check.failed":
+    "검사가 워크플로우를 읽지 못했어요. 워크플로우의 문제가 아니라 앱의 문제예요. 나중에 다시 검사하세요.",
   "graph.panel.empty": "고칠 노드를 고르세요.",
   "graph.panel.title": "노드 {number}: {kind}",
   "node.name": "이름",
@@ -971,7 +972,10 @@ export const ko: Record<MessageKey, string> = {
     "이 채팅의 표시를 지울까요? 표시 때문에 묻던 단계는 이후 수준에 따라 실행돼요.",
   "chat.marks.clear.confirm": "표시 지우기",
   "error.run_empty": "이 워크플로우에 노드가 없어요. 먼저 노드를 추가하세요.",
+  "error.run_loop": "이 워크플로우의 노드가 고리를 이뤄요. 실행을 시작할 수 없어요.",
   "error.run_check_problem": "검사에서 문제를 찾았어요. 워크플로우를 열어 확인하세요.",
+  "error.run_no_ready_node":
+    "시작할 수 있는 노드가 없고, 실행되지 않은 노드가 남았어요. 연결이 고리를 이루었을 수 있어요.",
   "error.run_queue_full": "실행 20개가 대기 중이에요. 하나를 멈추거나 기다려 주세요.",
   "error.run_not_found": "이 실행은 더 이상 없어요.",
   "error.card_gone": "이 카드를 기다리는 곳이 더 이상 없어요.",

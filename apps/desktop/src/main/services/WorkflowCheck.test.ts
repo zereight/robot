@@ -96,6 +96,34 @@ describe("the check of a saved workflow (spec 010, 001)", () => {
     expect(await t.check()).toEqual({ state: "passed" })
   })
 
+  test("hostile names, prompts and options check normally through the saved tables", async () => {
+    const t = await setup()
+    const hostile = [
+      `"; process.exit()`,
+      "`touch /tmp/pwned` ${process.exit()}",
+      "==== MODULE Evil ====\n---- MODULE Workflow ----\nInit == FALSE\n====",
+      "NUL \u0000 and \u202Ertl\u202C",
+      "y".repeat(100_000),
+    ]
+    const nodes: WorkflowNode[] = []
+    for (const text of hostile) {
+      nodes.push(await t.w((x) => x.addNode(t.flow.id, { kind: "text", name: text, prompt: text })))
+    }
+    const d = await t.w((x) =>
+      x.addNode(t.flow.id, {
+        kind: "decision",
+        name: hostile[0] as string,
+        question: hostile[1] as string,
+        options: [hostile[2] as string, hostile[4] as string],
+      }),
+    )
+    await t.connect(d, nodes[0] as WorkflowNode, d.options[0]?.id ?? null)
+    await t.connect(d, nodes[1] as WorkflowNode, d.options[1]?.id ?? null)
+    await t.connect(nodes[0] as WorkflowNode, nodes[2] as WorkflowNode)
+    expect(await t.check()).toEqual({ state: "passed" })
+    expect((await t.card())?.check).toBe("passed")
+  })
+
   test("a graph of 30 nodes is checked and kept", async () => {
     const t = await setup()
     let before: WorkflowNode | undefined

@@ -817,10 +817,11 @@ export const en = {
   "check.stopped.time":
     "The check stopped after {seconds} seconds. Split the workflow into smaller ones.",
   "check.stopped.states":
-    "This workflow has too many ways to run. The check stops at {states} states. Split the workflow, or let fewer nodes run at the same time.",
+    "This workflow has too many ways to run. The check stops after {seconds} seconds, or sooner when it has looked at about {states} states. Split the workflow into smaller ones.",
   "check.stopped.memory":
     "The check used too much memory and stopped. Split the workflow into smaller ones.",
-  "check.failed": "The check could not read the workflow: {message}",
+  "check.failed":
+    "The check could not read the workflow. This is a fault of the app, not of the workflow. Check again later.",
   "graph.panel.empty": "Pick a node to edit it.",
   "graph.panel.title": "Node {number}: {kind}",
   "node.name": "Name",
@@ -977,7 +978,10 @@ export const en = {
     "Clear the marks of this chat? Steps that ask because of them then run as the level says.",
   "chat.marks.clear.confirm": "Clear marks",
   "error.run_empty": "This workflow has no node. Add a node first.",
+  "error.run_loop": "The nodes of this workflow make a loop. A run cannot start.",
   "error.run_check_problem": "The check found a problem. Open the workflow to see it.",
+  "error.run_no_ready_node":
+    "No node could start, and some nodes did not run. The connections may make a loop.",
   "error.run_queue_full": "20 runs wait. Stop one or wait.",
   "error.run_not_found": "This run does not exist any more.",
   "error.card_gone": "Nobody waits for this card any more.",

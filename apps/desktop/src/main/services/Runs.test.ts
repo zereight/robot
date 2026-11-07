@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { chatText, type RunDetail, type WorkflowNode } from "@robot/shared"
+import {
+  type CheckOutcome,
+  chatText,
+  checkGraphKey,
+  type RunDetail,
+  type WorkflowNode,
+} from "@robot/shared"
 import { Effect } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
@@ -66,8 +72,19 @@ interface NodeSpec {
   readonly continueOnFailure?: boolean
 }
 
-const setup = async (options: { databaseFile?: string; level?: string } = {}) => {
+const setup = async (
+  options: {
+    databaseFile?: string
+    level?: string
+    check?: Parameters<typeof testRuntime>[0] extends infer O
+      ? O extends { check?: infer C }
+        ? C
+        : never
+      : never
+  } = {},
+) => {
   const t = testRuntime({
+    ...(options.check ? { check: options.check } : {}),
     decisionUrl: `http://127.0.0.1:${decisionServer.port}`,
     ...(options.databaseFile ? { databaseFile: options.databaseFile } : {}),
   })
@@ -116,6 +133,19 @@ const setup = async (options: { databaseFile?: string; level?: string } = {}) =>
     run(Database.use((d) => Effect.sync(() => d.run(statement, ...params))))
   const rows = <T>(statement: string, ...params: (string | number | null)[]) =>
     run(Database.use((d) => Effect.sync(() => d.all<T>(statement, ...params))))
+  /** Stores a result of the check for the graph as it is now, or for another graph (stale). */
+  const storeCheck = async (outcome: CheckOutcome, key?: string) => {
+    const graph = await run(Workflows.use((w) => w.graph(flow.id)))
+    await sql(
+      `INSERT INTO workflow_check (workflow_id, graph_key, outcome, checked_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (workflow_id) DO UPDATE SET graph_key = excluded.graph_key,
+         outcome = excluded.outcome, checked_at = excluded.checked_at`,
+      flow.id,
+      key ?? checkGraphKey(graph),
+      JSON.stringify(outcome),
+      Date.now(),
+    )
+  }
   const cards = () => run(Cards.use((c) => Effect.sync(() => c.open(flow.id))))
   const answer = (cardId: string, a: Parameters<Cards["Service"]["answer"]>[1]): Promise<void> =>
     run(Cards.use((c) => c.answer(cardId, a)))
@@ -143,6 +173,7 @@ const setup = async (options: { databaseFile?: string; level?: string } = {}) =>
     ended,
     sql,
     rows,
+    storeCheck,
     cards,
     answer,
     waitCard,
@@ -189,24 +220,99 @@ describe("a run of a workflow (spec 010)", () => {
     expect(d.nodes[1]?.task?.result).toBe("You said: Second\n\nYou said: First")
   })
 
+  const refused = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.start().then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+
   test("a workflow with no node, or with a problem that the check finds, does not start", async () => {
     const t = await setup()
-    expect(
-      await t.start().then(
-        () => "ok",
-        (e: { code?: string }) => e.code,
-      ),
-    ).toBe("run_empty")
+    expect(await refused(t)).toBe("run_empty")
+    // A decision option with no connection is a problem of the shape: the check finds it.
+    const d = await t.decisionNode("Choose", ["Yes", "No"])
+    const a = await t.node({ name: "A", prompt: "x" })
+    const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
+    await t.connect(d, a, graph.nodes.find((n) => n.id === d.id)?.options[0]?.id ?? null)
+    expect(await refused(t)).toBe("run_check_problem")
+  })
+
+  const loop = async (t: Awaited<ReturnType<typeof setup>>) => {
     const a = await t.node({ name: "A", prompt: "x" })
     const b = await t.node({ name: "B", prompt: "y" })
     await t.connect(a, b)
     await t.connect(b, a)
-    expect(
-      await t.start().then(
-        () => "ok",
-        (e: { code?: string }) => e.code,
-      ),
-    ).toBe("run_check_problem")
+  }
+
+  test("a loop never starts: not when the check ran out of time (a limit of 1 ms)", async () => {
+    const t = await setup({ check: { limits: { timeMs: 1, maxStates: 1_000_000 } } })
+    await loop(t)
+    expect(await refused(t)).toBe("run_loop")
+    expect((await t.run(Workflows.use((w) => w.list(t.flow.serverId))))[0]?.running).toBe(false)
+  })
+
+  test("a loop never starts: not when the stored result says stopped, failed (the worker failed), or passed", async () => {
+    const t = await setup()
+    await loop(t)
+    for (const outcome of [
+      { state: "stopped", reason: "time" },
+      { state: "stopped", reason: "states" },
+      { state: "failed", message: "The checker ended too early." },
+      { state: "passed" },
+    ] as const) {
+      await t.storeCheck(outcome)
+      expect(await refused(t)).toBe("run_loop")
+    }
+    // A result of an older graph, and no result at all.
+    await t.storeCheck({ state: "passed" }, "an older graph")
+    expect(await refused(t)).toBe("run_loop")
+    await t.sql("DELETE FROM workflow_check WHERE workflow_id = ?", t.flow.id)
+    expect(await refused(t)).toBe("run_loop")
+    expect(await t.rows("SELECT id FROM run")).toEqual([])
+  })
+
+  test("a graph with no loop starts when the check stopped, failed, or has no valid result", async () => {
+    for (const outcome of [
+      { state: "stopped", reason: "time" },
+      { state: "failed", message: "The checker ended too early." },
+      null,
+      "stale",
+    ] as const) {
+      const t = await setup()
+      const a = await t.node({ name: "A", prompt: "x" })
+      const b = await t.node({ name: "B", prompt: "y" })
+      await t.connect(a, b)
+      if (outcome === "stale") await t.storeCheck({ state: "passed" }, "an older graph")
+      else if (outcome) await t.storeCheck(outcome)
+      const d = await t.ended((await t.start()).id)
+      expect(d.state).toBe("done")
+      expect(stateOf(d)).toEqual(["1:done", "2:done"])
+    }
+  })
+
+  test("a run that finds no ready node and nodes that never ran fails with a reason", async () => {
+    const t = await setup()
+    const a = await t.node({ name: "Slow", prompt: "slow one" })
+    const b = await t.node({ name: "B", prompt: "y" })
+    const first = await t.start()
+    const second = await t.start()
+    expect(second.state).toBe("queued")
+    // The graph gets a loop while the second run waits (a change by another way than the editor).
+    await t.sql(
+      "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id) VALUES ('c1', ?, ?, ?), ('c2', ?, ?, ?)",
+      t.flow.id,
+      a.id,
+      b.id,
+      t.flow.id,
+      b.id,
+      a.id,
+    )
+    await t.run(Runs.use((r) => r.stop(first.id)))
+    await t.ended(first.id)
+    const d = await t.ended(second.id)
+    expect(d.state).toBe("failed")
+    expect(d.reasonCode).toBe("run_no_ready_node")
+    expect(d.nodes.map((n) => n.state)).not.toContain("done")
   })
 
   test("a node with no provider fails with a reason and the run stops", async () => {

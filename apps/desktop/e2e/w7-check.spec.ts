@@ -45,6 +45,11 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await expect(page.getByTestId("graph-problems")).toContainText("3 “Publish”")
   await expect(page.getByTestId("check-path-line")).toHaveCount(1)
   await expect(page.getByTestId("check-path-line").first()).toHaveText("Node 1 “Draft” runs.")
+  // "Problem found" is in a live region, as "Passed" is.
+  await expect(page.getByTestId("check-status")).toHaveAttribute("role", "status")
+  await expect(page.getByTestId("check-status").getByTestId("check-problem-found")).toHaveText(
+    "Problem found",
+  )
 
   // The canvas marks the nodes of the problem with the danger colour and an icon, and the node of
   // the path with the number of its line. A click on a line selects its node.
@@ -54,14 +59,18 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await expect(nodes.nth(1)).toHaveAttribute("data-problem", "true")
   await expect(nodes.nth(2)).toHaveAttribute("data-problem", "true")
   await expect(nodes.nth(1).getByTestId("graph-node-mark").locator("svg")).toHaveCount(1)
+  // A screen reader hears the mark and the problem: they are in the name of the node button.
+  await expect(nodes.nth(0)).toHaveAttribute("aria-label", "Node 1: Draft. Step 1 of the path")
+  await expect(nodes.nth(1)).toHaveAttribute("aria-label", "Node 2: Edit. Problem node")
   await page.getByTestId("check-path-line").first().click()
   await expect(nodes.nth(0)).toHaveAttribute("aria-pressed", "true")
   await shot(page, "w7-01-problem")
 
-  // The run does not start, and the message says why.
+  // The run does not start, and the message says why. A loop has its own test that does not use
+  // the checker, so it has its own words.
   await page.getByTestId("workflow-run").click()
   await expect(
-    page.getByText("The check found a problem. Open the workflow to see it."),
+    page.getByText("The nodes of this workflow make a loop. A run cannot start."),
   ).toBeVisible()
   await page.getByTestId("tab-runs").click()
   await expect(page.getByTestId("runs-none")).toBeVisible()
@@ -124,4 +133,87 @@ test("check: the panel closes and opens again, and the marks go with it", async 
   await expect(page.getByTestId("graph-node-mark")).toHaveCount(3)
   await app.close()
   await mock.close()
+})
+
+test("check: a background result does not take the focus from a node of the canvas", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await newWorkflow(page, "Weekly")
+  await badGraph(page, mock)
+  await expect(page.getByTestId("check-state")).toHaveText("Problem found")
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      robot: { on: (event: string, fn: () => void) => void }
+      changed: number
+    }
+    w.changed = 0
+    w.robot.on("workflows.changed", () => {
+      w.changed++
+    })
+  })
+  const changed = () => page.evaluate(() => (window as unknown as { changed: number }).changed)
+  const node = page.getByTestId("graph-node").nth(1)
+  await node.focus()
+  await expect(node).toBeFocused()
+  const before = await changed()
+  // "Check" runs the check again: the main process sends "workflows.changed".
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        robot: { invoke: (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }> }
+      }
+    ).robot.invoke
+    const servers = (await invoke("servers.list")).value as { id: string; kind: string }[]
+    const local = servers.find((s) => s.kind === "local")
+    const flows = (await invoke("workflows.list", { serverId: local?.id })).value as {
+      id: string
+    }[]
+    for (const flow of flows) await invoke("workflows.check", { id: flow.id })
+  })
+  await expect
+    .poll(changed, { message: "no workflows.changed event arrived" })
+    .toBeGreaterThan(before)
+  await expect(page.getByTestId("check-state")).toHaveText("Problem found")
+  await expect(node).toBeFocused()
+  await app.close()
+  await mock.close()
+})
+
+test("check: a stopped check and a failed check show words of the window, not the words of the checker", async () => {
+  const userData = freshUserData()
+  let { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await newWorkflow(page, "Weekly")
+  await app.close()
+
+  const { DatabaseSync } = await import("node:sqlite")
+  const { join } = await import("node:path")
+  const seed = (outcome: object) => {
+    const db = new DatabaseSync(join(userData, "robot.db"))
+    const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
+    // The key of a graph with no node (the key is the shape: see `checkGraphKey`).
+    db.prepare(
+      `INSERT INTO workflow_check (workflow_id, graph_key, outcome, checked_at) VALUES (?, '[[],[]]', ?, 1)
+       ON CONFLICT (workflow_id) DO UPDATE SET outcome = excluded.outcome, graph_key = excluded.graph_key`,
+    ).run(flow.id, JSON.stringify(outcome))
+    db.close()
+  }
+  const raw = "Unexpected token in module Workflow at line 12"
+
+  seed({ state: "stopped", reason: "states" })
+  ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
+  // The app opens at the workflow that was open.
+  const stopped = page.getByTestId("check-stopped")
+  await expect(stopped).toContainText("stops after 60 seconds")
+  await expect(stopped).not.toContainText("at the same time")
+  await expect(page.getByTestId("check-state")).toHaveText("Could not check")
+  await app.close()
+
+  seed({ state: "failed", message: raw })
+  ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "ko-KR" }))
+  const failed = page.getByTestId("check-failed")
+  await expect(failed).toContainText("앱의 문제예요")
+  await expect(failed).not.toContainText("Unexpected")
+  await expect(page.locator("body")).not.toContainText(raw)
+  await shot(page, "w7-05-failed-ko")
+  await app.close()
 })

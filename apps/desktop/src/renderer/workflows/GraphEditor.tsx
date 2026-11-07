@@ -24,6 +24,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { CheckPanel } from "./CheckPanel.tsx"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
@@ -58,16 +59,16 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
         fallback={<p class={styles.hintText}>{t("graph.versions.empty")}</p>}
       >
         <ul class={styles.list}>
-          <For each={versions()}>
-            {(v) => (
+          <Keyed each={versions()} by={(x) => x.id}>
+            {(version) => (
               <li class={styles.listRow} data-testid="graph-version">
                 <span>
-                  {formatDateTime(locale(), v.createdAt)}{" "}
+                  {formatDateTime(locale(), version().createdAt)}{" "}
                   <span class={styles.hintText}>
-                    {t(`graph.version.source.${v.source}` as MessageKey)} ·{" "}
+                    {t(`graph.version.source.${version().source}` as MessageKey)} ·{" "}
                     {t("graph.version.row", {
-                      nodes: v.graph.nodes.length,
-                      connections: v.graph.connections.length,
+                      nodes: version().graph.nodes.length,
+                      connections: version().graph.connections.length,
                     })}
                   </span>
                 </span>
@@ -76,7 +77,10 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
                   data-testid="graph-version-restore"
                   onClick={() => {
                     setProblem(undefined)
-                    call("workflows.versions.restore", { id: props.workflow.id, versionId: v.id })
+                    call("workflows.versions.restore", {
+                      id: props.workflow.id,
+                      versionId: version().id,
+                    })
                       .then(() => setRestored(true))
                       .catch((e) => setProblem(describeError(e)))
                   }}
@@ -85,7 +89,7 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
                 </Button>
               </li>
             )}
-          </For>
+          </Keyed>
         </ul>
       </Show>
       <Show when={restored()}>
@@ -220,6 +224,15 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
   }
 
   const hasProblem = (n: WorkflowNode) => marks().faults.has(n.id)
+  /** What a screen reader says for a node: the node, and its mark when the check marks it. */
+  const nodeLabel = (n: WorkflowNode) => {
+    const line = marks().lines.get(n.id)
+    return [
+      t("graph.node.aria", { number: n.number, name: n.name }),
+      ...(line === undefined ? [] : [t("check.marked", { line })]),
+      ...(hasProblem(n) ? [t("check.marked.problem", { line: line ?? 0 })] : []),
+    ].join(". ")
+  }
 
   const lineFor = (from: WorkflowNode, to: WorkflowNode) => {
     const a = positionOf(from)
@@ -345,50 +358,51 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
                   }}
                 </For>
               </svg>
-              <For each={graph().nodes}>
-                {(n) => (
+              <Keyed each={graph().nodes} by={(x) => x.id}>
+                {(node) => (
                   <button
                     type="button"
                     class={styles.node}
-                    data-kind={n.kind}
-                    data-problem={hasProblem(n)}
+                    data-kind={node().kind}
+                    data-problem={hasProblem(node())}
                     data-testid="graph-node"
-                    aria-label={t("graph.node.aria", { number: n.number, name: n.name })}
-                    aria-pressed={selected() === n.id}
+                    aria-label={nodeLabel(node())}
+                    aria-pressed={selected() === node().id}
                     style={{
-                      left: `${positionOf(n).x}px`,
-                      top: `${positionOf(n).y}px`,
+                      left: `${positionOf(node()).x}px`,
+                      top: `${positionOf(node()).y}px`,
                       width: `${NODE_W}px`,
                       height: `${NODE_H}px`,
                     }}
-                    onClick={() => setSelected(n.id)}
-                    onPointerDown={(e) => onPointerDown(n, e)}
-                    onKeyDown={(e) => onKeyDown(n, e)}
+                    onClick={() => setSelected(node().id)}
+                    onPointerDown={(e) => onPointerDown(node(), e)}
+                    onKeyDown={(e) => onKeyDown(node(), e)}
                   >
-                    <Show when={marks().lines.get(n.id) !== undefined || hasProblem(n)}>
+                    <Show when={marks().lines.get(node().id) !== undefined || hasProblem(node())}>
                       <span
                         class={styles.mark}
-                        data-problem={hasProblem(n)}
+                        data-problem={hasProblem(node())}
                         data-testid="graph-node-mark"
-                        title={t(hasProblem(n) ? "check.marked.problem" : "check.marked", {
-                          line: marks().lines.get(n.id) ?? 0,
+                        aria-hidden="true"
+                        title={t(hasProblem(node()) ? "check.marked.problem" : "check.marked", {
+                          line: marks().lines.get(node().id) ?? 0,
                         })}
                       >
-                        <Show when={hasProblem(n)}>
+                        <Show when={hasProblem(node())}>
                           <TriangleAlert size={12} aria-hidden="true" />
                         </Show>
-                        {marks().lines.get(n.id)}
+                        {marks().lines.get(node().id)}
                       </span>
                     </Show>
                     <span class={styles.nodeName}>
-                      {n.number}. {n.name}
+                      {node().number}. {node().name}
                     </span>
                     <span class={styles.nodeKind}>
-                      {t(n.kind === "text" ? "graph.kind.text" : "graph.kind.decision")}
+                      {t(node().kind === "text" ? "graph.kind.text" : "graph.kind.decision")}
                     </span>
                   </button>
                 )}
-              </For>
+              </Keyed>
             </div>
           </Show>
         </section>

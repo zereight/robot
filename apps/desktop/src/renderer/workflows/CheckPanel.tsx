@@ -122,29 +122,27 @@ export const CheckPanel = (props: {
           </p>
         )}
       </Show>
-      <Show when={outcome()?.state === "passed"}>
-        <p role="status" data-testid="check-passed">
-          {t("check.state.passed")}
-        </p>
-      </Show>
-      <Show when={outcome() === null}>
-        <p class={styles.hintText} data-testid="check-not-checked">
-          {t("check.state.not_checked")}
-        </p>
-      </Show>
-      <Show when={stopped()}>
-        {(o) => (
-          <p role="status" data-testid="check-stopped">
-            {stoppedText(o().reason)}
+      {/* One live region that stays in the page, so that a screen reader says each new result. */}
+      <div role="status" data-testid="check-status">
+        <Show when={outcome()?.state === "passed"}>
+          <p data-testid="check-passed">{t("check.state.passed")}</p>
+        </Show>
+        <Show when={outcome() === null}>
+          <p class={styles.hintText} data-testid="check-not-checked">
+            {t("check.state.not_checked")}
           </p>
-        )}
-      </Show>
+        </Show>
+        <Show when={problemsOf(outcome()).length > 0}>
+          <p data-testid="check-problem-found">{t("workflows.check.problem")}</p>
+        </Show>
+        <Show when={stopped()}>
+          {(o) => <p data-testid="check-stopped">{stoppedText(o().reason)}</p>}
+        </Show>
+      </div>
       <Show when={failed()}>
-        {(o) => (
-          <p role="alert" data-testid="check-failed">
-            {t("check.failed", { message: o().message })}
-          </p>
-        )}
+        <p role="alert" data-testid="check-failed">
+          {t("check.failed")}
+        </p>
       </Show>
       <Show when={problemsOf(outcome()).length > 0}>
         <ul class={styles.problems} aria-label={t("graph.problems")} data-testid="graph-problems">

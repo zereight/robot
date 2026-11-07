@@ -65,6 +65,9 @@ export class WorkflowCheck extends Context.Service<WorkflowCheck, WorkflowCheckS
                 )
                 .then((outcome) => {
                   working.delete(id)
+                  // The window shows a translated text. The words of the checker stay in the log.
+                  if (outcome.state === "failed")
+                    console.error("check: the checker failed:", outcome.message)
                   // The workflow may be gone: the row of the result goes with it.
                   if (!closed && db.get("SELECT 1 FROM workflow WHERE id = ?", workflowId)) {
                     db.run(

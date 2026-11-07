@@ -503,6 +503,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         if (runSignal.aborted && stop === null)
           stop = { state: "cancelled", text: "Stopped by you", code: "user" }
+        // No node is ready, and nodes that never ran remain: the run did not do its work. It must
+        // not end as "done" (a loop that came through, a graph that changed during the run).
+        if (stop === null && graph.nodes.some((n) => !ended.has(n.id)))
+          stop = {
+            state: "failed",
+            text: "No node could start, and some nodes did not run",
+            code: "run_no_ready_node",
+          }
         if (stop) setRun(runId, stop.state, { text: stop.text, code: stop.code }, true)
         else setRun(runId, "done", { text: null, code: null }, true)
       }
@@ -1097,8 +1105,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const detail = yield* workflows.get(input.workflowId)
           const nodes = detail.graph.nodes
           if (nodes.length === 0) return yield* new AppError({ code: "run_empty" })
+          // A loop never starts, whatever the checker says: this test does not use the checker,
+          // so a check that stopped or failed cannot let a loop through.
+          if (hasLoop(detail)) return yield* new AppError({ code: "run_loop" })
           // A run does not start when the check finds a problem (spec 010, "Check"). A check that
-          // stopped at a limit or could not read the form does not hold the run back
+          // stopped at a limit or could not read the form does not hold back a graph with no loop
           // (docs/spec-questions.md, W1: the rows for the check before a run).
           const outcome = yield* check.check(input.workflowId)
           if (outcome.state === "problem") return yield* new AppError({ code: "run_check_problem" })
@@ -1165,6 +1176,22 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       })
     }),
   )
+}
+
+/** True when the connections of the graph make a loop of nodes (docs/spec-questions.md, 010). */
+const hasLoop = (detail: WorkflowDetail): boolean => {
+  const next = new Map<string, string[]>()
+  for (const c of detail.graph.connections) next.set(c.from, [...(next.get(c.from) ?? []), c.to])
+  const state = new Map<string, 1 | 2>()
+  const visit = (id: string): boolean => {
+    if (state.get(id) === 1) return true
+    if (state.get(id) === 2) return false
+    state.set(id, 1)
+    for (const to of next.get(id) ?? []) if (visit(to)) return true
+    state.set(id, 2)
+    return false
+  }
+  return detail.graph.nodes.some((n) => visit(n.id))
 }
 
 export type { CardAnswer, RunCard }

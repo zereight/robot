@@ -1,12 +1,13 @@
 import type { Workflow } from "@robot/shared"
 import { Plus, Trash2 } from "lucide-solid"
-import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { checkStateKey, runStateKey } from "./labels.ts"
 import { NewWorkflowDialog } from "./NewWorkflowDialog.tsx"
@@ -136,7 +137,9 @@ export const WorkflowList = () => {
           }
         >
           <ul class={styles.cards}>
-            <For each={list()}>{(flow) => <Card flow={flow} />}</For>
+            <Keyed each={list()} by={(flow) => flow.id}>
+              {(flow) => <Card flow={flow()} />}
+            </Keyed>
           </ul>
         </Show>
       </div>
