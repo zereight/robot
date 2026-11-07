@@ -579,12 +579,17 @@ export const migrations: readonly string[] = [
   -- The hold of the main model of a node (spec 006). It is a state of this computer: sync (019) does
   -- not carry it and an export does not hold it. It has no foreign key on purpose: a change of the
   -- whole graph writes the nodes again, and the hold of a node that stays must stay. The backup that
-  -- was on the node when the hold began is kept, so a hold does not pass to another backup.
+  -- was on the node when the hold began is kept, so a hold does not pass to another backup. So is
+  -- the main choice that failed: a hold is of that main model, and it does not count when the node
+  -- names another one. The row of a workflow that is deleted leaves with the workflow.
   CREATE TABLE model_hold (
     node_id TEXT PRIMARY KEY,
     ends_at INTEGER NOT NULL,
     -- 1 after "Use <main model> now": the hold no longer counts.
     released INTEGER NOT NULL DEFAULT 0 CHECK (released IN (0, 1)),
+    main_account_id TEXT NOT NULL,
+    main_model TEXT NOT NULL,
+    main_effort TEXT,
     backup_account_id TEXT NOT NULL,
     backup_model TEXT NOT NULL,
     backup_effort TEXT

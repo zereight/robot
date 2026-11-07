@@ -34,11 +34,28 @@ export const limitReasonOf = (text: string): LimitReason | null => {
 export const HOLD_UNKNOWN_MS = 15 * 60_000
 
 /**
- * When the hold of the main model ends. The reset time that the provider names counts when it is
- * in the future. Without one, or with one that has passed, the hold lasts 15 minutes.
+ * The longest hold of the main model: 24 hours. A reset time further away is cut to it, and the main
+ * model is tried again then (spec 006 names no limit: docs/spec-questions.md, B6). A provider, a
+ * program or a custom base URL can send any number, so the app never trusts one.
+ */
+export const HOLD_MAX_MS = 24 * 60 * 60_000
+
+/**
+ * A reset time that a provider names, made safe: a whole number of ms, in the future, and not more
+ * than `HOLD_MAX_MS` ahead of `now`. Null for a value that is not a number, not finite, or has passed.
+ */
+export const safeResetTime = (now: number, resetsAt: unknown): number | null => {
+  if (typeof resetsAt !== "number" || !Number.isFinite(resetsAt) || resetsAt <= now) return null
+  return Math.min(Math.ceil(resetsAt), now + HOLD_MAX_MS)
+}
+
+/**
+ * When the hold of the main model ends. The reset time that the provider names counts when it is in
+ * the future, and the hold never lasts more than `HOLD_MAX_MS`. Without one, or with one that has
+ * passed or is not a number, the hold lasts 15 minutes.
  */
 export const holdEnd = (now: number, resetsAt?: number | null): number =>
-  resetsAt !== undefined && resetsAt !== null && resetsAt > now ? resetsAt : now + HOLD_UNKNOWN_MS
+  safeResetTime(now, resetsAt) ?? now + HOLD_UNKNOWN_MS
 
 /** An account, a model and a reasoning level (spec 006). */
 export interface ModelPick {

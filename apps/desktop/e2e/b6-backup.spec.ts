@@ -91,6 +91,12 @@ test("backup model: the editor, the first run on the backup, the hold, 'Use the 
     await expect(page.getByTestId("node-backup-remove")).toBeVisible()
     await expect(page.getByTestId("node-backup-hold")).toHaveCount(0)
     await shot(page, "b6-03-editor-backup")
+    // A provider alone is not a choice: the saved backup stays until a whole new one is made.
+    await page.getByTestId("node-backup-provider").selectOption({ label: "Main" })
+    await expect(page.getByTestId("node-backup-remove")).toBeVisible()
+    await page.getByTestId("node-backup-provider").selectOption({ label: "Backup" })
+    await page.getByTestId("node-backup-model").selectOption("gpt-5")
+    await expect(page.getByTestId("node-backup-remove")).toBeVisible()
 
     // 3. The main account spends its plan limit, which resets in 2 hours. The run goes on with the
     // backup, from the start. The run view shows the muted line and "Backup until" with the button.

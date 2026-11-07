@@ -132,12 +132,14 @@ export const BackupField = (props: {
               data-testid="node-backup-provider"
               value={accountId()}
               onChange={(e) => {
+                // The saved backup stays until a whole new choice is made: a provider alone is
+                // not a choice. Only "default" (no provider) clears it.
+                if (e.currentTarget.value === "") return remove()
                 setRefused(false)
                 setChoosing(true)
                 setAccount(e.currentTarget.value)
                 setModel("")
                 setEffort("")
-                if (saved()) void props.patch({ backup: null })
               }}
             >
               <option value="">{t("node.provider.default")}</option>

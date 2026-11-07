@@ -1,9 +1,11 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import {
   GO_ON_MESSAGE,
+  HOLD_MAX_MS,
   HOLD_UNKNOWN_MS,
   type NodeHold,
   type RunDetail,
@@ -13,9 +15,10 @@ import { Effect } from "effect"
 import { makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
 import { busyClock } from "../providers/busyRetry.ts"
+import { ProviderFailure } from "../providers/client.ts"
 import { handlers, runRequest } from "../rpc.ts"
 import { CurrentActor } from "./actor.ts"
-import { modelUsageOf } from "./backupRun.ts"
+import { isBackupChoice, limitSwitch, modelUsageOf } from "./backupRun.ts"
 import { Database } from "./Database.ts"
 import { Memory } from "./Memory.ts"
 import { holdClock, ModelHolds } from "./ModelHolds.ts"
@@ -79,6 +82,8 @@ const setup = async (options: { databaseFile?: string; prompt?: string } = {}) =
     ),
   )
   const pick = { accountId: backupAccount.id, model: "gpt-5", effort: null }
+  /** The main choice of the node. */
+  const mainPick = { accountId: mainAccount.id, model: "mock-fast", effort: null }
   /** The editor of this computer sets the backup (the same path as the window). */
   const setBackup = (id: string, value: typeof pick | null = pick) =>
     runRequest(t.runtime, "workflows.node.update", { id, patch: { backup: value } })
@@ -105,6 +110,7 @@ const setup = async (options: { databaseFile?: string; prompt?: string } = {}) =
     flow,
     node,
     pick,
+    mainPick,
     setBackup,
     go,
     start,
@@ -190,8 +196,8 @@ describe("the choice of the backup model (spec 006, 010)", () => {
     })
     // A hold row that names the decision node counts for nothing: it has no backup.
     const holds = await t.run(ModelHolds.use((h) => Effect.succeed(h)))
-    holds.start(decision.id, t.pick, Date.now() + 60_000)
-    expect(holds.active(decision.id, null)).toBeNull()
+    holds.start(decision.id, t.mainPick, t.pick, Date.now() + 60_000)
+    expect(holds.active(decision.id, t.mainPick, null)).toBeNull()
     expect(await t.holds()).toEqual([])
   })
 
@@ -586,6 +592,12 @@ describe("the hold ends at its time (spec 006)", () => {
     expect(stored?.until).toBe(hold?.until ?? 0)
     expect(stored?.released).toBe(false)
     expect(stored?.backup).toEqual(t.pick)
+    expect(stored?.main).toEqual(t.mainPick)
+    // A valid hold still counts after the restart, and the node shows it.
+    const kept = await again.runtime.runPromise(
+      ModelHolds.use((h) => Effect.sync(() => h.active(t.node.id, t.mainPick, t.pick))),
+    )
+    expect(kept?.until).toBe(hold?.until ?? 0)
     await again.runtime.dispose()
   })
 
@@ -603,8 +615,14 @@ describe("the hold ends at its time (spec 006)", () => {
     expect(await t.holds()).toEqual([])
     const holds = await t.run(ModelHolds.use((h) => Effect.succeed(h)))
     expect(
-      holds.active(t.node.id, { accountId: t.backupAccount.id, model: "mock-fast", effort: null }),
+      holds.active(t.node.id, t.mainPick, {
+        accountId: t.backupAccount.id,
+        model: "mock-fast",
+        effort: null,
+      }),
     ).toBeNull()
+    // The hold is dropped, not only ignored.
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
   })
 
   test("a graph change of the whole graph keeps the hold of a node that stays", async () => {
@@ -652,5 +670,298 @@ describe("no proposal and no tool of the chat sets or changes a backup (spec 006
     expect(exit._tag).toBe("Failure")
     // The graph as it is applies.
     await t.run(Workflows.use((w) => w.applyGraph(t.flow.id, graph, "proposal")))
+  })
+})
+
+describe("a hold has a longest time, and a bad row never stops the app (spec 006; docs/spec-questions.md, B6)", () => {
+  test("a reset time that is far away holds for 24 hours at most, and the node still shows it", async () => {
+    // 1e14 s is 1e17 ms. 9e12 s is 9e15 ms: past the range of a date. 86401 s is one second over.
+    for (const retryAfter of [100_000_000_000_000, 9_000_000_000_000, 86_401 * 365]) {
+      const t = await setup()
+      await t.setBackup(t.node.id)
+      t.main.setFailure({ status: 429, message: PLAN, retryAfter })
+      const before = Date.now()
+      const d = await t.go()
+      expect(d.state).toBe("done")
+      const [hold] = await t.holds()
+      expect(hold).toBeDefined()
+      expect(hold?.until).toBeLessThanOrEqual(Date.now() + HOLD_MAX_MS)
+      expect(hold?.until).toBeGreaterThan(before + HOLD_MAX_MS - 60_000)
+      // The line of the task view names a time that a date can hold.
+      const at = task(d)?.backupNote?.resetsAt
+      expect(at).toBe(hold?.until)
+      expect(Number.isNaN(new Date(at ?? 0).getTime())).toBe(false)
+      const [row] = await t.rows<{ ends_at: number }>("SELECT ends_at FROM model_hold")
+      expect(row?.ends_at).toBe(hold?.until ?? 0)
+      await t.runtime.dispose()
+    }
+  })
+
+  test("a limit that names no usable time holds for 15 minutes", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    // A header that is not a number is ignored: the hold has the default time.
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: -5 })
+    const before = Date.now()
+    const d = await t.go()
+    expect(task(d)?.backupNote?.resetsAt).toBeNull()
+    const [hold] = await t.holds()
+    expect(hold?.until).toBeGreaterThanOrEqual(before + HOLD_UNKNOWN_MS)
+    expect(hold?.until).toBeLessThan(before + HOLD_UNKNOWN_MS + 60_000)
+  })
+
+  test("rows of the store with a time that no hold can have are dropped and logged; the app starts and the good hold stays", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-hold-bad-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.setBackup(t.node.id)
+    const others = []
+    for (const name of ["Huge", "Negative", "Text", "Edge"])
+      others.push(
+        await t.run(
+          Workflows.use((w) =>
+            w.addNode(t.flow.id, {
+              kind: "text",
+              name,
+              prompt: "x",
+              accountId: t.mainAccount.id,
+              model: "mock-fast",
+            }),
+          ),
+        ),
+      )
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    const good = await t.holds()
+    expect(good.map((h) => h.nodeId)).toEqual([t.node.id])
+    await t.runtime.dispose()
+    // Write the bad rows into the file while no app has it open.
+    const raw = new DatabaseSync(file)
+    const insert = (id: string | undefined, endsAt: string) =>
+      raw.exec(
+        `INSERT OR REPLACE INTO model_hold (node_id, ends_at, released, main_account_id, main_model,
+           backup_account_id, backup_model)
+         VALUES ('${id}', ${endsAt}, 0, 'a', 'm', 'b', 'n')`,
+      )
+    insert(others[0]?.id, "100000000000000000")
+    insert(others[1]?.id, "-5")
+    insert(others[2]?.id, "'soon'")
+    insert(others[3]?.id, `${Date.now() + HOLD_MAX_MS * 2}`)
+    raw.close()
+    const again = testRuntime({ databaseFile: file, check: { auto: false } })
+    // The app starts: the layer of the holds is built, and the good hold is read.
+    const stored = await again.runtime.runPromise(
+      ModelHolds.use((h) => Effect.sync(() => h.stored(t.node.id))),
+    )
+    expect(stored?.until).toBe(good[0]?.until ?? 0)
+    const left = await again.runtime.runPromise(
+      Database.use((d) =>
+        Effect.sync(() => d.all<{ node_id: string }>("SELECT node_id FROM model_hold")),
+      ),
+    )
+    expect(left.map((r) => r.node_id)).toEqual([t.node.id])
+    const log = join(again.dataDir, "logs", "workflows.log")
+    expect(existsSync(log)).toBe(true)
+    expect(readFileSync(log, "utf8").match(/hold_dropped/g)).toHaveLength(4)
+    await again.runtime.dispose()
+  })
+
+  test("a table that cannot be read does not stop the app either", async () => {
+    // Nothing can be read as a number past 2^53, so the test of the row must not read it.
+    const file = join(mkdtempSync(join(tmpdir(), "robot-hold-huge-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.runtime.dispose()
+    const raw = new DatabaseSync(file)
+    raw.exec(
+      `INSERT INTO model_hold (node_id, ends_at, released, main_account_id, main_model,
+         backup_account_id, backup_model)
+       VALUES ('gone', 9223372036854775807, 0, 'a', 'm', 'b', 'n')`,
+    )
+    raw.close()
+    const again = testRuntime({ databaseFile: file, check: { auto: false } })
+    const rows = await again.runtime.runPromise(
+      Database.use((d) => Effect.sync(() => d.all("SELECT node_id FROM model_hold"))),
+    )
+    expect(rows).toEqual([])
+    await again.runtime.dispose()
+  })
+})
+
+describe('the hold is of the main choice and the backup that it began with (spec 006: "it holds the main model")', () => {
+  const limited = async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })
+    await t.go()
+    expect(await t.holds()).toHaveLength(1)
+    return t
+  }
+
+  test("another main model on the node: the next task tries it, the hold is dropped and the button is gone", async () => {
+    const t = await limited()
+    t.main.setFailure(null)
+    const r = await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { model: "mock-smart" },
+    })
+    expect(r).toMatchObject({ ok: true })
+    // The editor and the run view show no hold, and the row is gone.
+    expect(await t.holds()).toEqual([])
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+    const backupBefore = t.backup.requests.length
+    const mainBefore = t.main.requests.length
+    const d = await t.go()
+    expect(d.state).toBe("done")
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(t.backup.requests.length).toBe(backupBefore)
+  })
+
+  test("another main model: the engine ignores and drops a hold that nobody listed", async () => {
+    const t = await limited()
+    t.main.setFailure(null)
+    // The node changes under the engine without a call that lists the holds first.
+    await t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.run("UPDATE workflow_node SET effort = 'high' WHERE id = ?", t.node.id),
+        ),
+      ),
+    )
+    const mainBefore = t.main.requests.length
+    await t.go()
+    expect(t.main.requests.length - mainBefore).toBe(1)
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("a changed backup drops the hold, also when the same backup is chosen again later", async () => {
+    const t = await limited()
+    await t.setBackup(t.node.id, {
+      accountId: t.backupAccount.id,
+      model: "mock-fast",
+      effort: null,
+    })
+    expect(await t.holds()).toEqual([])
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+    await t.setBackup(t.node.id)
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("the button names the model that reached its limit, and a valid hold is kept for the same choice", async () => {
+    const t = await limited()
+    const [hold] = await t.holds()
+    expect(hold?.main).toBe("mock-fast")
+    // An edit of a field that is not a model choice leaves the hold.
+    await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { prompt: "write it again" },
+    })
+    expect(await t.holds()).toHaveLength(1)
+  })
+
+  test("a main choice that came back is a new episode: a hold of the old main choice is not used", async () => {
+    const t = await limited()
+    // The hold is of mock-fast. Another model is asked and answers; the hold is gone for good.
+    await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { model: "mock-smart" },
+    })
+    await t.holds()
+    await runRequest(t.runtime, "workflows.node.update", {
+      id: t.node.id,
+      patch: { model: "mock-fast" },
+    })
+    expect(await t.holds()).toEqual([])
+  })
+
+  test("the holds of a workflow leave with the workflow", async () => {
+    const t = await limited()
+    await t.run(Workflows.use((w) => w.remove(t.flow.id)))
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+
+  test("the holds of a node leave with the node", async () => {
+    const t = await limited()
+    await t.run(Workflows.use((w) => w.removeNode(t.node.id)))
+    expect(await t.rows("SELECT node_id FROM model_hold")).toEqual([])
+  })
+})
+
+describe("small points of the backup engine", () => {
+  const node = (over: Partial<WorkflowNode> = {}): WorkflowNode =>
+    ({
+      id: "n1",
+      number: 1,
+      kind: "text",
+      name: "n",
+      prompt: "",
+      accountId: "a",
+      model: "m",
+      effort: null,
+      backup: { accountId: "a", model: "m", effort: "high" },
+      ...over,
+    }) as WorkflowNode
+
+  test("a backup that differs from the main choice only by its level is a backup", () => {
+    const n = node()
+    expect(isBackupChoice({ accountId: "a", model: "m", effort: "high" }, n)).toBe(true)
+    expect(isBackupChoice({ accountId: "a", model: "m", effort: null }, n)).toBe(false)
+    expect(isBackupChoice({ accountId: "b", model: "m", effort: null }, n)).toBe(true)
+  })
+
+  test("a task that ended while the backup was checked starts no hold and leaves no line", async () => {
+    const started: unknown[] = []
+    const controller = new AbortController()
+    const deps = {
+      holds: { start: (...args: unknown[]) => started.push(args) } as never,
+      // The check of the backup takes time. The task is stopped meanwhile.
+      ready: async () => {
+        controller.abort()
+        return true
+      },
+    }
+    const limit = new ProviderFailure("provider_limit", PLAN, undefined, "plan")
+    expect(await limitSwitch(deps, node(), limit, false, controller.signal)).toBeNull()
+    expect(started).toEqual([])
+    // The same call with a task that goes on starts the hold.
+    const live = {
+      holds: { start: (...args: unknown[]) => (started.push(args), { fresh: true }) } as never,
+      ready: async () => true,
+    }
+    expect(
+      await limitSwitch(live, node(), limit, false, new AbortController().signal),
+    ).toMatchObject({
+      fresh: true,
+    })
+    expect(started).toHaveLength(1)
+  })
+})
+
+describe("a linked device restores a version without changing a backup (rpc wiring)", () => {
+  test("the actor of a linked device keeps the backups, and the user of this computer does not", async () => {
+    const t = await setup()
+    await t.setBackup(t.node.id)
+    const versions = await t.run(Workflows.use((w) => w.versions(t.flow.id)))
+    const before = versions.find((v) => v.graph.nodes[0]?.backup === null)
+    expect(before).toBeDefined()
+    const phone = { id: "phone-2", name: "Anna's phone" }
+    // The handler itself, with the actor of a linked device (the list of the link is another test).
+    const exit = await t.runtime.runPromiseExit(
+      Effect.provideService(
+        handlers["workflows.versions.restore"]({
+          id: t.flow.id,
+          versionId: before?.id ?? "",
+        }) as Effect.Effect<unknown, never, never>,
+        CurrentActor,
+        phone,
+      ),
+    )
+    expect(exit._tag).toBe("Success")
+    // The backup of this computer stayed.
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toEqual(t.pick)
+    const own = await runRequest(t.runtime, "workflows.versions.restore", {
+      id: t.flow.id,
+      versionId: before?.id ?? "",
+    })
+    expect(own).toMatchObject({ ok: true })
+    expect((await t.run(Workflows.use((w) => w.graph(t.flow.id)))).nodes[0]?.backup).toBeNull()
   })
 })

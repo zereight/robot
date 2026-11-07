@@ -2,6 +2,8 @@ import {
   holdEnd,
   type MessagePart,
   type ModelPick,
+  safeResetTime,
+  sameModelChoice,
   type TaskBackupNote,
   type WorkflowNode,
 } from "@robot/shared"
@@ -33,6 +35,21 @@ export interface BackupDeps {
 export const backupOf = (node: WorkflowNode): ModelPick | null =>
   node.kind === "text" ? node.backup : null
 
+/** The main choice of a text node, or null when it names no account or no model. */
+export const mainOf = (node: WorkflowNode): ModelPick | null =>
+  node.kind === "text" && node.accountId && node.model
+    ? { accountId: node.accountId, model: node.model, effort: node.effort }
+    : null
+
+/**
+ * True when `current` is not the main choice of the node: another account, another model or another
+ * reasoning level. A backup that differs from the main choice only by its level is a backup.
+ */
+export const isBackupChoice = (current: ModelPick, node: WorkflowNode): boolean => {
+  const main = mainOf(node)
+  return main !== null && !sameModelChoice(current, main)
+}
+
 /**
  * True when the turn starts on the backup model: the node has one, the hold of its main model lasts,
  * and the backup is ready. When the backup is not ready, the hold ends at once, and the turn tries
@@ -40,7 +57,9 @@ export const backupOf = (node: WorkflowNode): ModelPick | null =>
  */
 export const startsOnBackup = async (deps: BackupDeps, node: WorkflowNode): Promise<boolean> => {
   const backup = backupOf(node)
-  if (backup === null || deps.holds.active(node.id, backup) === null) return false
+  const main = mainOf(node)
+  if (backup === null || main === null || deps.holds.active(node.id, main, backup) === null)
+    return false
   if (await deps.ready(backup.accountId)) return true
   deps.holds.clear(node.id)
   return false
@@ -66,22 +85,30 @@ export const limitSwitch = async (
   node: WorkflowNode,
   error: unknown,
   onBackup: boolean,
+  /** The signal of the task: a task that ended while the backup was checked starts no hold. */
+  signal?: AbortSignal,
 ): Promise<BackupSwitch | null> => {
   const backup = backupOf(node)
+  const main = mainOf(node)
   if (
     backup === null ||
+    main === null ||
     onBackup ||
     !(error instanceof ProviderFailure) ||
     error.code !== "provider_limit"
   )
     return null
   if (!(await deps.ready(backup.accountId))) return null
+  // The task ended while the backup was checked: no hold and no line for a task that is over.
+  if (signal?.aborted) return null
   const now = holdClock.now()
-  const { fresh } = deps.holds.start(node.id, backup, holdEnd(now, error.resetsAt))
+  const until = holdEnd(now, error.resetsAt)
+  const { fresh } = deps.holds.start(node.id, main, backup, until)
   return {
     backup,
     fresh,
-    resetsAt: error.resetsAt !== undefined && error.resetsAt > now ? error.resetsAt : null,
+    // The line gives the time when the provider named a usable one: the hold end, capped.
+    resetsAt: safeResetTime(now, error.resetsAt) === null ? null : until,
   }
 }
 

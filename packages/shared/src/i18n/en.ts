@@ -842,7 +842,7 @@ export const en = {
   "node.backup.remove": "Remove the backup model",
   "node.backup.hint": "Takes the tasks of this node while the main model has reached its limit.",
   "node.backup.provider": "Provider of the backup model",
-  "node.backup.model": "Model of the backup model",
+  "node.backup.model": "Model for the backup",
   "node.backup.reasoning": "Reasoning level of the backup model",
   "node.backup.same":
     "The backup is the same as the main model. Choose another provider, model or reasoning level.",

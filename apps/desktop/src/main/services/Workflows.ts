@@ -661,8 +661,15 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             // A workflow that runs is not deleted: the cascade would remove its run rows.
             const busy = checkIdle(id)
             if (busy) return yield* busy
-            // Every table of the workflow holds a foreign key with ON DELETE CASCADE.
-            db.run("DELETE FROM workflow WHERE id = ?", id)
+            // Every table of the workflow holds a foreign key with ON DELETE CASCADE, but the holds
+            // of the main models have none on purpose (spec 006): they leave with the workflow.
+            db.transaction(() => {
+              db.run(
+                "DELETE FROM model_hold WHERE node_id IN (SELECT id FROM workflow_node WHERE workflow_id = ?)",
+                id,
+              )
+              db.run("DELETE FROM workflow WHERE id = ?", id)
+            })
             changed(row.server_id)
           }),
         setPermission: (id, level) =>
@@ -894,6 +901,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               keepVersion(row.id, "editor")
               // The connections and the options of the node go with it (ON DELETE CASCADE).
               db.run("DELETE FROM workflow_node WHERE id = ?", nodeId)
+              db.run("DELETE FROM model_hold WHERE node_id = ?", nodeId)
               renumber(row.id)
               touch(row.id)
             })

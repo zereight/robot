@@ -835,7 +835,7 @@ export const ko: Record<MessageKey, string> = {
   "node.backup.remove": "백업 모델 지우기",
   "node.backup.hint": "메인 모델이 한도에 도달하면 이 노드의 작업을 대신 맡아요.",
   "node.backup.provider": "백업 모델의 제공자",
-  "node.backup.model": "백업 모델의 모델",
+  "node.backup.model": "백업에 쓸 모델",
   "node.backup.reasoning": "백업 모델의 추론 수준",
   "node.backup.same": "백업이 메인 모델과 같아요. 다른 제공자, 모델 또는 추론 수준을 고르세요.",
   "node.backup.noMain": "먼저 메인 모델을 고르세요.",

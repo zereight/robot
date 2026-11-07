@@ -44,6 +44,7 @@ import { ActionLog } from "./ActionLog.ts"
 import {
   addModelUsage,
   type BackupDeps,
+  isBackupChoice,
   limitSwitch,
   mainAnswered,
   noteOf,
@@ -1012,7 +1013,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         let current: ModelPick = (await startsOnBackup(backupDeps, node))
           ? (node.backup as ModelPick)
           : { accountId: node.accountId, model: node.model, effort: node.effort }
-        let onBackup = current.accountId !== node.accountId || current.model !== node.model
+        let onBackup = isBackupChoice(current, node)
         if (!providers.isConnected(current.accountId))
           return fail("provider_not_connected", "The provider of this node is not connected.")
         let isProgram = providers.isRuntime(current.accountId)
@@ -1324,7 +1325,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               // A limit of the main model moves the turn to the backup model, in the same task
               // (spec 006). The failed try ran steps ("Started"): the backup gets a short message
               // that asks it to go on. It ran none: the backup runs the turn from the start.
-              const switched = await limitSwitch(backupDeps, node, error, onBackup)
+              const switched = await limitSwitch(backupDeps, node, error, onBackup, signal)
+              // The task ended while the backup was checked: it is over, no hold and no line.
+              if (signal.aborted || endedBy !== null) throw error
               if (switched) {
                 const main = current.model
                 current = switched.backup

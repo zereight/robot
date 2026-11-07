@@ -255,7 +255,7 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT backup_note FROM task")).toEqual([{ backup_note: null }])
     // The hold belongs to no row of the graph: it stays when the nodes are written again.
     db.run(
-      "INSERT INTO model_hold (node_id, ends_at, backup_account_id, backup_model) VALUES ('n1', 9, 'a2', 'm2')",
+      "INSERT INTO model_hold (node_id, ends_at, main_account_id, main_model, backup_account_id, backup_model) VALUES ('n1', 9, 'a1', 'm1', 'a2', 'm2')",
     )
     db.run("DELETE FROM workflow_node WHERE id = 'n1'")
     expect(db.all("SELECT node_id FROM model_hold")).toEqual([{ node_id: "n1" }])
