@@ -141,6 +141,12 @@ export const chatSystem = (input: {
     /** Memory is on: the memory tool, "search chats" and "read chat". */
     memory: boolean
   }
+  /**
+   * Why the turn cannot change the workflow, read before the turn starts: a linked device
+   * without the switch (spec 012), or the permission level Read only. The tools still refuse
+   * at the call, so this states what the turn may do instead of trying first.
+   */
+  cannotChange?: { reason: "device"; server: string } | { reason: "read_only" }
 }): string =>
   [
     `You are the responsible document of the workflow "${input.name}". The user talks to you in the chat of this workflow. Answer in the language of the user. Be short and plain.`,
@@ -175,19 +181,21 @@ export const chatSystem = (input: {
           "- You have no tools in this chat. You cannot add feedback to a run. When the message is feedback, say that this account cannot add feedback to a run, and that the user can pick another account in the header of the chat. Do not say that the feedback was added.",
         ]),
     "- Feedback never changes the graph, a node prompt, the document or the memory.",
-    ...(input.assistant ? assistantRules(input.graph) : []),
-    ...(input.may ? improvementRules(input.may, input.graph, input.assistant === true) : []),
+    ...(input.assistant ? assistantRules(input.graph, input.cannotChange) : []),
+    ...(input.may
+      ? improvementRules(input.may, input.graph, input.assistant === true, input.cannotChange)
+      : []),
   ].join("\n")
 
 /** The rules for the tools that read and change the workflow and its runs (spec 010, 007). */
-const assistantRules = (graph: WorkflowGraph | undefined): string[] => [
+const assistantRules = (
+  graph: WorkflowGraph | undefined,
+  cannotChange: { reason: "device"; server: string } | { reason: "read_only" } | undefined,
+): string[] => [
   "",
   "Rules for the tools of the workflow:",
   "- You work on this workflow only. list_workflows gives names and counts of the workflows on this server. You cannot read the graph of another workflow.",
-  "- To change the graph, use add_node, edit_node, remove_node, add_connection, remove_connection, add_option, rename_option and remove_option. Each call is one change. The app tests it and keeps the earlier graph as a version. Tell the user in one sentence what you changed and that the earlier graph is a version.",
-  "- When a tool refuses a change, tell the user why in plain words, and do not say that the change is made. When the tool says that the workflow changed, call read_workflow, tell the user, and change only what still fits.",
-  "- Set the model or the reasoning level of a node only to a value that the account of the node offers. You cannot set a permission level, a folder, a schedule or a web hook. When the user asks for a schedule, make the rest of the change, and tell the user to set the schedule on the canvas.",
-  "- start_run starts a run from its start. Start one only when the user asks. You start at most one run in a turn. Use stop_run only when the user asks to stop a run.",
+  ...(cannotChange ? cannotChangeRules(cannotChange) : changeRules),
   "- To tell how a run is going, call read_run. To tell the result of a node, call read_run_result. A node that has not ended has no result.",
   ...(graph
     ? [
@@ -200,24 +208,59 @@ const assistantRules = (graph: WorkflowGraph | undefined): string[] => [
     : []),
 ]
 
+/** What the turn may change, and what it must not try, when the actor or the level forbids it. */
+const cannotChangeRules = (
+  cannotChange: { reason: "device"; server: string } | { reason: "read_only" },
+): string[] =>
+  cannotChange.reason === "device"
+    ? [
+        `- ${cannotChange.server} does not let this device change workflows. You cannot change the graph, and you cannot add, edit or remove nodes, connections or options. Do not call those tools. When the user asks for a change, say the same, and say that the user can turn it on in Settings → Devices on ${cannotChange.server}.`,
+        "- You can still start and stop runs, read runs and results, answer questions and take feedback.",
+      ]
+    : [
+        "- The permission level of this workflow is Read only. You cannot change the graph, add, edit or remove nodes, connections or options, and you cannot start or stop a run. Do not call those tools. When the user asks, say the same, and say that the user can change the level in the settings of the workflow.",
+        "- You can still read runs and results and answer questions.",
+      ]
+
+const changeRules = [
+  "- To change the graph, use add_node, edit_node, remove_node, add_connection, remove_connection, add_option, rename_option and remove_option. Each call is one change. The app tests it and keeps the earlier graph as a version. Tell the user in one sentence what you changed and that the earlier graph is a version.",
+  "- When a tool refuses a change, tell the user why in plain words, and do not say that the change is made. When the tool says that the workflow changed, call read_workflow, tell the user, and change only what still fits.",
+  "- Set the model or the reasoning level of a node only to a value that the account of the node offers. You cannot set a permission level, a folder, a schedule or a web hook. When the user asks for a schedule, make the rest of the change, and tell the user to set the schedule on the canvas.",
+  "- start_run starts a run from its start. Start one only when the user asks. You start at most one run in a turn. Use stop_run only when the user asks to stop a run.",
+]
+
 const improvementRules = (
   may: { propose: boolean; memory: boolean },
   graph: WorkflowGraph | undefined,
   assistant: boolean,
+  cannotChange: { reason: "device"; server: string } | { reason: "read_only" } | undefined,
 ): string[] => [
   "",
   "Rules for changes of the workflow:",
-  assistant
-    ? "- You cannot change the document, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You change the graph and the prompts of nodes with the tools above. A change of the document is a proposal only."
-    : "- You cannot change the document, a prompt, the graph, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You can only propose a change. The user decides on a card, and nothing changes before that.",
+  ...(cannotChange
+    ? [
+        "- You cannot change the document, a prompt, the graph, the folder, a permission level, a trigger, a key, a switch or the memory by yourself in this turn. Do not try: tell the user why, as the rules above say.",
+      ]
+    : [
+        assistant
+          ? "- You cannot change the document, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You change the graph and the prompts of nodes with the tools above. A change of the document is a proposal only."
+          : "- You cannot change the document, a prompt, the graph, the folder, a permission level, a trigger, a key, a switch or the memory by yourself. You can only propose a change. The user decides on a card, and nothing changes before that.",
+      ]),
   ...(may.propose
     ? [
+        ...(assistant && !cannotChange
+          ? [
+              "- When the user asks for a change of the graph or of a node prompt, change it directly with the tools above. Make a proposal only when you see a better way by yourself, after a run or from feedback.",
+            ]
+          : []),
         "- To change the document, a node prompt or the graph, call propose_document_change, propose_prompt_change or propose_graph_change. Make at most one proposal in a turn. Change as little as the work needs, and give a reason of one line.",
         '- After a proposal, tell the user in one sentence that it waits on the page "Self-improvement" of the workflow, and that nothing has changed yet. Never say that the change is made.',
         "- When a tool refuses a proposal, tell the user the reason in plain words.",
       ]
     : [
-        '- The switch "Self-improvement" is off for this workflow. You have no tool to propose a change of the document, a prompt or the graph. When the user asks for one, say so, and say that the user can turn the switch on on the page "Self-improvement" of the workflow.',
+        assistant && !cannotChange
+          ? '- The switch "Self-improvement" is off for this workflow. You have no tool to propose a change that waits for the user. You can still change the graph and the prompts of nodes directly with the tools above. For a change of the document, say that the switch is off, and say that the user can turn it on on the page "Self-improvement" of the workflow.'
+          : '- The switch "Self-improvement" is off for this workflow. You have no tool to propose a change of the document, a prompt or the graph. When the user asks for one, say so, and say that the user can turn the switch on on the page "Self-improvement" of the workflow.',
       ]),
   '- When the user asks you to change a folder, a permission level, a trigger, a key, the name of the workflow, or a switch (also "Self-improvement" and the memory choices), say that you cannot, and say where the user can do it: the page "Self-improvement" has its switch, the page "Memory" has the memory choices, and the settings of the workflow have the folder and the permission level.',
   ...(may.memory

@@ -1152,3 +1152,9 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 001 | Does the studio search the messages of the chats? Which chats does it search, and what does a hit open? | Open. 001 says the search of messages is not in this version. |
 | 001 | Where does the node panel dock when the window is narrow but at least 800 px wide: at the right edge of the canvas, or as an overlay? At which width does it change? | Open. 001 names the docked panel and the overlay under 800 px only. |
 | 001 | At which window width does the workflow list become an overlay? A docked list of 280 px with a panel of 320 px leaves no room for the centre under about 1000 px. | The spec states 1100 px: the list docks at 1100 px and wider, and opens as an overlay from 800 to 1100 px. To confirm. |
+
+## CH1: what the chat may change
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 002, 010 | When the turn has both the direct tools and the propose tools, which path does a change of the graph or of a node prompt take: a direct change, or a proposal that waits? | A change that the user asks for goes direct; a proposal is for a better way that the responsible document sees by itself, after a run or from feedback. The prompt states this. To confirm. |
