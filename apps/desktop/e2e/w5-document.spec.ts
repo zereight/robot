@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
-import { freshUserData, launch, seedRunningRun, shot } from "./harness.ts"
+import { freshUserData, launch, shot, startHangingRun } from "./harness.ts"
+import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 002: the editor of the responsible document, its limits, and its history.
 
@@ -75,6 +76,7 @@ test("document: edit and save, the limits, the history, restore", async () => {
 })
 
 test("document: the editor is read-only while a run works", async () => {
+  const mock = await startMockProvider()
   const userData = freshUserData()
   const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   await page.getByTestId("new-workflow-empty").click()
@@ -82,10 +84,7 @@ test("document: the editor is read-only while a run works", async () => {
   await page.getByTestId("new-workflow-name").press("Enter")
   await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-text")).toBeVisible()
-  // A run that works is a row in the database. The app marks a run that was going as failed when
-  // it starts, so the test writes the row after the start and loads the window again.
-  await seedRunningRun(userData)
-  await page.reload()
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-readonly")).toBeVisible()
   await expect(page.getByTestId("document-text")).toHaveAttribute("readonly", "")
@@ -94,4 +93,5 @@ test("document: the editor is read-only while a run works", async () => {
   await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-last-run")).toHaveText("Last run: Running")
   await app.close()
+  await mock.close()
 })

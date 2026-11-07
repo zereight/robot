@@ -218,21 +218,110 @@ export const startRecording = async (page: Page, name: string) => {
   }
 }
 
+/** The page side of a call to the main process, for a test that needs data the screens cannot make. */
+type Invoke = (method: string, input?: unknown) => Promise<{ ok: boolean; value?: unknown }>
+
+export interface NodeSpec {
+  readonly kind?: "text" | "decision"
+  readonly name: string
+  readonly prompt?: string
+  readonly permission?: string | null
+  readonly continueOnFailure?: boolean
+  /** A decision node: the labels of the options. */
+  readonly options?: readonly string[]
+}
+
+export interface FlowSpec {
+  readonly provider: { openaiUrl: string; key: string }
+  /** The permission level of the workflow. The app starts at "Ask for risky steps". */
+  readonly level?: string
+  readonly nodes: readonly NodeSpec[]
+  /** `[from, to, option]`: indexes into `nodes`; `option` is the index of the option of a decision node. */
+  readonly edges?: readonly (readonly [number, number, number?])[]
+}
+
 /**
- * Puts a run that works into the database of a running app, for a test of a screen that reads a
- * run. The app marks a run that was going as failed when it starts (spec 010), so the run goes in
- * after the start. The test copies nothing from a real data folder: `userData` is its own.
+ * Makes the nodes and connections of the first workflow of the open app, and the account of the
+ * stand-in provider, with the same calls as the window. It returns the id of the workflow.
  */
-export const seedRunningRun = async (userData: string, id = "r1") => {
-  const { DatabaseSync } = await import("node:sqlite")
-  const db = new DatabaseSync(join(userData, "robot.db"))
-  try {
-    db.exec("PRAGMA busy_timeout = 5000")
-    const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
-    db.prepare(
-      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES (?, ?, 'running', 'hand', ?)",
-    ).run(id, flow.id, Date.now())
-  } finally {
-    db.close()
-  }
+export const buildFlow = async (page: Page, spec: FlowSpec) =>
+  page.evaluate(async (spec) => {
+    const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+    const call = async (method: string, input?: unknown) => {
+      const result = await invoke(method, input)
+      if (!result.ok) throw new Error(`${method}: ${JSON.stringify(result)}`)
+      return result.value as never
+    }
+    const servers = (await call("servers.list")) as { id: string; kind: string }[]
+    const server = servers.find((s) => s.kind === "local")
+    const flows = (await call("workflows.list", { serverId: server?.id })) as { id: string }[]
+    const flow = flows[0]
+    let accounts = (await call("providers.list")) as { id: string }[]
+    if (accounts.length === 0) {
+      await call("providers.connect", {
+        kind: "openai",
+        name: "Mock",
+        baseUrl: spec.provider.openaiUrl,
+        apiKey: spec.provider.key,
+      })
+      accounts = (await call("providers.list")) as { id: string }[]
+    }
+    if (spec.level) await call("workflows.setPermission", { id: flow?.id, level: spec.level })
+    type Made = { id: string; options: { id: string }[] }
+    const made: Made[] = []
+    for (const n of spec.nodes) {
+      const node = (await call("workflows.node.add", {
+        workflowId: flow?.id,
+        node: {
+          kind: n.kind ?? "text",
+          name: n.name,
+          ...(n.kind === "decision"
+            ? { question: "Which way?", threshold: 0.9, options: n.options ?? ["Yes", "No"] }
+            : {
+                prompt: n.prompt ?? "",
+                accountId: accounts[0]?.id,
+                model: "mock-fast",
+                ...(n.permission !== undefined ? { permission: n.permission } : {}),
+                ...(n.continueOnFailure ? { continueOnFailure: true } : {}),
+              }),
+        },
+      })) as Made
+      made.push(node)
+    }
+    for (const [from, to, option] of spec.edges ?? []) {
+      const optionId = option === undefined ? null : (made[from]?.options[option]?.id ?? null)
+      await call("workflows.connect", {
+        workflowId: flow?.id,
+        from: made[from]?.id,
+        to: made[to]?.id,
+        optionId,
+      })
+    }
+    return flow?.id ?? ""
+  }, spec)
+
+/** Starts a run through the same call as the Run button. */
+export const startRunCall = async (page: Page, workflowId: string, trigger?: string) =>
+  page.evaluate(
+    async ({ workflowId, trigger }) => {
+      const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+      const result = await invoke("runs.start", { workflowId, ...(trigger ? { trigger } : {}) })
+      if (!result.ok) throw new Error(JSON.stringify(result))
+      return (result.value as { id: string }).id
+    },
+    { workflowId, trigger },
+  )
+
+/**
+ * Starts a real run that works until the test ends: one text node on the stand-in provider that
+ * never answers (`[[hang]]`). The app has the account, the node and the run, as a user would make
+ * them.
+ */
+export const startHangingRun = async (
+  page: Page,
+  provider: { openaiUrl: string; key: string },
+  prompt = "[[hang]]",
+) => {
+  const workflowId = await buildFlow(page, { provider, nodes: [{ name: "Work", prompt }] })
+  return startRunCall(page, workflowId)
 }

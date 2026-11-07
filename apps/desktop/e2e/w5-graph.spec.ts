@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, freshUserData, launch, seedRunningRun, shot } from "./harness.ts"
+import { connectMock, freshUserData, launch, shot, startHangingRun } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 010: the graph and node editor.
@@ -177,17 +177,14 @@ test("workflow settings: the permission level and the folder, in Korean words to
 })
 
 test("workflow settings: the folder and the level are read-only while a run works", async () => {
+  const mock = await startMockProvider()
   const userData = freshUserData()
   const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
   await expect(page.getByTestId("tab-settings")).toBeVisible()
-  // The app marks a run that was going as failed when it starts (spec 010), so the run goes in
-  // after the start, and the window loads again.
-  await seedRunningRun(userData)
-  await page.reload()
-
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await page.getByTestId("tab-settings").click()
   await expect(page.getByTestId("workflow-settings-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-permission")).toBeDisabled()
@@ -200,4 +197,5 @@ test("workflow settings: the folder and the level are read-only while a run work
   await expect(page.getByTestId("workflow-card-delete")).toBeDisabled()
   await shot(page, "w5-27-card-running")
   await app.close()
+  await mock.close()
 })

@@ -171,3 +171,42 @@ export const startMockProvider = async (): Promise<MockProvider> => {
       }),
   }
 }
+
+/**
+ * A stand-in for the decision model service (spec 013). It gives the probabilities that the test
+ * sets with `set`, for every option in order. `set("error")` gives an answer that cannot be read.
+ */
+export const startMockDecision = async () => {
+  let probabilities: number[] | "error" = [0.95, 0.05]
+  const server: Server = createServer(async (req, res) => {
+    await readBody(req)
+    res.writeHead(200, { "content-type": "application/json" })
+    if (probabilities === "error") {
+      res.end(JSON.stringify({ nope: true }))
+      return
+    }
+    res.end(
+      JSON.stringify({
+        answers: {
+          decision: {
+            type: "choice",
+            probabilities: Object.fromEntries(probabilities.map((p, i) => [`option_${i + 1}`, p])),
+          },
+        },
+      }),
+    )
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const port = (server.address() as AddressInfo).port
+  return {
+    url: `http://127.0.0.1:${port}`,
+    set: (next: number[] | "error") => {
+      probabilities = next
+    },
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections()
+        server.close(() => resolve())
+      }),
+  }
+}

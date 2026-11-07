@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import { makeFakeRuntimes } from "./fake-runtimes.ts"
-import { connectMock, freshUserData, killAtOnce, launch, seedRunningRun, shot } from "./harness.ts"
+import { connectMock, freshUserData, killAtOnce, launch, shot, startHangingRun } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 003: the chat of a workflow.
@@ -300,10 +300,7 @@ test("chat: the tool card of feedback says 'Added feedback to the run'", async (
   const { app, page } = await launch(userData, env)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await newWorkflow(page, "Weekly report")
-  // The app marks a run that was going as failed when it starts (spec 010), so the run goes in
-  // after the start, and the window loads again.
-  await seedRunningRun(userData)
-  await page.reload()
+  await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await say(page, 'tool add_run_feedback {"text":"Too long. Keep it short."}')
   await expect(page.getByTestId("tool-card")).toContainText("Added feedback to the run")
   await expect(page.getByTestId("tool-card")).not.toContainText("add_run_feedback")

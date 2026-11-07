@@ -1,5 +1,6 @@
 import {
   type ChatAnswer,
+  type ChatMarks,
   type ModelChoice,
   sameChatDay,
   startsChatGroup,
@@ -19,15 +20,19 @@ import {
 } from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { outsideText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
 import { Composer } from "./Composer.tsx"
+import cards from "./cards.module.css"
 import styles from "./chat.module.css"
 import { findHits, locate, stepHit } from "./find.ts"
 import { formatDay } from "./format.ts"
 import { MessageRow } from "./MessageRow.tsx"
+import { RunCards } from "./RunCards.tsx"
 import { createChatState } from "./state.ts"
 
 const PHRASES = 20
@@ -134,6 +139,61 @@ const AnswerHeader = (props: {
         </p>
       </Show>
     </>
+  )
+}
+
+/**
+ * The marks of the chat (spec 007, "The mark of a place"): outside content, the program mark and a
+ * sensitive read. They stay until the user clears them, after a confirm.
+ */
+const MarksLine = (props: { workflowId: string; marks: ChatMarks }) => {
+  const { t } = useApp()
+  const [asking, setAsking] = createSignal(false)
+  const any = () => props.marks.outside || props.marks.program || props.marks.sensitive
+  return (
+    <Show when={any()}>
+      <Show
+        when={asking()}
+        fallback={
+          <div class={cards.marks} data-testid="chat-marks">
+            <Show when={props.marks.outside}>
+              {(source) => (
+                <span data-testid="chat-mark-outside">
+                  {t("chat.marks.outside", { source: outsideText(t, source()) })}
+                </span>
+              )}
+            </Show>
+            <Show when={props.marks.program}>
+              <span data-testid="chat-mark-program">{t("chat.marks.program")}</span>
+            </Show>
+            <Show when={props.marks.sensitive}>
+              {(label) => (
+                <span data-testid="chat-mark-sensitive">
+                  {t("chat.marks.sensitive", { label: sensitiveText(t, label()) })}
+                </span>
+              )}
+            </Show>
+            <Button onClick={() => setAsking(true)} data-testid="chat-marks-clear">
+              {t("chat.marks.clear")}
+            </Button>
+          </div>
+        }
+      >
+        <Confirm
+          ask={t("chat.marks.clear.ask")}
+          confirm={t("chat.marks.clear.confirm")}
+          keep={t("common.keep")}
+          testId="chat-marks-ask"
+          confirmTestId="chat-marks-confirm"
+          keepTestId="chat-marks-keep"
+          onKeep={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false)
+            void call("chat.clearMarks", { workflowId: props.workflowId }).catch(() => {})
+          }}
+        />
+      </Show>
+    </Show>
   )
 }
 
@@ -352,6 +412,7 @@ export const ChatPanel = (props: { workflowId: string }) => {
                 />
               )}
             </Show>
+            <MarksLine workflowId={props.workflowId} marks={h().marks} />
             <div
               class={styles.scroll}
               ref={(el) => {
@@ -401,6 +462,9 @@ export const ChatPanel = (props: { workflowId: string }) => {
                     )
                   }}
                 </For>
+              </Show>
+              <Show when={h().cards.length > 0}>
+                <RunCards cards={h().cards} />
               </Show>
               <Show when={h().working && h().workingSince !== null}>
                 <WorkingLine since={h().workingSince ?? 0} />
