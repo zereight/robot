@@ -62,7 +62,7 @@ const turnOf = async (kind: RuntimeKind): Promise<Call> => {
   const before = calls().length
   await drain(drivers[kind].run({ ...run(bin) }))
   const made = calls().slice(before)
-  const turn = made.find((c) => Array.isArray((c as Call).args))
+  const turn = made.find((c) => Array.isArray(c.args))
   if (!turn) throw new Error(`${kind}: the stand-in noted no turn`)
   return turn as unknown as Call
 }
