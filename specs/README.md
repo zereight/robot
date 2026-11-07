@@ -12,7 +12,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 002 | [Responsible document: the text that answers for a workflow, its history, progress and feedback in the chat, and self-improvement](002-agents.md) | Draft |
 | 003 | [Workflow chat: send, stream, stop, attach, reply, progress of a run, results and feedback, threads, context](003-direct-chat.md) | Draft |
 | 005 | [Tasks: one run of a node, queue, wait, finish, fail, retry, reasons and results](005-tasks.md) | Draft |
-| 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |
+| 006 | [Providers: connect a model account, choose a provider, model and reasoning level for each text node, backup model (to confirm), switch](006-providers.md) | Draft |
 | 007 | [Workflow folder and tools: files, shell, browser, approvals, permission rules, action log, computer use, and the tools of the chat for a run](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what a workflow keeps between runs, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
@@ -23,13 +23,13 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 015 | [Notifications and the status island: notices of replies, approvals, failed nodes, finished runs and proposals, each leading to the chat of the workflow](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles that the nodes of a workflow write, cite and read again](016-knowledge.md) | Draft |
 | 017 | [Skills: saved instructions that the user calls with a slash, and that a prompt can include](017-skills.md) | Draft |
-| 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
+| 018 | [Connections: outside tools for the text nodes of workflows, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where workflows run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that the nodes of a workflow use and the model never sees](020-saved-secrets.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
-| 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
+| 023 | [Outside programs: read workflows, runs and results, and send a message to the chat of a workflow from another program on this computer, through MCP](023-outside-programs.md) | Draft |
 | 025 | [Shared folders: file claims between agents in one folder](025-shared-folders.md) | Draft |
-| 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which agents each one reaches](026-token-savings.md) | Draft |
+| 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which nodes each one reaches](026-token-savings.md) | Draft |
 | 027 | [Voice: dictate into the message box, read a reply aloud, voice chat on the phone](027-voice.md) | Draft |
 | 028 | [Chat bridge: talk to the responsible document of one workflow from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
@@ -94,6 +94,7 @@ not apply now.
 | M41 | The changes to 002, 010 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S144 to S146: the owner of a workflow and the participants of its agent steps, the workflows of organizations and agents, and the button "New agent" in the form of an organization |
 | W1 | The changes to 000, 001 and 010. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W1". | Slice W1: the workflow is the product. It is a graph of nodes with a responsible document, one chat and one memory, and a TLA file that the check reads. |
 | W2 | The changes to 002, 003, 005, 007, 008, 017 and 037, and the end of 009. The slice is in the table of slices of [docs/proposal-workflow-first.md](../docs/proposal-workflow-first.md). The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "W2". | Slice W2: the agent is no longer an object. The responsible document, the chat, the memory and self-improvement belong to the workflow. Spec 009 is deleted (decision 12). |
+| R1 | The changes to 006, 018, 023 and 026. The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "R1". | Slice R1: connections, providers, outside programs and token savings follow the workflow model. A text node uses an account and a connection, and a rule is for a workflow. |
 | R2 | The changes to 015, 016, 020, 028 and 038. The open points are in [docs/spec-questions.md](../docs/spec-questions.md), under the heading "R2". | Slice R2: a secret, an article, a notice, an event and a Teams chat belong to a workflow or to the user. A Teams message talks to the responsible document of one workflow. |
 
 ## Surfaces check
