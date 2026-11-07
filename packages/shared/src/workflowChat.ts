@@ -37,6 +37,11 @@ export type ChatPart =
        * do. The card then names the step as a wish, never as a deed (spec 007, "Tool cards").
        */
       readonly notRun?: boolean
+      /**
+       * True when the step asked the user (an approval card): from the time the card opens, while it
+       * waits, and after the answer. Such a step stays a card (spec 003, "Folded tool steps").
+       */
+      readonly asked?: boolean
     }
   /**
    * The muted line "Feedback added to the run" (spec 003, "Feedback"). `startedAt` is when the run
@@ -286,8 +291,9 @@ const MARKED_TOOLS: ReadonlySet<string> = new Set([
 
 /**
  * True for a tool step that may join a series: a plain step, finished or still running. A step that
- * failed, did not happen (refused, or nothing to do) or carries a note stays out of the series, so
- * the user sees what needs them.
+ * waits for the user or asked the user, failed, did not happen (refused, or nothing to do) or
+ * carries a note stays out of the series, so the user sees what needs them. A step that asked stays
+ * a card after the answer too, so it never goes from a card into a line.
  *
  * A running step joins the series, so that the line of a series stands still while the series
  * grows: a step that showed as its own card and then folded away moved the reply up and down on
@@ -297,6 +303,7 @@ export const isFoldableChatTool = (part: ChatPart): part is ChatToolPart =>
   part.kind === "tool" &&
   (part.state === "done" || part.state === "running") &&
   part.notRun !== true &&
+  part.asked !== true &&
   !MARKED_TOOLS.has(part.name)
 
 /** One row of the body of a reply: one part, or a series of folded tool steps. */

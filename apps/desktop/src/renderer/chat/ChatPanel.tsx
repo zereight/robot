@@ -204,6 +204,10 @@ const MarksLine = (props: { workflowId: string; marks: ChatMarks }) => {
   )
 }
 
+/** True for a box that takes typed text. */
+const isTextEntry = (el: HTMLElement): boolean =>
+  el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
+
 /** The chat of a workflow, beside its canvas (spec 001, 003). */
 export const ChatPanel = (props: {
   workflowId: string
@@ -235,7 +239,9 @@ export const ChatPanel = (props: {
   // A scroll that the reader did not cause (the chat follows a new reply, a layout change) is not
   // the reader seeing the end, so only a scroll after a wheel, a touch, a drag or a key counts.
   let readerAt = 0
-  const readerActed = () => {
+  const readerActed = (e: Event) => {
+    // Typing in a box of the chat (the edit box of a message) is not the reader looking at the end.
+    if (e.type === "keydown" && e.target instanceof HTMLElement && isTextEntry(e.target)) return
     readerAt = Date.now()
   }
   const markRead = () => {
@@ -247,6 +253,19 @@ export const ChatPanel = (props: {
     setStick(atBottom())
     if (atBottom() && Date.now() - readerAt < 1000) markRead()
   }
+  // A chat that fits in its box shows its latest message and never scrolls, so no scroll event can
+  // clear its count. After a mark (or any change of the messages or the size of the box) the count
+  // clears when the whole chat is in view, and only while the window is shown.
+  const clearIfWhole = () => {
+    if (!scroller || (history()?.unread.count ?? 0) === 0) return
+    if (document.visibilityState !== "visible") return
+    if (scroller.scrollHeight <= scroller.clientHeight + 1) markRead()
+  }
+  createEffect(() => {
+    history()?.unread.count
+    messages()
+    requestAnimationFrame(clearIfWhole)
+  })
   // The chat follows the latest message, until the reader scrolls up.
   createEffect(() => {
     messages()
@@ -481,6 +500,10 @@ export const ChatPanel = (props: {
               class={styles.scroll}
               ref={(el) => {
                 scroller = el
+                // The box can grow (the window gets larger) until the whole chat is in view.
+                const sizes = new ResizeObserver(() => clearIfWhole())
+                sizes.observe(el)
+                onCleanup(() => sizes.disconnect())
                 // What the reader does to the chat: only a scroll after one of these may clear the count.
                 for (const type of ["wheel", "touchmove", "pointerdown", "keydown"])
                   el.addEventListener(type, readerActed, { passive: true })

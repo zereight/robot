@@ -57,6 +57,19 @@ describe("folded tool steps (spec 003, 013)", () => {
     expect(isFoldableChatTool(text("hi"))).toBe(false)
   })
 
+  test("a step that asked the user stays a card: waiting, answered, done or failed", () => {
+    for (const state of ["running", "done", "failed"] as const)
+      expect(isFoldableChatTool(tool("a", state, { asked: true }))).toBe(false)
+    expect(isFoldableChatTool(tool("a", "running", { asked: false }))).toBe(true)
+    // It splits a series, and it does not join one that is there.
+    expect(counts([tool("a"), tool("b", "running", { asked: true }), tool("c")])).toEqual([
+      1,
+      "tool",
+      1,
+    ])
+    expect(counts([tool("a", "done", { asked: true })])).toEqual(["tool"])
+  })
+
   test("with the switch on, every part is its own row", () => {
     expect(counts([tool("a"), tool("b"), text("x")], false)).toEqual(["tool", "tool", "text"])
     expect(groupChatParts([], true)).toEqual([])

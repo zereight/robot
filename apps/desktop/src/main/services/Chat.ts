@@ -679,6 +679,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         ) {
           let reply: Awaited<ReturnType<typeof cards.ask>>
           try {
+            markAsked(parts, touch, call.id)
             reply = await cards.ask({
               workflowId,
               runId: run.id,
@@ -749,6 +750,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
       }
 
+      /**
+       * Marks the tool step of the call as one that asks the user, before its card opens. The mark
+       * stays: a step that asked is a card in the chat, never a line of a folded series.
+       */
+      const markAsked = (parts: ChatPart[], touch: () => void, callId: string) => {
+        const at = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+        const part = parts[at]
+        if (part?.kind !== "tool" || part.asked) return
+        parts[at] = { ...part, asked: true }
+        touch()
+      }
+
       /** A note after a proposal, a save or a refusal for "20 wait": one muted line of the turn. */
       const pushNote = (parts: ChatPart[], part: ChatPart) => {
         const last = parts.at(-1)
@@ -777,8 +790,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       ): Promise<ToolOutcome> => {
         const marks = readMarks(workflowId)
         const source = { kind: "chat" as const, id: w.assistantId }
-        const ask = (step: "memory" | "change") => (summary: string) =>
-          cards.ask({
+        const ask = (step: "memory" | "change") => (summary: string) => {
+          markAsked(parts, touch, call.id)
+          return cards.ask({
             workflowId,
             runId: null,
             taskId: null,
@@ -793,6 +807,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             sensitive: marks.sensitive,
             signal: w.controller.signal,
           })
+        }
         if (isMemoryTool(call.name)) {
           const result = await memoryTool.execute(
             {
@@ -961,8 +976,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             turn,
             actor: () => turnActor(workflowId, w),
             t: (key, params) => translate(locale, key, params),
-            ask: (step, summary) =>
-              cards.ask({
+            ask: (step, summary) => {
+              markAsked(parts, touch, call.id)
+              return cards.ask({
                 workflowId,
                 runId: null,
                 taskId: null,
@@ -976,7 +992,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 scope: "turn",
                 sensitive: marks.sensitive,
                 signal: w.controller.signal,
-              }),
+              })
+            },
           },
           call,
         )
@@ -1103,6 +1120,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               touch()
             } else if (event.type === "tool") {
               const index = parts.findIndex((p) => p.kind === "tool" && p.id === event.call.id)
+              const before = parts[index]
               const part: ChatPart = {
                 kind: "tool",
                 id: event.call.id,
@@ -1112,6 +1130,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 input: event.call.input,
                 output: event.state === "running" ? "" : event.output,
                 ...(event.state !== "running" && event.notRun ? { notRun: true } : {}),
+                // A step that asked the user keeps the mark when its state changes.
+                ...(before?.kind === "tool" && before.asked ? { asked: true } : {}),
               }
               if (index >= 0) parts[index] = part
               else parts.push(part)
@@ -1540,38 +1560,53 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const edit = (messageId: string, text: string) =>
         Effect.gen(function* () {
-          const r = row(messageId)
-          if (!r || r.status === "queued") return yield* new AppError({ code: "edit_not_last" })
-          const workflowId = r.workflow_id
-          const rows = visibleRows(workflowId)
-          const messages = rows.map(toMessage)
-          const refusal = editRefusal(messages, messageId, working.has(workflowId))
-          if (refusal !== null) return yield* new AppError({ code: `edit_${refusal}` })
-          if (r.actor_id !== null || chatRunSince(workflowId, r.created_at))
-            return yield* new AppError({
-              code: r.actor_id !== null ? "edit_not_last" : "edit_steps_ran",
-            })
-          const next = text.trim()
-          const old = JSON.parse(r.parts) as ChatPart[]
-          const others = old.filter((p) => p.kind !== "text")
-          if (next === "" && others.length === 0)
-            return yield* new AppError({ code: "message_empty" })
-          // The answer needs an account, and it is checked before anything changes.
+          /**
+           * The checks that decide if the edit may run. They read the state now and wait for
+           * nothing, so they are the same at the time of the writes. They run twice: first to fail
+           * fast, and again after the model is known, because that step can wait on the network.
+           */
+          const check = () => {
+            const r = row(messageId)
+            if (!r || r.status === "queued") return new AppError({ code: "edit_not_last" })
+            const workflowId = r.workflow_id
+            const rows = visibleRows(workflowId)
+            const refusal = editRefusal(rows.map(toMessage), messageId, working.has(workflowId))
+            if (refusal !== null) return new AppError({ code: `edit_${refusal}` })
+            if (r.actor_id !== null || chatRunSince(workflowId, r.created_at))
+              return new AppError({
+                code: r.actor_id !== null ? "edit_not_last" : "edit_steps_ran",
+              })
+            const next = text.trim()
+            const others = (JSON.parse(r.parts) as ChatPart[]).filter((p) => p.kind !== "text")
+            if (next === "" && others.length === 0) return new AppError({ code: "message_empty" })
+            return { r, rows, next, others }
+          }
+          const first = check()
+          if (first instanceof AppError) return yield* first
+          const workflowId = first.r.workflow_id
+          // The answer needs an account, and it is checked before anything changes. The model is
+          // read before the last check: this step can wait, and a turn can start meanwhile.
           const model = yield* resolveModel(workflowId)
           if (!model) return yield* new AppError({ code: "provider_not_connected" })
+          const now = check()
+          if (now instanceof AppError) return yield* now
+          const { rows, next, others } = now
           // The text keeps its place: after the skill chip and before the files, as send puts it.
           const skillAt = others.findIndex((p) => p.kind === "skill")
           const parts: ChatPart[] = [...others]
           if (next !== "") parts.splice(skillAt + 1, 0, { kind: "text", text: next })
-          db.run(
-            "UPDATE chat_message SET parts = ?, edited_at = ? WHERE id = ?",
-            JSON.stringify(parts),
-            Date.now(),
-            messageId,
-          )
           const at = rows.findIndex((x) => x.id === messageId)
-          for (const later of rows.slice(at + 1))
-            db.run("DELETE FROM chat_message WHERE id = ?", later.id)
+          // The change and the removal of the replies are one step: all happen, or none.
+          db.transaction(() => {
+            db.run(
+              "UPDATE chat_message SET parts = ?, edited_at = ? WHERE id = ?",
+              JSON.stringify(parts),
+              Date.now(),
+              messageId,
+            )
+            for (const later of rows.slice(at + 1))
+              db.run("DELETE FROM chat_message WHERE id = ?", later.id)
+          })
           emitMessage(messageId)
           emitState(workflowId)
           yield* startTurn(workflowId, model)

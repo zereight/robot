@@ -1,8 +1,9 @@
 import { mkdtempSync, readFileSync } from "node:fs"
+import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import { buildFlow, connectMock, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 003 (folded tool steps, mark as unread, edit of the last message, message links, send once),
@@ -157,6 +158,62 @@ test("tool steps: a failed step shows as a card with the switch off", async () =
   await shot(page, "b4-06-failed-stays-a-card")
   await app.close()
   await mock.close()
+})
+
+test("tool steps: a step that waits for an approval stays a card with the switch off, and so after the answer", async () => {
+  const mock = await startMockProvider()
+  // A page that the run reads: the chat then holds outside content and asks before it changes.
+  const server = createServer((_req, res) => res.end("page text")).listen(0, "127.0.0.1")
+  await new Promise((r) => server.once("listening", r))
+  const port = (server.address() as { port: number }).port
+  const { app, page } = await launch(freshUserData(), en)
+  await resizeWindow(app, 1300, 860)
+  await newWorkflow(page, "Weekly report")
+  await buildFlow(page, {
+    provider: { openaiUrl: mock.openaiUrl, key: GOOD_KEY },
+    level: "full",
+    nodes: [{ name: "Reader", prompt: `tool fetch_url {"url":"http://127.0.0.1:${port}/"}` }],
+  })
+  await page.getByTestId("workflow-run").click()
+  await expect(page.getByTestId("run-state")).toHaveText("Done")
+  const id = await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        robot: { invoke: (m: string, i?: unknown) => Promise<{ value: unknown }> }
+      }
+    ).robot.invoke
+    const servers = (await invoke("servers.list")).value as { id: string; kind: string }[]
+    const local = servers.find((s) => s.kind === "local")
+    return ((await invoke("workflows.list", { serverId: local?.id })).value as { id: string }[])[0]
+      ?.id
+  })
+  await page.evaluate(
+    (flow) =>
+      (
+        window as unknown as { robot: { invoke: (m: string, i?: unknown) => Promise<unknown> } }
+      ).robot.invoke("workflows.setPermission", { id: flow, level: "ask_risky" }),
+    id,
+  )
+  await showToolSteps(page, false)
+
+  await say(page, 'tool add_node {"kind":"text","name":"Send","prompt":"Send it."}')
+  // The step waits: its card shows, and no folded line holds it.
+  await expect(page.getByTestId("card-approval").first()).toBeVisible()
+  await expect(visibleCards(page)).toHaveCount(1)
+  await expect(visibleCards(page).first()).toHaveAttribute("data-state", "running")
+  await expect(page.getByTestId("tools-folded")).toHaveCount(0)
+  await shot(page, "b4-14-waiting-step-is-a-card")
+
+  // After the answer the step is a card still: it never goes from a card into a line.
+  await page.getByTestId("card-allow").first().click()
+  await expect(page.getByTestId("message-text").last()).toContainText("Tool said")
+  await settled(page)
+  await expect(visibleCards(page)).toHaveCount(1)
+  await expect(visibleCards(page).first()).toHaveAttribute("data-state", "done")
+  await expect(page.getByTestId("tools-folded")).toHaveCount(0)
+  await app.close()
+  await mock.close()
+  server.close()
 })
 
 test("tool steps: the line of the series speaks Korean", async () => {
@@ -325,6 +382,62 @@ test("mark as unread: the count, the place where the chat opens, and the end tha
     page.getByTestId("message").nth(7).getByTestId("message-mark-unread"),
   ).toHaveAttribute("aria-label", "읽지 않음으로 표시")
   await shot(page, "b4-13-unread-ko")
+
+  await app.close()
+  await mock.close()
+})
+
+test("mark as unread: a chat that fits clears its count at once, and typing in the edit box does not", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), en)
+  await resizeWindow(app, 1300, 860)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await newWorkflow(page, "Weekly report")
+  const stored = () =>
+    page.evaluate(async () => {
+      const servers = await window.robot.invoke("servers.list", undefined)
+      if (!servers.ok) return -1
+      const flows = await window.robot.invoke("workflows.list", {
+        serverId: servers.value[0]?.id ?? "",
+      })
+      if (!flows.ok) return -1
+      const h = await window.robot.invoke("chat.history", { workflowId: flows.value[0]?.id ?? "" })
+      return h.ok ? h.value.unread.count : -1
+    })
+
+  // A short chat: all of it shows, no scroll event can come, and the count must still go.
+  await say(page, "short question")
+  await expect(page.getByTestId("message-text").nth(1)).toContainText("You said: short question")
+  await settled(page)
+  const fits = await page
+    .getByTestId("chat-scroll")
+    .evaluate((el) => el.scrollHeight <= el.clientHeight + 1)
+  expect(fits).toBe(true)
+  await page.getByTestId("message").nth(1).hover()
+  await page.getByTestId("message").nth(1).getByTestId("message-mark-unread").click()
+  await expect(page.getByTestId("chat-unread")).toHaveCount(0)
+  await expect.poll(stored).toBe(0)
+  await shot(page, "b4-15-short-chat-count-clears")
+
+  // A chat that scrolls keeps the count, and typing in the edit box does not clear it, even when a
+  // scroll event follows at the end of the chat.
+  for (const n of [1, 2, 3]) {
+    await say(page, long(`turn${n}`))
+    await settled(page)
+  }
+  const last = page.getByTestId("message").last()
+  await last.hover()
+  await last.getByTestId("message-mark-unread").click()
+  await expect(page.getByTestId("chat-unread")).toHaveText("1 unread")
+  const lastUser = page.getByTestId("message").nth(6)
+  await lastUser.hover()
+  await lastUser.getByTestId("message-edit-open").click()
+  await page.getByTestId("message-edit-input").pressSequentially("typing")
+  await page.getByTestId("chat-scroll").evaluate((el) => el.dispatchEvent(new Event("scroll")))
+  await page.waitForTimeout(300)
+  await expect(page.getByTestId("chat-unread")).toHaveText("1 unread")
+  expect(await stored()).toBe(1)
+  await page.getByTestId("message-edit-input").press("Escape")
 
   await app.close()
   await mock.close()

@@ -227,4 +227,34 @@ describe("the reset of a database from before the workflow model (owner decision
     db.run("DELETE FROM workflow WHERE id = 'w1'")
     expect(db.all("SELECT task_id FROM file_claim")).toEqual([])
   })
+
+  test("a database with exactly the first 12 migrations opens at version 13 and gets the table of unread marks", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const before = migrations.slice(0, 12)
+    expect(before).toHaveLength(12)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at)
+        VALUES ('m1', 'w1', 'user', '[]', 'done', 1);
+    `)
+    expect(old.prepare("SELECT name FROM sqlite_master WHERE name = 'chat_unread'").all()).toEqual(
+      [],
+    )
+    old.close()
+    expect(fileState(file)).toBe("current")
+    const db = openDatabase(file)
+    expect(migrations).toHaveLength(13)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(13)
+    // The rows stay, and the table takes a mark and goes with the workflow.
+    expect(db.all("SELECT id FROM chat_message")).toEqual([{ id: "m1" }])
+    db.run("INSERT INTO chat_unread (workflow_id, message_id, at) VALUES ('w1', 'm1', 1)")
+    db.run("DELETE FROM workflow WHERE id = 'w1'")
+    expect(db.all("SELECT workflow_id FROM chat_unread")).toEqual([])
+  })
 })

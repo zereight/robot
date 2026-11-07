@@ -66,7 +66,28 @@ const setup = async () => {
       at,
     )
   const text = (value: string) => ({ kind: "text", text: value })
-  return { ...t, run, flow, chat, send, history, sql, idle, code, put, text }
+  /**
+   * A model list that is slow: the next call waits until `open` is called, the later calls go on.
+   * It stands in for a list that comes over the network, so a test can act while edit waits.
+   */
+  const slowModels = async () => {
+    const providers = await run(Providers.use((p) => Effect.succeed(p)))
+    const real = providers.models
+    let held = 0
+    let first = true
+    let open = () => {}
+    const gate = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    providers.models = (id) => {
+      if (!first) return real(id)
+      first = false
+      held++
+      return Effect.promise(() => gate).pipe(Effect.flatMap(() => real(id)))
+    }
+    return { held: () => held, open }
+  }
+  return { ...t, run, flow, chat, send, history, sql, idle, code, put, text, slowModels }
 }
 
 const words = (messages: readonly WorkflowChatMessage[]) =>
@@ -255,6 +276,60 @@ describe("edit of the last message (spec 003)", () => {
     await t.run(Providers.use((p) => p.disconnect(account?.id ?? "")))
     expect(await t.code(t.chat((c) => c.edit("u1", "hi there")))).toBe("provider_not_connected")
     expect(words((await t.history()).messages)).toEqual(["user:hi:done", "assistant:Hello.:done"])
+  })
+
+  test("a message that waits to be read by a running turn is not edited", async () => {
+    const t = await setup()
+    await t.put("u1", "user", [t.text("hi")], 1)
+    await t.put("a1", "assistant", [t.text("Hello.")], 2)
+    await t.sql("UPDATE chat_message SET joined_to = 'a1' WHERE id = 'u1'")
+    expect((await t.history()).editableId).toBeNull()
+    expect(await t.code(t.chat((c) => c.edit("u1", "x")))).toBe("edit_not_last")
+    expect(words((await t.history()).messages)).toEqual(["user:hi:done", "assistant:Hello.:done"])
+  })
+
+  test("a turn that starts while edit waits for the model list: edit is refused, nothing goes", async () => {
+    const t = await setup()
+    // The two rows are stored, not sent: no model list is cached yet, so edit must fetch it.
+    await t.put("u1", "user", [t.text("hi")], 1)
+    await t.put("a1", "assistant", [t.text("Hello.")], 2)
+    const slow = await t.slowModels()
+    const edited = t.code(t.chat((c) => c.edit("u1", "hi there")))
+    await until(() => slow.held() === 1)
+    // The composer sends in the window: its model list is not held, and its turn starts.
+    await t.send("slow start")
+    slow.open()
+    expect(await edited).toBe("edit_working")
+    const stored = await t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.all<{ id: string }>("SELECT id FROM chat_message WHERE id IN ('u1', 'a1')"),
+        ),
+      ),
+    )
+    expect(stored.map((r) => r.id).sort()).toEqual(["a1", "u1"])
+    const messages = (await t.history()).messages
+    expect(chatText(messages[0] as WorkflowChatMessage)).toBe("hi")
+    await t.chat((c) => c.stop(t.flow.id))
+    await t.idle()
+  })
+
+  test("two edits at once: the second one is refused and one turn runs", async () => {
+    const t = await setup()
+    await t.put("u1", "user", [t.text("hi")], 1)
+    await t.put("a1", "assistant", [t.text("Hello.")], 2)
+    const slow = await t.slowModels()
+    const first = t.code(t.chat((c) => c.edit("u1", "slow first")))
+    await until(() => slow.held() === 1)
+    // The second edit passes the model list and starts a turn.
+    expect(await t.code(t.chat((c) => c.edit("u1", "slow second")))).toBe("ok")
+    slow.open()
+    expect(await first).toBe("edit_working")
+    const messages = (await t.history()).messages
+    expect(words(messages).filter((w) => w.startsWith("user:"))).toEqual(["user:slow second:done"])
+    expect(messages.filter((m) => m.status === "streaming")).toHaveLength(1)
+    await t.chat((c) => c.stop(t.flow.id))
+    await t.idle()
   })
 
   test("a message that a linked device sent is not edited here", async () => {
