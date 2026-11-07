@@ -6,6 +6,8 @@ The user works in another program on the same computer, for example a coding ass
 terminal or an editor. That program can read what the workflows of ROBot did and talk to a workflow
 in its chat, through MCP (Model Context Protocol, an open standard). It cannot answer approvals,
 change settings, or delete anything. A workflow that it makes waits for the user to allow it (037).
+A message that it sends starts a turn of the responsible document, under the rules of 007 (see
+"Rules").
 
 ## Concepts
 
@@ -30,8 +32,8 @@ change settings, or delete anything. A workflow that it makes waits for the user
 4. New key: "Make a new key" shows a new setup text. The old key stops at once.
 5. Change access: the user picks one of the three accesses on the row. It counts from the
    next call.
-6. Remove: after a confirm. The key stops at once. A turn or a run that the program started goes
-   on. The user can stop it.
+6. Remove: after a confirm. The key stops at once. A turn that a message of the program started
+   goes on, and so does a run that this turn started (see "Rules"). The user can stop it.
 7. Turn off: the switch "Allow outside programs" off stops every key at once. The entries stay.
    On again, the same keys work.
 
@@ -44,7 +46,26 @@ With the access "Read":
 - **List tasks**: the newest 50 tasks, with filters for workflow and state: the workflow, the node,
   the source, the state and the times (005).
 - **Read a task**: the node, its input, the state, the reason of a failure, the result, and the
-  usage (005).
+  usage (005). Text that looks like a secret is hidden (014).
+- **Read a run**: one run of one workflow. It is the run that works now or, when none works, the
+  newest run. The program can name an earlier run by the time it started, as the list of runs shows
+  it (010). It gives:
+  - the state of the run, with the words of 005 and of the run view (010);
+  - for each node of the graph, the name and the state of its task, with the words of 005, or
+    "skipped", or "not reached" when the run has not reached the node and it has no task; which
+    node works; and how many nodes have ended;
+  - for each task that waits for the user, what it waits for, with the words of 005: "Waits for
+    your approval" (with the step in the words that the chat gives, 007), "Waits for your answer",
+    or "Waits for your pick" (a decision node found no winner, 010);
+  - when the run failed, was cancelled or was stopped, the reason that the run view shows (007,
+    "Following a run in the chat"): the node that failed and the reason of 005, for example "The
+    app stopped" or "Step limit reached (N).", a step that was refused, or "Stopped by you";
+  - the result of each node that has ended. It gives no result of a node that has not ended.
+    A result of a task that held outside content shows with the mark "Holds outside content" and the
+    first source (007). Files show as names. Text that looks like a secret is hidden (014).
+
+  "Read a run" changes nothing. It asks for no approval and adds no event. When the workflow has no
+  run, it returns "This workflow has no run yet."
 - **Read messages**: a page of at most 50 messages of the chat of one workflow (its main thread),
   the newest first, with the name of who wrote each one and its time. It gives the text of
   messages only. Files show as names. It gives no tool card, no thinking and no content of an
@@ -86,16 +107,25 @@ cannot allow it.
 
 - A tool can make a workflow only through a request that the user allows (037), and only with the
   access "Read, send work and manage".
-- No tool can answer an approval or a question, change a permission level or a rule, change a
-  workflow that exists or a setting, delete anything, or read a key, a saved secret (020), memory
-  (008), knowledge (016), or the action log (007). No tool starts a run (see the questions for
-  023).
+- The tools of an outside program start no run. They change no workflow that exists. No tool can
+  answer an approval or a question, change a permission level or a rule, change a setting, delete
+  anything, or read a key, a saved secret (020), memory (008), knowledge (016), or the action log
+  (007).
+- The turn that a message starts is not a tool. It is a turn of the responsible document (003). It
+  can do what any turn of the chat can do, under the permission level of the workflow and the cards
+  of 007: change the graph, a node or a prompt, save to memory, use a saved secret (020), and
+  start a run (010, "Assistant"). Starting a run is not a guarded step (007): at "Read only" it is
+  refused, and at the other levels it follows the level as for a turn of the user. The mark adds no
+  card to it. Whether such a turn may start a run is not decided (see the questions for 023).
+- A message of an outside program is never feedback (003, 007). It adds nothing to a run.
 - A turn that a message of an outside program starts holds outside content from its start (007,
   "Outside content"). The source is the name of the program. So guarded steps ask, and at "Ask
   when unsure" every checked step asks.
 - Such a turn holds the program mark (007). In a turn with the program mark, every guarded step
-  (007), for example a change of the graph or a save to memory, asks the user, also at "Full
-  access". At "Read only", the steps that "Read only" refuses stay refused. The program mark goes
+  (007) asks the user, also at "Full access": a change to the graph, a node or a prompt, a save to
+  memory (008), and a request with a saved secret that is not a GET or that asks for a new secret
+  (020). The card says "This turn holds outside content" and names the program. At "Read only",
+  the steps that "Read only" refuses stay refused. The program mark goes
   to later turns of the same chat, to its threads and forks, and to a task whose input comes from a
   task that held it, until the user clears it (007, "The mark of a place"). A hit of "search
   chats", or a result of "read chat", that holds a message of an outside program gives the
@@ -129,9 +159,11 @@ cannot allow it.
 ## Out of scope
 
 - An address on the network for the helper.
-- Changing a workflow that exists from an outside program. A manage request makes a new workflow
-  only (037).
-- Starting a run from an outside program (see the questions for 023).
+- A tool of an outside program that changes a workflow that exists. A manage request makes a new
+  workflow only (037). The turn that a message starts can change the graph after the user allows
+  the card (see "Rules").
+- A tool of an outside program that starts a run. The turn that a message starts may start a run
+  (see "Rules" and the questions for 023).
 - Answers to approvals and questions from an outside program.
 - MCP resources and prompts. The helper offers tools only.
 
@@ -167,3 +199,18 @@ cannot allow it.
   No tool of the helper can allow the request (037).
 - A message of a program says "Node 2 is too long." during a run: it is not feedback, and the run
   does not change (003).
+- The turn of a program message starts a run at "Read only": the start is refused with the reason.
+  At "Full access" no card shows for the start, because starting a run is not a guarded step (007).
+  The turn then holds outside content and the program mark. A change of the graph by this turn
+  still asks.
+- A run of 3 nodes works on node 2. "Read a run" gives the state of the run, "node 2 works", the
+  result of node 1, and node 3 as "not reached". It gives no result of node 2 or node 3.
+- A task of the run waits for an approval: "Read a run" gives "Waits for your approval" and the
+  step. For a question card it gives "Waits for your answer". For a decision node that found no
+  winner it gives "Waits for your pick".
+- A node failed: "Read a run" gives the state of the run, the node, and the reason of 005. After a
+  stop by the user it gives "Stopped by you". After a restart of the app it gives "The app stopped".
+- A result holds a text that looks like a key: "Read a run" and "Read a task" show it hidden. A
+  result of a task that held outside content shows with the mark "Holds outside content".
+- "Read a run" with the access "Read" works. It changes no state, shows no card and adds no event.
+  A workflow with no run gets "This workflow has no run yet."

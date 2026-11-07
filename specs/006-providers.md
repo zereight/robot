@@ -328,6 +328,8 @@ not sign in for it. The sign-in stays in the program on this computer.
   limit reason.
 - A stand-in vendor program reports a spent plan limit in its own form: the turn goes to the
   backup. It reports something that the app cannot read: the turn fails.
+- The hold and the line "Backup until <time>" show on the computer only. The phone and a linked
+  device show neither the hold nor the button "Use <main model> now" (see the questions for 006).
 - Node 1 is on its backup model. Node 2 of the same workflow has its own main model: node 2 keeps
   it.
 - The picker shows "New" for a model that appears on the second fetch, and with a fake clock the

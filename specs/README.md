@@ -12,7 +12,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 002 | [Responsible document: the text that answers for a workflow, its history, progress and feedback in the chat, and self-improvement](002-agents.md) | Draft |
 | 003 | [Workflow chat: send, stream, stop, attach, reply, progress of a run, results and feedback, threads, context](003-direct-chat.md) | Draft |
 | 005 | [Tasks: one run of a node, queue, wait, finish, fail, retry, reasons and results](005-tasks.md) | Draft |
-| 006 | [Providers: connect a model account, choose a provider, model and reasoning level for each text node, backup model, switch](006-providers.md) | Draft |
+| 006 | [Providers: connect a model account, choose a provider, model and reasoning level for each text node, switch](006-providers.md) | Draft |
 | 007 | [Workflow folder and tools: files, shell, browser, approvals, permission rules, action log, computer use, and the tools of the chat for a run](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what a workflow keeps between runs, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
@@ -27,7 +27,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 019 | [Sync between two computers: what syncs, conflicts, where workflows run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
-| 023 | [Outside programs: read workflows and send a message to the chat of a workflow from another program on this computer, through MCP](023-outside-programs.md) | Draft |
+| 023 | [Outside programs: read workflows, runs and results, and send a message to the chat of a workflow from another program on this computer, through MCP](023-outside-programs.md) | Draft |
 | 025 | [Shared folders: file claims between agents in one folder](025-shared-folders.md) | Draft |
 | 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which nodes each one reaches](026-token-savings.md) | Draft |
 | 027 | [Voice: dictate into the message box, read a reply aloud, voice chat on the phone](027-voice.md) | Draft |
