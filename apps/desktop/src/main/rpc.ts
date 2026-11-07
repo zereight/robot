@@ -697,7 +697,14 @@ export const handlers: Handlers = {
         ]),
       }),
     )(input).pipe(
-      Effect.flatMap(({ cardId, answer }) => Cards.use((c) => c.answer(cardId, answer))),
+      Effect.flatMap(({ cardId, answer }) =>
+        Effect.gen(function* () {
+          // A linked device answers as one "Allow" and keeps no rule, and the log names it
+          // (spec 012).
+          const actor = yield* CurrentActor
+          return yield* Cards.use((c) => c.answer(cardId, answer, actor))
+        }),
+      ),
       done,
     ),
   "workflows.delete": (input) =>

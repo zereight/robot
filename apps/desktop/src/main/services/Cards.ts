@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { CardAnswer, RunCard, SensitiveLabel } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
+import type { Actor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -42,6 +43,8 @@ export interface CardAsk {
 export interface CardReply {
   readonly answer: string
   readonly inChat: boolean
+  /** The name of the linked device that answered, or null for this computer (spec 012). */
+  readonly device?: string | null
 }
 
 export interface CardsService {
@@ -51,7 +54,7 @@ export interface CardsService {
    */
   ask(ask: CardAsk, onOpen?: (card: RunCard) => void): Promise<CardReply>
   /** The user answers a card. Fails when no one waits for it any more. */
-  answer(cardId: string, answer: CardAnswer): Effect.Effect<void, AppError>
+  answer(cardId: string, answer: CardAnswer, actor?: Actor | null): Effect.Effect<void, AppError>
   /**
    * A message in the chat answers the oldest question card of the workflow that waits (spec 003).
    * Returns true when it did.
@@ -192,7 +195,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           changed(a.workflowId, a.runId)
         })
 
-      const close = (id: string, answer: string, inChat: boolean) => {
+      const close = (id: string, answer: string, inChat: boolean, device: string | null = null) => {
         const row = db.get<Row>("SELECT * FROM task_card WHERE id = ?", id)
         const waiter = waiters.get(id)
         if (!row || !waiter || row.answered_at !== null) return false
@@ -204,31 +207,35 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           Date.now(),
           id,
         )
-        waiter.resolve({ answer, inChat })
+        waiter.resolve({ answer, inChat, device })
         changed(row.workflow_id, row.run_id)
         return true
       }
 
       return Cards.of({
         ask,
-        answer: (cardId, answer) =>
+        answer: (cardId, answer, actor) =>
           Effect.gen(function* () {
             const waiter = waiters.get(cardId)
             if (!waiter || waiter.kind !== answer.kind)
               return yield* new AppError({ code: "card_gone" })
             if (answer.kind === "approval") {
-              // A card with Allow once and Deny only takes "always" as one "allow".
+              // A card with Allow once and Deny only takes "always" as one "allow". So does an
+              // answer from a linked device: a client cannot make a workflow less careful, so it
+              // keeps no rule (spec 012).
               const given =
-                waiter.payload.once && answer.answer === "always" ? "allow" : answer.answer
-              close(cardId, given, false)
+                (waiter.payload.once || actor) && answer.answer === "always"
+                  ? "allow"
+                  : answer.answer
+              close(cardId, given, false, actor?.name ?? null)
             } else if (answer.kind === "question") {
               const text = answer.text.trim()
               if (text === "") return yield* new AppError({ code: "invalid_input" })
-              close(cardId, text, false)
+              close(cardId, text, false, actor?.name ?? null)
             } else {
               if (!waiter.payload.options.some((o) => o.id === answer.optionId))
                 return yield* new AppError({ code: "invalid_input" })
-              close(cardId, answer.optionId, false)
+              close(cardId, answer.optionId, false, actor?.name ?? null)
             }
           }),
         answerInChat: (workflowId, text) => {

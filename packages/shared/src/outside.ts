@@ -204,6 +204,8 @@ export interface ActionLogEntry {
   readonly rule: ActionRule | null
   /** The check of "Ask when unsure", when the step went to the check (spec 007). */
   readonly check: ActionCheck | null
+  /** The name of the linked device that answered the card of the step (spec 012), or null. */
+  readonly device: string | null
 }
 
 export const ACTION_LOG_DAYS = 90

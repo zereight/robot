@@ -234,6 +234,8 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
   interface Decided {
     by: ActionDecider
     rule: RuleRef | null
+    /** The linked device that answered the card (spec 012). */
+    device?: string | null
   }
 
   /**
@@ -273,8 +275,9 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
         outside: ctx.marks.outside,
         sensitive: held,
       })
-      if (reply.answer === "deny") throw new Refusal(DENIED_MESSAGE)
-      return { by: "user", rule: null }
+      if (reply.answer === "deny")
+        throw Object.assign(new Refusal(DENIED_MESSAGE), { device: reply.device ?? null })
+      return { by: "user", rule: null, device: reply.device ?? null }
     }
     const level = levelForNode(ctx.level)
     const outcome = ruleOutcome({ level, risky: input.risky, verdict })
@@ -293,11 +296,13 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       unreadable,
     })
     const answer = reply.answer as ApprovalAnswer
-    if (answer === "deny") throw new Refusal(DENIED_MESSAGE)
+    if (answer === "deny")
+      throw Object.assign(new Refusal(DENIED_MESSAGE), { device: reply.device ?? null })
     if (answer === "always" && save && input.step) rules.saveFromCard(ctx.workflowId, input.step)
     return {
       by: unreadable ? "unreadable_rule" : "user",
       rule: unreadable && verdict.kind === "unreadable" ? verdict.rule : null,
+      device: reply.device ?? null,
     }
   }
 
@@ -320,6 +325,7 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       outside: ctx.marks.outside,
       sensitive: ctx.marks.sensitive,
       ...(decided.rule ? { rule: decided.rule } : {}),
+      ...(decided.device ? { device: decided.device } : {}),
     })
 
   const markSensitive = (ctx: NodeToolContext, label: SensitiveLabel | null) => {
@@ -353,13 +359,14 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       decided = await gate(ctx, input)
     } catch (error) {
       if (error instanceof Refusal) {
-        const rule = (error as Refusal & { rule?: RuleRef }).rule ?? null
+        const refused = error as Refusal & { rule?: RuleRef; device?: string | null }
+        const rule = refused.rule ?? null
         log(
           ctx,
           input.kind,
           input.access,
           input.target,
-          { by: rule ? "deny_rule" : "user", rule },
+          { by: rule ? "deny_rule" : "user", rule, device: refused.device ?? null },
           "refused",
         )
       } else if (ctx.signal.aborted)
@@ -822,8 +829,13 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
           : step?.kind === "web"
             ? step.host
             : request.summary
-    const note = (by: ActionDecider, rule: RuleRef | null, result: "ran" | "refused") => {
-      if (kind) log(ctx, kind, access, target, { by, rule }, result)
+    const note = (
+      by: ActionDecider,
+      rule: RuleRef | null,
+      result: "ran" | "refused",
+      device: string | null = null,
+    ) => {
+      if (kind) log(ctx, kind, access, target, { by, rule, device }, result)
     }
     // "Read only" comes first, also for a program that has its own read-only mode.
     if (readOnlyRefusesKey(ctx.level, request.key)) {
@@ -871,13 +883,14 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       })
     } catch (error) {
       if (error instanceof Refusal) {
-        const rule = (error as Refusal & { rule?: RuleRef }).rule ?? null
-        note(rule ? "deny_rule" : "user", rule, "refused")
+        const refused = error as Refusal & { rule?: RuleRef; device?: string | null }
+        const rule = refused.rule ?? null
+        note(rule ? "deny_rule" : "user", rule, "refused", refused.device ?? null)
         return false
       }
       throw error
     }
-    note(by.by, by.rule, "ran")
+    note(by.by, by.rule, "ran", by.device ?? null)
     if (kind) noteDecided(ctx, kind, target)
     return true
   }

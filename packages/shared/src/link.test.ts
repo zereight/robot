@@ -102,6 +102,7 @@ describe("client requests", () => {
       "usage.summary",
       // A linked device sees the line "Holds a sensitive read" and cannot clear it (spec 007, 012).
       "placeMarks.clear",
+      "chat.clearMarks",
       // A linked device cannot add, change or delete a permission rule, and the rules stay on the
       // computer (spec 007, 012, 019).
       "rules.list",
@@ -130,15 +131,11 @@ describe("client requests", () => {
       expect(isClientMethod(method)).toBe(false)
     }
     expect(CLIENT_METHODS).toContain("chat.send")
-    expect(CLIENT_METHODS).toContain("tools.respond")
+    expect(CLIENT_METHODS).toContain("cards.answer")
   })
 
   test("the requests that change workflows are listed, and each needs the switch", () => {
-    expect([...CHANGE_METHODS].sort() as string[]).toEqual([
-      "workflows.create",
-      "workflows.delete",
-      "workflows.update",
-    ])
+    expect([...CHANGE_METHODS].sort() as string[]).toEqual(["workflows.create", "workflows.delete"])
     for (const method of CHANGE_METHODS) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(true)
@@ -146,13 +143,12 @@ describe("client requests", () => {
     // Reading, running and stopping a workflow need only the link (spec 012, "Workflows").
     for (const method of [
       "chat.send",
-      "tools.respond",
+      "cards.answer",
       "workflows.list",
-      "workflows.runs",
-      "workflows.runDetail",
-      "workflows.run",
-      "workflows.stop",
-      "workflows.approve",
+      "runs.list",
+      "runs.get",
+      "runs.start",
+      "runs.stop",
       "models.available",
     ]) {
       expect(isClientMethod(method)).toBe(true)
@@ -160,7 +156,7 @@ describe("client requests", () => {
     }
     // A client hears about workflows and runs.
     expect(PUSHED_EVENTS).toContain("workflows.changed")
-    expect(PUSHED_EVENTS).toContain("workflows.run")
+    expect(PUSHED_EVENTS).toContain("runs.changed")
     // The event that tells one device about its switch goes to that device only.
     expect((PUSHED_EVENTS as readonly string[]).includes(ACCESS_EVENT)).toBe(false)
   })
@@ -231,9 +227,9 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
 
   test("the window sends none of them to a linked server", () => {
     for (const method of refused) expect(isRoutedMethod(method)).toBe(false)
-    // The list of places carries the sections and the section of each place, read only.
-    expect(isClientMethod("places.list")).toBe(true)
-    expect(isRoutedMethod("places.list")).toBe(true)
+    // Running and stopping a workflow go to the linked server (spec 012, "Workflows").
+    expect(isClientMethod("runs.start")).toBe(true)
+    expect(isRoutedMethod("runs.start")).toBe(true)
   })
 })
 

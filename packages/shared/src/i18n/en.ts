@@ -290,6 +290,7 @@ export const en = {
   "permissions.log.result.refused": "Refused",
   "permissions.log.result.stopped": "Stopped",
   "permissions.log.outside": "Outside content: {source}",
+  "permissions.log.device": "answered on {name}",
   "permissions.log.noOutside": "No outside content",
   "permissions.log.sensitive": "Sensitive read: {label}",
   "permissions.log.noSensitive": "No sensitive read",

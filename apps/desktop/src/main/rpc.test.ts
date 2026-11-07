@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import type { Workflow } from "@robot/shared"
+import { CLIENT_METHODS } from "@robot/shared"
 import { Effect } from "effect"
-import { runRequest } from "./rpc.ts"
+import { handlers, runRequest } from "./rpc.ts"
 import { Database } from "./services/Database.ts"
 import { Servers } from "./services/Servers.ts"
 import { testRuntime } from "./services/testing.ts"
@@ -85,5 +86,48 @@ describe("a linked device and the switch for workflows (spec 010, 012)", () => {
     const t = await setup()
     const result = await t.ask("workflows.rename", { id: "x", name: "Y" }, "may")
     expect(result).toMatchObject({ ok: false, error: { code: "not_allowed" } })
+  })
+})
+
+describe("the requests of a linked device (spec 012)", () => {
+  test("every request on the list has a handler", () => {
+    for (const method of CLIENT_METHODS) expect(Object.keys(handlers), method).toContain(method)
+  })
+
+  test("a request that is not on the list is refused with no change", async () => {
+    const t = await setup()
+    for (const method of ["workflows.update", "workflows.run", "tools.respond", "agents.list"])
+      expect(await t.ask(method, {}, "may")).toMatchObject({
+        ok: false,
+        error: { code: "not_allowed" },
+      })
+    // The marks of a chat are cleared by the user on this computer only (spec 007, 012).
+    expect(await t.ask("chat.clearMarks", { workflowId: "x" }, "may")).toMatchObject({
+      ok: false,
+      error: { code: "not_allowed" },
+    })
+  })
+
+  test("a device without the switch can run, see and stop a run, and answer cards", async () => {
+    const t = await setup()
+    const created = await t.ask("workflows.create", { serverId: t.server.id, name: "Report" })
+    const id = (created as { value: Workflow }).value.id
+    // A workflow with no node does not start: the answer is the error of the run, not "change_off".
+    expect(await t.ask("runs.start", { workflowId: id }, "may-not")).toMatchObject({
+      ok: false,
+      error: { code: "run_empty" },
+    })
+    expect(await t.ask("runs.list", { workflowId: id }, "may-not")).toEqual({ ok: true, value: [] })
+    expect(await t.ask("runs.stop", { runId: "none" }, "may-not")).toMatchObject({
+      ok: false,
+      error: { code: "run_not_found" },
+    })
+    expect(
+      await t.ask(
+        "cards.answer",
+        { cardId: "none", answer: { kind: "approval", answer: "deny" } },
+        "may-not",
+      ),
+    ).toMatchObject({ ok: false, error: { code: "card_gone" } })
   })
 })

@@ -542,7 +542,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // Guard (b): feedback is a guarded step. In a turn that holds outside content it asks the
         // user, with the full text; at "Full access" it asks only with the program mark.
         const marks = readMarks(workflowId)
-        const logStep = (decidedBy: "level" | "user", result: "ran" | "refused" | "stopped") =>
+        const logStep = (
+          decidedBy: "level" | "user",
+          result: "ran" | "refused" | "stopped",
+          device: string | null = null,
+        ) =>
           actionLog.add({
             workflowId,
             kind: "feedback",
@@ -552,6 +556,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             taskId: null,
             outside: marks.outside,
             sensitive: marks.sensitive,
+            ...(device ? { device } : {}),
           })
         if (
           guardVerdict({ level, outside: marks.outside !== null, program: marks.program }) === "ask"
@@ -578,14 +583,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             return { output: "Not added: the turn was stopped.", failed: true }
           }
           if (reply.answer === "deny") {
-            logStep("user", "refused")
+            logStep("user", "refused", reply.device ?? null)
             return {
               output:
                 "Not added: the user refused the feedback. Tell the user that the feedback was not added.",
               failed: false,
             }
           }
-          logStep("user", "ran")
+          logStep("user", "ran", reply.device ?? null)
         } else logStep("level", "ran")
         const exit = await Effect.runPromiseExit(
           facts.addFeedback({ runId: run.id, nodeNumber, text, messageId: lastUserId(workflowId) }),

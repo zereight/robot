@@ -477,4 +477,9 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX task_card_workflow ON task_card (workflow_id, created_at);
   `,
+  `
+  -- The linked device that answered the card of a step, named in the entry (spec 012). NULL when
+  -- the user answered at this computer, or when no card decided the step.
+  ALTER TABLE action_log ADD COLUMN device TEXT;
+  `,
 ]
