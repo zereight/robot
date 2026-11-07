@@ -98,10 +98,10 @@ absent otherwise.
 - A save writes only the setup list. Other content of `robot.json` stays as it is. A save to a
   folder with no file makes the file in that folder. The editor always names the file it will write,
   so the user sees when folders share one file.
-- Only the user sets the allow. A node can propose a change of the list only as a write of a
-  control place: the step asks the user (007). With the approval the file changes, and a changed
-  list loses its allow. A proposal of self-improvement (002) and the responsible document, which
-  has no file tools, cannot change the list or the allow.
+- Only the user sets the allow. A node can change the list only as a write to a control place. That
+  write follows the rules of 007 for a change to a control place (007, "Change to a control
+  place"). A changed list loses its allow. A proposal of self-improvement (002) and the responsible
+  document, which has no file tools, cannot change the list or the allow.
 
 ## Surfaces
 
@@ -149,8 +149,9 @@ absent otherwise.
 - The command of that action fails. The next task tries it again.
 - "Stop automatic setup", then a task: the marked actions do not run. The menu still runs one.
 - A file that is not JSON shows "Setup actions could not be read." No command runs.
-- A text node writes `robot.json`. The step asks, as a write of a control place. With the approval
-  the file changes, and a changed list loses its allow. A refusal leaves the file as it was.
+- A text node writes `robot.json`. The write follows the rules of 007 for a change to a control
+  place: the level of the workflow, and an Allow rule, decide if it asks, runs or is refused. A
+  refusal leaves the file as it was. When the file changes, a changed list loses its allow.
 - The responsible document is asked to change `robot.json`: it has no tool for it, and the file
   does not change.
 - The menu has "Manage setup actions". It opens the editor, which lists the actions of the

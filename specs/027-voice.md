@@ -127,7 +127,7 @@ All checks use a stand-in recogniser and a stand-in speaker.
 - The user speaks while the stand-in speaker reads: the speaker stops and listening starts.
 - A question card comes: the stand-in speaker gets its text. The user speaks an answer: the card
   shows "Answered in the chat". An approval card comes: the speaker is silent, the state reads
-  "Waiting for you", and Allow by touch lets the run go on.
+  "Waiting for you", and Allow by touch lets the work go on.
 - Send the app to the background in voice chat: voice chat ends.
 - A database file, a log and an export hold no sound.
 - Press Cmd+Shift+D on the computer: dictation starts. Press it again: it stops. Press the button
