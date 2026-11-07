@@ -75,7 +75,6 @@ const startIn = async (page: Page, name: string, workflowId: string) => {
 
 /** Opens the newest run of the open workflow in its runs tab. */
 const viewNewestRun = async (page: Page) => {
-  await page.getByTestId("tab-runs").click()
   if (await page.getByTestId("run-back").count()) await page.getByTestId("run-back").click()
   await page.getByTestId("runs-list").locator("button").first().click()
   await expect(page.getByTestId("run-view")).toBeVisible()

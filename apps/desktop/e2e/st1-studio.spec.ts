@@ -122,6 +122,32 @@ test("studio: in a medium window the list opens as an overlay and the chat stays
   await app.close()
 })
 
+test("studio: the run strip shows the runs below the canvas, and the check on its tab", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1280, 860)
+  await newWorkflow(page, "Weekly")
+
+  // The strip shows below the open part, with the runs and the trigger.
+  const tabs = await page.getByTestId("tab-graph").boundingBox()
+  const strip = await page.getByTestId("run-strip").boundingBox()
+  expect(strip && tabs ? strip.y > tabs.y : false).toBe(true)
+  await expect(page.getByTestId("runs-none")).toBeVisible()
+  await expect(page.getByTestId("runs-trigger")).toBeVisible()
+  await shot(page, "st1-07-strip-runs")
+
+  // The tab "Check" shows the result of the check.
+  await page.getByTestId("strip-tab-check").click()
+  await page.getByTestId("graph-check").click()
+  await expect(page.getByTestId("check-state")).toHaveText("Passed")
+  await expect(page.getByTestId("check-passed")).toContainText("no problem")
+  await shot(page, "st1-08-strip-check")
+
+  // "Close the check" returns to the runs.
+  await page.getByTestId("check-close").click()
+  await expect(page.getByTestId("runs-none")).toBeVisible()
+  await app.close()
+})
+
 test("studio in Korean: the list, the canvas and the chat", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   await resizeWindow(app, 1280, 860)

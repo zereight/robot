@@ -30,7 +30,7 @@ import { ImprovementPanel } from "./ImprovementPanel.tsx"
 import { showsProposals, type WorkflowTab, workflowTabs } from "./improveView.ts"
 import { checkStateKey } from "./labels.ts"
 import { MemoryPanel } from "./MemoryPanel.tsx"
-import { RunsPanel } from "./RunsPanel.tsx"
+import { RunStrip, type StripMode } from "./RunStrip.tsx"
 import type { createRunsState } from "./runsState.ts"
 import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
@@ -58,6 +58,29 @@ export const WorkflowView = (props: {
   const tabs = createMemo(() => workflowTabs(local()))
   const runs = () => props.runs
   const [selected, setSelected] = createSignal<string>()
+  const [strip, setStrip] = createSignal<StripMode>("runs")
+  const [nodeSelected, setNodeSelected] = createSignal<string>()
+  /** The user opened the check by hand: a pass does not take the strip back to the runs. */
+  const [checkPinned, setCheckPinned] = createSignal(false)
+  const showStrip = (mode: StripMode) => {
+    setStrip(mode)
+    setCheckPinned(mode === "check")
+  }
+  // A new result of the check shows in the strip. A pass returns to the runs, unless the user
+  // opened the check by hand (spec 001, 010).
+  createEffect(
+    on(
+      () => detail()?.checkOutcome,
+      (outcome) => {
+        if (!outcome || outcome.state === "passed") {
+          if (!checkPinned()) setStrip("runs")
+        } else {
+          setStrip("check")
+        }
+      },
+      { defer: true },
+    ),
+  )
   // The link "Review" (chat, run view) and the link "Proposals (N)" open the page Self-improvement.
   createEffect(
     on(
@@ -68,12 +91,12 @@ export const WorkflowView = (props: {
       { defer: true },
     ),
   )
-  // The action "Open the run" of the Tasks page opens the runs of this workflow at that run.
+  // The action "Open the run" of the Tasks page selects that run in the strip.
   createEffect(() => {
     const r = runRequest()
     if (!r || r.workflowId !== props.id) return
-    setTab("runs")
     setSelected(r.runId)
+    showStrip("runs")
     clearRunRequest()
   })
   const [trigger, setTrigger] = createSignal("")
@@ -81,12 +104,12 @@ export const WorkflowView = (props: {
     const text = describeError(e)
     showToast("error", text.key, text.params)
   }
-  /** Starts a run by hand and shows it (spec 010). */
+  /** Starts a run by hand and shows it in the strip (spec 010). */
   const start = () =>
     void call("runs.start", { workflowId: props.id, ...(trigger() ? { trigger: trigger() } : {}) })
       .then((run) => {
         setSelected(run.id)
-        setTab("runs")
+        showStrip("runs")
         void runs().refetch()
       })
       .catch(toastError)
@@ -160,85 +183,101 @@ export const WorkflowView = (props: {
         </Show>
       </header>
       <div class={styles.view} data-testid="workflow-view">
-        <Show when={detail()?.running}>
-          <p class={styles.hint} role="status" data-testid="workflow-running-readonly">
-            {t("workflows.readonly")}
-          </p>
-        </Show>
-        <Show when={asking() && !detail()?.running ? detail() : undefined}>
-          {(flow) => (
-            <Confirm
-              ask={t("workflows.delete.ask", { name: flow().name })}
-              confirm={t("workflows.delete")}
-              keep={t("common.keep")}
-              testId="workflow-delete-ask"
-              confirmTestId="workflow-delete-confirm"
-              keepTestId="workflow-delete-keep"
-              onKeep={() => setAsking(false)}
-              onConfirm={() => {
-                void call("workflows.delete", { id: flow().id }).then(ui.closePlace)
-              }}
-            />
-          )}
-        </Show>
+        <div class={styles.part}>
+          <Show when={detail()?.running}>
+            <p class={styles.hint} role="status" data-testid="workflow-running-readonly">
+              {t("workflows.readonly")}
+            </p>
+          </Show>
+          <Show when={asking() && !detail()?.running ? detail() : undefined}>
+            {(flow) => (
+              <Confirm
+                ask={t("workflows.delete.ask", { name: flow().name })}
+                confirm={t("workflows.delete")}
+                keep={t("common.keep")}
+                testId="workflow-delete-ask"
+                confirmTestId="workflow-delete-confirm"
+                keepTestId="workflow-delete-keep"
+                onKeep={() => setAsking(false)}
+                onConfirm={() => {
+                  void call("workflows.delete", { id: flow().id }).then(ui.closePlace)
+                }}
+              />
+            )}
+          </Show>
+          <Show when={detail()}>
+            {(flow) => (
+              <>
+                <div class={graph.tabs} role="tablist" aria-label={t("workflows.tabs")}>
+                  <For each={tabs()}>
+                    {(name) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        class={graph.tab}
+                        aria-selected={tab() === name}
+                        tabIndex={tab() === name ? 0 : -1}
+                        data-testid={`tab-${name}`}
+                        onClick={() => setTab(name)}
+                        onKeyDown={(e) => tabKeyDown(e, tabs(), tab(), setTab)}
+                      >
+                        {t(`workflows.tab.${name}`)}
+                      </button>
+                    )}
+                  </For>
+                </div>
+                <Switch>
+                  <Match when={tab() === "graph"}>
+                    <GraphEditor
+                      workflow={flow()}
+                      runningNodes={runs().runningNodes()}
+                      selectedNode={nodeSelected()}
+                      onSelectNode={setNodeSelected}
+                      showCheck={strip() === "check"}
+                    />
+                  </Match>
+                  <Match when={tab() === "document"}>
+                    <DocumentEditor workflow={flow()} />
+                  </Match>
+                  <Match when={tab() === "memory"}>
+                    <MemoryPanel
+                      workflow={flow()}
+                      onOpenProposals={() => openImprovement(flow().id)}
+                    />
+                  </Match>
+                  <Match when={tab() === "improvement" && local()}>
+                    <ImprovementPanel
+                      workflow={flow()}
+                      onOpenRun={(id) => {
+                        setSelected(id)
+                        showStrip("runs")
+                      }}
+                    />
+                  </Match>
+                  <Match when={tab() === "settings"}>
+                    <WorkflowSettings workflow={flow()} />
+                  </Match>
+                </Switch>
+              </>
+            )}
+          </Show>
+        </div>
         <Show when={detail()}>
           {(flow) => (
-            <>
-              <div class={graph.tabs} role="tablist" aria-label={t("workflows.tabs")}>
-                <For each={tabs()}>
-                  {(name) => (
-                    <button
-                      type="button"
-                      role="tab"
-                      class={graph.tab}
-                      aria-selected={tab() === name}
-                      tabIndex={tab() === name ? 0 : -1}
-                      data-testid={`tab-${name}`}
-                      onClick={() => setTab(name)}
-                      onKeyDown={(e) => tabKeyDown(e, tabs(), tab(), setTab)}
-                    >
-                      {t(`workflows.tab.${name}`)}
-                    </button>
-                  )}
-                </For>
-              </div>
-              <Switch>
-                <Match when={tab() === "graph"}>
-                  <GraphEditor workflow={flow()} runningNodes={runs().runningNodes()} />
-                </Match>
-                <Match when={tab() === "runs"}>
-                  <RunsPanel
-                    workflowId={flow().id}
-                    runs={runs().runs() ?? []}
-                    selected={selected()}
-                    onSelect={setSelected}
-                    trigger={trigger()}
-                    onTrigger={setTrigger}
-                  />
-                </Match>
-                <Match when={tab() === "document"}>
-                  <DocumentEditor workflow={flow()} />
-                </Match>
-                <Match when={tab() === "memory"}>
-                  <MemoryPanel
-                    workflow={flow()}
-                    onOpenProposals={() => openImprovement(flow().id)}
-                  />
-                </Match>
-                <Match when={tab() === "improvement" && local()}>
-                  <ImprovementPanel
-                    workflow={flow()}
-                    onOpenRun={(id) => {
-                      setSelected(id)
-                      setTab("runs")
-                    }}
-                  />
-                </Match>
-                <Match when={tab() === "settings"}>
-                  <WorkflowSettings workflow={flow()} />
-                </Match>
-              </Switch>
-            </>
+            <RunStrip
+              workflow={flow()}
+              runs={runs().runs() ?? []}
+              selected={selected()}
+              onSelect={setSelected}
+              trigger={trigger()}
+              onTrigger={setTrigger}
+              mode={strip()}
+              onMode={showStrip}
+              onSelectNode={(id) => {
+                setTab("graph")
+                setNodeSelected(id)
+              }}
+            />
           )}
         </Show>
       </div>

@@ -41,7 +41,6 @@ const quietWorkflow = (page: Page) =>
   })
 
 const runOnce = async (page: Page) => {
-  await page.getByTestId("tab-runs").click()
   await page.getByTestId("workflow-run").click()
   await expect(page.getByTestId("run-view")).toBeVisible()
   await expect(page.getByTestId("run-state")).not.toHaveText(/Running|Queued|실행 중|대기 중/)

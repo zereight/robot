@@ -72,9 +72,8 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await expect(
     page.getByText("The nodes of this workflow make a loop. A run cannot start."),
   ).toBeVisible()
-  await page.getByTestId("tab-runs").click()
+  await page.getByTestId("strip-tab-runs").click()
   await expect(page.getByTestId("runs-none")).toBeVisible()
-  await page.getByTestId("tab-graph").click()
 
   // The card of the list shows the same state.
   await expect(page.getByTestId("workflow-check")).toHaveText("Check: Problem found")
@@ -85,6 +84,7 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await nodes.nth(2).click()
   await page.getByTestId("node-next-remove").click()
   await page.getByTestId("node-next-confirm").click()
+  await page.getByTestId("strip-tab-check").click()
   await expect(page.getByTestId("check-state")).toHaveText("Passed")
   await expect(page.getByTestId("check-passed")).toContainText("no problem")
   await expect(page.getByTestId("graph-problems")).toHaveCount(0)
@@ -126,7 +126,7 @@ test("check: the panel closes and opens again, and the marks go with it", async 
   await page.getByTestId("check-close").click()
   await expect(page.getByTestId("check-panel")).toHaveCount(0)
   await expect(page.getByTestId("graph-node-mark")).toHaveCount(0)
-  await page.getByTestId("check-open").click()
+  await page.getByTestId("strip-tab-check").click()
   await expect(page.getByTestId("graph-node-mark")).toHaveCount(3)
   await app.close()
   await mock.close()
@@ -199,6 +199,7 @@ test("check: a stopped check and a failed check show words of the window, not th
   seed({ state: "stopped", reason: "states" })
   ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
   // The app opens at the workflow that was open.
+  await page.getByTestId("strip-tab-check").click()
   const stopped = page.getByTestId("check-stopped")
   await expect(stopped).toContainText("stops after 60 seconds")
   await expect(stopped).not.toContainText("at the same time")
@@ -207,6 +208,7 @@ test("check: a stopped check and a failed check show words of the window, not th
 
   seed({ state: "failed", message: raw })
   ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "ko-KR" }))
+  await page.getByTestId("strip-tab-check").click()
   const failed = page.getByTestId("check-failed")
   await expect(failed).toContainText("앱의 문제예요")
   await expect(failed).not.toContainText("Unexpected")
