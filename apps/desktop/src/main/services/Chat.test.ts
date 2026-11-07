@@ -426,7 +426,7 @@ describe("questions about a run and feedback (spec 003)", () => {
     await t.send("Why does it wait?")
     await t.idle()
     const sys = system(before)
-    expect(sys).toContain("Reason: The app stopped")
+    expect(sys).toContain("Reason: <reason>The app stopped</reason>")
     expect(sys).toContain(
       "Waits for your approval of the step: run curl. The approval card is in the chat.",
     )

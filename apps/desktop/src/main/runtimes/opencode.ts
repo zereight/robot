@@ -9,7 +9,7 @@ import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { planFromTodos } from "./plan.ts"
 import { execute } from "./proc.ts"
-import { spawnProgram } from "./programs.ts"
+import { killProgram, spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
@@ -250,7 +250,7 @@ export async function* runOpencode(run: RuntimeRun): AsyncGenerator<AgentEvent> 
       resolve(code)
     }),
   )
-  const stop = () => child.kill()
+  const stop = () => killProgram(child)
   run.signal.addEventListener("abort", stop, { once: true })
   child.stdin.on("error", () => {})
   // The prompt goes in through the input and not through an argument: it can be long.
@@ -284,7 +284,7 @@ export async function* runOpencode(run: RuntimeRun): AsyncGenerator<AgentEvent> 
   } finally {
     run.signal.removeEventListener("abort", stop)
     if (child.exitCode === null) {
-      const timer = setTimeout(stop, 2000)
+      const timer = setTimeout(() => killProgram(child, "SIGKILL"), 2000)
       await exited
       clearTimeout(timer)
     }

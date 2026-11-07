@@ -223,7 +223,7 @@ export const ko: Record<MessageKey, string> = {
   "error.decision_not_set_up":
     "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장하세요.",
   "error.read_only_unsupported":
-    "이 에이전트는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
+    "이 노드는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
   "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인하세요.",
   "error.runtime_api_key_login":
     "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 로그인하세요.",
