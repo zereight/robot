@@ -1,9 +1,10 @@
-# 001 Window layout
+# 001 Studio
 
 ## Purpose
 
-One window shows everything the user needs to build and run workflows, in the layout of a chat
-server, so a new user knows where to look. The app opens on the workflow list.
+One window shows everything the user needs to build, test, run, inspect and improve workflows.
+The workflow list, the canvas, the runs and the chat show at once, so the user sees progress,
+stops and results without opening another page. The app opens on the studio.
 
 ## Concepts
 
@@ -12,54 +13,93 @@ server, so a new user knows where to look. The app opens on the workflow list.
   the open profile on this computer (see 022). Tiles of linked computers (012) follow in the
   order of pairing. A linked tile shows the first letter of the computer's name and the
   connection state (012).
-- **Page buttons**: under the servers, icon buttons open the workflow list (010), tasks (005, 038),
-  test devices (032) and usage. Each button shows only its own content. The Tasks page holds the
-  tabs "Tasks" and "Events" (005, 038); the Tasks button opens the first tab. At the bottom: help
-  and settings, then the profile button when the computer has two or more profiles (see 022).
-- **Workflow list**: the list of workflows, with one card for each workflow. The workflows button
-  shows it. A card shows the name, the state of the last run and the state of the check (see 010).
-  With no workflow, the list shows one button, "New workflow", and one line that says what a
-  workflow is. Where the list shows is not decided (see the questions for 001).
-- **Workflow view**: the view of an open workflow. It shows the canvas of the workflow, and beside
-  it the chat of that workflow (see 010). A new workflow opens here at once (010, "New workflow").
-- **Activity panel**: a panel that the user can open beside the workflow view. It uses the panel
-  column. Its content is not decided (see docs/spec-questions.md, rows for 001).
-- **Panel column**: an optional column at the right of the window, used by one panel at a time: the
-  activity panel, or the panel of the test devices connection (032). Each panel keeps its own width
-  and its own open state. The user drags the left edge of the column to change its width, between 320
-  and 720 px. The header buttons switch between the two panels.
-- **Frame**: the part of the window that shows a panel of a program of another vendor (018, 032). It
-  has a thin border, it fills the column, and it has no address of its own: the app gives it the
-  addresses it may reach.
+- **Page buttons**: under the servers, icon buttons open the tasks page (005, 038), the test
+  devices page (032) and the usage page (006). Each button shows only its own content. The Tasks
+  page holds the tabs "Tasks" and "Events" (005, 038); the Tasks button opens the first tab. At
+  the bottom: help and settings, then the profile button when the computer has two or more
+  profiles (see 022).
+- **Workflow list**: a column beside the rail. It holds one card for each workflow of the open
+  server. A card shows the name, the state of the last run and the state of the check (see 010).
+  The list shows workflows in alphabetical order, ignoring case. It has no sections and no pins.
+  Its header holds the button "New workflow". With no workflow, the list shows that button and
+  one line that says what a workflow is.
+- **Workflow view**: the centre column. It shows the open workflow: a header, one part of the
+  workflow, and the run strip below. The header shows the name, the state of the check, the
+  buttons Run and Stop, the button "Device" (032), and the delete of the workflow (000, 010).
+  The view shows one part at a time: the canvas, the responsible document, the memory, the
+  proposals, or the settings of the workflow. A row of tabs switches between them.
+- **Canvas**: the graph of the workflow (010): its nodes, its connections, its trigger, and the
+  path of a failed check. The user drags nodes onto the canvas, connects outputs to inputs, and
+  edits the selected node in the node panel. The node panel docks at the right edge of the
+  canvas. It closes when the selection clears, and the user can close it by hand.
+- **Run strip**: the lower part of the workflow view, below the part that is open. It shows the
+  runs of the open workflow, newest first, and the tasks of the selected run: each node with
+  its state, its reason when it is not done, and its result when it has one (005, 010). The run
+  strip also shows the result of the check (010): "Problem found" with the path, or the pass
+  line. A close button returns to the runs.
+- **Panel column**: the column at the right of the window. It shows the chat of the open
+  workflow (003), or the panel of the test devices connection (032). It shows one panel at a
+  time. The chat is the default. The user drags the left edge of the column to change its
+  width, between 320 and 720 px. Each panel keeps its own width and its own open state. The
+  header buttons switch between the two panels.
+- **Page**: the tasks page, the test devices page, the usage page, or the help page. A page
+  replaces the centre column: the tab area and the run strip. The workflow list and the panel
+  column stay. Settings opens over the studio. Closing it returns to the studio.
+- **Frame**: the part of the window that shows a panel of a program of another vendor (018, 032).
+  It has a thin border, it fills the column, and it has no address of its own: the app gives it
+  the addresses it may reach.
 
 ## Flows
 
 1. The user clicks a server tile. The workflow list and the pages change to that server. On a
    linked computer, the pages work as 012 says.
-2. The user opens a card in the workflow list. The workflow view shows that workflow, with its
-   canvas and its chat.
-3. The user clicks "New workflow" on the workflow list (010, "New workflow").
-4. The user hides or shows the panel column with a header button. The app remembers this, and which
-   panel it holds.
-5. The user clicks the add button on the rail. A dialog opens: "Connect to a computer" (012).
+2. The user clicks a card in the workflow list. The workflow view shows that workflow, the panel
+   column shows its chat, and the run strip shows its runs. There is no back button and no
+   Forward: the selection in the list is the navigation.
+3. The user presses "New workflow" in the header of the list and types a name. The app makes the
+   workflow with a short default responsible document (010). The new workflow is selected, and
+   the canvas opens with the chat beside it.
+4. The user presses Run in the header. The run starts, and the run strip shows its tasks as they
+   go. The user presses Stop to end the run that works now.
+5. The user switches the part of the workflow with the tab row. The run strip and the chat stay
+   where they are.
+6. The user presses a page button on the rail. The page shows in the centre column. The user
+   returns to the open workflow by pressing the button again, or by picking a card in the list.
+7. The user opens the test devices panel (032). It replaces the chat in the panel column. The
+   user returns to the chat with the header button.
+8. The user hides or shows the panel column with a header button. The app remembers this, and
+   which panel it holds.
+9. The user clicks the add button on the rail. A dialog opens: "Connect to a computer" (012).
    The user can also remove a linked tile with its context menu.
 
 ## States
 
 - No server connected: the rail shows only the add button; the main area explains how to start.
-- A linked server that is offline: its tile is muted. The workflow list and the run view do not
+- A linked server that is offline: its tile is muted. The workflow list and the run strip do not
   show. A chat that the user opened shows its cached messages, marked "Offline" (012).
 - No workflow: the workflow list shows "New workflow" and one line that says what a workflow is.
+  The centre column shows an empty state with the same button. The run strip and the panel
+  column show one muted line each.
+- No workflow open: workflows exist, and none is selected. The centre column asks the user to
+  pick a workflow. The run strip and the panel column show one muted line each.
+- A page is open: the centre column shows the page. The list and the panel column stay.
+- Narrow window, under 800 px: the rail narrows to 56 px. The workflow list and the panel column
+  close. A button in the header of the workflow view opens each one as an overlay. The run strip
+  stays below the part that is open. The app remembers the open state of each overlay.
 
 ## Rules
 
-- Window width under 800 px: the rail narrows to 56 px, and the panel column closes. The rail width
-  and the panel column at 800 px and wider are not decided (see the questions for 001).
 - The panel column shows one panel. A press on a header button of the other panel switches to it.
   The app remembers which one is open.
 - The rail leaves room for the window buttons at the top left.
 - The rail, the workflow list and the open workflow belong to the open profile. A switch of
   profile changes all of them, and each profile keeps its own selection (022).
+- While a run works, the header shows Stop, and the workflow is read-only until the run ends
+  (010).
+- The list shows workflows in alphabetical order, ignoring case. It has no sections, no pins,
+  no Back and no Forward.
+- The run strip shows runs newest first. It selects the run that works now, or the newest run.
+  A selection by the user stays until the user selects another run or a new run starts.
 - Keyboard: Cmd+F finds in the open chat (003); on a page that is not a chat it does nothing.
   Cmd+Shift+D starts and stops dictation (027). The help button opens a page that lists these keys.
   The keys for search and for moving through the list are not decided (see docs/spec-questions.md,
@@ -72,17 +112,67 @@ server, so a new user knows where to look. The app opens on the workflow list.
 - **Closing the window**: it does not quit the app. The runs go on working. The user opens the
   window again from the Dock icon or from the menu bar item (015).
 
+## Surfaces
+
+- **Ways in**: a card in the workflow list, "New workflow" in the header of the list, the page
+  buttons on the rail, Run and Stop in the header of the workflow view, and the "Device" button
+  (032). Cmd+K and the search of messages are not in this version (see docs/spec-questions.md,
+  rows for 001).
+- **Devices**: this computer shows the whole studio and changes it. A linked client shows the
+  studio of the server as 012 says: it sees the list, the nodes, the runs and the chat, and it
+  changes nothing without the switch "Can create and change workflows". The phone has no canvas
+  editor (010, 011). Each profile keeps its own selection (022).
+- **Runtimes**: nothing changes. The layout is the same whatever answers in the chat or in a
+  node.
+- **Ways out**: a page button pressed again, or a card picked, returns to the open workflow. The
+  header button returns from the test devices panel to the chat. The close button returns from
+  the check result to the runs. An overlay closes to the workflow view. The delete of a workflow
+  asks first (000).
+- **Seeing the state**: a card shows the state of the last run and the state of the check. The
+  header shows the check and whether a run works. The run strip shows each run, each task with
+  its state and reason, and each result that a task kept. After a restart, the selection and the
+  states of the runs stay (010).
+- **Data**: the selection, the widths and the open panels stay on this computer. They do not sync
+  (019), and no export holds them (014). The cache of a linked client holds what 012 says.
+- **Words**: "Studio" and "Run strip" go in docs/glossary.md, in English and Korean.
+
+## Out of scope
+
+- What the chat shows and does (003). What a task holds and how the user stops or retries it
+  (005). What the graph, a run, the check, a version, a proposal or the file holds (010). What
+  the memory holds (008). What the test devices panel holds (032). What the usage page holds
+  (006). What settings holds (013).
+- Cmd+K and the search of messages. They are open questions (see docs/spec-questions.md, rows
+  for 001).
+- The look beyond 000: themes, lights and motion stay as 000 and 039 say.
+
 ## Acceptance
 
-- Selecting a server, then a workflow, opens the right workflow; the selection survives a restart.
-  This also holds for a linked computer.
+- Open the app with workflows, at 1280 px width: the rail, the workflow list, the canvas, the
+  run strip and the chat show at once.
+- Click a card: the centre column, the chat and the run strip show that workflow. Quit and open
+  the app again: the same workflow is open.
+- Press Run in the header: the run strip shows the tasks of the new run as they go. Fail a node:
+  the run strip shows its reason without opening another page.
+- Make a change that fails the check: the run strip shows "Problem found" with the path, and the
+  canvas marks the nodes on the path. Press the close button: the runs show again.
+- Press the Tasks button: the centre column shows the tasks page, and the list and the chat stay.
+  Press the button again: the open workflow shows again.
+- Press "New workflow" in the header of the list and type "Weekly": the new workflow is selected,
+  and the canvas opens with the chat beside it.
+- With no workflow: the list shows "New workflow" and one line that says what a workflow is.
+  The centre column shows an empty state with the same button.
+- The window has no page for agents, chats or routines. The workflow view has no back button,
+  and no activity panel shows anywhere.
+- At 760 px width: the rail is 56 px wide, the list and the panel column are closed, and the run
+  strip stays. A header button opens the list as an overlay, and another opens the chat.
+- Select a server, then a workflow: the right workflow opens, and the selection survives a
+  restart. This also holds for a linked computer.
 - The add button opens the connect dialog.
-- The Workflows button opens the workflow list. With no workflow, the list shows "New workflow" and
-  one line that says what a workflow is.
-- The window has no page for agents, chats or routines.
-- At 760 px width, the panel column is closed and the rail is 56 px wide.
 - Press Cmd+Q while a run works: the note shows and the app stays. Press it again within 3 seconds:
   the app quits. With nothing running, the first press quits.
 - Press Cmd+F on the Settings page: nothing happens. Hold Cmd+Q for 1 second while a run works: the
   app quits. Close the window while a run works: the run goes on, and the Dock icon opens the
   window again.
+- A linked server goes offline: the workflow list and the run strip do not show, and the open chat
+  shows its cached messages, marked "Offline".

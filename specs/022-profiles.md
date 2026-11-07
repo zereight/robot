@@ -39,9 +39,10 @@ and linked devices. A phone that is paired with one profile sees that profile an
 2. The user clicks it. A menu lists every profile with its face and name. The open profile has a
    check mark. A profile that has a task waiting for the user (005) has a dot.
    The menu ends with "Add profile" and "Manage profiles". The second opens Settings → Profiles.
-3. The user picks a profile. The whole window changes at once: the rail, the workflow list, the pages,
-   the settings and the activity panel. The window opens the page and the place where the user
-   left that profile. If a form has text that is not saved, the app asks before it switches.
+3. The user picks a profile. The whole window changes at once: the rail, the workflow list, the
+   view, the run strip, the pages, the settings and the panel column. The window opens the page
+   and the workflow where the user left that profile. If a form has text that is not saved, the
+   app asks before it switches.
 4. At the next start the app opens the profile that was open when the user quit.
 
 ### Add

@@ -4,8 +4,8 @@
 
 ROBot lets one person build and run workflows on their own computer. A workflow is a graph of
 nodes. A model runs the nodes in a fixed order. The user can read, edit and check every part of a
-workflow. The interface follows the layout of a chat server, with servers on the far left (see
-001).
+workflow. The interface is a studio: the workflow list, the canvas, the runs and the chat
+show in one window, with servers on the far left (see 001).
 
 ## Concepts
 

@@ -8,7 +8,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | No. | Area | State |
 | --- | --- | --- |
 | 000 | [Product](000-product.md) | Draft |
-| 001 | [Window layout: server rail, workflow list, workflow view with its chat, activity panel](001-window-layout.md) | Draft |
+| 001 | [Studio: server rail, workflow list, canvas, run strip, chat](001-window-layout.md) | Draft |
 | 002 | [Responsible document: the text that answers for a workflow, its history, progress and feedback in the chat, and self-improvement](002-agents.md) | Draft |
 | 003 | [Workflow chat: send, stream, stop, attach, reply, progress of a run, results and feedback, threads, context](003-direct-chat.md) | Draft |
 | 005 | [Tasks: one run of a node, queue, wait, finish, fail, retry, reasons and results](005-tasks.md) | Draft |
