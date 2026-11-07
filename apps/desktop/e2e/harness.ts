@@ -217,3 +217,22 @@ export const startRecording = async (page: Page, name: string) => {
     rmSync(framesDir, { recursive: true, force: true })
   }
 }
+
+/**
+ * Puts a run that works into the database of a running app, for a test of a screen that reads a
+ * run. The app marks a run that was going as failed when it starts (spec 010), so the run goes in
+ * after the start. The test copies nothing from a real data folder: `userData` is its own.
+ */
+export const seedRunningRun = async (userData: string, id = "r1") => {
+  const { DatabaseSync } = await import("node:sqlite")
+  const db = new DatabaseSync(join(userData, "robot.db"))
+  try {
+    db.exec("PRAGMA busy_timeout = 5000")
+    const flow = db.prepare("SELECT id FROM workflow").get() as { id: string }
+    db.prepare(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES (?, ?, 'running', 'hand', ?)",
+    ).run(id, flow.id, Date.now())
+  } finally {
+    db.close()
+  }
+}

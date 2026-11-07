@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto"
-import type { RunFact, RunNodeFact, RunNodeState } from "@robot/shared"
+import {
+  parseOutsideSource,
+  type RunFact,
+  type RunNodeFact,
+  type RunNodeState,
+} from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { AppError } from "./errors.ts"
@@ -67,6 +72,8 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
         result: string
         decision: string | null
         option_id: string | null
+        outside_mark: string | null
+        program_mark: number
       }
       interface NodeRow {
         id: string
@@ -127,7 +134,17 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
           if (!task) {
             // A node with no task of a run that ended with success was not on the path: skipped.
             const state: RunNodeState = ended && run.state === "done" ? "skipped" : "not_reached"
-            return { number, name, kind, state, reason: null, result: null, decision: null }
+            return {
+              number,
+              name,
+              kind,
+              state,
+              reason: null,
+              result: null,
+              decision: null,
+              outside: null,
+              program: false,
+            }
           }
           const finished = ["done", "failed", "blocked", "cancelled"].includes(task.state)
           let decision: RunNodeFact["decision"] = null
@@ -158,6 +175,8 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
             reason: reasonOf(task),
             result: finished && task.result !== "" ? task.result : null,
             decision,
+            outside: parseOutsideSource(task.outside_mark),
+            program: task.program_mark === 1,
           }
         }
         for (const n of nodes) {
@@ -181,6 +200,64 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
           active: !ended,
           nodes: facts,
         }
+      }
+
+      /**
+       * The numbers of the nodes that have no task yet and can still start in the run: a node
+       * with no input, or a node that gets an input from a node that has ended and passes it on,
+       * or from a node that has not ended yet. A connection from a decision node that took
+       * another option, and one from a node that failed, do not pass (spec 010).
+       */
+      const startableNodes = (workflowId: string, runId: string): Set<number> => {
+        const nodes = db.all<{ id: string; number: number; continue_on_failure: number }>(
+          "SELECT id, number, continue_on_failure FROM workflow_node WHERE workflow_id = ?",
+          workflowId,
+        )
+        const connections = db.all<{
+          from_node_id: string
+          to_node_id: string
+          option_id: string | null
+        }>(
+          "SELECT from_node_id, to_node_id, option_id FROM workflow_connection WHERE workflow_id = ?",
+          workflowId,
+        )
+        const tasks = new Map<number, { state: string; option_id: string | null }>()
+        for (const t of db.all<{ node_number: number; state: string; option_id: string | null }>(
+          "SELECT node_number, state, option_id FROM task WHERE run_id = ? ORDER BY created_at, rowid",
+          runId,
+        ))
+          tasks.set(t.node_number, t)
+        const byId = new Map(nodes.map((n) => [n.id, n]))
+        const memo = new Map<string, boolean>()
+        /** True when a node with no task yet may still start in the run. */
+        const live = (id: string, trail: Set<string>): boolean => {
+          const known = memo.get(id)
+          if (known !== undefined) return known
+          const node = byId.get(id)
+          if (!node || trail.has(id)) return false
+          trail.add(id)
+          const incoming = connections.filter((c) => c.to_node_id === id)
+          const ok = incoming.length === 0 || incoming.some((c) => passes(c, trail))
+          trail.delete(id)
+          memo.set(id, ok)
+          return ok
+        }
+        const passes = (
+          c: { from_node_id: string; option_id: string | null },
+          trail: Set<string>,
+        ): boolean => {
+          const from = byId.get(c.from_node_id)
+          if (!from) return false
+          const task = tasks.get(from.number)
+          if (!task) return live(from.id, trail)
+          if (["running", "waiting", "queued"].includes(task.state)) return true
+          if (task.state !== "done" && from.continue_on_failure === 0) return false
+          // A decision node passes only the connection of the option that it took.
+          return c.option_id === null || c.option_id === task.option_id
+        }
+        const out = new Set<number>()
+        for (const n of nodes) if (!tasks.has(n.number) && live(n.id, new Set())) out.add(n.number)
+        return out
       }
 
       const activeRun = (runId: string) =>
@@ -207,15 +284,20 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
             const run = activeRun(input.runId)
             if (!run || run.finished_at !== null) return yield* new AppError({ code: "run_ended" })
             const fact = factOf(run)
-            // A text node that has not started gets the feedback with its input (spec 003).
+            // A text node that has not started gets the feedback with its input (spec 003). A node
+            // on a branch that a decision node already left cannot start, so it is not named.
+            const startable = startableNodes(run.workflow_id, run.id)
             const nodes = fact.nodes
               .filter(
-                (n) => n.kind === "text" && (n.state === "not_reached" || n.state === "queued"),
+                (n) =>
+                  n.kind === "text" &&
+                  (n.state === "not_reached" || n.state === "queued") &&
+                  startable.has(n.number),
               )
               .map((n) => n.number)
             db.run(
-              `INSERT INTO run_feedback (id, run_id, workflow_id, node_number, text, message_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO run_feedback (id, run_id, workflow_id, node_number, text, message_id, created_at, nodes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
               randomUUID(),
               run.id,
               run.workflow_id,
@@ -223,6 +305,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
               input.text,
               input.messageId,
               Date.now(),
+              JSON.stringify(nodes),
             )
             return { nodes }
           }),

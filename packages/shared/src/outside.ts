@@ -52,9 +52,16 @@ export const carriesProgramMark = (source: OutsideSource | null | undefined): bo
  * - `memory`: a save to memory (008),
  * - `settings`: a change of the agent's own settings or instructions (002),
  * - `secret_request`: a request with a saved secret that uses a method other than GET (020),
- * - `secret_new`: a request for a new secret (020).
+ * - `secret_new`: a request for a new secret (020),
+ * - `feedback`: adding feedback to a run in the chat (003, 007).
  */
-export const GUARDED_STEPS = ["memory", "settings", "secret_request", "secret_new"] as const
+export const GUARDED_STEPS = [
+  "memory",
+  "settings",
+  "secret_request",
+  "secret_new",
+  "feedback",
+] as const
 export type GuardedStep = (typeof GUARDED_STEPS)[number]
 
 /**
@@ -163,6 +170,7 @@ export const ACTION_KINDS = [
   "settings",
   "secret_request",
   "secret_new",
+  "feedback",
   MANAGE_STEP,
   "file",
   "shell",
@@ -209,4 +217,20 @@ export const hostOf = (url: string): string => {
   } catch {
     return ""
   }
+}
+
+/**
+ * What a guarded step does in a turn or a task (spec 007, "Outside content"). In a turn that holds
+ * outside content, a guarded step asks the user at every level except "Full access". At "Full
+ * access" it runs with no question, unless the turn holds the program mark. A turn that holds no
+ * outside content runs the step as the level says: no extra question.
+ */
+export const guardVerdict = (input: {
+  readonly level: import("./tools.ts").PermissionLevel
+  readonly outside: boolean
+  readonly program: boolean
+}): "run" | "ask" => {
+  if (input.program) return "ask"
+  if (!input.outside) return "run"
+  return input.level === "full" ? "run" : "ask"
 }

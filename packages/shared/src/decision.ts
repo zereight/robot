@@ -170,3 +170,73 @@ export const readPickAnswer = (
   if (probability < FAST_PICK_MIN) return { ok: false, reason: "below_threshold" }
   return { ok: true, index, probability }
 }
+
+// --- a decision node (spec 010) ---------------------------------------------------------------
+
+/** The words of the input of a decision node that go to the service (spec 013). */
+export const CHOICE_INPUT_CHARS = 8000
+export const CHOICE_QUESTION_CHARS = 2000
+const optionKey = (index: number) => `option_${index + 1}`
+
+/**
+ * The request for the Decisions API for a decision node: one Choice question. An option has a plain
+ * key, so the words of an option can never act as an instruction. The question is the instruction,
+ * and the input of the node is the state.
+ */
+export const buildChoiceRequest = (
+  model: string,
+  input: {
+    readonly question: string
+    readonly options: readonly string[]
+    readonly input: string
+  },
+) => {
+  const criteria: Record<string, string> = {}
+  input.options.forEach((label, i) => {
+    criteria[optionKey(i)] = label
+  })
+  return {
+    model,
+    state: { input: clip(input.input, CHOICE_INPUT_CHARS) },
+    questions: {
+      decision: {
+        type: "choice" as const,
+        instructions: clip(input.question, CHOICE_QUESTION_CHARS),
+        criteria,
+      },
+    },
+  }
+}
+
+/** Why a decision node got no usable probabilities. */
+export type ChoiceFailure = "unreadable" | "unknown_option" | "probability_not_number"
+
+/**
+ * Reads the probability of each option from an answer. The answer must hold a probability between
+ * 0 and 1 for every option. An answer that names no option, or that gives a probability that is not
+ * between 0 and 1, is not decided (docs/spec-questions.md, rows for 010): the caller asks the user.
+ */
+export const readChoiceAnswer = (
+  body: unknown,
+  optionCount: number,
+): { ok: true; probabilities: number[] } | { ok: false; reason: ChoiceFailure } => {
+  const answer = isRecord(body) && isRecord(body.answers) ? body.answers.decision : undefined
+  if (!isRecord(answer) || answer.type !== "choice" || !isRecord(answer.probabilities))
+    return { ok: false, reason: "unreadable" }
+  const probabilities: number[] = []
+  for (let i = 0; i < optionCount; i++) {
+    const value = answer.probabilities[optionKey(i)]
+    if (value === undefined) return { ok: false, reason: "unknown_option" }
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
+      return { ok: false, reason: "probability_not_number" }
+    probabilities.push(value)
+  }
+  return { ok: true, probabilities }
+}
+
+/** The answer of a decision node. `probabilities` is null when the model gave none. */
+export interface ChoiceResult {
+  readonly probabilities: readonly number[] | null
+  readonly reason: PickReason | null
+  readonly ms: number
+}

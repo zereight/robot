@@ -1,8 +1,10 @@
 import {
   buildCheckRequest,
+  buildChoiceRequest,
   buildPickRequest,
   type CheckResult,
   type CheckTarget,
+  type ChoiceResult,
   DECISION_PATH,
   DECISION_URL,
   DECISION_WAIT_MS,
@@ -13,6 +15,7 @@ import {
   type PickInput,
   type PickResult,
   readCheckAnswer,
+  readChoiceAnswer,
   readPickAnswer,
   redactSecrets,
   TEST_PICK,
@@ -34,6 +37,17 @@ export interface DecisionService {
   readonly ready: Effect.Effect<boolean>
   /** Asks the model to choose one member. It never fails: a failure is a result with a reason. */
   pick(input: PickInput): Effect.Effect<PickResult>
+  /**
+   * Asks the model of a decision node (spec 010): the question, the options and the input go to the
+   * service. It gives a probability for each option. It never fails and never takes longer than 3
+   * seconds: a model that is not set up, a late answer, an error and an answer that is not usable
+   * are a result with no probabilities and a reason. The words of the input are cleaned of secrets.
+   */
+  choose(input: {
+    readonly question: string
+    readonly options: readonly string[]
+    readonly input: string
+  }): Effect.Effect<ChoiceResult>
   /** One real request with three made-up members to the saved choice (spec 013). */
   readonly test: Effect.Effect<DecisionTestResult>
   /**
@@ -204,6 +218,63 @@ export class Decision extends Context.Service<Decision, DecisionService>()("robo
             return yield* Effect.promise(() => askCheck(setup, input))
           })
 
+        const askChoice = async (
+          setup: { model: string; key: string },
+          input: { question: string; options: readonly string[]; input: string },
+        ): Promise<ChoiceResult> => {
+          const started = Date.now()
+          const none = (reason: NonNullable<PickResult["reason"]>): ChoiceResult => ({
+            probabilities: null,
+            reason,
+            ms: Date.now() - started,
+          })
+          const timedOut = (e: unknown) =>
+            e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
+          const signal = AbortSignal.timeout(DECISION_WAIT_MS)
+          let response: Response
+          try {
+            response = await fetch(`${base}${DECISION_PATH}`, {
+              method: "POST",
+              redirect: "error",
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${setup.key}`,
+              },
+              body: JSON.stringify(
+                buildChoiceRequest(setup.model, {
+                  question: redactSecrets(input.question),
+                  options: input.options.map((o) => redactSecrets(o)),
+                  input: redactSecrets(input.input),
+                }),
+              ),
+              signal,
+            })
+          } catch (e) {
+            return none(timedOut(e) ? "timeout" : "network_error")
+          }
+          if (!response.ok) {
+            await response.body?.cancel().catch(() => {})
+            return none("service_error")
+          }
+          let json: unknown
+          try {
+            json = await response.json()
+          } catch (e) {
+            return none(timedOut(e) ? "timeout" : "unreadable")
+          }
+          const read = readChoiceAnswer(json, input.options.length)
+          return read.ok
+            ? { probabilities: read.probabilities, reason: null, ms: Date.now() - started }
+            : none(read.reason)
+        }
+
+        const choose = (input: { question: string; options: readonly string[]; input: string }) =>
+          Effect.gen(function* () {
+            const setup = yield* config
+            if (!setup) return { probabilities: null, reason: "not_set_up", ms: 0 } as ChoiceResult
+            return yield* Effect.promise(() => askChoice(setup, input))
+          })
+
         const pick = (input: PickInput) =>
           Effect.gen(function* () {
             const setup = yield* config
@@ -235,6 +306,7 @@ export class Decision extends Context.Service<Decision, DecisionService>()("robo
           keys,
           ready: Effect.map(config, (c) => c !== null),
           pick,
+          choose,
           test,
           check,
         })

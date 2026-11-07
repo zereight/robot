@@ -223,7 +223,7 @@ export const ko: Record<MessageKey, string> = {
   "error.decision_not_set_up":
     "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장하세요.",
   "error.read_only_unsupported":
-    "이 에이전트는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
+    "이 노드는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
   "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인하세요.",
   "error.runtime_api_key_login":
     "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 로그인하세요.",
@@ -862,6 +862,12 @@ export const ko: Record<MessageKey, string> = {
   "error.queue_full": "메시지 10개가 대기 중이에요. 하나를 지우거나 기다려 주세요.",
   "error.message_read": "담당 문서가 이미 이 메시지를 읽었어요.",
   "error.run_ended": "이 실행은 끝났어요. 피드백을 더할 수 없어요.",
+  "error.run_empty": "이 워크플로우에 노드가 없어요. 먼저 노드를 추가하세요.",
+  "error.run_loop": "이 워크플로우의 노드가 고리를 이뤄요. 실행을 시작할 수 없어요.",
+  "error.run_graph_problem": "선택 노드에 선택지가 2개보다 적어요. 먼저 고치세요.",
+  "error.run_queue_full": "실행 20개가 대기 중이에요. 하나를 멈추거나 기다려 주세요.",
+  "error.run_not_found": "이 실행은 더 이상 없어요.",
+  "error.card_gone": "이 카드를 기다리는 곳이 더 이상 없어요.",
   "chat.copyCode": "복사",
   "chat.copied": "복사했어요",
   "picture.alt.empty": "이미지",
