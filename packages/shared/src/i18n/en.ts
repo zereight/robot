@@ -40,6 +40,9 @@ export const en = {
   "settings.reduceMotion.system": "Follow the system",
   "settings.reduceMotion.on": "On",
   "settings.reduceMotion.off": "Off",
+  "settings.showToolSteps": "Show tool steps",
+  "settings.showToolSteps.hint":
+    "Off: the chat folds each series of finished plain tool steps into one line with the count.",
 
   "settings.data.folder": "Data folder",
   "settings.data.open": "Open folder",
@@ -60,17 +63,16 @@ export const en = {
   "page.help": "Help",
   "page.settings": "Settings",
 
-  "nav.back": "Back",
-  "nav.forward": "Forward",
-
   "main.noServer.title": "No server yet",
   "main.noServer.body": "A server is a computer that runs your agents. Add one to start.",
 
   "help.shortcuts": "Keyboard shortcuts",
-  "help.shortcut.search": "Search places",
-  "help.shortcut.move": "Move through places",
-  "help.shortcut.open": "Open the selected place",
-  "help.shortcut.clear": "Clear the search",
+  "help.shortcut.find": "Find in the chat",
+  "help.shortcut.send": "Send the message",
+  "help.shortcut.newline": "New line in the message",
+  "help.shortcut.findNext": "Next match in the find bar",
+  "help.shortcut.findPrevious": "Previous match in the find bar",
+  "help.shortcut.findClose": "Close the find bar",
 
   "error.workspace_failed": "ROBot could not make the workspace folder.",
   "error.invalid_input": "Some values are not valid.",
@@ -898,6 +900,11 @@ export const en = {
   "error.message_empty": "Write a message or attach a file.",
   "error.queue_full": "10 messages wait. Remove one or wait.",
   "error.message_read": "The responsible document read this message already.",
+  "error.edit_working": "Wait until the reply ends. Then edit the message.",
+  "error.edit_not_last": "Only your last message can be edited.",
+  "error.edit_steps_ran":
+    "The responsible document did a step after this message. The message can no longer be edited.",
+  "error.mark_not_reply": "Only a finished reply can be marked as unread.",
   "error.run_ended": "This run has ended. Feedback is not added to it.",
   "permissions.log.kind.feedback": "Feedback to a run",
   "permissions.log.kind.change": "Change of the workflow",
@@ -1071,6 +1078,12 @@ export const en = {
   "chat.queue": "Messages that wait",
   "chat.sendNow": "Send now",
   "chat.edit": "Edit",
+  "chat.edit.label": "Edit message",
+  "chat.edit.save": "Save and ask again",
+  "chat.edit.cancel": "Cancel",
+  "chat.markUnread": "Mark as unread",
+  "chat.unread": "{count} unread",
+  "chat.unread.go": "Go to the first unread reply",
   "chat.remove": "Remove",
   "chat.replyingTo": "Replying to",
   "chat.cancelReply": "Cancel reply",

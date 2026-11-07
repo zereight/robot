@@ -290,6 +290,14 @@ const Appearance = () => {
           ]}
         />
       </Row>
+      <Row label={t("settings.showToolSteps")} hint={t("settings.showToolSteps.hint")}>
+        <Switch
+          label={t("settings.showToolSteps")}
+          testId="setting-show-tool-steps"
+          checked={app.settings.showToolSteps}
+          onChange={(showToolSteps) => app.update({ showToolSteps })}
+        />
+      </Row>
     </>
   )
 }

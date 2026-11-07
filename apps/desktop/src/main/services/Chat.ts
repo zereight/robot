@@ -13,8 +13,11 @@ import {
   carriesProgramMark,
   chatFiles,
   chatText,
+  editableMessageId,
+  editRefusal,
   guardVerdict,
   isOutsideSource,
+  isReadableReply,
   type OutsideSource,
   type PermissionLevel,
   PROPOSAL_WAIT_MAX,
@@ -23,6 +26,8 @@ import {
   resolveLocale,
   type SensitiveLabel,
   translate,
+  type UnreadMark,
+  unreadOf,
   type WorkflowChatHistory,
   type WorkflowChatMessage,
   type WorkflowChatSend,
@@ -100,6 +105,17 @@ export interface ChatService {
   readonly sendNow: (messageId: string) => Effect.Effect<void, AppError>
   /** Retry on a failed reply: asks again with the same conversation. */
   readonly retry: (workflowId: string) => Effect.Effect<void, AppError>
+  /**
+   * Edit of the last message of the user (spec 003, "Message rows"): the new text replaces the old
+   * one, the replies after it go, and the responsible document answers again. It is refused while
+   * a turn works, for a message that is not the last one of the user, and when a step ran after it
+   * or the chat started a run after it.
+   */
+  readonly edit: (messageId: string, text: string) => Effect.Effect<void, AppError>
+  /** "Mark as unread": this finished reply and the later replies count as unread (spec 003). */
+  readonly markUnread: (messageId: string) => Effect.Effect<void, AppError>
+  /** The chat shows its latest message: the unread count clears (spec 003, "Mark as unread"). */
+  readonly read: (workflowId: string) => Effect.Effect<void, AppError>
   /** The user clears the marks of the chat: outside content and sensitive read (spec 007). */
   readonly clearMarks: (workflowId: string) => Effect.Effect<void, AppError>
   /** The two buttons of the notice after a restart (spec 003, "Rules"). */
@@ -455,6 +471,43 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return next
       }
 
+      // --- unread and edit (spec 003) ---------------------------------------------------------
+
+      const unreadMark = (workflowId: string): UnreadMark | null => {
+        const r = db.get<{ message_id: string; at: number }>(
+          "SELECT message_id, at FROM chat_unread WHERE workflow_id = ?",
+          workflowId,
+        )
+        return r ? { id: r.message_id, at: r.at } : null
+      }
+
+      /**
+       * True when a run that the chat started began at or after the message. A step that started a
+       * run cannot be taken back by an edit, even when the reply that holds the step is gone.
+       */
+      const chatRunSince = (workflowId: string, at: number): boolean =>
+        db.get<{ one: number }>(
+          "SELECT 1 AS one FROM run WHERE workflow_id = ? AND source = 'chat' AND started_at >= ? LIMIT 1",
+          workflowId,
+          at,
+        ) !== undefined
+
+      /**
+       * The message that Edit can change now. A message that a linked device sent is not edited
+       * here: the user edits their own message on the computer that sent it.
+       */
+      const editableOf = (
+        workflowId: string,
+        messages: readonly WorkflowChatMessage[],
+        busy: boolean,
+      ): string | null => {
+        const id = editableMessageId(messages, busy)
+        if (id === null) return null
+        const r = row(id)
+        if (!r || r.actor_id !== null) return null
+        return chatRunSince(workflowId, r.created_at) ? null : id
+      }
+
       const history = (workflowId: string) =>
         Effect.gen(function* () {
           const workflow = yield* findWorkflow(workflowId)
@@ -477,6 +530,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             unsafeAccount: skipped,
             cards: cards.list(workflowId),
             marks: readMarks(workflowId),
+            unread: unreadOf(messages, unreadMark(workflowId)),
+            editableId: editableOf(workflowId, messages, w !== undefined),
           } satisfies WorkflowChatHistory
         })
 
@@ -1483,6 +1538,68 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           yield* send({ workflowId, text: translate(locale, "chat.continue_text") })
         })
 
+      const edit = (messageId: string, text: string) =>
+        Effect.gen(function* () {
+          const r = row(messageId)
+          if (!r || r.status === "queued") return yield* new AppError({ code: "edit_not_last" })
+          const workflowId = r.workflow_id
+          const rows = visibleRows(workflowId)
+          const messages = rows.map(toMessage)
+          const refusal = editRefusal(messages, messageId, working.has(workflowId))
+          if (refusal !== null) return yield* new AppError({ code: `edit_${refusal}` })
+          if (r.actor_id !== null || chatRunSince(workflowId, r.created_at))
+            return yield* new AppError({
+              code: r.actor_id !== null ? "edit_not_last" : "edit_steps_ran",
+            })
+          const next = text.trim()
+          const old = JSON.parse(r.parts) as ChatPart[]
+          const others = old.filter((p) => p.kind !== "text")
+          if (next === "" && others.length === 0)
+            return yield* new AppError({ code: "message_empty" })
+          // The answer needs an account, and it is checked before anything changes.
+          const model = yield* resolveModel(workflowId)
+          if (!model) return yield* new AppError({ code: "provider_not_connected" })
+          // The text keeps its place: after the skill chip and before the files, as send puts it.
+          const skillAt = others.findIndex((p) => p.kind === "skill")
+          const parts: ChatPart[] = [...others]
+          if (next !== "") parts.splice(skillAt + 1, 0, { kind: "text", text: next })
+          db.run(
+            "UPDATE chat_message SET parts = ?, edited_at = ? WHERE id = ?",
+            JSON.stringify(parts),
+            Date.now(),
+            messageId,
+          )
+          const at = rows.findIndex((x) => x.id === messageId)
+          for (const later of rows.slice(at + 1))
+            db.run("DELETE FROM chat_message WHERE id = ?", later.id)
+          emitMessage(messageId)
+          emitState(workflowId)
+          yield* startTurn(workflowId, model)
+        })
+
+      const markUnread = (messageId: string) =>
+        Effect.gen(function* () {
+          const r = row(messageId)
+          if (!r || r.status === "queued" || !isReadableReply(toMessage(r)))
+            return yield* new AppError({ code: "mark_not_reply" })
+          db.run(
+            `INSERT INTO chat_unread (workflow_id, message_id, at) VALUES (?, ?, ?)
+             ON CONFLICT (workflow_id) DO UPDATE SET message_id = excluded.message_id, at = excluded.at`,
+            r.workflow_id,
+            r.id,
+            r.created_at,
+          )
+          emitState(r.workflow_id)
+        })
+
+      const read = (workflowId: string) =>
+        Effect.gen(function* () {
+          yield* findWorkflow(workflowId)
+          if (unreadMark(workflowId) === null) return
+          db.run("DELETE FROM chat_unread WHERE workflow_id = ?", workflowId)
+          emitState(workflowId)
+        })
+
       const clearMarks = (workflowId: string) =>
         Effect.gen(function* () {
           yield* findWorkflow(workflowId)
@@ -1502,6 +1619,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }),
         deleteWaiting,
         sendNow,
+        edit,
+        markUnread,
+        read,
         retry,
         resume,
       })

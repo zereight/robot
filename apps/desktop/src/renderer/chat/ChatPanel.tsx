@@ -22,8 +22,10 @@ import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { outsideText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
@@ -209,6 +211,7 @@ export const ChatPanel = (props: {
   running?: boolean
 }) => {
   const { t, locale } = useApp()
+  const ui = useUi()
   const { history, error } = createChatState(() => props.workflowId)
   const [replyTo, setReplyTo] = createSignal<WorkflowChatMessage>()
   const [stick, setStick] = createSignal(true)
@@ -225,9 +228,24 @@ export const ChatPanel = (props: {
   const toBottom = () => {
     if (scroller) scroller.scrollTop = scroller.scrollHeight
   }
+  const atBottom = () =>
+    scroller !== undefined &&
+    scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48
+  // The unread count clears when the chat shows its latest message (spec 003, "Mark as unread").
+  // A scroll that the reader did not cause (the chat follows a new reply, a layout change) is not
+  // the reader seeing the end, so only a scroll after a wheel, a touch, a drag or a key counts.
+  let readerAt = 0
+  const readerActed = () => {
+    readerAt = Date.now()
+  }
+  const markRead = () => {
+    if ((history()?.unread.count ?? 0) > 0)
+      void call("chat.read", { workflowId: props.workflowId }).catch(() => {})
+  }
   const onScroll = () => {
     if (!scroller) return
-    setStick(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48)
+    setStick(atBottom())
+    if (atBottom() && Date.now() - readerAt < 1000) markRead()
   }
   // The chat follows the latest message, until the reader scrolls up.
   createEffect(() => {
@@ -239,6 +257,7 @@ export const ChatPanel = (props: {
     on(
       () => props.workflowId,
       () => {
+        positioned = false
         setStick(true)
         setReplyTo(undefined)
         setFinding(false)
@@ -246,6 +265,27 @@ export const ChatPanel = (props: {
       },
     ),
   )
+
+  // When the chat opens with unread replies, it opens at the first of them (spec 003, "Mark as
+  // unread"). When the first unread reply is already at the end of the chat, the chat shows its
+  // latest message and the count clears at once.
+  let positioned = false
+  createEffect(() => {
+    const h = history()
+    if (!h || positioned) return
+    positioned = true
+    const first = h.unread.firstId
+    if (first === null) return
+    setStick(false)
+    requestAnimationFrame(() => {
+      document.getElementById(`message-${first}`)?.scrollIntoView({ block: "start" })
+      if (atBottom()) markRead()
+    })
+  })
+  const goToUnread = () => {
+    const first = history()?.unread.firstId
+    if (first) document.getElementById(`message-${first}`)?.scrollIntoView({ block: "start" })
+  }
 
   const jump = (id: string) => {
     const el = document.getElementById(`message-${id}`)
@@ -318,6 +358,8 @@ export const ChatPanel = (props: {
   onMount(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        // Settings cover the chat: Cmd+F finds in a chat that shows, and does nothing here (spec 001).
+        if (ui.settingsSection() !== undefined) return
         event.preventDefault()
         setFinding(true)
         queueMicrotask(() => findBox?.select())
@@ -422,11 +464,26 @@ export const ChatPanel = (props: {
                 />
               )}
             </Show>
+            <Show when={h().unread.count > 0}>
+              <button
+                type="button"
+                class={styles.unread}
+                title={t("chat.unread.go")}
+                onClick={goToUnread}
+                data-testid="chat-unread"
+                data-count={h().unread.count}
+              >
+                {t("chat.unread", { count: h().unread.count })}
+              </button>
+            </Show>
             <MarksLine workflowId={props.workflowId} marks={h().marks} />
             <div
               class={styles.scroll}
               ref={(el) => {
                 scroller = el
+                // What the reader does to the chat: only a scroll after one of these may clear the count.
+                for (const type of ["wheel", "touchmove", "pointerdown", "keydown"])
+                  el.addEventListener(type, readerActed, { passive: true })
               }}
               onScroll={onScroll}
               data-testid="chat-scroll"
@@ -440,30 +497,34 @@ export const ChatPanel = (props: {
                   </div>
                 }
               >
-                <For each={h().messages}>
-                  {(message, i) => {
+                <Keyed each={h().messages} by={(message) => message.id}>
+                  {(item, i) => {
+                    const message = item
                     const previous = () => h().messages[i() - 1]
                     const newDay = () =>
-                      !previous() || !sameChatDay(previous()?.createdAt ?? 0, message.createdAt)
+                      !previous() || !sameChatDay(previous()?.createdAt ?? 0, message().createdAt)
                     return (
                       <>
                         <Show when={newDay()}>
                           <div class={styles.day} data-testid="day-line">
                             {formatDay(
                               locale(),
-                              message.createdAt,
+                              message().createdAt,
                               t("chat.today"),
                               t("chat.yesterday"),
                             )}
                           </div>
                         </Show>
                         <MessageRow
-                          message={message}
+                          message={message()}
                           name={h().workflowName}
-                          header={newDay() || startsChatGroup(previous(), message)}
-                          quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
+                          header={newDay() || startsChatGroup(previous(), message())}
+                          quoted={
+                            message().replyTo ? byId().get(message().replyTo ?? "") : undefined
+                          }
                           last={i() === h().messages.length - 1}
                           working={h().working}
+                          editable={h().editableId === message().id}
                           onReply={setReplyTo}
                           onJump={jump}
                           onRetry={retry}
@@ -471,7 +532,7 @@ export const ChatPanel = (props: {
                       </>
                     )
                   }}
-                </For>
+                </Keyed>
               </Show>
               <Show when={h().cards.length > 0}>
                 <RunCards cards={h().cards} />
@@ -487,6 +548,7 @@ export const ChatPanel = (props: {
                 onClick={() => {
                   setStick(true)
                   toBottom()
+                  markRead()
                 }}
                 data-testid="jump-latest"
               >

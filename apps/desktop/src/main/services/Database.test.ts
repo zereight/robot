@@ -185,7 +185,7 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT id FROM memory")).toEqual([])
   })
 
-  test("a database built from the first 11 migrations opens at version 12, keeps its rows and gets the claims, the holder and the device", () => {
+  test("a database built from the first 11 migrations opens at the current version, keeps its rows and gets the claims, the holder and the device", () => {
     const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-11-")), "robot.db")
     const old = new DatabaseSync(file)
     old.exec("PRAGMA foreign_keys = ON")
@@ -207,8 +207,10 @@ describe("the reset of a database from before the workflow model (owner decision
     old.close()
     expect(fileState(file)).toBe("current")
     const db = openDatabase(file)
-    expect(migrations).toHaveLength(12)
-    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(12)
+    expect(migrations.length).toBeGreaterThanOrEqual(12)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
     // The rows stay.
     expect(db.get<{ document: string }>("SELECT document FROM workflow")?.document).toBe("Doc.")
     expect(db.all("SELECT id FROM run")).toEqual([{ id: "r1" }])
