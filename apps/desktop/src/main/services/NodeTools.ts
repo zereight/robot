@@ -33,7 +33,7 @@ import { checkedFetch } from "../web/fetch.ts"
 import type { ActionLogService } from "./ActionLog.ts"
 import type { CardReply } from "./Cards.ts"
 import type { PlatformService } from "./Platform.ts"
-import { type ProgramStep, programStep } from "./programSteps.ts"
+import { programStep } from "./programSteps.ts"
 import type { RulesService } from "./Rules.ts"
 import { realOf } from "./realPath.ts"
 
