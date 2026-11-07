@@ -35,7 +35,6 @@ test("run: two nodes, the trigger and the input go through; the run view and the
     edges: [[0, 1]],
   })
 
-  await page.getByTestId("tab-runs").click()
   await expect(page.getByTestId("runs-none")).toBeVisible()
   await page.getByTestId("runs-trigger").fill("world")
   await page.getByTestId("workflow-run").click()
@@ -96,7 +95,6 @@ test("run: a decision node takes the branch; with no winner the chat asks for a 
       [0, 2, 1],
     ],
   })
-  await page.getByTestId("tab-runs").click()
 
   // A clear winner: the node takes "Yes", the other branch is skipped.
   await page.getByTestId("workflow-run").click()
@@ -195,7 +193,6 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
     level: "ask_all",
     nodes: [{ name: "Shell", prompt: 'tool run_command {"command":"echo card-ok"}' }],
   })
-  await page.getByTestId("tab-runs").click()
 
   // Allow
   await page.getByTestId("workflow-run").click()
@@ -220,7 +217,6 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await expect(page.getByTestId("workflow-card-spinner")).toHaveCount(0)
   await page.getByTestId("workflow-open").click()
   await expect(page.getByTestId("chat-spinner")).toHaveCount(0)
-  await page.getByTestId("tab-runs").click()
   // The run that the Run button started is already selected: its view shows.
   await expect(page.getByTestId("run-state")).toHaveText("Waiting for you")
   await card.getByTestId("card-allow").click()
@@ -344,7 +340,6 @@ test("run: after an app restart a waiting task fails with 'The app stopped' and 
   ;({ app, page } = await launch(userData, env))
   await expect(page.getByTestId("chat")).toBeVisible()
   await expect(page.getByTestId("card-approval")).toHaveCount(0)
-  await page.getByTestId("tab-runs").click()
   await expect(page.getByTestId("runs-list")).toContainText("Failed")
   await page.getByTestId("runs-list").locator("button").first().click()
   await expect(page.getByTestId("run-state")).toHaveText("Failed")

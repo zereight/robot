@@ -8,15 +8,7 @@ import {
   type WorkflowNode,
 } from "@robot/shared"
 import { TriangleAlert } from "lucide-solid"
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  on,
-  onCleanup,
-  Show,
-} from "solid-js"
+import { createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
@@ -25,7 +17,6 @@ import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
-import { CheckPanel } from "./CheckPanel.tsx"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
 import { NodePanel } from "./NodePanel.tsx"
@@ -111,18 +102,21 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
 /**
  * The editor of the graph (spec 010, flow 2). The canvas shows each node as a button at its place
  * and each connection as a line. A node moves with the pointer or with the arrow keys; it
- * connects through its side panel, so the whole editor works with the keyboard. The panel of the
- * check shows the result of the check (spec 010, "Check"), and the canvas marks the nodes of the
- * problem and of its path.
+ * connects through its side panel, so the whole editor works with the keyboard. The canvas marks
+ * the nodes of the problem and of its path while the run strip shows the check (spec 001).
  */
 export const GraphEditor = (props: {
   workflow: WorkflowDetail
   /** The numbers of the nodes that work now: each shows a spinner (specs/039). */
   runningNodes?: ReadonlySet<number>
+  /** The selected node. The run strip selects a node too, from the path of the check. */
+  selectedNode: string | undefined
+  onSelectNode: (id: string | undefined) => void
+  /** The run strip shows the check: the canvas marks the nodes of the problem and its path. */
+  showCheck: boolean
 }) => {
   const { t } = useApp()
   const ui = useUi()
-  const [selected, setSelected] = createSignal<string>()
   const [dragging, setDragging] = createSignal<{ id: string; x: number; y: number }>()
   const [showVersions, setShowVersions] = createSignal(false)
   const [problem, setProblem] = createSignal<ErrorText>()
@@ -132,16 +126,7 @@ export const GraphEditor = (props: {
   onCleanup(window.robot.on("providers.changed", () => void refetch()))
   const graph = () => props.workflow.graph
   const readOnly = () => props.workflow.running
-  // The panel opens again when the result changes.
-  const [checkOpen, setCheckOpen] = createSignal(true)
-  createEffect(
-    on(
-      () => props.workflow.checkOutcome,
-      () => setCheckOpen(true),
-      { defer: true },
-    ),
-  )
-  const marks = createMemo(() => marksOf(checkOpen() ? props.workflow.checkOutcome : null))
+  const marks = createMemo(() => marksOf(props.showCheck ? props.workflow.checkOutcome : null))
   const positionOf = (n: WorkflowNode) => {
     const d = dragging()
     return d && d.id === n.id ? { x: d.x, y: d.y } : { x: n.x, y: n.y }
@@ -174,7 +159,7 @@ export const GraphEditor = (props: {
             : {}),
         },
       })
-      setSelected(made.id)
+      props.onSelectNode(made.id)
     } catch (e) {
       setProblem(describeError(e))
     }
@@ -374,14 +359,14 @@ export const GraphEditor = (props: {
                     data-running={working(node())}
                     data-testid="graph-node"
                     aria-label={nodeLabel(node())}
-                    aria-pressed={selected() === node().id}
+                    aria-pressed={props.selectedNode === node().id}
                     style={{
                       left: `${positionOf(node()).x}px`,
                       top: `${positionOf(node()).y}px`,
                       width: `${NODE_W}px`,
                       height: `${NODE_H}px`,
                     }}
-                    onClick={() => setSelected(node().id)}
+                    onClick={() => props.onSelectNode(node().id)}
                     onPointerDown={(e) => onPointerDown(node(), e)}
                     onKeyDown={(e) => onKeyDown(node(), e)}
                   >
@@ -418,29 +403,13 @@ export const GraphEditor = (props: {
             </div>
           </Show>
         </section>
-        <Show
-          when={checkOpen()}
-          fallback={
-            <div>
-              <Button onClick={() => setCheckOpen(true)} data-testid="check-open">
-                {t("check.open")}
-              </Button>
-            </div>
-          }
-        >
-          <CheckPanel
-            workflow={props.workflow}
-            onSelect={setSelected}
-            onClose={() => setCheckOpen(false)}
-          />
-        </Show>
         <Show when={showVersions()}>
           <Versions workflow={props.workflow} readOnly={readOnly()} />
         </Show>
       </div>
       <div>
         <Show
-          when={selected()}
+          when={props.selectedNode}
           keyed
           fallback={<p class={styles.hintText}>{t("graph.panel.empty")}</p>}
         >
@@ -452,7 +421,7 @@ export const GraphEditor = (props: {
                   node={n()}
                   choices={choices() ?? []}
                   readOnly={readOnly()}
-                  onDeleted={() => setSelected(undefined)}
+                  onDeleted={() => props.onSelectNode(undefined)}
                 />
               )}
             </Show>

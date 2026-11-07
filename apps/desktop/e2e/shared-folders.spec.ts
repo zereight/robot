@@ -123,7 +123,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
 
   // A task of Weekly report writes notes.md and waits on its second card: it holds the claim.
   await openWorkflow(page, "Weekly report")
-  await page.getByTestId("tab-runs").click()
   await page.getByTestId("workflow-run").click()
   await expect(page.getByTestId("card-approval")).toBeVisible()
   await page.getByTestId("card-allow").click()
@@ -137,7 +136,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
 
   // A task of Notes tries to write notes.md: refused, no card, the file keeps the text of the holder.
   await openWorkflow(page, "Notes")
-  await page.getByTestId("tab-runs").click()
   await page.getByTestId("workflow-run").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-refused-line")).toHaveText(
@@ -161,13 +159,11 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
 
   // The task of Weekly report ends: Notes writes the file again and it runs.
   await openWorkflow(page, "Weekly report")
-  await page.getByTestId("tab-runs").click()
   await page.getByTestId("runs-list").locator("button").first().click()
   await page.getByTestId("card-allow").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-node-claims-1")).toHaveCount(0)
   await openWorkflow(page, "Notes")
-  await page.getByTestId("tab-runs").click()
   await page.getByTestId("workflow-run").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-refused-line")).toHaveCount(0)

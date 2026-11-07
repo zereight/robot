@@ -64,7 +64,6 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   await page.getByTestId("chat-input").press("Enter")
   await expect(page.getByTestId("working-line")).toBeVisible()
   await expect(page.getByTestId("working-line").getByTestId("work-mark")).toBeVisible()
-  await page.getByTestId("tab-runs").click()
   await page.getByTestId("runs-list").locator("button").first().click()
   await expect(page.getByTestId("run-node-state-1")).toHaveText("Running")
   await page.getByTestId("run-back").click()

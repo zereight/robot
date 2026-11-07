@@ -126,7 +126,6 @@ test("run by chat, ask how far it ran, then stop it by chat", async () => {
   const started = await details(page, 0)
   await expect(started).toContainText("Started a run")
   await expect(started).toContainText("started. State: running")
-  await page.getByTestId("tab-runs").click()
   await expect(page.getByTestId("runs-list").locator("li")).toHaveCount(1)
 
   // "How far is the run?": the node that works, and the node that is not reached.
@@ -147,7 +146,6 @@ test("run by chat, ask how far it ran, then stop it by chat", async () => {
   const stop = await details(page, 3)
   await expect(stop).toContainText("Stopped a run")
   await expect(stop).toContainText("was stopped")
-  await page.getByTestId("tab-runs").click()
   await expect(page.getByTestId("runs-list")).toContainText("Cancelled")
   await shot(page, "b1-04-stopped")
   await app.close()
@@ -168,7 +166,6 @@ test("Read only refuses a change and a run", async () => {
   await expect(run).toHaveAttribute("data-state", "failed")
   await expect(run).toContainText("Read only")
   expect((await detail(page)).graph.nodes).toHaveLength(2)
-  await page.getByTestId("tab-runs").click()
   await expect(page.getByTestId("runs-none")).toBeVisible()
   // A read works at Read only.
   await say(page, "tool read_workflow {}")
