@@ -8,7 +8,7 @@ export const PlaceRef = Schema.Struct({ kind: PlaceKind, id: Schema.String })
 export type PlaceRef = typeof PlaceRef.Type
 
 /** The app opens on the workflow list (spec 001). */
-export const Page = Schema.Literals(["workflows", "help"])
+export const Page = Schema.Literals(["workflows", "tasks", "help"])
 export type Page = typeof Page.Type
 
 export const PLACE_LIST_MIN = 200
@@ -32,6 +32,8 @@ export const UiState = Schema.Struct({
   /** The open workflow of each server, by server id. */
   places: Schema.Record(Schema.String, PlaceRef),
   activityPanel: Schema.Boolean,
+  /** The tab of the Tasks page: "Tasks" or "Events" (spec 005, 038). It stays after a restart. */
+  tasksTab: Schema.Literals(["tasks", "events"]),
   placeListWidth: Schema.Number.check(
     Schema.isBetween({ minimum: PLACE_LIST_MIN, maximum: PLACE_LIST_MAX }),
   ),
@@ -50,6 +52,7 @@ export const defaultUiState: UiState = {
   page: "workflows",
   places: {},
   activityPanel: true,
+  tasksTab: "tasks",
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
 }

@@ -17,10 +17,14 @@ import {
   type PermissionLevel,
   parseOutsideSource,
   plainLine,
+  QUEUE_BEHIND,
+  QUEUE_SLOT,
+  quietTimeMs,
   RUN_QUEUE_MAX,
   type RunCard,
   type RunDetail,
   type RunNode,
+  type RunSource,
   type RunStart,
   type RunSummary,
   type RunTask,
@@ -50,6 +54,7 @@ import { Proposals } from "./Proposals.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { RunFacts } from "./RunFacts.ts"
+import { readyNode, stalled } from "./runGraph.ts"
 import {
   feedbackBlock,
   nodeInput,
@@ -59,6 +64,7 @@ import {
   stepLimitText,
 } from "./runPrompt.ts"
 import { SettingsStore } from "./Settings.ts"
+import { TaskQueue } from "./TaskQueue.ts"
 import { WorkflowCheck } from "./WorkflowCheck.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -78,18 +84,31 @@ export const runClock = {
   retryWaitMs: MODEL_RETRY_WAIT_MS,
   /** The length of one minute of the silent limit. */
   minuteMs: 60_000,
+  /** The longest quiet time (spec 005, "Quiet line"). */
+  quietMs: 90_000,
 }
 
 export interface RunsService {
-  /** Starts a run by hand. The run works on and the call returns at once (spec 010). */
+  /** Starts a run. The run works on and the call returns at once (spec 010). */
   readonly start: (
     input: RunStart,
-    source?: "hand" | "chat",
+    source?: RunSource,
     /** The linked device that started the run: "Started by <device>" (spec 012). */
     device?: string | null,
   ) => Effect.Effect<RunSummary, AppError>
   /** Stops a run: its tasks are cancelled and a card that waits goes away (spec 005). */
   readonly stop: (runId: string) => Effect.Effect<void, AppError>
+  /** Stops one task. This ends its run (spec 005, "Tasks page"). */
+  readonly stopTask: (taskId: string) => Effect.Effect<void, AppError>
+  /**
+   * Tries a failed, blocked or cancelled task again: a new run of that one node, with the same
+   * input, linked to the old task. The nodes after it do not run (docs/spec-questions.md, B2).
+   */
+  readonly retryTask: (
+    taskId: string,
+    /** The linked device that tries again: the retry run is "Started by <device>" (spec 012). */
+    device?: string | null,
+  ) => Effect.Effect<string, AppError>
   readonly list: (workflowId: string) => Effect.Effect<readonly RunSummary[]>
   readonly get: (runId: string) => Effect.Effect<RunDetail, AppError>
   /** True while a run of the workflow works, waits or is queued. */
@@ -177,6 +196,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const claims = yield* FileClaims
       const memory = yield* Memory
       const proposals = yield* Proposals
+      const queue = yield* TaskQueue
       const tools = makeNodeTools({ rules, actionLog, platform, claims })
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const endListeners: ((workflowId: string, runId: string) => void)[] = []
@@ -201,10 +221,21 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         )
       }
 
-      const active = new Map<string, { workflowId: string; controller: AbortController }>()
-      /** The runs of a workflow that wait for the run before them, oldest first. */
-      const queues = new Map<string, string[]>()
-      const busy = new Set<string>()
+      /** `only`: a retry runs one node alone, with the input of the first try. */
+      interface OnlyNode {
+        readonly nodeNumber: number
+        readonly input: string
+        readonly retryOf: string
+        /** The marks of the task that is tried again: the retry holds them too (spec 007). */
+        readonly marks: TaskMarks
+      }
+      const active = new Map<
+        string,
+        { workflowId: string; controller: AbortController; seq: number; only?: OnlyNode }
+      >()
+      let runCounter = 0
+      /** The tasks that the user stopped one by one: their reason is "Stopped by you". */
+      const stoppedTasks = new Set<string>()
 
       const changed = (workflowId: string, runId: string | null) => {
         bus.emit("runs.changed", { workflowId, runId })
@@ -311,8 +342,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           workflowId,
         )
 
+      /** A run made by Retry holds one node alone: its first task links to the task it tries again. */
+      const isRetryRun = (runId: string) =>
+        db.get(
+          "SELECT 1 AS x FROM task WHERE run_id = ? AND retry_of IS NOT NULL LIMIT 1",
+          runId,
+        ) !== undefined
+
       const summaryOf = (r: RunRow): RunSummary => {
-        const total = nodesOf(r.workflow_id).length
+        const total = isRetryRun(r.id) ? 1 : nodesOf(r.workflow_id).length
         const endedTasks = db.get<{ n: number }>(
           `SELECT COUNT(DISTINCT node_number) AS n FROM task WHERE run_id = ?
              AND state IN ('done', 'failed', 'blocked', 'cancelled')`,
@@ -334,7 +372,16 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       }
 
       const detailOf = (r: RunRow): RunDetail => {
-        const nodes = nodesOf(r.workflow_id)
+        const retryRun = isRetryRun(r.id)
+        const nodes = nodesOf(r.workflow_id).filter(
+          (n) =>
+            !retryRun ||
+            db.get(
+              "SELECT 1 AS x FROM task WHERE run_id = ? AND node_number = ? LIMIT 1",
+              r.id,
+              n.number,
+            ) !== undefined,
+        )
         const tasks = db.all<TaskRow>(
           "SELECT * FROM task WHERE run_id = ? ORDER BY created_at, rowid",
           r.id,
@@ -402,7 +449,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         finished = false,
       ) => {
         const r = runRow(runId)
-        if (!r) return
+        // A run that has ended stays as it ended (a stop can end a queued run at once).
+        if (!r || r.finished_at !== null) return
         db.run(
           `UPDATE run SET state = ?, reason = ?, reason_code = ?, finished_at = ? WHERE id = ?`,
           state,
@@ -483,12 +531,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const runSignal = controller.signal
         const detail: WorkflowDetail = await Effect.runPromise(workflows.get(r.workflow_id))
         const graph = detail.graph
-        setRun(runId, "running", { text: null, code: null })
+        const only = entry.only
         const incoming = new Map<string, typeof graph.connections>()
         for (const n of graph.nodes) incoming.set(n.id, [])
-        for (const c of graph.connections) incoming.set(c.to, [...(incoming.get(c.to) ?? []), c])
+        if (!only)
+          for (const c of graph.connections) incoming.set(c.to, [...(incoming.get(c.to) ?? []), c])
         const ended = new Map<string, Done | "skipped">()
-        const order = [...graph.nodes].sort((a, b) => a.number - b.number)
+        const order = [...graph.nodes]
+          .filter((n) => !only || n.number === only.nodeNumber)
+          .sort((a, b) => a.number - b.number)
         const trigger = r.trigger_text
 
         let stop: { state: TaskState; text: string | null; code: string | null } | null = null
@@ -505,9 +556,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
         for (;;) {
           if (runSignal.aborted) break
-          const ready = order.find(
-            (n) => !ended.has(n.id) && (incoming.get(n.id) ?? []).every((c) => ended.has(c.from)),
-          )
+          const ready = readyNode(order, incoming, ended)
           if (!ready) break
           const inputs = (incoming.get(ready.id) ?? []).flatMap((c) => {
             const p = passes(c)
@@ -519,7 +568,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             continue
           }
           const results = [...new Map(inputs.map((i) => [i.taskId, i])).values()]
-          const marks = mergeMarks(results)
+          // A retry has no input tasks: it takes over the marks of the task that it tries again.
+          const marks = only ? { ...only.marks } : mergeMarks(results)
           const done = await runNode({
             run: r,
             detail,
@@ -528,6 +578,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             marks,
             trigger,
             signal: runSignal,
+            ...(only ? { fixedInput: only.input, retryOf: only.retryOf } : {}),
           })
           if (done.kind === "cancelled") {
             stop = { state: "cancelled", text: "Stopped by you", code: "user" }
@@ -550,7 +601,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           stop = { state: "cancelled", text: "Stopped by you", code: "user" }
         // No node is ready, and nodes that never ran remain: the run did not do its work. It must
         // not end as "done" (a loop that came through, a graph that changed during the run).
-        if (stop === null && graph.nodes.some((n) => !ended.has(n.id)))
+        if (stop === null && stalled(order, incoming, ended))
           stop = {
             state: "failed",
             text: "No node could start, and some nodes did not run",
@@ -558,6 +609,38 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           }
         if (stop) setRun(runId, stop.state, { text: stop.text, code: stop.code }, true)
         else setRun(runId, "done", { text: null, code: null }, true)
+      }
+
+      // --- the queue and the slots (spec 005, "Queue"; the order is in `taskScheduler.ts`) --------
+
+      /** The reason of each queued task: behind a task of its workflow, or no free slot. */
+      const refreshWaits = () => {
+        const slots = queue.slots()
+        for (const [taskId, why] of queue.scheduler.reasons()) {
+          const row = taskRow(taskId)
+          if (row?.state !== "queued") continue
+          const code = why.kind === "behind" ? QUEUE_BEHIND : QUEUE_SLOT
+          const detail = why.kind === "behind" ? why.holder.nodeName : String(slots)
+          if (row.error_code === code && row.error_detail === detail) continue
+          db.run(
+            "UPDATE task SET error_code = ?, error_detail = ? WHERE id = ?",
+            code,
+            detail,
+            taskId,
+          )
+          changed(row.workflow_id, row.run_id)
+        }
+      }
+      queue.scheduler.onChange(refreshWaits)
+
+      /** The task got a slot: it runs (and so does its run). */
+      const markRunning = (runId: string, taskId: string) => {
+        db.run(
+          "UPDATE task SET state = 'running', started_at = ?, error_code = NULL, error_detail = NULL WHERE id = ?",
+          Date.now(),
+          taskId,
+        )
+        setRun(runId, "running", { text: null, code: null })
       }
 
       interface NodeRun {
@@ -568,6 +651,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         readonly marks: TaskMarks
         readonly trigger: string
         readonly signal: AbortSignal
+        /** A retry: the input of the first try, and the task that it tries again. */
+        readonly fixedInput?: string
+        readonly retryOf?: string
       }
 
       const insertTask = (n: NodeRun, input: string): string => {
@@ -575,8 +661,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const now = Date.now()
         db.run(
           `INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, input, state,
-             created_at, started_at, outside_mark, program_mark, sensitive_mark)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
+             created_at, retry_of, outside_mark, program_mark, sensitive_mark)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
           id,
           n.run.id,
           n.run.workflow_id,
@@ -585,7 +671,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           n.node.number,
           input,
           now,
-          now,
+          n.retryOf ?? null,
           n.marks.outside ? JSON.stringify(n.marks.outside) : null,
           n.marks.program ? 1 : 0,
           n.marks.sensitive,
@@ -593,6 +679,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         changed(n.run.workflow_id, n.run.id)
         return id
       }
+
+      /** The marks that a task row holds (spec 007). */
+      const marksOf = (t: TaskRow): TaskMarks => ({
+        outside: parseOutsideSource(t.outside_mark),
+        program: t.program_mark === 1,
+        sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
+      })
 
       const saveMarks = (taskId: string, marks: TaskMarks) => {
         db.run(
@@ -608,7 +701,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const now = Date.now()
         db.run(
           `UPDATE task SET state = ?, error_code = ?, error_detail = ?, result = ?, option_id = COALESCE(?, option_id),
-             ended_at = ?, ended_as = ?, finished_at = ? WHERE id = ?`,
+             ended_at = ?, ended_as = ?, finished_at = ?
+           WHERE id = ? AND state IN ('queued', 'running', 'waiting')`,
           end.state,
           end.code,
           end.text,
@@ -625,29 +719,70 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         n: NodeRun,
       ): Promise<{ kind: "ended"; done: Done } | { kind: "cancelled"; done: Done }> => {
         const feedback =
-          n.node.kind === "text" ? await Effect.runPromise(facts.feedbackFor(n.run.id)) : []
+          n.node.kind === "text" && n.fixedInput === undefined
+            ? await Effect.runPromise(facts.feedbackFor(n.run.id))
+            : []
         const results = n.inputs.map((i) => i.result)
         const input =
-          n.node.kind === "text"
+          n.fixedInput ??
+          (n.node.kind === "text"
             ? nodeInput(results, feedback)
-            : results.filter((r) => r !== "").join("\n\n")
+            : results.filter((r) => r !== "").join("\n\n"))
+        const none: Done = {
+          node: n.node,
+          taskId: "",
+          state: "failed",
+          result: "",
+          optionId: null,
+          marks: n.marks,
+        }
+        // The run was stopped while the node got its input: it makes no task.
+        if (n.signal.aborted) return { kind: "cancelled", done: none }
         const taskId = insertTask(n, input)
         const marks: TaskMarks = { ...n.marks }
         let end: End
         try {
+          // The task joins the queue of its workflow and waits for a free slot (spec 005, "Queue").
+          const place = queue.scheduler.enter(
+            {
+              taskId,
+              workflowId: n.run.workflow_id,
+              runId: n.run.id,
+              source: n.run.source as RunSource,
+              runSeq: active.get(n.run.id)?.seq ?? 0,
+              nodeNumber: n.node.number,
+              nodeName: n.node.name,
+              runStartedAt: n.run.started_at,
+            },
+            n.signal,
+          )
+          if (!place.granted) {
+            setRun(n.run.id, "queued", { text: null, code: null })
+            refreshWaits()
+          }
+          await place.ready
+          markRunning(n.run.id, taskId)
           end =
             n.node.kind === "text"
               ? await runText(n, taskId, input, marks)
               : await runDecision(n, taskId, input, marks)
         } catch (error) {
-          // The signal of the run aborted while the task waited or worked.
+          // The signal of the run aborted while the task waited or worked. A task that still
+          // waited for a start when the user stopped its run shows "The run was stopped".
           end = n.signal.aborted
-            ? {
-                state: "cancelled",
-                code: "user",
-                text: "Stopped by you",
-                result: taskRow(taskId)?.result ?? "",
-              }
+            ? taskRow(taskId)?.state === "queued" && !stoppedTasks.has(taskId)
+              ? {
+                  state: "cancelled",
+                  code: "run",
+                  text: "The run was stopped",
+                  result: taskRow(taskId)?.result ?? "",
+                }
+              : {
+                  state: "cancelled",
+                  code: "user",
+                  text: "Stopped by you",
+                  result: taskRow(taskId)?.result ?? "",
+                }
             : (() => {
                 const f = failureText(error)
                 return {
@@ -658,10 +793,17 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 }
               })()
         }
-        saveMarks(taskId, marks)
-        finishTask(taskId, end)
-        // The claims of a task end when the task is final (spec 025, flow 4).
-        claims.release(taskId)
+        try {
+          saveMarks(taskId, marks)
+          finishTask(taskId, end)
+          // The claims of a task end when the task is final (spec 025, flow 4).
+          claims.release(taskId)
+        } finally {
+          // The slot is free for the next task in the order, also when a write fails. The run keeps
+          // the workflow until it ends (`endRun`).
+          queue.scheduler.release(taskId)
+          stoppedTasks.delete(taskId)
+        }
         changed(n.run.workflow_id, n.run.id)
         const done: Done = {
           node: n.node,
@@ -700,6 +842,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         waiting: { code: string; detail: string },
       ) => {
         pause()
+        // A task that waits for the user uses no slot. Its workflow stays held (spec 005, "Queue").
+        queue.scheduler.suspend(taskId)
         db.run(
           "UPDATE task SET state = 'waiting', error_code = ?, error_detail = ?, first_reply_at = COALESCE(first_reply_at, ?) WHERE id = ?",
           waiting.code,
@@ -723,11 +867,26 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           })
         } finally {
           if (!signal.aborted) {
-            db.run(
-              "UPDATE task SET state = 'running', error_code = NULL, error_detail = NULL WHERE id = ?",
-              taskId,
-            )
-            setRun(n.run.id, "running")
+            // The user answered: the task needs a slot again, at the front of the order.
+            const back = queue.scheduler.resume(taskId, signal)
+            if (queue.scheduler.isWaiting(taskId)) {
+              db.run(
+                "UPDATE task SET state = 'queued', error_code = ?, error_detail = ? WHERE id = ?",
+                QUEUE_SLOT,
+                String(queue.slots()),
+                taskId,
+              )
+              setRun(n.run.id, "queued")
+              refreshWaits()
+            }
+            await back.catch(() => undefined)
+            if (!signal.aborted) {
+              db.run(
+                "UPDATE task SET state = 'running', error_code = NULL, error_detail = NULL WHERE id = ?",
+                taskId,
+              )
+              setRun(n.run.id, "running")
+            }
           }
           resume()
         }
@@ -845,7 +1004,18 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const limitMs = setting.silentLimit * runClock.minuteMs
         let paused = 0
         let timer: ReturnType<typeof setTimeout> | null = null
+        // The quiet line shows when the turn shows no sign of life for the quiet time. Its clock
+        // is the clock of the silent limit and stops in the same cases (spec 005, "Quiet line").
+        const quietName =
+          (await Effect.runPromise(providers.accounts)).find((a) => a.id === node.accountId)
+            ?.name ?? ""
+        const quiet = queue.quiet.watch(taskId, {
+          workflowId: n.run.workflow_id,
+          name: quietName,
+          quietMs: quietTimeMs(limitMs, runClock.quietMs),
+        })
         const arm = () => {
+          quiet.set(paused > 0)
           if (timer) clearTimeout(timer)
           timer = null
           if (limitMs > 0 && paused === 0 && !signal.aborted)
@@ -1154,17 +1324,22 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           return { state: "cancelled", code: "user", text: "Stopped by you", result: result.text }
         } finally {
           if (timer) clearTimeout(timer)
+          quiet.stop()
           signal.aborted || controller.abort()
         }
       }
 
       // --- starting and stopping ----------------------------------------------------------
 
-      const begin = (runId: string) => {
+      const begin = (runId: string, only?: OnlyNode) => {
         const r = runRow(runId)
         if (!r) return
-        busy.add(r.workflow_id)
-        const entry = { workflowId: r.workflow_id, controller: new AbortController() }
+        const entry = {
+          workflowId: r.workflow_id,
+          controller: new AbortController(),
+          seq: ++runCounter,
+          ...(only ? { only } : {}),
+        }
         active.set(runId, entry)
         void execute(runId)
           .catch((error) => {
@@ -1178,7 +1353,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           })
           .finally(() => {
             active.delete(runId)
-            busy.delete(r.workflow_id)
+            // The workflow is free for the next run, whatever way this run ended.
+            queue.scheduler.endRun(runId)
             for (const listener of endListeners) {
               try {
                 listener(r.workflow_id, runId)
@@ -1186,73 +1362,179 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 console.error("runs: a listener of the end of a run failed:", error)
               }
             }
-            const next = queues.get(r.workflow_id)?.shift()
-            if (next) begin(next)
           })
       }
 
-      const start = (
-        input: RunStart,
-        source: "hand" | "chat" = "hand",
-        device: string | null = null,
-      ) =>
+      /** Makes a run and lets it work. A run that must wait starts as "queued" (spec 005). */
+      const launch = (
+        workflowId: string,
+        name: string,
+        source: RunSource,
+        trigger: string,
+        device: string | null,
+        only?: OnlyNode,
+      ) => {
+        const waiting =
+          db.get<{ n: number }>(
+            "SELECT COUNT(*) AS n FROM run WHERE workflow_id = ? AND state = 'queued' AND finished_at IS NULL",
+            workflowId,
+          )?.n ?? 0
+        const id = randomUUID()
+        const now = Date.now()
+        if (waiting >= RUN_QUEUE_MAX) {
+          // The queue of the workflow is full (spec 005, "Queue"): no task is made. A run that a
+          // schedule starts is Failed with the reason; any other start shows the reason.
+          if (source !== "schedule") return { ok: false as const, name }
+          const text = `${name} has ${RUN_QUEUE_MAX} tasks that wait. Try again later.`
+          db.run(
+            `INSERT INTO run (id, workflow_id, state, source, trigger_text, reason, reason_code, started_at, finished_at)
+             VALUES (?, ?, 'failed', ?, ?, ?, 'run_queue_full', ?, ?)`,
+            id,
+            workflowId,
+            source,
+            trigger,
+            text,
+            now,
+            now,
+          )
+          changed(workflowId, id)
+          workflowsChanged(workflowId)
+          return { ok: true as const, id }
+        }
+        const another = [...active.values()].some((e) => e.workflowId === workflowId)
+        db.run(
+          `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          id,
+          workflowId,
+          another || queue.scheduler.wouldWait(workflowId) ? "queued" : "running",
+          source,
+          trigger,
+          device,
+          now,
+        )
+        changed(workflowId, id)
+        workflowsChanged(workflowId)
+        begin(id, only)
+        return { ok: true as const, id }
+      }
+
+      /**
+       * The checks before a run starts, for a start and for a Retry alike (a retry is a run): the
+       * workflow has a node, its graph has no loop, and the check finds no problem.
+       */
+      const preflight = (workflowId: string) =>
         Effect.gen(function* () {
-          const detail = yield* workflows.get(input.workflowId)
-          const nodes = detail.graph.nodes
-          if (nodes.length === 0) return yield* new AppError({ code: "run_empty" })
+          const detail = yield* workflows.get(workflowId)
+          if (detail.graph.nodes.length === 0) return yield* new AppError({ code: "run_empty" })
           // A loop never starts, whatever the checker says: this test does not use the checker,
           // so a check that stopped or failed cannot let a loop through.
           if (hasLoop(detail)) return yield* new AppError({ code: "run_loop" })
           // A run does not start when the check finds a problem (spec 010, "Check"). A check that
           // stopped at a limit or could not read the form does not hold back a graph with no loop
           // (docs/spec-questions.md, W1: the rows for the check before a run).
-          const outcome = yield* check.check(input.workflowId)
+          const outcome = yield* check.check(workflowId)
           if (outcome.state === "problem") return yield* new AppError({ code: "run_check_problem" })
-          const queued = queues.get(input.workflowId) ?? []
-          if (busy.has(input.workflowId) && queued.length >= RUN_QUEUE_MAX)
-            return yield* new AppError({ code: "run_queue_full", detail: detail.name })
-          const id = randomUUID()
-          const waits = busy.has(input.workflowId)
-          db.run(
-            `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            id,
-            input.workflowId,
-            waits ? "queued" : "running",
-            source,
-            input.trigger ?? "",
-            device,
-            Date.now(),
-          )
-          changed(input.workflowId, id)
-          workflowsChanged(input.workflowId)
-          if (waits) queues.set(input.workflowId, [...queued, id])
-          else begin(id)
-          return summaryOf(runRow(id) as RunRow)
+          return detail
         })
+
+      const start = (input: RunStart, source: RunSource = "hand", device: string | null = null) =>
+        Effect.gen(function* () {
+          const detail = yield* preflight(input.workflowId)
+          const made = launch(input.workflowId, detail.name, source, input.trigger ?? "", device)
+          if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
+          return summaryOf(runRow(made.id) as RunRow)
+        })
+
+      /**
+       * Ends the tasks of a run that still wait for a start, at once. A run that has no task that
+       * works or waits for the user ends with them. `byTask` is the task that the user stopped.
+       */
+      const endWaiting = (runId: string, byTask?: string) => {
+        for (const taskId of queue.scheduler.cancelRun(runId)) {
+          const user = taskId === byTask
+          const now = Date.now()
+          db.run(
+            `UPDATE task SET state = 'cancelled', error_code = ?, error_detail = ?, ended_at = ?,
+               ended_as = 'cancelled', finished_at = ? WHERE id = ? AND state = 'queued'`,
+            user ? "user" : "run",
+            user ? "Stopped by you" : "The run was stopped",
+            now,
+            now,
+            taskId,
+          )
+        }
+        const r = runRow(runId)
+        if (!r || r.finished_at !== null || r.state !== "queued") return
+        const works = db.get(
+          "SELECT 1 AS x FROM task WHERE run_id = ? AND state IN ('running', 'waiting') LIMIT 1",
+          runId,
+        )
+        if (works) return
+        setRun(
+          runId,
+          "cancelled",
+          byTask
+            ? { text: "Stopped by you", code: "user" }
+            : { text: "The run was stopped", code: "run" },
+          true,
+        )
+      }
 
       const stop = (runId: string) =>
         Effect.gen(function* () {
           const r = runRow(runId)
           if (!r) return yield* new AppError({ code: "run_not_found" })
           if (r.finished_at !== null) return
-          const entry = active.get(runId)
-          if (entry) {
-            entry.controller.abort()
-            return
-          }
-          // A run that still waits behind another run: it ends as cancelled at once.
-          const queue = queues.get(r.workflow_id) ?? []
-          queues.set(
+          active.get(runId)?.controller.abort()
+          endWaiting(runId)
+        })
+
+      const stopTask = (taskId: string) =>
+        Effect.gen(function* () {
+          const t = taskRow(taskId)
+          if (!t) return yield* new AppError({ code: "task_not_found" })
+          if (!["queued", "running", "waiting"].includes(t.state)) return
+          stoppedTasks.add(taskId)
+          active.get(t.run_id)?.controller.abort()
+          endWaiting(t.run_id, taskId)
+        })
+
+      const retryTask = (taskId: string, device: string | null = null) =>
+        Effect.gen(function* () {
+          const t = taskRow(taskId)
+          if (!t) return yield* new AppError({ code: "task_not_found" })
+          if (!["failed", "blocked", "cancelled"].includes(t.state))
+            return yield* new AppError({ code: "cannot_retry_task" })
+          const r = runRow(t.run_id)
+          if (!r) return yield* new AppError({ code: "run_not_found" })
+          const detail = yield* preflight(r.workflow_id)
+          if (!detail.graph.nodes.some((node) => node.number === t.node_number))
+            return yield* new AppError({ code: "cannot_retry_task" })
+          // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the
+          // marks of the task that it tries again (spec 007, "Outside content").
+          const made = launch(
             r.workflow_id,
-            queue.filter((q) => q !== runId),
+            detail.name,
+            r.source as RunSource,
+            r.trigger_text,
+            device,
+            {
+              nodeNumber: t.node_number,
+              input: t.input,
+              retryOf: t.id,
+              marks: marksOf(t),
+            },
           )
-          setRun(runId, "cancelled", { text: "The run was stopped", code: "run" }, true)
+          if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
+          return made.id
         })
 
       return Runs.of({
         start,
         stop,
+        stopTask,
+        retryTask,
         list: (workflowId) =>
           Effect.sync(() =>
             db
@@ -1268,7 +1550,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             ? Effect.sync(() => detailOf(r))
             : Effect.fail(new AppError({ code: "run_not_found" }))
         },
-        active: (workflowId) => busy.has(workflowId) || (queues.get(workflowId)?.length ?? 0) > 0,
+        active: (workflowId) => [...active.values()].some((e) => e.workflowId === workflowId),
         onEnded: (listener) => {
           endListeners.push(listener)
         },

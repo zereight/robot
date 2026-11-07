@@ -1,11 +1,14 @@
 import {
   isStepLimit,
+  isTasksAtOnce,
   type LicenseEntry,
   type MessageKey,
   SILENT_LIMITS,
   type SilentLimit,
   STEP_LIMIT_MAX,
   STEP_LIMIT_MIN,
+  TASKS_AT_ONCE_MAX,
+  TASKS_AT_ONCE_MIN,
 } from "@robot/shared"
 import { X } from "lucide-solid"
 import {
@@ -112,6 +115,46 @@ const StepLimit = () => {
   )
 }
 
+/** "Tasks at once": a whole number from 1 to 8 (spec 013, 005). The field refuses other values. */
+const TasksAtOnce = () => {
+  const app = useApp()
+  const { t } = app
+  const [draft, setDraft] = createSignal<string>()
+  const shown = () => draft() ?? String(app.settings.tasksAtOnce)
+  const parsed = () => (/^\d+$/.test(shown().trim()) ? Number(shown().trim()) : Number.NaN)
+  const invalid = () => draft() !== undefined && !isTasksAtOnce(parsed())
+  /** Saves a valid number when the user leaves the field or presses Enter. */
+  const commit = () => {
+    const value = parsed()
+    if (isTasksAtOnce(value) && value !== app.settings.tasksAtOnce)
+      app.update({ tasksAtOnce: value })
+    setDraft(undefined)
+  }
+  return (
+    <Row
+      label={t("settings.tasksAtOnce")}
+      hint={invalid() ? t("settings.tasksAtOnce.invalid") : t("settings.tasksAtOnce.hint")}
+      testId="setting-tasks-at-once-row"
+    >
+      <input
+        class={styles.number}
+        type="number"
+        inputMode="numeric"
+        min={TASKS_AT_ONCE_MIN}
+        max={TASKS_AT_ONCE_MAX}
+        step={1}
+        value={shown()}
+        aria-label={t("settings.tasksAtOnce")}
+        aria-invalid={invalid()}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        data-testid="setting-tasks-at-once"
+      />
+    </Row>
+  )
+}
+
 const General = () => {
   const app = useApp()
   const { t } = app
@@ -151,6 +194,7 @@ const General = () => {
         />
       </Row>
       <StepLimit />
+      <TasksAtOnce />
       <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
         <Segmented
           label={t("settings.silentLimit")}

@@ -1,5 +1,5 @@
 import type { Page } from "@robot/shared"
-import { CircleHelp, Settings, Workflow } from "lucide-solid"
+import { CircleHelp, ListChecks, Settings, Workflow } from "lucide-solid"
 import { For, type JSX } from "solid-js"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -54,6 +54,7 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
       <div class={styles.railDivider} />
       <div class={styles.railGroup}>
         <PageButton page="workflows" label={t("page.workflows")} icon={<Workflow size={20} />} />
+        <PageButton page="tasks" label={t("page.tasks")} icon={<ListChecks size={20} />} />
       </div>
       <div class={styles.railSpacer} />
       <div class={styles.railGroup}>

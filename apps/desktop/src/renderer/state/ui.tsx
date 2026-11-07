@@ -72,7 +72,13 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       const { [id]: _gone, ...rest } = ui.places
       update({ places: rest })
     },
-    selectPage: (page: Page) => update({ page }),
+    /**
+     * A page button. The Tasks button opens the tab "Tasks", also when the tab "Events" was the
+     * last one; the last tab is what a restart restores (spec 001, 005, 038).
+     */
+    selectPage: (page: Page) => update(page === "tasks" ? { page, tasksTab: "tasks" } : { page }),
+    /** The tab of the Tasks page; it stays after a restart (spec 005, 038). */
+    selectTasksTab: (tasksTab: UiState["tasksTab"]) => update({ tasksTab }),
   }
 }
 

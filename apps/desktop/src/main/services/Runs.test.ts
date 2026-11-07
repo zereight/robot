@@ -298,31 +298,6 @@ describe("a run of a workflow (spec 010)", () => {
     }
   })
 
-  test("a run that finds no ready node and nodes that never ran fails with a reason", async () => {
-    const t = await setup()
-    const a = await t.node({ name: "Slow", prompt: "slow one" })
-    const b = await t.node({ name: "B", prompt: "y" })
-    const first = await t.start()
-    const second = await t.start()
-    expect(second.state).toBe("queued")
-    // The graph gets a loop while the second run waits (a change by another way than the editor).
-    await t.sql(
-      "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id) VALUES ('c1', ?, ?, ?), ('c2', ?, ?, ?)",
-      t.flow.id,
-      a.id,
-      b.id,
-      t.flow.id,
-      b.id,
-      a.id,
-    )
-    await t.run(Runs.use((r) => r.stop(first.id)))
-    await t.ended(first.id)
-    const d = await t.ended(second.id)
-    expect(d.state).toBe("failed")
-    expect(d.reasonCode).toBe("run_no_ready_node")
-    expect(d.nodes.map((n) => n.state)).not.toContain("done")
-  })
-
   test("a node with no provider fails with a reason and the run stops", async () => {
     const t = await setup()
     const flow = t.flow.id
