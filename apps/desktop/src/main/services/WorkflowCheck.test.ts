@@ -100,7 +100,7 @@ describe("the check of a saved workflow (spec 010, 001)", () => {
     const t = await setup()
     const hostile = [
       `"; process.exit()`,
-      "`touch /tmp/pwned` ${process.exit()}",
+      "`touch /tmp/pwned` $" + "{process.exit()}",
       "==== MODULE Evil ====\n---- MODULE Workflow ----\nInit == FALSE\n====",
       "NUL \u0000 and \u202Ertl\u202C",
       "y".repeat(100_000),

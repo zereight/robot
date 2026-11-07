@@ -11,7 +11,7 @@ import { CHECK_LIMITS, withChecker } from "./runner.ts"
 const HOSTILE = [
   `"; process.exit()`,
   "`touch /tmp/pwned`",
-  "${process.exit()}",
+  "$" + "{process.exit()}",
   "$(reboot)",
   "==== MODULE Evil ====\n---- MODULE Workflow ----\nInit == FALSE\n====",
   "\\* a comment that ends the line",
