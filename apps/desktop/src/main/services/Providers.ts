@@ -436,12 +436,13 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               ? nearestEffort(input.effort, listedModel.efforts)
               : input.effort
             return (async function* () {
-              // The program reaches the browser of the agent through the app, for this turn only.
-              // When the access cannot open, the turn goes on without the browser.
-              const grant =
-                input.useTools && hooks.bridge
-                  ? await grantBridge(hooks.bridge).catch(() => undefined)
-                  : undefined
+              // The program reaches tools of the app through the bridge, for this turn only.
+              // A caller that gives no bridge wants none; a bridge with the own tools of the
+              // program off is the chat on pi or Claude Code (spec 006). When the access cannot
+              // open, the turn goes on without the tools of the app.
+              const grant = hooks.bridge
+                ? await grantBridge(hooks.bridge).catch(() => undefined)
+                : undefined
               try {
                 // A program gives its counts of tokens at the end of a turn, as totals of the run.
                 // `spent` is what the run used, for the usage of the task (spec 005).

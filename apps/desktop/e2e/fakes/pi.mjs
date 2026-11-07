@@ -63,8 +63,50 @@ if (args[0] === "--mode" && args[1] === "rpc") {
 if (args.includes("-p")) {
   let prompt = ""
   for await (const chunk of process.stdin) prompt += chunk
-  appendFileSync(callsFile, `${JSON.stringify({ args, prompt })}\n`)
+  // The text of the system file, read while the turn runs (the app removes it after).
+  const at = args.indexOf("--append-system-prompt")
+  let system = null
+  try {
+    system = at >= 0 ? readFileSync(args[at + 1], "utf8") : null
+  } catch {
+    system = null
+  }
+  appendFileSync(callsFile, `${JSON.stringify({ args, prompt, cwd: process.cwd(), system })}\n`)
   out({ type: "agent_start" })
+  // A turn that the test tells to call a tool of the app: it reads the address of the bridge
+  // from the extension file, calls it, and speaks the transcript lines of the call (spec 006).
+  const wanted = state().bridgeCall
+  const extAt = args.indexOf("--extension")
+  if (wanted && extAt >= 0) {
+    const src = readFileSync(args[extAt + 1], "utf8")
+    const accessFile = JSON.parse(/readFileSync\((.*), "utf8"\)/.exec(src)[1])
+    const access = JSON.parse(readFileSync(accessFile, "utf8"))
+    const id = "bridge-call-1"
+    out({ type: "tool_execution_start", toolCallId: id, toolName: wanted.name, args: wanted.args })
+    const res = await fetch(access.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        authorization: `Bearer ${access.token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: wanted.name, arguments: wanted.args },
+      }),
+    })
+    const body = await res.json()
+    const text = (body.result?.content ?? []).map((c) => c.text ?? "").join("\n")
+    out({
+      type: "tool_execution_end",
+      toolCallId: id,
+      toolName: wanted.name,
+      isError: body.result?.isError === true,
+      result: { content: [{ type: "text", text }] },
+    })
+  }
   out({
     type: "message_update",
     assistantMessageEvent: { type: "text_delta", delta: `Echo: ${prompt.split("\n").at(-1)}` },

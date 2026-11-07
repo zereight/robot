@@ -106,9 +106,16 @@ describe("pi command", () => {
       "--tools",
       "read,grep,find,ls,edit,write,browser_open,browser_read",
     ])
-    // Full access has no list, and a run that may not use tools has none of them.
+    // Full access has no list. A run that may not use tools keeps the tools of the bridge.
     expect(piTools("full", true, browser)).toEqual([])
-    expect(piTools("full", false, browser)).toEqual(["--no-tools"])
+    expect(piTools("full", false, browser)).toEqual(["--no-builtin-tools"])
+  })
+  test("the tools of the app with no tool of the program: the extension stays on (spec 006)", () => {
+    // A turn of the chat on pi: the program keeps the tools of the bridge, and none of its own.
+    expect(piTools("ask_risky", false, ["create_workflow"])).toEqual(["--no-builtin-tools"])
+    // With no bridge, a turn that may not use tools has none of them.
+    expect(piTools("ask_risky", false)).toEqual(["--no-tools"])
+    expect(piTools("ask_risky", false, [])).toEqual(["--no-tools"])
   })
   test("a run with the access loads the extension, and keeps the user's servers out", () => {
     const access = {
