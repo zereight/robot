@@ -31,6 +31,8 @@ export interface CardAsk {
   readonly scope: RunCard["scope"]
   readonly sensitive: SensitiveLabel | null
   readonly unreadable?: boolean
+  /** The count of values of the arguments that the card hides (spec 018). */
+  readonly hidden?: number
   readonly choices?: readonly string[]
   readonly options?: RunCard["options"]
   readonly pickReason?: string | null
@@ -131,6 +133,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           scope: p.scope,
           sensitive: p.sensitive,
           unreadable: p.unreadable,
+          hidden: p.hidden ?? 0,
           choices: p.choices,
           options: p.options,
           pickReason: p.pickReason,
@@ -162,6 +165,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
             scope: a.scope,
             sensitive: a.sensitive,
             unreadable: a.unreadable ?? false,
+            hidden: a.hidden ?? 0,
             choices: a.choices ?? [],
             options: a.options ?? [],
             pickReason: a.pickReason ?? null,

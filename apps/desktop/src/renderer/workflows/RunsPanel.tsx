@@ -2,11 +2,13 @@ import {
   CLAIMS_MAX,
   type MessageKey,
   NOTE_NAME_CHARS,
+  type NodeHold,
   plainLine,
   type RunDetail,
   type RunNode,
   type RunSummary,
   type RunTask,
+  type TaskConnectionStep,
 } from "@robot/shared"
 import { createResource, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
@@ -20,6 +22,8 @@ import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
+import { BackupHold } from "./BackupHold.tsx"
+import { createHolds } from "./holds.ts"
 import improve from "./improve.module.css"
 import { showsProposals } from "./improveView.ts"
 import styles from "./runs.module.css"
@@ -118,6 +122,68 @@ const TaskClaims = (props: { task: RunTask; number: number }) => {
 }
 
 /**
+ * The notice lines and the tool lines of the connections that a task used (spec 018, "States",
+ * "Rules"): a connection that was down, a connection with tools that wait for review, and one
+ * muted line for each call of a tool or search of tools. The names are plain lines.
+ */
+const TaskConnections = (props: { task: RunTask; number: number }) => {
+  const { t } = useApp()
+  // A build on a linked computer (012) may be older and send a task with no such lines.
+  const notes = () => props.task.connections ?? { down: [], held: [], steps: [] }
+  const any = () => notes().down.length + notes().held.length + notes().steps.length > 0
+  const callLine = (step: Extract<TaskConnectionStep, { kind: "call" }>) => {
+    const result = t(`runs.tool.result.${step.result}` as MessageKey)
+    const label =
+      step.how === "unknown" || step.connection === ""
+        ? t("runs.tool.unknown", { tool: plainLine(step.tool, NOTE_NAME_CHARS), result })
+        : t("runs.tool.call", {
+            connection: plainLine(step.connection, NOTE_NAME_CHARS),
+            tool: plainLine(step.tool, NOTE_NAME_CHARS),
+            result,
+          })
+    if (step.how === "level" || step.how === "none") return label
+    const how = t(`runs.tool.how.${step.how}` as MessageKey)
+    return `${label} — ${how}`
+  }
+  return (
+    <Show when={any()}>
+      <ul class={styles.marks} data-testid={`run-node-connections-${props.number}`}>
+        <For each={notes().down}>
+          {(name) => (
+            <li data-testid="run-connection-down">
+              {t("runs.connection.down", { name: plainLine(name, NOTE_NAME_CHARS) })}
+            </li>
+          )}
+        </For>
+        <For each={notes().held}>
+          {(name) => (
+            <li data-testid="run-connection-held">
+              {t("runs.connection.held", { name: plainLine(name, NOTE_NAME_CHARS) })}
+            </li>
+          )}
+        </For>
+        <For each={notes().steps}>
+          {(step) => (
+            <li
+              data-testid="run-tool-line"
+              data-kind={step.kind}
+              data-how={step.kind === "call" ? step.how : undefined}
+            >
+              {step.kind === "search"
+                ? t("runs.tool.search", {
+                    words: plainLine(step.words, 100),
+                    count: step.found,
+                  })
+                : callLine(step)}
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  )
+}
+
+/**
  * The memory work of a task (spec 008, "Flows" 1): "Saved to memory" with an undo control, and
  * "Suggested for memory" with the link "Review". The lines are muted.
  */
@@ -168,8 +234,8 @@ const TaskMemory = (props: { task: RunTask; workflowId: string; number: number }
   )
 }
 
-const NodeCard = (props: { node: RunNode; workflowId: string }) => {
-  const { t } = useApp()
+const NodeCard = (props: { node: RunNode; workflowId: string; hold?: NodeHold | undefined }) => {
+  const { t, locale } = useApp()
   const task = () => props.node.task
   const reason = () => reasonText(t, task()?.reasonCode ?? null, task()?.reasonText ?? null)
   return (
@@ -190,8 +256,27 @@ const NodeCard = (props: { node: RunNode; workflowId: string }) => {
         {(task) => (
           <>
             <TaskMarks task={task()} number={props.node.number} />
+            <Show when={task().backupNote}>
+              {(note) => (
+                <p class={styles.muted} data-testid={`run-node-backup-line-${props.node.number}`}>
+                  {note().resetsAt === null
+                    ? t("runs.backup", { main: note().main, backup: note().backup })
+                    : t("runs.backup.until", {
+                        main: note().main,
+                        backup: note().backup,
+                        time: formatDateTime(locale(), note().resetsAt as number),
+                      })}
+                </p>
+              )}
+            </Show>
+            <Show when={props.hold}>
+              {(hold) => (
+                <BackupHold hold={hold()} testId={`run-node-backup-${props.node.number}`} />
+              )}
+            </Show>
             <TaskMemory task={task()} workflowId={props.workflowId} number={props.node.number} />
             <TaskClaims task={task()} number={props.node.number} />
+            <TaskConnections task={task()} number={props.node.number} />
             <Show when={task().decision}>
               {(decision) => (
                 <div class={styles.decision} data-testid={`run-node-decision-${props.node.number}`}>
@@ -259,6 +344,8 @@ const NodeCard = (props: { node: RunNode; workflowId: string }) => {
 
 const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void }) => {
   const { t, locale } = useApp()
+  // The holds of the main models of the nodes: "Backup until <time>" shows on the node (spec 006).
+  const holds = createHolds(() => props.run.workflowId)
   const reason = () => reasonText(t, props.run.reasonCode, props.run.reasonText)
   return (
     <div class={styles.view} data-testid="run-view">
@@ -293,7 +380,13 @@ const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void
       </Show>
       <ol class={styles.nodes}>
         <Keyed each={props.run.nodes} by={(node) => node.number}>
-          {(node) => <NodeCard node={node()} workflowId={props.run.workflowId} />}
+          {(node) => (
+            <NodeCard
+              node={node()}
+              workflowId={props.run.workflowId}
+              hold={holds().find((h) => h.number === node().number)}
+            />
+          )}
         </Keyed>
       </ol>
       <Show when={props.run.feedback.length > 0}>

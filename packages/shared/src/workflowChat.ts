@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { ChatMeter } from "./compact.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { ChatMarks, RunCard } from "./runs.ts"
 
@@ -37,6 +38,11 @@ export type ChatPart =
        * do. The card then names the step as a wish, never as a deed (spec 007, "Tool cards").
        */
       readonly notRun?: boolean
+      /**
+       * True when the step asked the user (an approval card): from the time the card opens, while it
+       * waits, and after the answer. Such a step stays a card (spec 003, "Folded tool steps").
+       */
+      readonly asked?: boolean
     }
   /**
    * The muted line "Feedback added to the run" (spec 003, "Feedback"). `startedAt` is when the run
@@ -50,6 +56,28 @@ export type ChatPart =
       readonly startedAt: number
       readonly nodes: readonly number[]
     }
+  /**
+   * The line "Compacted" (spec 003, "Compact"). The model gets `summary` in place of every row
+   * before `from`. The chat keeps those rows. `from` is the id of the first row that stays word
+   * for word, and the line shows just before it. `at` is when the compact ended: the use of the
+   * context is not known until a reply that ends after it. `auto` is true for an automatic compact.
+   * `marks` are the marks of the chat when the summary was written: the summary holds what the
+   * covered rows held, so it carries their mark (spec 007).
+   */
+  | {
+      readonly kind: "compacted"
+      readonly summary: string
+      readonly at: number
+      readonly auto: boolean
+      readonly from: string | null
+      readonly marks: ChatMarks
+    }
+  /**
+   * The muted line after an automatic compact that failed (spec 003, "Automatic compact"): the turn
+   * went on without it. `code` is the error code; the window writes the words. The model never
+   * reads it.
+   */
+  | { readonly kind: "note"; readonly note: "compact_failed"; readonly code: string }
   /** The muted line of a busy provider (spec 006). The model never reads it. */
   | { readonly kind: "note"; readonly note: "busy_retry"; readonly n: number; readonly of: number }
   /**
@@ -85,7 +113,8 @@ export type ChatStatus = "done" | "streaming" | "stopped" | "failed"
 export interface WorkflowChatMessage {
   readonly id: string
   readonly workflowId: string
-  readonly author: "user" | "assistant"
+  /** `app` is the line "Compacted": the app wrote it, no person and no model (spec 003). */
+  readonly author: "user" | "assistant" | "app"
   readonly parts: readonly ChatPart[]
   readonly status: ChatStatus
   /** The reason of a failed reply: a code of the error table, and the detail. */
@@ -156,6 +185,20 @@ export interface WorkflowChatHistory {
   readonly cards: readonly RunCard[]
   /** The marks of the chat: outside content and a sensitive read (spec 007, "The mark of a place"). */
   readonly marks: ChatMarks
+  /** The context meter and the state of Compact (spec 003). */
+  readonly meter: ChatMeter
+  /**
+   * True while a compact works: the working line reads "Compacting…" (spec 003). `working` is true
+   * too, so Stop shows.
+   */
+  readonly compacting: boolean
+  /** The replies that count as unread, after "Mark as unread" (spec 003, "Mark as unread"). */
+  readonly unread: ChatUnread
+  /**
+   * The id of the one message that "Edit" can change now: the last message of the user, when the
+   * rules of `editRefusal` allow it and no run that the chat started follows it. `null`: no message.
+   */
+  readonly editableId: string | null
 }
 
 export const WorkflowChatSend = Schema.Struct({
@@ -258,4 +301,169 @@ export interface RunFact {
   /** True while the run works or waits. */
   readonly active: boolean
   readonly nodes: readonly RunNodeFact[]
+}
+
+// --- Folded tool steps (spec 003, "Folded tool steps") ------------------------------------------
+
+export type ChatToolPart = Extract<ChatPart, { readonly kind: "tool" }>
+
+/**
+ * The tools whose step carries a memory, a proposal or a feedback note (spec 003: a step with such
+ * a note leaves the series). The user sees what the responsible document saved or proposed, so
+ * these steps stay cards.
+ */
+const MARKED_TOOLS: ReadonlySet<string> = new Set([
+  "memory_save",
+  "propose_document_change",
+  "propose_prompt_change",
+  "propose_graph_change",
+  "add_run_feedback",
+])
+
+/**
+ * True for a tool step that may join a series: a plain step, finished or still running. A step that
+ * waits for the user or asked the user, failed, did not happen (refused, or nothing to do) or
+ * carries a note stays out of the series, so the user sees what needs them. A step that asked stays
+ * a card after the answer too, so it never goes from a card into a line.
+ *
+ * A running step joins the series, so that the line of a series stands still while the series
+ * grows: a step that showed as its own card and then folded away moved the reply up and down on
+ * every step of a long turn.
+ */
+export const isFoldableChatTool = (part: ChatPart): part is ChatToolPart =>
+  part.kind === "tool" &&
+  (part.state === "done" || part.state === "running") &&
+  part.notRun !== true &&
+  part.asked !== true &&
+  !MARKED_TOOLS.has(part.name)
+
+/** One row of the body of a reply: one part, or a series of folded tool steps. */
+export type ChatSegment =
+  | {
+      readonly kind: "part"
+      /** Stable while the reply grows: the place of the part in the reply. */
+      readonly key: string
+      readonly part: ChatPart
+    }
+  | {
+      readonly kind: "tools"
+      /** Stable while the series grows: the id of its first step. */
+      readonly key: string
+      readonly parts: readonly ChatToolPart[]
+    }
+
+/**
+ * The rows of the body of a reply. The thoughts are left out: the chat draws them as one line above
+ * the body, so thinking between two steps does not split a series (spec 003). With `fold` true each
+ * series of plain tool steps is one row. A text, a file, a note or a step that stays a card ends a
+ * series. With `fold` false every part is its own row.
+ */
+export const groupChatParts = (
+  parts: readonly ChatPart[],
+  fold: boolean,
+): readonly ChatSegment[] => {
+  const out: ChatSegment[] = []
+  parts.forEach((part, index) => {
+    if (part.kind === "thinking") return
+    const last = out.at(-1)
+    if (fold && isFoldableChatTool(part)) {
+      if (last?.kind === "tools") out[out.length - 1] = { ...last, parts: [...last.parts, part] }
+      else out.push({ kind: "tools", key: `t${part.id}`, parts: [part] })
+    } else out.push({ kind: "part", key: `p${index}`, part })
+  })
+  return out
+}
+
+// --- Mark as unread (spec 003, "Mark as unread") -----------------------------------------------
+
+/** The unread replies of a chat: how many, and the first of them (where the chat opens). */
+export interface ChatUnread {
+  readonly count: number
+  readonly firstId: string | null
+}
+
+export const NO_UNREAD: ChatUnread = { count: 0, firstId: null }
+
+/** The place that "Mark as unread" keeps: the message, and its time if the message is gone later. */
+export interface UnreadMark {
+  readonly id: string
+  readonly at: number
+}
+
+/**
+ * A reply that can be read or unread: a finished reply of the responsible document with content.
+ * A reply that still streams is not finished, and a failed reply is an error row.
+ */
+export const isReadableReply = (message: Pick<WorkflowChatMessage, "author" | "status">): boolean =>
+  message.author === "assistant" && (message.status === "done" || message.status === "stopped")
+
+/**
+ * The unread replies when the user marked `mark` as unread: that reply and every later reply
+ * count. When the marked message is gone (an edit removed it), the first message that is not older
+ * takes its place. No mark, or no reply from the place on, gives no unread reply.
+ */
+export const unreadOf = (
+  messages: readonly Pick<WorkflowChatMessage, "id" | "author" | "status" | "createdAt">[],
+  mark: UnreadMark | null,
+): ChatUnread => {
+  if (mark === null) return NO_UNREAD
+  let from = messages.findIndex((m) => m.id === mark.id)
+  if (from < 0) from = messages.findIndex((m) => m.createdAt >= mark.at)
+  if (from < 0) return NO_UNREAD
+  let count = 0
+  let firstId: string | null = null
+  for (const m of messages.slice(from))
+    if (isReadableReply(m)) {
+      count++
+      firstId ??= m.id
+    }
+  return count === 0 ? NO_UNREAD : { count, firstId }
+}
+
+// --- Edit the last message (spec 003, "Message rows") -----------------------------------------
+
+/** Why "Edit" is off for a message. `null` in place of a reason: it can be edited. */
+export type EditRefusal = "working" | "not_last" | "steps_ran"
+
+/**
+ * Edit is for the last message of the user, as the spec says. The spec states nothing more, so the
+ * rule fails closed (docs/spec-questions.md, rows for B4):
+ * - while a turn of the chat works, no message changes;
+ * - the message must be the last message of the user, a plain sent message (not one that waits to
+ *   be read), and a reply of the responsible document must follow it;
+ * - no reply after it may hold a step that ran (a tool step that did not fail to start, a proposal,
+ *   a memory note or a feedback line). Edit removes the replies after the message, and a change
+ *   that a step made cannot be taken back by that. A step that did not happen does not count.
+ */
+export const editRefusal = (
+  messages: readonly WorkflowChatMessage[],
+  id: string,
+  working: boolean,
+): EditRefusal | null => {
+  if (working) return "working"
+  const at = messages.findIndex((m) => m.id === id)
+  const message = messages[at]
+  if (message?.author !== "user" || message.status !== "done" || message.pending) return "not_last"
+  const later = messages.slice(at + 1)
+  if (later.some((m) => m.author === "user")) return "not_last"
+  if (!later.some((m) => m.author === "assistant")) return "not_last"
+  if (later.some((m) => m.status === "streaming")) return "working"
+  const ran = later.some((m) =>
+    m.parts.some(
+      (p) =>
+        (p.kind === "tool" && p.notRun !== true) ||
+        (p.kind === "note" &&
+          (p.note === "feedback_added" || p.note === "proposal" || p.note === "memory_saved")),
+    ),
+  )
+  return ran ? "steps_ran" : null
+}
+
+/** The last message of the user that `editRefusal` allows to edit, or `null`. */
+export const editableMessageId = (
+  messages: readonly WorkflowChatMessage[],
+  working: boolean,
+): string | null => {
+  const last = messages.findLast((m) => m.author === "user")
+  return last && editRefusal(messages, last.id, working) === null ? last.id : null
 }

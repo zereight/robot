@@ -1,6 +1,7 @@
 import {
   type ChatAnswer,
   type ChatMarks,
+  type ChatMeter,
   type ModelChoice,
   sameChatDay,
   startsChatGroup,
@@ -18,17 +19,21 @@ import {
   onMount,
   Show,
 } from "solid-js"
-import { describeError } from "../lib/errors.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { outsideText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
 import { BrowserStrip } from "./BrowserStrip.tsx"
+import { CompactedLine, compactedPart } from "./CompactedLine.tsx"
 import { Composer } from "./Composer.tsx"
+import { ContextMeter } from "./ContextMeter.tsx"
 import cards from "./cards.module.css"
 import styles from "./chat.module.css"
 import { findHits, locate, stepHit } from "./find.ts"
@@ -40,13 +45,15 @@ import { createChatState } from "./state.ts"
 const PHRASES = 20
 
 /** The line under the last row while the responsible document works (spec 003, "States"). */
-const WorkingLine = (props: { since: number }) => {
+const WorkingLine = (props: { since: number; compacting: boolean }) => {
   const { t } = useApp()
   const [now, setNow] = createSignal(Date.now())
   const timer = setInterval(() => setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(timer))
   // About half of the turns show a playful phrase. The turn keeps the one it got.
   const phrase = () => {
+    // A compact says what happens, with no playful phrase (spec 003, "Compact").
+    if (props.compacting) return t("chat.compacting")
     const seed = Math.floor(props.since / 7)
     return seed % 2 === 0
       ? t("chat.working")
@@ -71,8 +78,12 @@ const AnswerHeader = (props: {
   workflowId: string
   answer: ChatAnswer
   unsafeAccount: string | null
+  meter: ChatMeter
+  compacting: boolean
+  onCompact: () => void
 }) => {
   const { t } = useApp()
+  const ui = useUi()
   const [choices, { refetch }] = createResource(
     (): Promise<readonly ModelChoice[]> => call("models.available").catch(() => []),
   )
@@ -131,6 +142,12 @@ const AnswerHeader = (props: {
             )}
           </For>
         </select>
+        <ContextMeter
+          meter={props.meter}
+          compacting={props.compacting}
+          canCompact={ui.server()?.kind === "local"}
+          onCompact={props.onCompact}
+        />
       </div>
       <Show when={props.unsafeAccount}>
         {(account) => (
@@ -203,6 +220,10 @@ const MarksLine = (props: { workflowId: string; marks: ChatMarks }) => {
   )
 }
 
+/** True for a box that takes typed text. */
+const isTextEntry = (el: HTMLElement): boolean =>
+  el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
+
 /** The chat of a workflow, beside its canvas (spec 001, 003). */
 export const ChatPanel = (props: {
   workflowId: string
@@ -210,8 +231,10 @@ export const ChatPanel = (props: {
   running?: boolean
 }) => {
   const { t, locale } = useApp()
+  const ui = useUi()
   const { history, error } = createChatState(() => props.workflowId)
   const [replyTo, setReplyTo] = createSignal<WorkflowChatMessage>()
+  const [compactError, setCompactError] = createSignal<ErrorText>()
   const [stick, setStick] = createSignal(true)
   const [finding, setFinding] = createSignal(false)
   const [query, setQuery] = createSignal("")
@@ -226,10 +249,40 @@ export const ChatPanel = (props: {
   const toBottom = () => {
     if (scroller) scroller.scrollTop = scroller.scrollHeight
   }
+  const atBottom = () =>
+    scroller !== undefined &&
+    scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48
+  // The unread count clears when the chat shows its latest message (spec 003, "Mark as unread").
+  // A scroll that the reader did not cause (the chat follows a new reply, a layout change) is not
+  // the reader seeing the end, so only a scroll after a wheel, a touch, a drag or a key counts.
+  let readerAt = 0
+  const readerActed = (e: Event) => {
+    // Typing in a box of the chat (the edit box of a message) is not the reader looking at the end.
+    if (e.type === "keydown" && e.target instanceof HTMLElement && isTextEntry(e.target)) return
+    readerAt = Date.now()
+  }
+  const markRead = () => {
+    if ((history()?.unread.count ?? 0) > 0)
+      void call("chat.read", { workflowId: props.workflowId }).catch(() => {})
+  }
   const onScroll = () => {
     if (!scroller) return
-    setStick(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48)
+    setStick(atBottom())
+    if (atBottom() && Date.now() - readerAt < 1000) markRead()
   }
+  // A chat that fits in its box shows its latest message and never scrolls, so no scroll event can
+  // clear its count. After a mark (or any change of the messages or the size of the box) the count
+  // clears when the whole chat is in view, and only while the window is shown.
+  const clearIfWhole = () => {
+    if (!scroller || (history()?.unread.count ?? 0) === 0) return
+    if (document.visibilityState !== "visible") return
+    if (scroller.scrollHeight <= scroller.clientHeight + 1) markRead()
+  }
+  createEffect(() => {
+    history()?.unread.count
+    messages()
+    requestAnimationFrame(clearIfWhole)
+  })
   // The chat follows the latest message, until the reader scrolls up.
   createEffect(() => {
     messages()
@@ -240,6 +293,7 @@ export const ChatPanel = (props: {
     on(
       () => props.workflowId,
       () => {
+        positioned = false
         setStick(true)
         setReplyTo(undefined)
         setFinding(false)
@@ -247,6 +301,27 @@ export const ChatPanel = (props: {
       },
     ),
   )
+
+  // When the chat opens with unread replies, it opens at the first of them (spec 003, "Mark as
+  // unread"). When the first unread reply is already at the end of the chat, the chat shows its
+  // latest message and the count clears at once.
+  let positioned = false
+  createEffect(() => {
+    const h = history()
+    if (!h || positioned) return
+    positioned = true
+    const first = h.unread.firstId
+    if (first === null) return
+    setStick(false)
+    requestAnimationFrame(() => {
+      document.getElementById(`message-${first}`)?.scrollIntoView({ block: "start" })
+      if (atBottom()) markRead()
+    })
+  })
+  const goToUnread = () => {
+    const first = history()?.unread.firstId
+    if (first) document.getElementById(`message-${first}`)?.scrollIntoView({ block: "start" })
+  }
 
   const jump = (id: string) => {
     const el = document.getElementById(`message-${id}`)
@@ -319,6 +394,8 @@ export const ChatPanel = (props: {
   onMount(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        // Settings cover the chat: Cmd+F finds in a chat that shows, and does nothing here (spec 001).
+        if (ui.settingsSection() !== undefined) return
         event.preventDefault()
         setFinding(true)
         queueMicrotask(() => findBox?.select())
@@ -331,6 +408,13 @@ export const ChatPanel = (props: {
   const toastError = (e: unknown) => {
     const text = describeError(e)
     showToast("error", text.key, text.params)
+  }
+  /** Compact (spec 003). A failure shows in the error line above the box. */
+  const compactNow = () => {
+    setCompactError(undefined)
+    call("chat.compact", { workflowId: props.workflowId }).catch((e: unknown) =>
+      setCompactError(describeError(e)),
+    )
   }
   const retry = () => void call("chat.retry", { workflowId: props.workflowId }).catch(toastError)
   const resume = (mode: "continue" | "again") =>
@@ -420,14 +504,36 @@ export const ChatPanel = (props: {
                   workflowId={props.workflowId}
                   answer={answer()}
                   unsafeAccount={h().unsafeAccount}
+                  meter={h().meter}
+                  compacting={h().compacting}
+                  onCompact={compactNow}
                 />
               )}
+            </Show>
+            <Show when={h().unread.count > 0}>
+              <button
+                type="button"
+                class={styles.unread}
+                title={t("chat.unread.go")}
+                onClick={goToUnread}
+                data-testid="chat-unread"
+                data-count={h().unread.count}
+              >
+                {t("chat.unread", { count: h().unread.count })}
+              </button>
             </Show>
             <MarksLine workflowId={props.workflowId} marks={h().marks} />
             <div
               class={styles.scroll}
               ref={(el) => {
                 scroller = el
+                // The box can grow (the window gets larger) until the whole chat is in view.
+                const sizes = new ResizeObserver(() => clearIfWhole())
+                sizes.observe(el)
+                onCleanup(() => sizes.disconnect())
+                // What the reader does to the chat: only a scroll after one of these may clear the count.
+                for (const type of ["wheel", "touchmove", "pointerdown", "keydown"])
+                  el.addEventListener(type, readerActed, { passive: true })
               }}
               onScroll={onScroll}
               data-testid="chat-scroll"
@@ -441,44 +547,53 @@ export const ChatPanel = (props: {
                   </div>
                 }
               >
-                <For each={h().messages}>
-                  {(message, i) => {
+                <Keyed each={h().messages} by={(message) => message.id}>
+                  {(item, i) => {
+                    const message = item
                     const previous = () => h().messages[i() - 1]
                     const newDay = () =>
-                      !previous() || !sameChatDay(previous()?.createdAt ?? 0, message.createdAt)
+                      !previous() || !sameChatDay(previous()?.createdAt ?? 0, message().createdAt)
                     return (
                       <>
                         <Show when={newDay()}>
                           <div class={styles.day} data-testid="day-line">
                             {formatDay(
                               locale(),
-                              message.createdAt,
+                              message().createdAt,
                               t("chat.today"),
                               t("chat.yesterday"),
                             )}
                           </div>
                         </Show>
-                        <MessageRow
-                          message={message}
-                          name={h().workflowName}
-                          header={newDay() || startsChatGroup(previous(), message)}
-                          quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
-                          last={i() === h().messages.length - 1}
-                          working={h().working}
-                          onReply={setReplyTo}
-                          onJump={jump}
-                          onRetry={retry}
-                        />
+                        <Show
+                          when={compactedPart(message()) === undefined}
+                          fallback={<CompactedLine message={message()} />}
+                        >
+                          <MessageRow
+                            message={message()}
+                            name={h().workflowName}
+                            header={newDay() || startsChatGroup(previous(), message())}
+                            quoted={
+                              message().replyTo ? byId().get(message().replyTo ?? "") : undefined
+                            }
+                            last={i() === h().messages.length - 1}
+                            working={h().working}
+                            editable={h().editableId === message().id}
+                            onReply={setReplyTo}
+                            onJump={jump}
+                            onRetry={retry}
+                          />
+                        </Show>
                       </>
                     )
                   }}
-                </For>
+                </Keyed>
               </Show>
               <Show when={h().cards.length > 0}>
                 <RunCards cards={h().cards} />
               </Show>
               <Show when={h().working && h().workingSince !== null}>
-                <WorkingLine since={h().workingSince ?? 0} />
+                <WorkingLine since={h().workingSince ?? 0} compacting={h().compacting} />
               </Show>
             </div>
             <Show when={!stick()}>
@@ -488,6 +603,7 @@ export const ChatPanel = (props: {
                 onClick={() => {
                   setStick(true)
                   toBottom()
+                  markRead()
                 }}
                 data-testid="jump-latest"
               >
@@ -518,7 +634,10 @@ export const ChatPanel = (props: {
               history={h()}
               replyTo={replyTo()}
               onCancelReply={() => setReplyTo(undefined)}
+              compactError={compactError()}
+              onCompact={compactNow}
               onSent={() => {
+                setCompactError(undefined)
                 setStick(true)
                 queueMicrotask(toBottom)
               }}

@@ -46,6 +46,11 @@ const Marks = (props: { card: RunCard }) => {
       <Show when={props.card.unreadable}>
         <p class={styles.mark}>{t("cards.unreadable")}</p>
       </Show>
+      <Show when={props.card.hidden > 0}>
+        <p class={styles.mark} data-testid="card-hidden">
+          {t("cards.hidden", { count: props.card.hidden })}
+        </p>
+      </Show>
     </>
   )
 }

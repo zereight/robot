@@ -1,3 +1,4 @@
+import { sameModelChoice } from "./backup.ts"
 import { charLength } from "./chars.ts"
 import type { DiffSegment } from "./diff.ts"
 import type { OutsideSource } from "./outside.ts"
@@ -210,6 +211,9 @@ export const graphFingerprint = (graph: WorkflowGraph): string =>
         n.accountId,
         n.model,
         n.effort,
+        n.backup?.accountId ?? null,
+        n.backup?.model ?? null,
+        n.backup?.effort ?? null,
         n.permission,
         n.continueOnFailure,
         n.question,
@@ -357,6 +361,8 @@ export const compileGraph = (
           : spec.effort !== undefined
             ? spec.effort
             : (old?.effort ?? null),
+      // A graph change keeps the backup of a node that stays and never sets one (spec 006).
+      backup: spec.kind === "decision" ? null : (old?.backup ?? null),
       permission: old?.permission ?? null,
       continueOnFailure: spec.continueOnFailure ?? old?.continueOnFailure ?? false,
       question: spec.kind === "decision" ? (spec.question ?? old?.question ?? "") : "",
@@ -416,6 +422,23 @@ export const movesAccount = (before: WorkflowGraph, after: WorkflowGraph): numbe
   for (const n of after.nodes) {
     const was = old.get(n.id)
     if (was && was.kind === "text" && was.accountId !== n.accountId) return n.number
+  }
+  return null
+}
+
+/**
+ * The number of the first node whose backup model is not the backup of the same node before, or
+ * null. A new node must have none. A graph change never sets or moves a backup model: a backup is a
+ * second account for the node, so only the user sets it, in the editor (spec 006, "Backup model";
+ * docs/spec-questions.md, B6).
+ */
+export const changesBackup = (before: WorkflowGraph, after: WorkflowGraph): number | null => {
+  const old = new Map(before.nodes.map((n) => [n.id, n]))
+  for (const n of after.nodes) {
+    const was = old.get(n.id)?.backup ?? null
+    const now = n.backup ?? null
+    if (was === null && now === null) continue
+    if (!sameModelChoice(was, now)) return n.number
   }
   return null
 }

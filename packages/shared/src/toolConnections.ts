@@ -68,10 +68,34 @@ export interface ToolConnectionInput {
   readonly headers: readonly ConnectionEntryInput[]
 }
 
+/**
+ * The workflows that may use a connection (spec 018, "Concepts"): all of them, or a list. A list
+ * with no workflow means that no workflow uses the connection.
+ */
+export type ConnectionScope =
+  | { readonly kind: "all" }
+  | { readonly kind: "workflows"; readonly workflowIds: readonly string[] }
+
+/** A list of workflows holds at most this many ids (a sanity bound for the request). */
+export const CONNECTION_SCOPE_MAX = 1000
+
+/** True when a workflow may use a connection of this scope. A scope that is not known fails closed. */
+export const connectionInScope = (
+  scope: ConnectionScope | null | undefined,
+  workflowId: string,
+): boolean => {
+  if (!scope) return false
+  if (scope.kind === "all") return true
+  if (scope.kind === "workflows") return scope.workflowIds.includes(workflowId)
+  return false
+}
+
 /** What the window sends to save a connection. `id` is left out for a new connection. */
 export interface ConnectionSaveInput {
   readonly id?: string
   readonly connection: ToolConnectionInput
+  /** The workflows that may use it. Left out: a new connection is for all workflows, an old one keeps its scope. */
+  readonly scope?: ConnectionScope
   /** True when the user confirmed the command line of a program (spec 018, "Flows"). */
   readonly confirmed: boolean
 }
@@ -137,6 +161,8 @@ export interface ToolConnection {
    * a tool with the read-only mark is not a risky step outside a turn that holds outside content.
    */
   readonly trustReadOnly: boolean
+  /** The workflows that may use the connection (spec 018, "Concepts"). */
+  readonly scope: ConnectionScope
 }
 
 /** What a Test gives back. */
@@ -438,14 +464,14 @@ export const searchResultText = (found: readonly SearchableTool[]): string =>
         `Found ${found.length} ${found.length === 1 ? "tool" : "tools"}. You can call them now, by the name in front.`,
         ...found.map(
           (t) =>
-            `- ${t.alias} (connection "${t.connection}", tool "${t.tool}"): ${t.description.trim() || "No description."}`,
+            `- ${t.alias} (connection ${JSON.stringify(t.connection)}, tool ${JSON.stringify(t.tool)}): ${t.description.trim() || "No description."}`,
         ),
       ].join("\n")
 
 /** The text that tells the agent what the step does, with the count and the connections. */
 export const searchStepDescription = (count: number, connections: readonly string[]): string =>
   `Finds tools of the outside connections. You may use ${count} such tools, from the connections ${connections
-    .map((c) => `"${c}"`)
+    .map((c) => JSON.stringify(c))
     .join(
       ", ",
     )}, and you get none of them until you search. Give some words; the step gives back at most ${TOOL_SEARCH_RESULTS_MAX} tools whose name or description holds one of them. A tool that you found works for the rest of this turn.`

@@ -1,6 +1,8 @@
 import {
   ACTION_KINDS,
   BrowserProfileCreate,
+  CHAT_MESSAGE_MAX,
+  CONNECTION_SCOPE_MAX,
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
@@ -40,8 +42,10 @@ import { Connections } from "./services/Connections.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { AppError } from "./services/errors.ts"
+import { backupOfferedBy } from "./services/graphModels.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { Memory } from "./services/Memory.ts"
+import { ModelHolds } from "./services/ModelHolds.ts"
 import { Platform } from "./services/Platform.ts"
 import { Proposals } from "./services/Proposals.ts"
 import { Providers } from "./services/Providers.ts"
@@ -84,6 +88,16 @@ const RuleInputSchema = Schema.Struct({
   detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
   decision: Schema.Literals(["allow", "deny"]),
 })
+/** The workflows that may use a connection: all of them, or a list (spec 018). */
+const ConnectionScopeSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("all") }),
+  Schema.Struct({
+    kind: Schema.Literal("workflows"),
+    workflowIds: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(
+      Schema.isMaxLength(CONNECTION_SCOPE_MAX),
+    ),
+  }),
+])
 /** A line of the connection form: an environment value or a header (spec 018). */
 const ConnectionEntrySchema = Schema.Struct({
   name: Schema.String.check(Schema.isMaxLength(1000)),
@@ -457,6 +471,7 @@ export const handlers: Handlers = {
         id: Schema.optionalKey(Schema.String),
         connection: ConnectionInputSchema,
         confirmed: Schema.Boolean,
+        scope: Schema.optionalKey(ConnectionScopeSchema),
       }),
     )(input).pipe(Effect.flatMap((saved) => Connections.use((c) => c.save(saved)))),
   "connections.test": (input) =>
@@ -588,7 +603,12 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id, name }) => Workflows.use((w) => w.rename(id, name))),
     ),
   "workflows.document.save": (input) =>
-    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        text: Schema.String.check(Schema.isMaxLength(CHAT_MESSAGE_MAX)),
+      }),
+    )(input).pipe(
       Effect.flatMap(({ id, text }) =>
         Effect.gen(function* () {
           // The device that asks is named in the version (spec 002: "from <device>").
@@ -633,7 +653,47 @@ export const handlers: Handlers = {
     ),
   "workflows.node.update": (input) =>
     decode(Schema.Struct({ id: Schema.String, patch: NodePatch }))(input).pipe(
-      Effect.flatMap(({ id, patch }) => Workflows.use((w) => w.updateNode(id, patch))),
+      Effect.flatMap(({ id, patch }) =>
+        Effect.gen(function* () {
+          // The backup model is a second account for the node: only the user at this computer sets
+          // it, in the editor. A linked device never does (spec 006, 012; docs/spec-questions.md, B6).
+          if (patch.backup !== undefined) {
+            if (yield* CurrentActor) return yield* new AppError({ code: "not_allowed" })
+            if (patch.backup !== null) {
+              const providers = yield* Providers
+              const fault = yield* backupOfferedBy(providers)(patch.backup)
+              if (fault !== null)
+                return yield* new AppError({ code: "backup_not_offered", detail: fault })
+            }
+          }
+          return yield* Workflows.use((w) => w.updateNode(id, patch))
+        }),
+      ),
+    ),
+  "workflows.holds": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) =>
+        Effect.gen(function* () {
+          // The hold shows on this computer only. A linked device and the phone get none (006).
+          if (yield* CurrentActor) return []
+          const holds = yield* ModelHolds
+          const providers = yield* Providers
+          const out = []
+          for (const hold of holds.ofWorkflow(workflowId)) {
+            // A backup that is not ready any more ends the hold at once (spec 006).
+            if (yield* providers.verify(hold.backup.accountId)) out.push(hold)
+            else holds.clear(hold.nodeId)
+          }
+          return out
+        }),
+      ),
+    ),
+  "workflows.hold.release": (input) =>
+    decode(Schema.Struct({ nodeId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ nodeId }) =>
+        ownerOnly(ModelHolds.use((h) => Effect.sync(() => void h.release(nodeId)))),
+      ),
+      done,
     ),
   "workflows.node.move": (input) =>
     decode(Schema.Struct({ id: Schema.String, x: Schema.Number, y: Schema.Number }))(input).pipe(
@@ -677,7 +737,15 @@ export const handlers: Handlers = {
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.versions(id)))),
   "workflows.versions.restore": (input) =>
     decode(Schema.Struct({ id: Schema.String, versionId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ id, versionId }) => Workflows.use((w) => w.restoreVersion(id, versionId))),
+      Effect.flatMap(({ id, versionId }) =>
+        Effect.gen(function* () {
+          // A linked device restores a graph without changing a backup model (spec 006, 012).
+          const actor = yield* CurrentActor
+          return yield* Workflows.use((w) =>
+            w.restoreVersion(id, versionId, { keepBackups: actor !== null }),
+          )
+        }),
+      ),
     ),
   "chat.history": (input) =>
     decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
@@ -706,6 +774,21 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Chat.use((c) => c.sendNow(id))),
       done,
     ),
+  "chat.edit": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, text }) => Chat.use((c) => c.edit(id, text))),
+      done,
+    ),
+  "chat.markUnread": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Chat.use((c) => c.markUnread(id))),
+      done,
+    ),
+  "chat.read": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.read(workflowId))),
+      done,
+    ),
   "chat.retry": (input) =>
     decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
       Effect.flatMap(({ workflowId }) => Chat.use((c) => c.retry(workflowId))),
@@ -721,6 +804,11 @@ export const handlers: Handlers = {
   "chat.clearMarks": (input) =>
     decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
       Effect.flatMap(({ workflowId }) => Chat.use((c) => c.clearMarks(workflowId))),
+      done,
+    ),
+  "chat.compact": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.compact(workflowId))),
       done,
     ),
   "runs.start": (input) =>

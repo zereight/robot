@@ -352,6 +352,36 @@ describe("changes of the graph (spec 010: add, edit and remove nodes and connect
     expect(same.outcome.failed).toBe(true)
   })
 
+  test("no tool sets, changes or clears a backup model: add_node and edit_node refuse it, and nothing changes (spec 006)", async () => {
+    const t = await setup()
+    const pick = { accountId: t.account.id, model: "gpt-5", effort: null }
+    const before = JSON.stringify(await t.graph())
+    for (const [name, args] of [
+      ["add_node", { kind: "text", name: "Send", prompt: "x", backup: pick }],
+      ["add_node", { kind: "text", name: "Send", prompt: "x", backupAccountId: t.account.id }],
+      ["edit_node", { node: 2, backup: pick }],
+      ["edit_node", { node: 2, backupModel: "gpt-5" }],
+      ["edit_node", { node: 2, clear: ["backup"] }],
+    ] as const) {
+      const r = await t.call(name, args)
+      expect(r.outcome.failed).toBe(true)
+      expect(out(r)).toContain("Only the user sets it, in the editor of the node")
+    }
+    expect(JSON.stringify(await t.graph())).toBe(before)
+    expect(await t.versions()).toHaveLength(0)
+  })
+
+  test("an edit of another field leaves the backup of the node as it is", async () => {
+    const t = await setup()
+    const pick = { accountId: t.account.id, model: "gpt-5", effort: null }
+    await t.run(Workflows.use((w) => w.updateNode(t.b.id, { backup: pick })))
+    // The chat reads the graph again after the change of the user.
+    await t.newTurn()
+    const r = await t.call("edit_node", { node: 2, prompt: "Write it in three lines." })
+    expect(r.outcome.failed).toBe(false)
+    expect((await t.graph()).nodes[1]?.backup).toEqual(pick)
+  })
+
   test("a model that the account offers is set; a model that it does not offer is refused", async () => {
     const t = await setup()
     const ok = await t.call("edit_node", { node: 1, model: "gpt-5", effort: "high" })

@@ -5,6 +5,7 @@ import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/moc
 import { Database } from "./Database.ts"
 import { type Change, Proposals, type ProposeOutcome } from "./Proposals.ts"
 import { Providers } from "./Providers.ts"
+import { makeProposeTools, PROPOSE_GRAPH_TOOL } from "./proposalTools.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
@@ -178,6 +179,69 @@ describe("the size of a graph change (GRAPH_PROPOSAL_TEXT_MAX)", () => {
     // "Send" (4) and the text together are at the limit.
     const exact = await t.propose(t.addNode({ prompt: "x".repeat(GRAPH_PROPOSAL_TEXT_MAX - 4) }))
     expect(t.reason(exact)).toBe("ok")
+  })
+})
+
+describe("the backup model of a node (spec 006; docs/spec-questions.md, B6)", () => {
+  const pick = (id: string) => ({ accountId: id, model: "gpt-5", effort: null })
+
+  test("a graph change keeps the backup of a node that stays; the card shows no change of it; a new node has none", async () => {
+    const t = await setup()
+    const node1 = (await t.graph()).nodes[0]
+    await t.w((x) => x.updateNode(node1?.id ?? "", { backup: pick(t.other.id) }))
+    const id = await t.ok(t.addNode())
+    const card = (await t.view()).waiting[0]?.graph
+    expect(card?.changedNodes).toEqual([])
+    expect(card?.addedNodes.map((n) => n.name)).toEqual(["Send"])
+    await t.p((x) => x.accept(id))
+    expect((await t.graph()).nodes.map((n) => n.backup)).toEqual([pick(t.other.id), null, null])
+  })
+
+  test("the user changes the backup while a proposal waits: Accept finds the graph changed and applies nothing", async () => {
+    const t = await setup()
+    const node1 = (await t.graph()).nodes[0]
+    const id = await t.ok(t.addNode())
+    await t.w((x) => x.updateNode(node1?.id ?? "", { backup: pick(t.other.id) }))
+    await t.p((x) => x.accept(id))
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await t.view()).log[0]).toMatchObject({ id, state: "failed" })
+  })
+
+  test("the tool that proposes a graph change refuses a backup in any node and makes no proposal", async () => {
+    const t = await setup()
+    const tools = makeProposeTools({
+      proposals: await t.run(Proposals.use((p) => Effect.succeed(p))),
+    })
+    const nodes = (extra: object) => [
+      { keep: 1, kind: "text", name: "Fetch" },
+      { keep: 2, kind: "text", name: "Write", ...extra },
+    ]
+    for (const extra of [
+      { backup: { accountId: t.other.id, model: "gpt-5", effort: null } },
+      { backupAccountId: t.other.id, backupModel: "gpt-5" },
+    ]) {
+      const r = await tools.execute(
+        {
+          workflowId: t.flow.id,
+          source: { kind: "chat", id: "turn-x" },
+          level: "full",
+          outside: null,
+          program: false,
+        },
+        {
+          id: "c1",
+          name: PROPOSE_GRAPH_TOOL,
+          input: JSON.stringify({
+            nodes: nodes(extra),
+            connections: [{ from: 1, to: 2 }],
+            reason: "Use a second account.",
+          }),
+        },
+      )
+      expect(r.outcome.failed).toBe(true)
+      expect(r.outcome.output).toContain("Only the user sets it, in the editor of the node")
+    }
+    expect((await t.view()).waiting).toHaveLength(0)
   })
 })
 

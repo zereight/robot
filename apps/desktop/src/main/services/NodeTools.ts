@@ -37,6 +37,7 @@ import type { ActionLogService } from "./ActionLog.ts"
 import { BROWSER_TOOL_DEFS, browserTarget, makeBrowserTools } from "./browserTools.ts"
 import type { BrowserWork } from "./browserWork.ts"
 import type { CardReply } from "./Cards.ts"
+import { type ConnectionTaskContext, makeConnectionTools } from "./connectionTools.ts"
 import type { ClaimOutcome, FileClaimsService } from "./FileClaims.ts"
 import type { PlatformService } from "./Platform.ts"
 import { programStep } from "./programSteps.ts"
@@ -47,8 +48,9 @@ import { realOf } from "./realPath.ts"
  * The tools of a text node (spec 007, 010): files, shell commands, the fetch of a web page and the
  * question card. They work in the folder of the workflow, at the permission level of the node.
  *
- * Not built here, and listed in the report of W6: the browser, computer use, memory (008), the
- * tools of connections (018), saved secrets (020) and the tools of test devices (032 to 034).
+ * Not built here, and listed in the report of W6: the browser, computer use, memory (008), saved
+ * secrets (020) and the tools of test devices (032 to 034). The tools of connections (018) are in
+ * `connectionTools.ts`; this file only lends it the gate (see `connectionTools` below).
  */
 
 const READ_MAX = 100_000
@@ -155,11 +157,13 @@ export interface TaskMarks {
 export interface NodeCard {
   readonly kind: "approval" | "question" | "control"
   readonly summary: string
-  readonly step: "file" | "shell" | "web" | "browser" | "ask" | "memory"
+  readonly step: "file" | "shell" | "web" | "browser" | "connection" | "ask" | "memory"
   readonly once: boolean
   readonly outside?: OutsideSource | null
   readonly sensitive?: SensitiveLabel | null
   readonly unreadable?: boolean
+  /** The count of values of the arguments that the card hides (spec 018). */
+  readonly hidden?: number
   readonly choices?: readonly string[]
   /** A control card: the host of the page and the place of the secure field (spec 007). */
   readonly control?: { readonly host: string; readonly place: ControlPlace | null }
@@ -177,6 +181,11 @@ export interface NodeToolContext {
   readonly ask: (card: NodeCard) => Promise<CardReply>
   /** Called after a step that changed the marks of the task. */
   readonly onMarks: () => void
+  /**
+   * The connections that the workflow of the task may use (spec 018). Left out when the node may
+   * use none: a node on a vendor runtime, or a node of a workflow with no connection in scope.
+   */
+  readonly connections?: ConnectionTaskContext
 }
 
 export interface NodeToolsDeps {
@@ -216,7 +225,7 @@ const cut = (value: string, max: number) =>
     ? `${value.slice(0, max)}\n[cut: ${value.length - max} more characters]`
     : value
 
-type Kind = "file" | "shell" | "web" | "browser"
+type Kind = "file" | "shell" | "web" | "browser" | "connection"
 
 export const makeNodeTools = (deps: NodeToolsDeps) => {
   const { rules, actionLog, platform, claims, browsers } = deps
@@ -283,6 +292,12 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       readonly sends: boolean
       /** The sensitive read that this step itself makes, when the task held none before. */
       readonly sensitive?: SensitiveLabel | null
+      /**
+       * How many values of the arguments the card hides because they look like a secret (spec 018).
+       * Above zero, the card shows less than the step sends: no Allow rule and no mark lets the
+       * step run, the card has Allow once and Deny only, and only "Full access" runs it with no card.
+       */
+      readonly hidden?: number
     },
   ): Promise<Decided> => {
     const held = ctx.marks.sensitive ?? input.sensitive ?? null
@@ -304,6 +319,26 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       if (reply.answer === "deny")
         throw Object.assign(new Refusal(DENIED_MESSAGE), { device: reply.device ?? null })
       return { by: "user", rule: null, device: reply.device ?? null }
+    }
+    if ((input.hidden ?? 0) > 0 && ctx.level !== "full") {
+      const unreadable = verdict.kind === "unreadable"
+      const reply = await ctx.ask({
+        kind: "approval",
+        summary: input.summary,
+        step: input.kind,
+        once: true,
+        outside: ctx.marks.outside,
+        sensitive: ctx.marks.sensitive,
+        unreadable,
+        hidden: input.hidden ?? 0,
+      })
+      if (reply.answer === "deny")
+        throw Object.assign(new Refusal(DENIED_MESSAGE), { device: reply.device ?? null })
+      return {
+        by: unreadable ? "unreadable_rule" : "user",
+        rule: unreadable && verdict.kind === "unreadable" ? verdict.rule : null,
+        device: reply.device ?? null,
+      }
     }
     const level = levelForNode(ctx.level)
     const outcome = ruleOutcome({ level, risky: input.risky, verdict })
@@ -542,6 +577,36 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
         throw error
       }
     },
+  })
+
+  /** The tools of the connections (spec 018): this file lends them the gate, the log and the marks. */
+  const connectionTools = makeConnectionTools({
+    guarded: (ctx, input, work) =>
+      guardedStep(
+        ctx,
+        {
+          kind: "connection",
+          step: { kind: "connection", connection: input.connection, tool: input.tool },
+          summary: input.summary,
+          risky: input.risky,
+          hidden: input.hidden,
+          // The arguments of a call go to the connection, but spec 007 lists no tool of a
+          // connection among the steps that send data out of a task with a sensitive read.
+          sends: false,
+          access: null,
+          target: input.target,
+        },
+        (decided) => work({ by: decided.by, rule: decided.rule }),
+      ),
+    markOutside: (ctx, connection, tool) =>
+      markOutside(ctx, { kind: "connection", connection, tool }),
+    log: (ctx, target, result) =>
+      log(ctx, "connection", null, target, { by: "level", rule: null }, result),
+    readOnly: (ctx, target) => {
+      log(ctx, "connection", null, target, { by: "level", rule: null }, "refused")
+      return { output: READ_ONLY_MESSAGE, failed: true, refused: "read_only", notRun: true }
+    },
+    refusal: (error) => (error instanceof Refusal ? { reason: error.reason } : null),
   })
 
   const runCommand = (ctx: NodeToolContext, command: string) =>
@@ -895,13 +960,16 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       }
       default:
         if (browser.handles(call.name)) return browser.run(ctx, call)
+        if (connectionTools.owns(ctx, call.name)) return connectionTools.execute(ctx, call)
         return { output: `Unknown tool: ${call.name}`, failed: true }
     }
   }
 
   const execute = async (ctx: NodeToolContext, call: ToolCall): Promise<ToolOutcome> => {
     // "Read only" comes first: before approvals and before any rule (spec 007).
-    if (readOnlyRefuses(ctx.level, call.name)) {
+    // A tool of a connection answers for itself: "Read only" refuses it there, and the step
+    // "Search tools" changes nothing, so it runs at every level (spec 018).
+    if (!connectionTools.owns(ctx, call.name) && readOnlyRefuses(ctx.level, call.name)) {
       const args = parseArgs(call)
       const kind: Kind | null =
         call.name === "write_file"

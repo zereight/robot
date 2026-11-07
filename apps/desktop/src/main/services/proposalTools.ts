@@ -1,6 +1,8 @@
 import {
+  BACKUP_REFUSED_TEXT,
   type GraphProposalInput,
   guardVerdict,
+  namesBackup,
   type OutsideSource,
   type PermissionLevel,
   type ProposalKind,
@@ -166,6 +168,7 @@ const graphInput = (args: Record<string, unknown>): GraphProposalInput | string 
   for (const n of args.nodes) {
     if (typeof n !== "object" || n === null) return "Each node is an object."
     const o = n as Record<string, unknown>
+    if (namesBackup(o)) return BACKUP_REFUSED_TEXT
     if (o.kind !== "text" && o.kind !== "decision")
       return 'Each node has a "kind": "text" or "decision".'
     nodes.push({

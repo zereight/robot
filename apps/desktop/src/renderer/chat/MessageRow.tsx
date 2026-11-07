@@ -1,21 +1,36 @@
 import {
   assistantStepText,
   type ChatPart,
+  type ChatSegment,
+  type ChatToolPart,
   catalogues,
   chatFiles,
   chatText,
+  foldedToolsKey,
+  groupChatParts,
+  isReadableReply,
   type MessageKey,
   type MessageParams,
   type WorkflowChatMessage,
 } from "@robot/shared"
-import { Check, Copy, FileText, Reply, Wrench } from "lucide-solid"
-import { createSignal, For, type JSX, Show } from "solid-js"
+import { Check, Copy, FileText, Mail, Pencil, Reply, Wrench } from "lucide-solid"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  Match,
+  Show,
+  Switch,
+} from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { openImprovement } from "../state/improve.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
 import styles from "./chat.module.css"
@@ -48,6 +63,16 @@ const NoteLine = (props: { note: Note; workflowId: string }) => {
     if (n.note === "proposals_full") return t("improve.full")
     if (n.note === "not_allowed") return t("chat.notAllowed", { server: n.server })
     if (n.note === "memory_saved") return t("chat.memory.saved", { text: n.text })
+    if (n.note === "compact_failed" && n.code === "compact_stopped")
+      return t("chat.compact.stopped")
+    if (n.note === "compact_failed") {
+      const key = `error.${n.code}`
+      // The note keeps the code, not the detail: drop the empty detail and its colon.
+      const reason = t(key in catalogues.en ? (key as MessageKey) : "error.unknown", {
+        detail: "",
+      })
+      return t("chat.compact.failed", { reason: reason.replace(/\s*[:：]\s*$/, ".") })
+    }
     if (n.note === "proposal")
       return n.proposalKind === "prompt"
         ? t("chat.proposal.prompt", { number: n.nodeNumber ?? 0 })
@@ -172,6 +197,111 @@ const Thoughts = (props: { thoughts: readonly string[] }) => {
   )
 }
 
+/**
+ * The folded series that the user opened. The state lives here and not in the row, so a line that
+ * the user opened stays open when the series takes another step and when the chat is drawn again
+ * (spec 003, "Folded tool steps"). The key is the message and the first step of the series.
+ */
+const [openRuns, setOpenRuns] = createSignal<ReadonlySet<string>>(new Set())
+
+/**
+ * A series of plain tool steps as one muted line with the count, when "Show tool steps" is off.
+ * The line is a disclosure: a click, Enter or Space opens the cards and closes them again. A step
+ * that runs joins the series, so the line keeps its place while the turn goes on (spec 003).
+ */
+const ToolRun = (props: { id: string; parts: readonly ChatToolPart[] }) => {
+  const { t } = useApp()
+  const open = () => openRuns().has(props.id)
+  const set = (value: boolean) =>
+    setOpenRuns((now) => {
+      if (now.has(props.id) === value) return now
+      const next = new Set(now)
+      if (value) next.add(props.id)
+      else next.delete(props.id)
+      return next
+    })
+  return (
+    <details
+      class={styles.toolsFolded}
+      data-testid="tools-folded"
+      data-count={props.parts.length}
+      open={open()}
+      onToggle={(e) => set(e.currentTarget.open)}
+    >
+      <summary data-testid="tools-folded-line">
+        {t(foldedToolsKey(props.parts.length), { count: props.parts.length })}
+      </summary>
+      <Keyed each={props.parts} by={(part) => part.id}>
+        {(part) => <ToolCard part={part()} />}
+      </Keyed>
+    </details>
+  )
+}
+
+/** One row of the body of a reply: a part, or the one line of a series of tool steps. */
+const SegmentRow = (props: {
+  message: () => WorkflowChatMessage
+  segment: () => ChatSegment
+  mine: boolean
+}) => {
+  const seg = () => props.segment()
+  const part = () => {
+    const s = seg()
+    return s.kind === "part" ? s.part : undefined
+  }
+  const tools = () => {
+    const s = seg()
+    return s.kind === "tools" ? s.parts : undefined
+  }
+  const text = () => {
+    const p = part()
+    return p?.kind === "text" ? p : undefined
+  }
+  const skill = () => {
+    const p = part()
+    return p?.kind === "skill" ? p : undefined
+  }
+  const tool = () => {
+    const p = part()
+    return p?.kind === "tool" ? p : undefined
+  }
+  const note = () => {
+    const p = part()
+    return p?.kind === "note" ? p : undefined
+  }
+  return (
+    <Switch>
+      <Match when={tools()}>
+        {(parts) => <ToolRun id={`${props.message().id}:${seg().key}`} parts={parts()} />}
+      </Match>
+      <Match when={text()}>
+        {(p) =>
+          props.mine ? (
+            <p class={styles.plain} data-testid="message-text">
+              {p().text}
+            </p>
+          ) : (
+            <div data-testid="message-text">
+              <Markdown text={p().text} scope={props.message().id} />
+            </div>
+          )
+        }
+      </Match>
+      <Match when={skill()}>
+        {(p) => (
+          <span class={styles.chip} data-testid="message-skill">
+            /{p().name}
+          </span>
+        )}
+      </Match>
+      <Match when={tool()}>{(p) => <ToolCard part={p()} />}</Match>
+      <Match when={note()}>
+        {(p) => <NoteLine note={p()} workflowId={props.message().workflowId} />}
+      </Match>
+    </Switch>
+  )
+}
+
 export interface MessageRowProps {
   readonly message: WorkflowChatMessage
   readonly name: string
@@ -182,13 +312,16 @@ export interface MessageRowProps {
   /** The last message of the chat: only it has Retry. */
   readonly last: boolean
   readonly working: boolean
+  /** True for the one message that Edit can change now (spec 003, "Message rows"). */
+  readonly editable: boolean
   readonly onReply: (message: WorkflowChatMessage) => void
   readonly onJump: (id: string) => void
   readonly onRetry: () => void
 }
 
 export const MessageRow = (props: MessageRowProps) => {
-  const { t, locale } = useApp()
+  const app = useApp()
+  const { t, locale } = app
   const [copied, setCopied] = createSignal(false)
   const m = () => props.message
   const mine = () => m().author === "user"
@@ -214,49 +347,78 @@ export const MessageRow = (props: MessageRowProps) => {
     m()
       .parts.filter((p): p is Extract<ChatPart, { kind: "thinking" }> => p.kind === "thinking")
       .map((p) => p.text)
+  // "Show tool steps" off: each series of plain tool steps is one line. The thoughts are one line
+  // above the body, so thinking between two steps does not split a series.
+  const fold = () => !app.settings.showToolSteps
+  const segments = createMemo(() => groupChatParts(m().parts, fold()))
+  const [editing, setEditing] = createSignal(false)
+  const [draft, setDraft] = createSignal("")
+  let editBox: HTMLTextAreaElement | undefined
+  // Edit is off when the chat changes under it (a turn starts, a later step ran).
+  createEffect(() => {
+    if (!props.editable) setEditing(false)
+  })
+  const startEdit = () => {
+    setDraft(chatText(m()))
+    setEditing(true)
+    queueMicrotask(() => editBox?.focus())
+  }
+  const saveEdit = () =>
+    call("chat.edit", { id: m().id, text: draft() })
+      .then(() => setEditing(false))
+      .catch((e: unknown) => {
+        const text = describeError(e)
+        showToast("error", text.key, text.params)
+      })
+  const markUnread = () =>
+    call("chat.markUnread", { id: m().id }).catch((e: unknown) => {
+      const text = describeError(e)
+      showToast("error", text.key, text.params)
+    })
   const body = (): JSX.Element => (
     <>
       <Show when={thoughts().length > 0}>
         <Thoughts thoughts={thoughts()} />
       </Show>
-      <For each={m().parts}>
-        {(part) => (
-          <>
-            <Show when={part.kind === "text" && part}>
-              {(p) => (
-                <Show
-                  when={!mine()}
-                  fallback={
-                    <p class={styles.plain} data-testid="message-text">
-                      {(p() as Extract<ChatPart, { kind: "text" }>).text}
-                    </p>
-                  }
-                >
-                  <div data-testid="message-text">
-                    <Markdown
-                      text={(p() as Extract<ChatPart, { kind: "text" }>).text}
-                      scope={m().id}
-                    />
-                  </div>
-                </Show>
-              )}
-            </Show>
-            <Show when={part.kind === "skill" && part}>
-              {(p) => (
-                <span class={styles.chip} data-testid="message-skill">
-                  /{(p() as Extract<ChatPart, { kind: "skill" }>).name}
-                </span>
-              )}
-            </Show>
-            <Show when={part.kind === "tool" && part}>
-              {(p) => <ToolCard part={p() as Tool} />}
-            </Show>
-            <Show when={part.kind === "note" && part}>
-              {(p) => <NoteLine note={p() as Note} workflowId={m().workflowId} />}
-            </Show>
-          </>
-        )}
-      </For>
+      <Show
+        when={!editing()}
+        fallback={
+          <div class={styles.editBox} data-testid="message-edit">
+            <textarea
+              ref={(el) => {
+                editBox = el
+              }}
+              class={styles.editInput}
+              rows={3}
+              value={draft()}
+              aria-label={t("chat.edit.label")}
+              data-testid="message-edit-input"
+              onInput={(e) => setDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault()
+                  setEditing(false)
+                } else if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+                  e.preventDefault()
+                  void saveEdit()
+                }
+              }}
+            />
+            <div class={styles.editButtons}>
+              <Button onClick={() => void saveEdit()} data-testid="message-edit-save">
+                {t("chat.edit.save")}
+              </Button>
+              <Button onClick={() => setEditing(false)} data-testid="message-edit-cancel">
+                {t("chat.edit.cancel")}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <Keyed each={segments()} by={(segment) => segment.key}>
+          {(segment) => <SegmentRow message={m} segment={segment} mine={mine()} />}
+        </Keyed>
+      </Show>
       <Show when={chatFiles(m()).length > 0}>
         <div class={styles.files}>
           <For each={chatFiles(m())}>
@@ -355,6 +517,30 @@ export const MessageRow = (props: MessageRowProps) => {
             <Check size={14} />
           </Show>
         </button>
+        <Show when={props.editable && !editing()}>
+          <button
+            type="button"
+            class={styles.action}
+            onClick={startEdit}
+            aria-label={t("chat.edit")}
+            title={t("chat.edit")}
+            data-testid="message-edit-open"
+          >
+            <Pencil size={14} />
+          </button>
+        </Show>
+        <Show when={isReadableReply(m())}>
+          <button
+            type="button"
+            class={styles.action}
+            onClick={() => void markUnread()}
+            aria-label={t("chat.markUnread")}
+            title={t("chat.markUnread")}
+            data-testid="message-mark-unread"
+          >
+            <Mail size={14} />
+          </button>
+        </Show>
       </div>
     </article>
   )

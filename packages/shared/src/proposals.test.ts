@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  changesBackup,
   compileGraph,
   emptyGraphChange,
   GRAPH_PROPOSAL_TEXT_MAX,
@@ -20,6 +21,7 @@ const node = (n: number, extra: Partial<WorkflowNode> = {}): WorkflowNode => ({
   accountId: "acc",
   model: "mock-fast",
   effort: null,
+  backup: null,
   permission: "read_only",
   continueOnFailure: false,
   question: "",
@@ -54,6 +56,54 @@ describe("the fingerprint of a graph", () => {
       graphFingerprint({ ...current, nodes: [node(1, { permission: "full" }), node(2)] }),
     ).not.toBe(base)
     expect(graphFingerprint({ ...current, connections: [] })).not.toBe(base)
+  })
+})
+
+describe("the backup model in a graph change (spec 006; docs/spec-questions.md, B6)", () => {
+  const pick = { accountId: "acc2", model: "gpt-5", effort: null }
+  const held: WorkflowGraph = { ...current, nodes: [node(1, { backup: pick }), node(2)] }
+
+  test("a kept node keeps its backup, a new node has none, a decision node has none", () => {
+    const r = compileGraph(
+      held,
+      {
+        nodes: [
+          { keep: 1, kind: "text", name: "Node 1" },
+          { keep: 2, kind: "text", name: "Node 2" },
+          { kind: "text", name: "New", prompt: "x" },
+        ],
+        connections: [
+          { from: 1, to: 2 },
+          { from: 2, to: 3 },
+        ],
+      },
+      newId,
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.graph.nodes.map((n) => n.backup)).toEqual([pick, null, null])
+    expect(changesBackup(held, r.graph)).toBeNull()
+  })
+
+  test("a change that gives a node a backup, takes it away or moves it is found", () => {
+    const nodes = (first: WorkflowNode, rest: WorkflowNode[] = [node(2)]) => ({
+      ...current,
+      nodes: [first, ...rest],
+    })
+    expect(changesBackup(current, current)).toBeNull()
+    expect(changesBackup(current, nodes(node(1, { backup: pick })))).toBe(1)
+    expect(changesBackup(held, nodes(node(1)))).toBe(1)
+    expect(changesBackup(held, nodes(node(1, { backup: { ...pick, effort: "high" } })))).toBe(1)
+    expect(changesBackup(held, nodes(node(1, { backup: pick }), [node(2, { backup: pick })]))).toBe(
+      2,
+    )
+  })
+
+  test("the fingerprint changes with the backup, so a proposal is stale after the user changes it", () => {
+    expect(graphFingerprint(held)).not.toBe(graphFingerprint(current))
+    expect(
+      graphFingerprint({ ...held, nodes: [node(1, { backup: { ...pick, model: "x" } }), node(2)] }),
+    ).not.toBe(graphFingerprint(held))
   })
 })
 

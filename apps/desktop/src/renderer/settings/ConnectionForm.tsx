@@ -4,6 +4,7 @@ import {
   type ConnectionEntryInput,
   type ConnectionFailure,
   type ConnectionFormProblem,
+  type ConnectionScope,
   type ConnectionTestResult,
   charLength,
   checkConnection,
@@ -22,6 +23,7 @@ import { call, RpcFailure } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { useWorkflowList } from "../workflows/names.ts"
 import styles from "./connections.module.css"
 
 /** The parts of the form that can show a problem under them. */
@@ -95,6 +97,28 @@ export const ConnectionFormDialog = (props: {
   const [address, setAddress] = createSignal(was?.address ?? "")
   const [headers, setHeaders] = createSignal<Entry[]>(fromView(was?.headers ?? []))
   const [confirmed, setConfirmed] = createSignal(false)
+  // The workflows that may use the connection (spec 018): all of them, or a list. A new connection
+  // is for all workflows.
+  const workflows = useWorkflowList()
+  const [scopeKind, setScopeKind] = createSignal<ConnectionScope["kind"]>(was?.scope.kind ?? "all")
+  const [chosen, setChosen] = createSignal<ReadonlySet<string>>(
+    new Set(was?.scope.kind === "workflows" ? was.scope.workflowIds : []),
+  )
+  const toggleWorkflow = (id: string, on: boolean) => {
+    const next = new Set(chosen())
+    if (on) next.add(id)
+    else next.delete(id)
+    setChosen(next)
+  }
+  const scope = (): ConnectionScope =>
+    scopeKind() === "all"
+      ? { kind: "all" }
+      : {
+          kind: "workflows",
+          // The service keeps only the workflows that exist, so a workflow that is gone leaves
+          // the list when the user saves.
+          workflowIds: [...chosen()],
+        }
   const [touched, setTouched] = createSignal<ReadonlySet<Field>>(new Set())
   const [problem, setProblem] = createSignal<{ field: Field | null; text: ErrorText }>()
   const [busy, setBusy] = createSignal(false)
@@ -210,6 +234,7 @@ export const ConnectionFormDialog = (props: {
         ...(was ? { id: was.id } : {}),
         connection: input(),
         confirmed: confirmed(),
+        scope: scope(),
       })
       props.onClose()
     } catch (e) {
@@ -396,6 +421,53 @@ export const ConnectionFormDialog = (props: {
               { value: "web", label: t("connections.kind.web") },
             ]}
           />
+        </div>
+        <div class={styles.field} data-testid="connection-scope">
+          <span class={styles.label}>{t("connections.form.scope")}</span>
+          <Segmented
+            label={t("connections.form.scope")}
+            testId="connection-scope-kind"
+            value={scopeKind()}
+            onChange={setScopeKind}
+            options={[
+              { value: "all", label: t("connections.scope.all") },
+              { value: "workflows", label: t("connections.scope.chosen") },
+            ]}
+          />
+          <Show when={scopeKind() === "workflows"}>
+            <Show
+              when={workflows.list().length > 0}
+              fallback={
+                <span class={styles.hint} data-testid="connection-scope-none">
+                  {t("connections.scope.noWorkflows")}
+                </span>
+              }
+            >
+              <ul
+                class={styles.agentList}
+                data-testid="connection-scope-list"
+                aria-label={t("connections.form.scope")}
+              >
+                <For each={workflows.list()}>
+                  {(w) => (
+                    <li>
+                      <label class={styles.agentRow}>
+                        <input
+                          type="checkbox"
+                          checked={chosen().has(w.id)}
+                          onChange={(e) => toggleWorkflow(w.id, e.currentTarget.checked)}
+                          data-testid="connection-scope-workflow"
+                          data-workflow={w.name}
+                        />
+                        <span>{w.name}</span>
+                      </label>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </Show>
+          <span class={styles.hint}>{t("connections.scope.hint")}</span>
         </div>
         <Show
           when={kind() === "program"}

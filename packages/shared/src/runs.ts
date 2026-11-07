@@ -1,3 +1,4 @@
+import type { TaskBackupNote } from "./backup.ts"
 import type { ControlPlace } from "./browser.ts"
 import type { TaskProgress } from "./chat.ts"
 import type { OutsideSource } from "./outside.ts"
@@ -75,13 +76,72 @@ export interface RunTask {
   readonly sensitive: SensitiveLabel | null
   /** The steps (tool calls) that the task took. */
   readonly steps: number
+  /** The muted line that tells that the backup model went on in this task (spec 006), or null. */
+  readonly backupNote: TaskBackupNote | null
   /** What the task did with the memory: items it saved, facts it suggested (spec 008, "Flows", 1). */
   readonly memory: readonly TaskMemoryLine[]
   /** The file claims that the task holds in a shared folder, newest first (spec 025). */
   readonly claims: TaskClaims
   /** The steps that a file claim of another workflow refused, oldest first (spec 025). */
   readonly refusals: readonly TaskRefusal[]
+  /** The notice lines and the tool cards of the connections that this task used (spec 018). */
+  readonly connections: TaskConnections
 }
+
+/** The most tool lines of connections that one task keeps (spec 018). */
+export const TASK_CONNECTION_STEPS_MAX = 100
+
+/**
+ * Why a call of a tool of a connection ran or did not run, as the tool card says it (spec 018,
+ * "Rules"; spec 007). `mark`: the connection says that the tool only reads and the user trusts the
+ * mark. `rule`: an Allow rule. `denied_rule`: a Deny rule. `level`: the permission level.
+ * `read_only_level`: the level "Read only" refuses a tool of a connection. `user`: the user
+ * answered a card. `denied`: the user denied the card. `unknown`: the node named a tool that it
+ * may not call. `too_long`: the arguments are too long to show whole on a card, so the app refused
+ * the call. `invalid_args`: the arguments could not be turned into text for the card (for example,
+ * nesting that is too deep), so the app refused the call. `none`: Stop came before anyone decided the step.
+ */
+export type ConnectionStepHow =
+  | "mark"
+  | "rule"
+  | "denied_rule"
+  | "level"
+  | "read_only_level"
+  | "user"
+  | "denied"
+  | "unknown"
+  | "too_long"
+  | "invalid_args"
+  | "none"
+
+/** One tool line of a task: a call of a tool of a connection, or the step "Search tools". */
+export type TaskConnectionStep =
+  | {
+      readonly kind: "call"
+      readonly connection: string
+      readonly tool: string
+      readonly result: "ran" | "failed" | "refused" | "stopped"
+      readonly how: ConnectionStepHow
+    }
+  | {
+      readonly kind: "search"
+      /** The words of the node, as one plain line. */
+      readonly words: string
+      readonly found: number
+    }
+
+/**
+ * What a task shows about the connections of its workflow (spec 018, "States"): the connections
+ * that were down when it started, the connections with tools that wait for review, and the tool
+ * lines. The names are plain lines.
+ */
+export interface TaskConnections {
+  readonly down: readonly string[]
+  readonly held: readonly string[]
+  readonly steps: readonly TaskConnectionStep[]
+}
+
+export const NO_TASK_CONNECTIONS: TaskConnections = { down: [], held: [], steps: [] }
 
 /** The claims of a task: how many it holds, and the newest paths (at most 50). */
 export interface TaskClaims {
@@ -171,6 +231,7 @@ export interface RunCard {
     | "shell"
     | "web"
     | "browser"
+    | "connection"
     | "feedback"
     | "ask"
     | "memory"
@@ -187,6 +248,11 @@ export interface RunCard {
   readonly sensitive: SensitiveLabel | null
   /** True when a rule that the app cannot read stopped the step (spec 007). */
   readonly unreadable: boolean
+  /**
+   * How many values of the arguments the card hides because they look like a secret. Above zero,
+   * the card says so and has Allow once and Deny only (spec 018, 007).
+   */
+  readonly hidden: number
   readonly choices: readonly string[]
   /** A pick card: the options with the probability the model gave, when it gave one. */
   readonly options: readonly {

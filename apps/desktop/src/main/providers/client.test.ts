@@ -9,6 +9,7 @@ import {
   listModels,
   modelEfforts,
   offeredEfforts,
+  ProviderFailure,
 } from "./client.ts"
 
 const level = (supported: boolean) => ({ supported })
@@ -301,5 +302,62 @@ describe("When a provider answers with an error", () => {
         "provider_busy",
       )
     })
+  })
+})
+
+describe("The reset time of a usage limit is never trusted (spec 006, longest hold)", () => {
+  const withHeaders = (headers: Record<string, string>) =>
+    failureFrom(
+      new Response(JSON.stringify({ error: { message: "You have hit your usage limit." } }), {
+        status: 429,
+        headers,
+      }),
+    )
+  const DAY = 24 * 60 * 60_000
+
+  test("a retry-after of some seconds names that time", async () => {
+    const before = Date.now()
+    const f = await withHeaders({ "retry-after": "120" })
+    expect(f.resetsAt).toBeGreaterThanOrEqual(before + 120_000)
+    expect(f.resetsAt).toBeLessThan(Date.now() + 121_000)
+  })
+
+  test("a huge retry-after is cut to one day", async () => {
+    for (const value of ["100000000000000", "9000000000000", "86401", "99999999999999999999999"]) {
+      const f = await withHeaders({ "retry-after": value })
+      expect(f.resetsAt).toBeLessThanOrEqual(Date.now() + DAY)
+      expect(f.resetsAt).toBeGreaterThan(Date.now() + DAY - 5_000)
+      expect(Number.isNaN(new Date(f.resetsAt ?? 0).getTime())).toBe(false)
+    }
+  })
+
+  test("a negative, float, empty or text retry-after names no time", async () => {
+    for (const value of ["-5", "1.5", "", "soon", "NaN", "Infinity", "0"]) {
+      expect((await withHeaders({ "retry-after": value })).resetsAt).toBeUndefined()
+    }
+  })
+
+  test("a date in the header of Anthropic is read, cut to one day, and ignored when it passed or is not a date", async () => {
+    const soon = new Date(Date.now() + 3_600_000).toISOString()
+    const f = await withHeaders({ "anthropic-ratelimit-requests-reset": soon })
+    expect(f.resetsAt).toBe(Math.ceil(Date.parse(soon)))
+    for (const value of ["9999-12-31T23:59:59Z", "+275760-09-13T00:00:00.000Z"]) {
+      const far = await withHeaders({ "anthropic-ratelimit-requests-reset": value })
+      expect(far.resetsAt).toBeLessThanOrEqual(Date.now() + DAY)
+    }
+    for (const value of ["2001-01-01T00:00:00Z", "not a date", "-1"]) {
+      expect(
+        (await withHeaders({ "anthropic-ratelimit-requests-reset": value })).resetsAt,
+      ).toBeUndefined()
+    }
+  })
+
+  test("a failure with a time that is no time of the calendar keeps none", () => {
+    for (const bad of [Number.NaN, Infinity, -Infinity, 1e17, -1e17]) {
+      expect(new ProviderFailure("provider_limit", "x", bad, "plan").resetsAt).toBeUndefined()
+    }
+    expect(new ProviderFailure("provider_limit", "x", 1_700_000_000_000, "plan").resetsAt).toBe(
+      1_700_000_000_000,
+    )
   })
 })

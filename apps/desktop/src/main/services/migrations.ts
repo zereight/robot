@@ -569,4 +569,78 @@ export const migrations: readonly string[] = [
   -- The workflow that held the file, for a step that a claim refused (spec 025, "States").
   ALTER TABLE action_log ADD COLUMN holder TEXT;
   `,
+  `
+  -- "Mark as unread" (spec 003). The place that the user marked in the chat of a workflow: the
+  -- message, and its time for the case that an edit removed the message. The unread replies are
+  -- that reply and every later reply. The row goes when the chat shows its latest message. It stays
+  -- on this computer. Natural unread counts (a reply that ends while the chat is shut) are not kept
+  -- here (docs/spec-questions.md, rows for B4).
+  CREATE TABLE chat_unread (
+    workflow_id TEXT PRIMARY KEY REFERENCES workflow (id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  `,
+  `
+  -- The backup model of a text node (spec 006, "Backup model"): an account, a model and a reasoning
+  -- level. All three are NULL when the node has none. The choice is a field of the node, so it
+  -- belongs to the graph and to the versions of the graph.
+  ALTER TABLE workflow_node ADD COLUMN backup_account_id TEXT;
+  ALTER TABLE workflow_node ADD COLUMN backup_model TEXT;
+  ALTER TABLE workflow_node ADD COLUMN backup_effort TEXT;
+  -- The hold of the main model of a node (spec 006). It is a state of this computer: sync (019) does
+  -- not carry it and an export does not hold it. It has no foreign key on purpose: a change of the
+  -- whole graph writes the nodes again, and the hold of a node that stays must stay. The backup that
+  -- was on the node when the hold began is kept, so a hold does not pass to another backup. So is
+  -- the main choice that failed: a hold is of that main model, and it does not count when the node
+  -- names another one. The row of a workflow that is deleted leaves with the workflow.
+  CREATE TABLE model_hold (
+    node_id TEXT PRIMARY KEY,
+    ends_at INTEGER NOT NULL,
+    -- 1 after "Use <main model> now": the hold no longer counts.
+    released INTEGER NOT NULL DEFAULT 0 CHECK (released IN (0, 1)),
+    main_account_id TEXT NOT NULL,
+    main_model TEXT NOT NULL,
+    main_effort TEXT,
+    backup_account_id TEXT NOT NULL,
+    backup_model TEXT NOT NULL,
+    backup_effort TEXT
+  );
+  -- The muted line "<main model> reached its limit. <backup model> goes on." of a task (spec 006).
+  ALTER TABLE task ADD COLUMN backup_note TEXT;
+  -- The tokens of a task for the model that made them, when the backup model went on (spec 006: the
+  -- usage page counts the tokens for the model that made them). NULL: the provider reported none.
+  CREATE TABLE task_usage (
+    task_id TEXT NOT NULL REFERENCES task (id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cached_tokens INTEGER,
+    cost_micros INTEGER,
+    PRIMARY KEY (task_id, account_id, model)
+  );
+  `,
+  `
+  -- The workflows that may use a connection (spec 018, "Concepts"). 'all' is "All workflows"; the
+  -- other value 'workflows' is a list, kept in the table below. The default is the list, so a row
+  -- with no scope set is used by no workflow (fail closed). A deleted workflow leaves every list
+  -- through the cascade.
+  ALTER TABLE tool_connection ADD COLUMN scope TEXT NOT NULL DEFAULT 'workflows';
+  CREATE TABLE tool_connection_workflow (
+    connection_id TEXT NOT NULL REFERENCES tool_connection (id) ON DELETE CASCADE,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    PRIMARY KEY (connection_id, workflow_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX tool_connection_workflow_workflow ON tool_connection_workflow (workflow_id);
+  -- The notice lines and the tool lines of the connections that a task used (spec 018, "States"):
+  -- JSON text, or NULL.
+  ALTER TABLE task ADD COLUMN connection_notes TEXT;
+  `,
+  `
+  -- The use of the context after a reply (spec 003, "Context meter"): the tokens that the last
+  -- request of the turn read, and the tokens of the answer. NULL when the provider did not report
+  -- them. The meter and the automatic compact read it from the last reply after the last compact.
+  ALTER TABLE chat_message ADD COLUMN context_tokens INTEGER;
+  `,
 ]
