@@ -223,7 +223,7 @@ export const ko: Record<MessageKey, string> = {
   "error.decision_not_set_up":
     "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장하세요.",
   "error.read_only_unsupported":
-    "이 에이전트는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
+    "이 노드는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
   "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인하세요.",
   "error.runtime_api_key_login":
     "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 로그인하세요.",
@@ -903,6 +903,9 @@ export const ko: Record<MessageKey, string> = {
   "runs.feedback.title": "피드백",
   "runs.feedback.nodes": "노드 {nodes}에 전달돼요",
   "runs.feedback.none": "받을 노드가 없어요.",
+  "runs.mark.outside": "외부 내용을 갖고 있어요: {source}",
+  "runs.mark.sensitive": "민감한 읽기를 했어요: {label}",
+  "runs.mark.program": "프로그램 표시가 있어요: 외부 프로그램이나 Teams의 글",
   "runs.stoppedAt": "실행이 노드 {number}에서 멈췄어요.",
   "runs.back": "실행 목록으로",
   "cards.title.approval": "승인이 필요해요",

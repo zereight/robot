@@ -53,7 +53,13 @@ const Marks = (props: { card: RunCard }) => {
 const Approval = (props: { card: RunCard }) => {
   const { t } = useApp()
   return (
-    <div class={styles.card} data-testid="card-approval" data-card-id={props.card.id}>
+    <div
+      class={styles.card}
+      role="alert"
+      aria-label={t("cards.title.approval")}
+      data-testid="card-approval"
+      data-card-id={props.card.id}
+    >
       <div class={styles.head}>
         <strong>{t("cards.title.approval")}</strong>
         <Show when={props.card.step}>
@@ -61,7 +67,7 @@ const Approval = (props: { card: RunCard }) => {
         </Show>
         <Origin card={props.card} />
       </div>
-      <pre class={styles.summary} data-testid="card-summary">
+      <pre class={styles.summary} tabindex="0" data-testid="card-summary">
         {props.card.summary}
       </pre>
       <Marks card={props.card} />
@@ -100,7 +106,14 @@ const Question = (props: { card: RunCard }) => {
     if (text().trim() !== "") answerCard(props.card.id, { kind: "question", text: text().trim() })
   }
   return (
-    <div class={styles.card} data-testid="card-question" data-card-id={props.card.id}>
+    <div
+      class={styles.card}
+      role="status"
+      aria-live="polite"
+      aria-label={t("cards.title.question")}
+      data-testid="card-question"
+      data-card-id={props.card.id}
+    >
       <div class={styles.head}>
         <strong>{t("cards.title.question")}</strong>
         <Origin card={props.card} />
@@ -146,7 +159,14 @@ const Pick = (props: { card: RunCard }) => {
       ? t("cards.pick.reason.threshold", { threshold: props.card.threshold ?? 0 })
       : t(`cards.pick.reason.${props.card.pickReason}` as MessageKey)
   return (
-    <div class={styles.card} data-testid="card-pick" data-card-id={props.card.id}>
+    <div
+      class={styles.card}
+      role="status"
+      aria-live="polite"
+      aria-label={t("cards.title.pick")}
+      data-testid="card-pick"
+      data-card-id={props.card.id}
+    >
       <div class={styles.head}>
         <strong>{t("cards.title.pick")}</strong>
         <Origin card={props.card} />

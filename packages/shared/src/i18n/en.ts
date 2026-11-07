@@ -222,7 +222,7 @@ export const en = {
   "error.decision_not_set_up":
     "The decision model is not set up. Choose Jev through OpenRouter, then save a key and a model name.",
   "error.read_only_unsupported":
-    "This agent is at the level Read only, and its program has no read-only mode. Pick another level.",
+    "This node is at the level Read only, and its program has no read-only mode. Pick another level.",
   "error.runtime_not_signed_in": "The program is not signed in. Sign in first.",
   "error.runtime_api_key_login":
     "The program is signed in with an API key, not a subscription. Sign in with your subscription.",
@@ -908,6 +908,9 @@ export const en = {
   "runs.feedback.title": "Feedback",
   "runs.feedback.nodes": "Goes to node {nodes}",
   "runs.feedback.none": "No node gets it.",
+  "runs.mark.outside": "Holds outside content: {source}",
+  "runs.mark.sensitive": "Holds a sensitive read: {label}",
+  "runs.mark.program": "Holds the program mark: text from an outside program or from Teams",
   "runs.stoppedAt": "The run stopped at node {number}.",
   "runs.back": "Back to the runs",
   "cards.title.approval": "Approval needed",

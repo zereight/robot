@@ -1,4 +1,10 @@
-import type { MessageKey, MessageParams, OutsideSource, SensitiveLabel } from "@robot/shared"
+import {
+  catalogues,
+  type MessageKey,
+  type MessageParams,
+  type OutsideSource,
+  type SensitiveLabel,
+} from "@robot/shared"
 
 type T = (key: MessageKey, params?: MessageParams) => string
 
@@ -43,5 +49,7 @@ export const reasonText = (t: T, code: string | null, text: string | null): stri
   if (code === "approval" || code === "question")
     return t(`runs.reason.${code}` as MessageKey, { step: text ?? "" })
   if (code === "pick") return t("runs.reason.pick")
+  // A failure of the app has a code with words of its own, also in the other language.
+  if (code && `error.${code}` in catalogues.en) return t(`error.${code}` as MessageKey)
   return text
 }

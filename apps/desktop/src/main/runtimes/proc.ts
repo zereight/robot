@@ -1,4 +1,4 @@
-import { spawnProgram } from "./programs.ts"
+import { killProgram, spawnProgram } from "./programs.ts"
 
 export interface Finished {
   readonly code: number | null
@@ -47,7 +47,7 @@ export const execute = (
     // A program that is killed can leave a child of its own that holds the pipes open, and then
     // the program never reports that it closed. The caller must not wait for that (spec 006).
     const kill = () => {
-      child.kill()
+      killProgram(child)
       grace ??= setTimeout(() => finish(null), KILL_GRACE_MS)
     }
     const timer = setTimeout(() => {

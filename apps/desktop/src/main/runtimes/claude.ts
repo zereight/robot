@@ -9,7 +9,7 @@ import { bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { planFromTodos } from "./plan.ts"
 import { execute } from "./proc.ts"
-import { spawnProgram } from "./programs.ts"
+import { killProgram, spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { ApprovalRequest, Login, RuntimeRun } from "./types.ts"
 
@@ -197,7 +197,7 @@ const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | nul
       done = true
       clearTimeout(timer)
       lines.close()
-      child.kill()
+      killProgram(child)
       resolve(limits)
     }
     const timer = setTimeout(() => finish(null), PROBE_MS)
@@ -575,7 +575,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       resolve(code)
     }),
   )
-  const stop = () => child.kill()
+  const stop = () => killProgram(child)
   run.signal.addEventListener("abort", stop, { once: true })
   const send = (message: unknown) => {
     if (child.stdin.writable) child.stdin.write(`${JSON.stringify(message)}\n`)
@@ -692,7 +692,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     child.stdin.end()
     if (child.exitCode === null) {
       // Give the program a moment to end by itself, then stop it.
-      const timer = setTimeout(stop, 2000)
+      const timer = setTimeout(() => killProgram(child, "SIGKILL"), 2000)
       await exited
       clearTimeout(timer)
     }

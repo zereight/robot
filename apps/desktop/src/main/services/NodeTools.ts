@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process"
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs"
+import { open, readdir } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
@@ -19,6 +20,7 @@ import {
   type RuleStep,
   type RuleVerdict,
   readOnlyRefuses,
+  readOnlyRefusesKey,
   riskyReason,
   ruleOutcome,
   type SensitiveLabel,
@@ -31,6 +33,7 @@ import { checkedFetch } from "../web/fetch.ts"
 import type { ActionLogService } from "./ActionLog.ts"
 import type { CardReply } from "./Cards.ts"
 import type { PlatformService } from "./Platform.ts"
+import { programStep } from "./programSteps.ts"
 import type { RulesService } from "./Rules.ts"
 import { realOf } from "./realPath.ts"
 
@@ -47,6 +50,12 @@ const OUTPUT_MAX = 20_000
 const FETCH_MAX = 50_000
 const LIST_MAX = 200
 const SEARCH_MAX = 50
+/** The bounds of one search of files: files read, bytes read in all, and bytes of one file. */
+const SEARCH_FILES_MAX = 5_000
+const SEARCH_TOTAL_BYTES = 50_000_000
+const SEARCH_FILE_BYTES = 1_000_000
+/** A read of one file never takes more bytes than this, so a huge file is not loaded whole. */
+const READ_BYTES = READ_MAX * 4
 const SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build"])
 const FETCH_TIMEOUT_MS = 20_000
 
@@ -413,34 +422,103 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       })
     })
 
-  const searchFiles = (
-    root: string,
+  /**
+   * Searches the text files of the folder (spec 007). It reads one file after the other and never
+   * more than the bounds above, and it stops at once when the signal aborts. Each file meets the
+   * rules as `read_file` does: a Deny rule hides the file or the folder (it is not read, and its
+   * text never comes back), and a file in the data folder of ROBot is not read, because a search
+   * cannot ask for it. A link is not followed, so a search never leaves the folder.
+   */
+  const searchFiles = async (
+    ctx: NodeToolContext,
+    places: ReturnType<typeof makePlaces>,
     query: string,
-    credential: (path: string) => SensitiveLabel | null,
   ) => {
     const hits: string[] = []
     let read: SensitiveLabel | null = null
+    let files = 0
+    let bytes = 0
+    let limited = false
+    let hidden = 0
     const q = query.toLocaleLowerCase()
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (hits.length >= SEARCH_MAX) return
+    const stopped = () => {
+      if (ctx.signal.aborted) throw new Error("stopped")
+    }
+    const hide = (path: string, decided: Decided) => {
+      hidden++
+      log(ctx, "file", "read", path, decided, "refused")
+    }
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        stopped()
+        if (hits.length >= SEARCH_MAX || limited) return
         const path = join(dir, entry.name)
+        // A link is not followed: it can lead out of the folder.
+        if (entry.isSymbolicLink()) continue
+        if (!entry.isDirectory() && !entry.isFile()) continue
+        if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue
+        const verdict = rules.verdict(ctx.workflowId, { kind: "file", path })
+        if (verdict.kind === "deny") {
+          hide(path, { by: "deny_rule", rule: verdict.rule })
+          continue
+        }
+        if (verdict.kind === "unreadable") {
+          hide(path, { by: "unreadable_rule", rule: verdict.rule })
+          continue
+        }
+        const label = places.credential(path)
+        if (label === "robot") {
+          hide(path, { by: "level", rule: null })
+          continue
+        }
         if (entry.isDirectory()) {
-          if (!SKIP_DIRS.has(entry.name)) walk(path)
-        } else if (entry.isFile() && statSync(path).size < 1_000_000) {
-          const lines = readFileSync(path, "utf8").split("\n")
-          for (const [i, line] of lines.entries()) {
-            if (line.toLocaleLowerCase().includes(q) && !line.includes("\0")) {
-              hits.push(`${relative(root, path)}:${i + 1}: ${line.trim().slice(0, 200)}`)
-              read ??= credential(path)
+          await walk(path)
+          continue
+        }
+        if (files >= SEARCH_FILES_MAX || bytes >= SEARCH_TOTAL_BYTES) {
+          limited = true
+          return
+        }
+        files++
+        const handle = await open(path, "r")
+        try {
+          const size = (await handle.stat()).size
+          if (size >= SEARCH_FILE_BYTES) continue
+          bytes += size
+          const content = await handle.readFile({ encoding: "utf8", signal: ctx.signal })
+          // The content was read: a file in a credential place is a sensitive read.
+          read ??= label
+          if (content.includes("\0")) continue
+          for (const [i, line] of content.split("\n").entries()) {
+            if (line.toLocaleLowerCase().includes(q)) {
+              hits.push(`${relative(ctx.workspace, path)}:${i + 1}: ${line.trim().slice(0, 200)}`)
+              if (hits.length >= SEARCH_MAX) return
             }
-            if (hits.length >= SEARCH_MAX) return
           }
+        } finally {
+          await handle.close()
         }
       }
     }
-    walk(root)
-    return { hits, read }
+    await walk(ctx.workspace)
+    stopped()
+    return { hits, read, hidden, limited }
+  }
+
+  /** Reads a text file, never more bytes than `READ_BYTES` (a huge file is not loaded whole). */
+  const readText = async (path: string, signal: AbortSignal) => {
+    const handle = await open(path, "r")
+    try {
+      const buffer = Buffer.alloc(READ_BYTES + 1)
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+      signal.throwIfAborted()
+      const more = bytesRead > READ_BYTES
+      const text = buffer.subarray(0, Math.min(bytesRead, READ_BYTES)).toString("utf8")
+      const shown = cut(text, READ_MAX)
+      return more && text.length <= READ_MAX ? `${shown}\n[cut: the file is longer]` : shown
+    } finally {
+      await handle.close()
+    }
   }
 
   /** Fetches a page with GET (spec 007, "Addresses of a web page fetch"). */
@@ -564,7 +642,7 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
             target: p.full,
           },
           async () => {
-            const output = cut(readFileSync(p.full, "utf8"), READ_MAX)
+            const output = await readText(p.full, ctx.signal)
             markSensitive(ctx, label)
             return repeated(ctx, p.full, output) ?? { output, failed: false }
           },
@@ -593,11 +671,36 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
         )
       }
       case "search_files": {
-        const { hits, read } = searchFiles(ctx.workspace, text(args, "query"), (path) =>
-          places.credential(path),
+        const query = text(args, "query")
+        if (!query) return { output: "No text to look for.", failed: true }
+        const root = ctx.workspace
+        const label = places.credential(root)
+        return guardedStep(
+          ctx,
+          {
+            kind: "file",
+            step: { kind: "file", path: root },
+            summary: root,
+            risky: label === "robot",
+            sends: false,
+            access: "read",
+            target: root,
+          },
+          async () => {
+            const found = await searchFiles(ctx, places, query)
+            markSensitive(ctx, found.read ?? label)
+            const notes = [
+              found.hidden > 0
+                ? `[${found.hidden} files or folders were left out: a rule or the app does not let you read them]`
+                : "",
+              found.limited ? "[the search stopped: the folder is too big]" : "",
+            ].filter(Boolean)
+            return {
+              output: [found.hits.join("\n") || "No matches.", ...notes].join("\n"),
+              failed: false,
+            }
+          },
         )
-        markSensitive(ctx, read ?? places.credential(ctx.workspace))
-        return { output: hits.join("\n") || "No matches.", failed: false }
       }
       case "run_command": {
         const command = text(args, "command")
@@ -680,49 +783,125 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
   }
 
   /**
-   * A step that a vendor program wants to take (spec 007, "Text node on a vendor runtime"). The
-   * program decides its own steps, and the app shows them as approval cards. Resolves true to go
-   * on.
+   * The steps of a task that went through `approval`, as `kind target`, with a count. The tool
+   * step that follows is not logged a second time (see `observe`).
    */
-  const approval = async (ctx: NodeToolContext, request: ApprovalRequest): Promise<boolean> => {
-    const kind: Kind | null =
-      request.step?.kind === "file" ||
-      request.step?.kind === "shell" ||
-      request.step?.kind === "web"
-        ? request.step.kind
-        : null
-    const verdict: RuleVerdict = request.step
-      ? rules.verdict(ctx.workflowId, request.step)
-      : { kind: "none" }
-    if (verdict.kind === "deny") {
-      if (kind)
-        log(ctx, kind, null, request.summary, { by: "deny_rule", rule: verdict.rule }, "refused")
-      return false
+  const decided = new WeakMap<AbortSignal, Map<string, number>>()
+  const noteDecided = (ctx: NodeToolContext, kind: Kind, target: string) => {
+    let seen = decided.get(ctx.signal)
+    if (!seen) {
+      seen = new Map()
+      decided.set(ctx.signal, seen)
     }
-    const outcome = ruleOutcome({
-      level: levelForNode(ctx.level),
-      risky: request.risky,
-      verdict,
-    })
-    if (outcome === "allow_rule") return true
-    if (outcome === "run") return true
-    const save =
-      outcome === "ask" && request.step !== undefined && rules.canSave(ctx.workflowId, request.step)
-    const reply = await ctx.ask({
-      kind: "approval",
-      summary: request.summary,
-      step: kind ?? "shell",
-      once: !save,
-      outside: ctx.marks.outside,
-      sensitive: ctx.marks.sensitive,
-      unreadable: outcome === "ask_unreadable",
-    })
-    if (reply.answer === "always" && save && request.step)
-      rules.saveFromCard(ctx.workflowId, request.step)
-    return reply.answer !== "deny"
+    const key = `${kind}\0${target}`
+    seen.set(key, (seen.get(key) ?? 0) + 1)
   }
 
-  return { defs: NODE_TOOL_DEFS, execute, approval }
+  /**
+   * A step that a vendor program wants to take (spec 007, "Text node on a vendor runtime"). The
+   * program decides its own steps, and the app shows them as approval cards. The app applies the
+   * same rules as for the tools of the app: "Read only" first, then a Deny rule, the sensitive
+   * read, the hard steps (a control place, a file outside the folder, a local address), an Allow
+   * rule, and the level. Each step gets an entry in the action log. Resolves true to go on.
+   */
+  const approval = async (ctx: NodeToolContext, request: ApprovalRequest): Promise<boolean> => {
+    const step = request.step
+    const kind: Kind | null =
+      step?.kind === "file" || step?.kind === "shell" || step?.kind === "web" ? step.kind : null
+    const access: "read" | "write" | null =
+      step?.kind === "file"
+        ? /^(?:read_file|list_files)(?::|$)/.test(request.key)
+          ? "read"
+          : "write"
+        : null
+    const target =
+      step?.kind === "file"
+        ? step.path
+        : step?.kind === "shell"
+          ? step.command
+          : step?.kind === "web"
+            ? step.host
+            : request.summary
+    const note = (by: ActionDecider, rule: RuleRef | null, result: "ran" | "refused") => {
+      if (kind) log(ctx, kind, access, target, { by, rule }, result)
+    }
+    // "Read only" comes first, also for a program that has its own read-only mode.
+    if (readOnlyRefusesKey(ctx.level, request.key)) {
+      note("level", null, "refused")
+      return false
+    }
+    const env = placeEnv(ctx)
+    const places = makePlaces(env)
+    let risky = request.risky
+    let sends = false
+    let sensitive: SensitiveLabel | null = null
+    if (step?.kind === "shell") {
+      risky =
+        risky ||
+        commandChangesControl(env, step.command, ctx.workspace) ||
+        riskyReason(step.command, ctx.workspace) !== null
+      sends = sendsData(step.command)
+      sensitive = commandReads(env, step.command)
+    } else if (step?.kind === "file") {
+      const label = places.credential(step.path)
+      const inside = insideWorkspace(realOf(step.path), realOf(ctx.workspace))
+      risky =
+        risky || !inside || label === "robot" || (access === "write" && places.control(step.path))
+      if (access === "read") sensitive = label
+    } else if (step?.kind === "web") {
+      const writing = classifyHostWriting(step.host)
+      if (writing.kind === "never") {
+        note("app", null, "refused")
+        return false
+      }
+      // A fetch of a local address is a hard step. The program resolves the name itself, so only
+      // the address as written can be seen here.
+      risky = risky || writing.kind === "local"
+      sends = true
+    }
+    let by: Decided
+    try {
+      by = await gate(ctx, {
+        kind: kind ?? "shell",
+        step: step ?? null,
+        summary: request.summary,
+        risky,
+        sends,
+        sensitive,
+      })
+    } catch (error) {
+      if (error instanceof Refusal) {
+        const rule = (error as Refusal & { rule?: RuleRef }).rule ?? null
+        note(rule ? "deny_rule" : "user", rule, "refused")
+        return false
+      }
+      throw error
+    }
+    note(by.by, by.rule, "ran")
+    if (kind) noteDecided(ctx, kind, target)
+    return true
+  }
+
+  /**
+   * A tool step of a vendor program, as the program reports it (spec 007). It sets the marks of
+   * the task, and it writes an entry of the action log for a step that no approval card decided
+   * (the program did not ask: its level allows the step). The marks come after the entry, so the
+   * entry says what the task held before the step.
+   */
+  const observe = (ctx: NodeToolContext, call: ToolCall) => {
+    const seen = programStep(placeEnv(ctx), ctx.workspace, call)
+    if (seen.kind) {
+      const key = `${seen.kind}\0${seen.target}`
+      const asked = decided.get(ctx.signal)
+      const count = asked?.get(key) ?? 0
+      if (count > 0) asked?.set(key, count - 1)
+      else log(ctx, seen.kind, seen.access, seen.target, { by: "level", rule: null }, "ran")
+    }
+    markSensitive(ctx, seen.sensitive)
+    if (seen.outside) markOutside(ctx, seen.outside)
+  }
+
+  return { defs: NODE_TOOL_DEFS, execute, approval, observe }
 }
 
 export type NodeTools = ReturnType<typeof makeNodeTools>

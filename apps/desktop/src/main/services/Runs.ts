@@ -4,6 +4,7 @@ import {
   BLOCKED_REASON_MAX,
   blockedReason,
   type CardAnswer,
+  catalogues,
   graphProblems,
   isLooser,
   keepGoingMessage,
@@ -22,6 +23,7 @@ import {
   type RunStart,
   type RunSummary,
   type RunTask,
+  redactSecrets,
   type SensitiveLabel,
   type TaskState,
   type WorkflowDetail,
@@ -385,7 +387,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                       ? "The provider could not be reached."
                       : error.code),
           }
-        if (error instanceof AppError) return { code: error.code, text: error.detail ?? error.code }
+        if (error instanceof AppError) {
+          // The words of the app for the code, not the raw code (spec 005, "States and reasons").
+          const known = (catalogues.en as Record<string, string>)[`error.${error.code}`]
+          return { code: error.code, text: known ?? error.detail ?? error.code }
+        }
         return { code: "model_error", text: error instanceof Error ? error.message : String(error) }
       }
 
@@ -432,7 +438,6 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const detail: WorkflowDetail = await Effect.runPromise(workflows.get(r.workflow_id))
         const graph = detail.graph
         setRun(runId, "running", { text: null, code: null })
-        const byId = new Map(graph.nodes.map((n) => [n.id, n]))
         const incoming = new Map<string, typeof graph.connections>()
         for (const n of graph.nodes) incoming.set(n.id, [])
         for (const c of graph.connections) incoming.set(c.to, [...(incoming.get(c.to) ?? []), c])
@@ -495,7 +500,6 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             break
           }
         }
-        void byId
         if (runSignal.aborted && stop === null)
           stop = { state: "cancelled", text: "Stopped by you", code: "user" }
         if (stop) setRun(runId, stop.state, { text: stop.text, code: stop.code }, true)
@@ -810,6 +814,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
 
         let steps = 0
+        const observed = new Set<string>()
         let usage = NO_USAGE
         let plan: readonly ListedStep[] | null = null
         const flush = (() => {
@@ -955,6 +960,12 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                   markStarted()
                 } else if (event.type === "tool") {
                   markStarted()
+                  // A program runs its own tools: the app reads each step it reports, once, for
+                  // the marks of the task and for the action log (spec 007).
+                  if (isProgram && (event.call.id === "" || !observed.has(event.call.id))) {
+                    observed.add(event.call.id)
+                    tools.observe(ctx, event.call)
+                  }
                   if (event.state === "running" && isProgram) {
                     if (steps >= setting.stepLimit) {
                       abort("steps")
@@ -1026,7 +1037,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                   event: "retry",
                   try: tries,
                   of: MODEL_TRIES,
-                  reason: f.text,
+                  // The error text of a provider can hold a key: it is hidden as results are
+                  // (spec 014).
+                  reason: redactSecrets(f.text),
                 })
                 result.text = ""
                 await sleep(runClock.retryWaitMs, signal)

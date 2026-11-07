@@ -1,9 +1,9 @@
-import type { MessageKey, RunDetail, RunNode, RunSummary } from "@robot/shared"
+import type { MessageKey, RunDetail, RunNode, RunSummary, RunTask } from "@robot/shared"
 import { createResource, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
-import { reasonText } from "../lib/runText.ts"
+import { outsideText, reasonText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
@@ -21,6 +21,34 @@ const Badge = (props: { state: string; testId: string }) => {
     <span class={styles.badge} data-state={props.state} data-testid={props.testId}>
       {t(stateWord(props.state))}
     </span>
+  )
+}
+
+/** The marks a task holds (spec 007): outside content, a sensitive read, the program mark. */
+const TaskMarks = (props: { task: RunTask; number: number }) => {
+  const { t } = useApp()
+  return (
+    <Show when={props.task.outside || props.task.sensitive || props.task.program}>
+      <ul class={styles.marks} data-testid={`run-node-marks-${props.number}`}>
+        <Show when={props.task.outside}>
+          {(source) => (
+            <li data-testid={`run-node-outside-${props.number}`}>
+              {t("runs.mark.outside", { source: outsideText(t, source()) })}
+            </li>
+          )}
+        </Show>
+        <Show when={props.task.sensitive}>
+          {(label) => (
+            <li data-testid={`run-node-sensitive-${props.number}`}>
+              {t("runs.mark.sensitive", { label: sensitiveText(t, label()) })}
+            </li>
+          )}
+        </Show>
+        <Show when={props.task.program}>
+          <li data-testid={`run-node-program-${props.number}`}>{t("runs.mark.program")}</li>
+        </Show>
+      </ul>
+    </Show>
   )
 }
 
@@ -45,6 +73,7 @@ const NodeCard = (props: { node: RunNode }) => {
       <Show when={task()}>
         {(task) => (
           <>
+            <TaskMarks task={task()} number={props.node.number} />
             <Show when={task().decision}>
               {(decision) => (
                 <div class={styles.decision} data-testid={`run-node-decision-${props.node.number}`}>
@@ -70,7 +99,9 @@ const NodeCard = (props: { node: RunNode }) => {
               <Show when={task().input !== ""}>
                 <details class={styles.io}>
                   <summary>{t("runs.input")}</summary>
-                  <pre data-testid={`run-node-input-${props.node.number}`}>{task().input}</pre>
+                  <pre tabindex="0" data-testid={`run-node-input-${props.node.number}`}>
+                    {task().input}
+                  </pre>
                 </details>
               </Show>
               <div class={styles.io}>
@@ -79,7 +110,9 @@ const NodeCard = (props: { node: RunNode }) => {
                   when={task().result !== ""}
                   fallback={<span class={styles.muted}>{t("runs.result.none")}</span>}
                 >
-                  <pre data-testid={`run-node-result-${props.node.number}`}>{task().result}</pre>
+                  <pre tabindex="0" data-testid={`run-node-result-${props.node.number}`}>
+                    {task().result}
+                  </pre>
                 </Show>
               </div>
             </Show>
@@ -151,6 +184,10 @@ const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void
               {(f) => (
                 <li>
                   “{f.text}” ·{" "}
+                  <time dateTime={new Date(f.createdAt).toISOString()}>
+                    {formatDateTime(locale(), f.createdAt)}
+                  </time>{" "}
+                  ·{" "}
                   {f.nodes.length > 0
                     ? t("runs.feedback.nodes", { nodes: f.nodes.join(", ") })
                     : t("runs.feedback.none")}
