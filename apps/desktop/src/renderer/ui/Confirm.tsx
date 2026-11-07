@@ -22,7 +22,7 @@ export const Confirm = (props: {
   keepTestId?: string
   disabled?: boolean
 }) => (
-  <div class={styles.confirm} data-testid={props.testId}>
+  <div class={styles.confirm} data-testid={props.testId} data-confirm>
     <span class={styles.confirmAsk} role="alert">
       {props.ask}
     </span>
