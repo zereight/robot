@@ -9,6 +9,7 @@ import {
 } from "@robot/shared"
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { isCalendarTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
@@ -81,7 +82,7 @@ export const RuntimeSummary = (props: { status: RuntimeStatus }) => {
   const limits = () => openLimits(props.status.limits)
   const line = (limit: RuntimeLimit) => {
     const percent = Math.round(limit.used * 100)
-    if (limit.resetsAt === null)
+    if (limit.resetsAt === null || !isCalendarTime(limit.resetsAt))
       return t("runtime.limit.noReset", { window: limit.window, percent })
     const named = `runtime.limit.${limit.window}`
     const key: MessageKey = named in catalogues.en ? (named as MessageKey) : "runtime.limit.other"

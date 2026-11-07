@@ -185,7 +185,7 @@ describe("the reset of a database from before the workflow model (owner decision
     expect(db.all("SELECT id FROM memory")).toEqual([])
   })
 
-  test("a database built from the first 11 migrations opens at the newest version, keeps its rows and gets the claims, the holder and the device", () => {
+  test("a database built from the first 11 migrations opens at the current version, keeps its rows and gets the claims, the holder and the device", () => {
     const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-11-")), "robot.db")
     const old = new DatabaseSync(file)
     old.exec("PRAGMA foreign_keys = ON")
@@ -207,6 +207,7 @@ describe("the reset of a database from before the workflow model (owner decision
     old.close()
     expect(fileState(file)).toBe("current")
     const db = openDatabase(file)
+    // Later slices append migrations: the file opens at the last one.
     expect(migrations.length).toBeGreaterThanOrEqual(12)
     expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
       migrations.length,
@@ -227,6 +228,79 @@ describe("the reset of a database from before the workflow model (owner decision
     db.run("DELETE FROM workflow WHERE id = 'w1'")
     expect(db.all("SELECT task_id FROM file_claim")).toEqual([])
   })
+
+  test("a database with exactly the first 12 migrations opens at the current version and gets the table of unread marks", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const before = migrations.slice(0, 12)
+    expect(before).toHaveLength(12)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at)
+        VALUES ('m1', 'w1', 'user', '[]', 'done', 1);
+    `)
+    expect(old.prepare("SELECT name FROM sqlite_master WHERE name = 'chat_unread'").all()).toEqual(
+      [],
+    )
+    old.close()
+    expect(fileState(file)).toBe("current")
+    const db = openDatabase(file)
+    // Later slices append migrations: the file opens at the last one.
+    expect(migrations.length).toBeGreaterThanOrEqual(13)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
+    // The rows stay, and the table takes a mark and goes with the workflow.
+    expect(db.all("SELECT id FROM chat_message")).toEqual([{ id: "m1" }])
+    db.run("INSERT INTO chat_unread (workflow_id, message_id, at) VALUES ('w1', 'm1', 1)")
+    db.run("DELETE FROM workflow WHERE id = 'w1'")
+    expect(db.all("SELECT workflow_id FROM chat_unread")).toEqual([])
+  })
+
+  test("a database built from the first 12 migrations gets the backup model, the hold and the model usage (spec 006)", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const before = migrations.slice(0, 12)
+    expect(before).toHaveLength(12)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO workflow_node (id, workflow_id, number, kind, name, account_id, model)
+        VALUES ('n1', 'w1', 1, 'text', 'Draft', 'a1', 'm1');
+      INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', 'w1', 'done', 'hand', 1);
+      INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, created_at)
+        VALUES ('t1', 'r1', 'w1', 'n1', 'Draft', 1, 'done', 1);
+    `)
+    old.close()
+    const db = openDatabase(file)
+    // The node has no backup: the three columns are NULL, and the task has no line.
+    expect(
+      db.all("SELECT backup_account_id, backup_model, backup_effort FROM workflow_node"),
+    ).toEqual([{ backup_account_id: null, backup_model: null, backup_effort: null }])
+    expect(db.all("SELECT backup_note FROM task")).toEqual([{ backup_note: null }])
+    // The hold belongs to no row of the graph: it stays when the nodes are written again.
+    db.run(
+      "INSERT INTO model_hold (node_id, ends_at, main_account_id, main_model, backup_account_id, backup_model) VALUES ('n1', 9, 'a1', 'm1', 'a2', 'm2')",
+    )
+    db.run("DELETE FROM workflow_node WHERE id = 'n1'")
+    expect(db.all("SELECT node_id FROM model_hold")).toEqual([{ node_id: "n1" }])
+    // The usage of a model goes with its task.
+    db.run(
+      "INSERT INTO task_usage (task_id, account_id, model, input_tokens) VALUES ('t1', 'a2', 'm2', 5)",
+    )
+    db.run("DELETE FROM task WHERE id = 't1'")
+    expect(db.all("SELECT task_id FROM task_usage")).toEqual([])
+  })
+
   test("a database built from the migrations before the scope of connections opens at the newest version: the scope fails closed, and a deleted workflow leaves its list", () => {
     const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-12-")), "robot.db")
     const old = new DatabaseSync(file)

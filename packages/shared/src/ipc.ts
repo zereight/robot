@@ -1,3 +1,4 @@
+import type { NodeHold } from "./backup.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type {
@@ -310,6 +311,13 @@ export interface RpcMethods {
   }
   "workflows.disconnect": { input: { id: string }; output: undefined }
   "workflows.versions": { input: { id: string }; output: readonly GraphVersion[] }
+  /**
+   * The holds of the main models of the text nodes of a workflow that last now (spec 006, "Backup
+   * model"). Empty for a linked device and the phone: they do not show the hold (012, 011).
+   */
+  "workflows.holds": { input: { workflowId: string }; output: readonly NodeHold[] }
+  /** "Use <main model> now": ends the hold of a node. Only the window of this computer (006). */
+  "workflows.hold.release": { input: { nodeId: string }; output: undefined }
   /** Restores a version of the graph. The graph as it is now is kept as a version too. */
   "workflows.versions.restore": {
     input: { id: string; versionId: string }
@@ -328,6 +336,15 @@ export interface RpcMethods {
   /** Deletes a message that no turn has read, or a queued message. Gives back its text. */
   "chat.delete": { input: { id: string }; output: { text: string } }
   "chat.sendNow": { input: { id: string }; output: undefined }
+  /**
+   * Edit of the last message of the user (spec 003, "Message rows"): saves the new text, removes
+   * the replies after it, and asks again. Refused while a turn works, and after a step ran.
+   */
+  "chat.edit": { input: { id: string; text: string }; output: undefined }
+  /** "Mark as unread" on a finished reply (spec 003, "Mark as unread"). */
+  "chat.markUnread": { input: { id: string }; output: undefined }
+  /** The chat shows its latest message: the unread count clears (spec 003, "Mark as unread"). */
+  "chat.read": { input: { workflowId: string }; output: undefined }
   "chat.retry": { input: { workflowId: string }; output: undefined }
   /** The buttons of the notice after a restart: "Continue" and "Send again". */
   "chat.resume": { input: { workflowId: string; mode: "continue" | "again" }; output: undefined }

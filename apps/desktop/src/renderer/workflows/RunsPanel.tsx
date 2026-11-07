@@ -2,6 +2,7 @@ import {
   CLAIMS_MAX,
   type MessageKey,
   NOTE_NAME_CHARS,
+  type NodeHold,
   plainLine,
   type RunDetail,
   type RunNode,
@@ -21,6 +22,8 @@ import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
+import { BackupHold } from "./BackupHold.tsx"
+import { createHolds } from "./holds.ts"
 import improve from "./improve.module.css"
 import { showsProposals } from "./improveView.ts"
 import styles from "./runs.module.css"
@@ -231,8 +234,8 @@ const TaskMemory = (props: { task: RunTask; workflowId: string; number: number }
   )
 }
 
-const NodeCard = (props: { node: RunNode; workflowId: string }) => {
-  const { t } = useApp()
+const NodeCard = (props: { node: RunNode; workflowId: string; hold?: NodeHold | undefined }) => {
+  const { t, locale } = useApp()
   const task = () => props.node.task
   const reason = () => reasonText(t, task()?.reasonCode ?? null, task()?.reasonText ?? null)
   return (
@@ -253,6 +256,24 @@ const NodeCard = (props: { node: RunNode; workflowId: string }) => {
         {(task) => (
           <>
             <TaskMarks task={task()} number={props.node.number} />
+            <Show when={task().backupNote}>
+              {(note) => (
+                <p class={styles.muted} data-testid={`run-node-backup-line-${props.node.number}`}>
+                  {note().resetsAt === null
+                    ? t("runs.backup", { main: note().main, backup: note().backup })
+                    : t("runs.backup.until", {
+                        main: note().main,
+                        backup: note().backup,
+                        time: formatDateTime(locale(), note().resetsAt as number),
+                      })}
+                </p>
+              )}
+            </Show>
+            <Show when={props.hold}>
+              {(hold) => (
+                <BackupHold hold={hold()} testId={`run-node-backup-${props.node.number}`} />
+              )}
+            </Show>
             <TaskMemory task={task()} workflowId={props.workflowId} number={props.node.number} />
             <TaskClaims task={task()} number={props.node.number} />
             <TaskConnections task={task()} number={props.node.number} />
@@ -323,6 +344,8 @@ const NodeCard = (props: { node: RunNode; workflowId: string }) => {
 
 const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void }) => {
   const { t, locale } = useApp()
+  // The holds of the main models of the nodes: "Backup until <time>" shows on the node (spec 006).
+  const holds = createHolds(() => props.run.workflowId)
   const reason = () => reasonText(t, props.run.reasonCode, props.run.reasonText)
   return (
     <div class={styles.view} data-testid="run-view">
@@ -357,7 +380,13 @@ const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void
       </Show>
       <ol class={styles.nodes}>
         <Keyed each={props.run.nodes} by={(node) => node.number}>
-          {(node) => <NodeCard node={node()} workflowId={props.run.workflowId} />}
+          {(node) => (
+            <NodeCard
+              node={node()}
+              workflowId={props.run.workflowId}
+              hold={holds().find((h) => h.number === node().number)}
+            />
+          )}
         </Keyed>
       </ol>
       <Show when={props.run.feedback.length > 0}>

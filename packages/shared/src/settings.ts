@@ -79,6 +79,12 @@ export const Settings = Schema.Struct({
   ),
   /** "While an agent works, new messages" (spec 003, 013): join the current turn, or wait. */
   duringTurn: Schema.Literals(["join", "queue"]),
+  /**
+   * "Show tool steps" (spec 003, "Folded tool steps"; 013, Appearance). On by default. With it off,
+   * the chat folds each series of plain tool steps into one muted line with the count. It changes
+   * the view only.
+   */
+  showToolSteps: Schema.Boolean,
 })
 export type Settings = typeof Settings.Type
 
@@ -106,6 +112,7 @@ export const defaultSettings: Settings = {
   keepGoing: true,
   tasksAtOnce: TASKS_AT_ONCE_DEFAULT,
   duringTurn: "join",
+  showToolSteps: true,
 }
 
 export type Locale = "en" | "ko"

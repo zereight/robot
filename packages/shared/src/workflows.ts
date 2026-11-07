@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { ModelPick } from "./backup.ts"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 import type { CheckOutcome, CheckState } from "./workflowCheck.ts"
 
@@ -89,6 +90,11 @@ export interface WorkflowNode {
   readonly accountId: string | null
   readonly model: string | null
   readonly effort: string | null
+  /**
+   * The backup model of a text node (spec 006, "Backup model"), or null. Only the user sets it, in
+   * the editor: a proposal, the chat and a linked device cannot (docs/spec-questions.md, B6).
+   */
+  readonly backup: ModelPick | null
   /** A stricter level than the workflow, or null for the level of the workflow. */
   readonly permission: PermissionLevel | null
   readonly continueOnFailure: boolean
@@ -165,6 +171,13 @@ export const NodeInput = Schema.Struct({
 })
 export type NodeInput = typeof NodeInput.Type
 
+/** The backup model of a text node: an account, a model and a reasoning level (spec 006). */
+export const BackupPick = Schema.Struct({
+  accountId: Schema.String,
+  model: Schema.String,
+  effort: Schema.NullOr(Schema.String),
+})
+
 /** A change of a node. A field that is left out stays as it was. */
 export const NodePatch = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
@@ -172,6 +185,8 @@ export const NodePatch = Schema.Struct({
   accountId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   model: Schema.optionalKey(Schema.NullOr(Schema.String)),
   effort: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The backup model (spec 006). Null clears it. Only the editor of this computer may set it. */
+  backup: Schema.optionalKey(Schema.NullOr(BackupPick)),
   permission: Schema.optionalKey(Schema.NullOr(Level)),
   continueOnFailure: Schema.optionalKey(Schema.Boolean),
   question: Schema.optionalKey(Schema.String),

@@ -13,6 +13,7 @@ import { EventBus } from "./services/EventBus.ts"
 import { FileClaims } from "./services/FileClaims.ts"
 import { Host } from "./services/Host.ts"
 import { Memory } from "./services/Memory.ts"
+import { ModelHolds } from "./services/ModelHolds.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Proposals } from "./services/Proposals.ts"
 import { Providers } from "./services/Providers.ts"
@@ -81,6 +82,7 @@ export const appLayer = (options: AppLayerOptions) => {
   const rules = Layer.mergeAll(
     ActionLog.layer,
     FileClaims.layer,
+    ModelHolds.layer,
     Rules.layer,
     SavedSecrets.layer,
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),

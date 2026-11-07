@@ -10,6 +10,7 @@ import {
   type ListedStep,
   MODEL_RETRY_WAIT_MS,
   MODEL_TRIES,
+  type ModelPick,
   NO_TASK_CONNECTIONS,
   NO_USAGE,
   NOTE_NAME_CHARS,
@@ -42,7 +43,20 @@ import { Context, Effect, Layer } from "effect"
 import type { PlanEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { goOnTurns } from "../providers/resume.ts"
 import { ActionLog } from "./ActionLog.ts"
+import {
+  addModelUsage,
+  type BackupDeps,
+  isBackupChoice,
+  limitSwitch,
+  mainAnswered,
+  noteOf,
+  readNote,
+  startsOnBackup,
+  workLog,
+  writeNote,
+} from "./backupRun.ts"
 import { Cards } from "./Cards.ts"
 import { Connections, type ConnectionTurn } from "./Connections.ts"
 import type { ConnectionTaskContext } from "./connectionTools.ts"
@@ -53,6 +67,7 @@ import { AppError } from "./errors.ts"
 import { FileClaims } from "./FileClaims.ts"
 import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
+import { ModelHolds } from "./ModelHolds.ts"
 import { isMemoryTool, MEMORY_TOOL_DEFS, makeMemoryTool } from "./memoryTool.ts"
 import { makeNodeTools, NODE_TOOL_DEFS, type NodeCard, type TaskMarks } from "./NodeTools.ts"
 import { Platform } from "./Platform.ts"
@@ -171,6 +186,7 @@ interface TaskRow {
   steps: number
   /** The notice lines and tool lines of the connections that the task used (spec 018). */
   connection_notes: string | null
+  backup_note: string | null
 }
 
 /** How a task ended. */
@@ -220,9 +236,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const actionLog = yield* ActionLog
       const claims = yield* FileClaims
       const connections = yield* Connections
+      const holds = yield* ModelHolds
       const memory = yield* Memory
       const proposals = yield* Proposals
       const queue = yield* TaskQueue
+      const backupDeps: BackupDeps = {
+        holds,
+        ready: (accountId) => Effect.runPromise(providers.verify(accountId)),
+      }
       const tools = makeNodeTools({ rules, actionLog, platform, claims })
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const endListeners: ((workflowId: string, runId: string) => void)[] = []
@@ -356,6 +377,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           program: t.program_mark === 1,
           sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
           steps: t.steps,
+          backupNote: readNote(t.backup_note),
           memory: memory.ofTask(t.id),
           claims: claims.ofTask(t.id),
           refusals,
@@ -1013,9 +1035,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         })
         if (!node.accountId || !node.model)
           return fail("no_model", "The node has no provider and no model. Pick them in the node.")
-        if (!providers.isConnected(node.accountId))
+        // The backup model (spec 006): while the hold of the main model lasts, the task starts on
+        // the backup. A limit of the main model moves it there later (see the catch below).
+        let current: ModelPick = (await startsOnBackup(backupDeps, node))
+          ? (node.backup as ModelPick)
+          : { accountId: node.accountId, model: node.model, effort: node.effort }
+        let onBackup = isBackupChoice(current, node)
+        if (!providers.isConnected(current.accountId))
           return fail("provider_not_connected", "The provider of this node is not connected.")
-        const isProgram = providers.isRuntime(node.accountId)
+        let isProgram = providers.isRuntime(current.accountId)
 
         // One controller for the task: it aborts for Stop, for the silent limit and for the step limit.
         const controller = new AbortController()
@@ -1035,14 +1063,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         let timer: ReturnType<typeof setTimeout> | null = null
         // The quiet line shows when the turn shows no sign of life for the quiet time. Its clock
         // is the clock of the silent limit and stops in the same cases (spec 005, "Quiet line").
-        const quietName =
-          (await Effect.runPromise(providers.accounts)).find((a) => a.id === node.accountId)
-            ?.name ?? ""
-        const quiet = queue.quiet.watch(taskId, {
-          workflowId: n.run.workflow_id,
-          name: quietName,
-          quietMs: quietTimeMs(limitMs, runClock.quietMs),
-        })
+        const watchQuiet = async () =>
+          queue.quiet.watch(taskId, {
+            workflowId: n.run.workflow_id,
+            name:
+              (await Effect.runPromise(providers.accounts)).find((a) => a.id === current.accountId)
+                ?.name ?? "",
+            quietMs: quietTimeMs(limitMs, runClock.quietMs),
+          })
+        let quiet = await watchQuiet()
         const arm = () => {
           quiet.set(paused > 0)
           if (timer) clearTimeout(timer)
@@ -1089,7 +1118,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             },
           }
         })()
+        /** True when the try that runs now got a sign back: it is "Started" (spec 005, 006). */
+        let startedTry = false
+        const work = workLog()
         const markStarted = () => {
+          startedTry = true
           db.run(
             `UPDATE task SET progress = 'started', first_reply_at = COALESCE(first_reply_at, ?) WHERE id = ?`,
             Date.now(),
@@ -1186,7 +1219,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
         // A text node on an API account has the memory tool while memory is on for the workflow. A
         // vendor program has tools of its own and none of the app (spec 008, 007).
-        const memoryOn = !isProgram && memory.settings(n.run.workflow_id)?.enabled === true
+        const memoryFor = () => !isProgram && memory.settings(n.run.workflow_id)?.enabled === true
+        let memoryOn = memoryFor()
         // The shared folder note is made again at the start of each turn, so it holds the claims of
         // that moment (spec 025). A program gets it too: the note is its only guard.
         const systemNow = () =>
@@ -1208,13 +1242,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
         let continuation = 0
         let previousOpen: string[] | null = null
-        const model = node.model
-        const accountId = node.accountId
         let tries = 0
         try {
           // One attempt is one reply to the turns, with the tool steps in it.
           for (;;) {
             let attemptSteps = 0
+            startedTry = false
+            work.reset()
             try {
               db.run(
                 "UPDATE task SET progress = CASE progress WHEN 'not_sent' THEN 'sent' ELSE progress END WHERE id = ?",
@@ -1223,10 +1257,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               arm()
               const events = await Effect.runPromise(
                 providers.events(
-                  accountId,
+                  current.accountId,
                   {
-                    model,
-                    effort: node.effort,
+                    model: current.model,
+                    effort: current.effort,
                     system: systemNow(),
                     turns,
                     signal,
@@ -1304,12 +1338,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 arm()
                 if (event.type === "text") {
                   markStarted()
+                  work.text(event.text)
                   result.text += event.text
                   flush.soon()
                 } else if (event.type === "thinking") {
                   markStarted()
                 } else if (event.type === "tool") {
                   markStarted()
+                  work.tool(event)
                   // A program runs its own tools: the app reads each step it reports, once, for
                   // the marks of the task and for the action log (spec 007).
                   if (isProgram && (event.call.id === "" || !observed.has(event.call.id))) {
@@ -1326,6 +1362,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                     flush.soon()
                   }
                 } else if (event.type === "spent") {
+                  addModelUsage(db, taskId, current, event)
                   usage = addSpent(usage, event)
                   db.run(
                     "UPDATE task SET input_tokens = ?, output_tokens = ?, cached_tokens = ?, cost_micros = ? WHERE id = ?",
@@ -1340,6 +1377,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 }
               }
               if (signal.aborted) throw new Error("stopped")
+              if (!onBackup) mainAnswered(backupDeps, node)
               // A turn ended with no error: it may be blocked, or the app may ask it to go on.
               const blocked = blockedReason(result.text)
               if (blocked !== null) {
@@ -1369,6 +1407,32 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               changed(n.run.workflow_id, n.run.id)
             } catch (error) {
               if (signal.aborted || endedBy !== null) throw error
+              // A limit of the main model moves the turn to the backup model, in the same task
+              // (spec 006). The failed try ran steps ("Started"): the backup gets a short message
+              // that asks it to go on. It ran none: the backup runs the turn from the start.
+              const switched = await limitSwitch(backupDeps, node, error, onBackup, signal)
+              // The task ended while the backup was checked: it is over, no hold and no line.
+              if (signal.aborted || endedBy !== null) throw error
+              if (switched) {
+                const main = current.model
+                current = switched.backup
+                onBackup = true
+                isProgram = providers.isRuntime(current.accountId)
+                memoryOn = memoryFor()
+                quiet.stop()
+                quiet = await watchQuiet()
+                if (switched.fresh) writeNote(db, taskId, noteOf(main, switched))
+                if (startedTry) {
+                  turns.splice(
+                    0,
+                    turns.length,
+                    ...goOnTurns(turns, work.parts(), { steps: isProgram }),
+                  )
+                  result.text += "\n\n"
+                } else result.text = ""
+                changed(n.run.workflow_id, n.run.id)
+                continue
+              }
               // A plain failure is tried again: 3 tries, 2 seconds apart. A usage limit and a busy
               // model end the call at once. A try that made a tool step is not repeated: the step
               // may have changed things (spec 010, "Rules"; spec 005).

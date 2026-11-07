@@ -1,3 +1,4 @@
+import type { TaskBackupNote } from "./backup.ts"
 import type { TaskProgress } from "./chat.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
@@ -74,6 +75,8 @@ export interface RunTask {
   readonly sensitive: SensitiveLabel | null
   /** The steps (tool calls) that the task took. */
   readonly steps: number
+  /** The muted line that tells that the backup model went on in this task (spec 006), or null. */
+  readonly backupNote: TaskBackupNote | null
   /** What the task did with the memory: items it saved, facts it suggested (spec 008, "Flows", 1). */
   readonly memory: readonly TaskMemoryLine[]
   /** The file claims that the task holds in a shared folder, newest first (spec 025). */
