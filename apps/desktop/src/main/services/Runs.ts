@@ -39,6 +39,7 @@ import type { PlanEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { ActionLog } from "./ActionLog.ts"
+import { Browsers } from "./Browsers.ts"
 import { Cards } from "./Cards.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
@@ -194,10 +195,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const rules = yield* Rules
       const actionLog = yield* ActionLog
       const claims = yield* FileClaims
+      const browsers = yield* Browsers
       const memory = yield* Memory
       const proposals = yield* Proposals
       const queue = yield* TaskQueue
-      const tools = makeNodeTools({ rules, actionLog, platform, claims })
+      const tools = makeNodeTools({ rules, actionLog, platform, claims, browsers })
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const endListeners: ((workflowId: string, runId: string) => void)[] = []
 
@@ -1094,10 +1096,16 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 sensitive: card.sensitive ?? null,
                 ...(card.unreadable ? { unreadable: true } : {}),
                 ...(card.choices ? { choices: card.choices } : {}),
+                ...(card.control ? { control: card.control } : {}),
               },
               signal,
               {
-                code: card.kind === "question" ? "question" : "approval",
+                code:
+                  card.kind === "question"
+                    ? "question"
+                    : card.kind === "control"
+                      ? "control"
+                      : "approval",
                 detail: card.summary,
               },
             ),

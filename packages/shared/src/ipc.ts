@@ -1,3 +1,4 @@
+import type { BrowserBounds, BrowserState } from "./browser.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type {
@@ -128,6 +129,17 @@ export interface RpcMethods {
    */
   "browserProfiles.assign": {
     input: { workflowId: string; profileId: string | null }
+    output: undefined
+  }
+  /** The state of the browser page of a workflow (spec 007). A linked device cannot call it. */
+  "browser.state": { input: { workflowId: string }; output: BrowserState }
+  /**
+   * Shows the page of a workflow in a place of the window, or hides it (`bounds` null). The user
+   * sees a page that a take-control card holds with input; a page that a node uses shows without
+   * input. A linked device cannot call it.
+   */
+  "browser.place": {
+    input: { workflowId: string; bounds: BrowserBounds | null }
     output: undefined
   }
   "ui.get": { input: undefined; output: UiState }
@@ -429,6 +441,8 @@ export interface RpcEvents {
   "secrets.changed": Record<string, never>
   /** A browser profile was made, renamed or deleted, or an agent got another one. */
   "browserProfiles.changed": Record<string, never>
+  /** The page of a workflow opened, closed, was unloaded, or the user took or gave back control. */
+  "browser.changed": { workflowId: string }
   /** A skill was made, turned on or off, or deleted. */
   "skills.changed": { serverId: string }
   "workflows.changed": { serverId: string }

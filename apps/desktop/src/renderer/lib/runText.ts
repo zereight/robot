@@ -49,6 +49,7 @@ export const reasonText = (t: T, code: string | null, text: string | null): stri
   if (code === "approval" || code === "question")
     return t(`runs.reason.${code}` as MessageKey, { step: text ?? "" })
   if (code === "pick") return t("runs.reason.pick")
+  if (code === "control") return t("runs.reason.control")
   // A queued task waits for a free slot or behind a node (spec 005, "States and reasons").
   if (code === "slot") return t("tasks.reason.slot", { count: Number(text) || 0 })
   if (code === "behind") return t("tasks.reason.behindNode", { node: text ?? "" })

@@ -1,3 +1,4 @@
+import type { ControlPlace } from "./browser.ts"
 import type { TaskProgress } from "./chat.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
@@ -156,12 +157,26 @@ export interface RunCard {
   readonly taskId: string | null
   readonly nodeNumber: number | null
   readonly nodeName: string | null
-  /** approval: Allow and Deny. question: the node asks. pick: a decision node found no winner. */
-  readonly kind: "approval" | "question" | "pick"
+  /**
+   * approval: Allow and Deny. question: the node asks. pick: a decision node found no winner.
+   * control: the node asks the user to take over the browser (spec 007): the card has one button,
+   * "Give back".
+   */
+  readonly kind: "approval" | "question" | "pick" | "control"
   /** What the node wants to do: the command, the path, the host, the question, the feedback text. */
   readonly summary: string
   /** The kind of step of an approval card, for the rules; "feedback" for the chat. */
-  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | "run" | null
+  readonly step:
+    | "file"
+    | "shell"
+    | "web"
+    | "browser"
+    | "feedback"
+    | "ask"
+    | "memory"
+    | "change"
+    | "run"
+    | null
   /** True when the card has Allow once and Deny only (no "Always allow"). */
   readonly once: boolean
   /** The first source of outside content, when the card says that the turn or task holds it. */
@@ -182,6 +197,14 @@ export interface RunCard {
   /** Why a decision node asks: `threshold`, `timeout`, `off` or `invalid`. */
   readonly pickReason: string | null
   readonly threshold: number | null
+  /**
+   * A control card: the host of the page and the place of the secure field, the page itself or a
+   * frame with its site (spec 007, "Secure fields in frames"). Null on every other card.
+   */
+  readonly control: {
+    readonly host: string
+    readonly place: ControlPlace | null
+  } | null
   readonly createdAt: number
   readonly answeredAt: number | null
   /** The answer that closed the card: allow, always, deny, an option id, the text, or "stopped". */
@@ -195,6 +218,7 @@ export type CardAnswer =
   | { readonly kind: "approval"; readonly answer: "allow" | "always" | "deny" }
   | { readonly kind: "question"; readonly text: string }
   | { readonly kind: "pick"; readonly optionId: string }
+  | { readonly kind: "control" }
 
 /** The marks of a place that the header of the chat shows (spec 007, "The mark of a place"). */
 export interface ChatMarks {

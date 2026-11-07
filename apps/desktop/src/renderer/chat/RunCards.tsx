@@ -195,12 +195,59 @@ const Pick = (props: { card: RunCard }) => {
   )
 }
 
+/** The node asks the user to take over the browser (spec 007). The page shows under the chat. */
+const Control = (props: { card: RunCard }) => {
+  const { t } = useApp()
+  const place = () => props.card.control?.place ?? null
+  return (
+    <div
+      class={styles.card}
+      role="status"
+      aria-live="polite"
+      aria-label={t("cards.title.control")}
+      data-testid="card-control"
+      data-card-id={props.card.id}
+    >
+      <div class={styles.head}>
+        <strong>{t("cards.title.control")}</strong>
+        <Origin card={props.card} />
+      </div>
+      <p class={styles.summary} data-testid="card-summary">
+        {props.card.summary}
+      </p>
+      <Show when={props.card.control?.host}>
+        {(host) => <p class={styles.hint}>{t("cards.control.host", { host: host() })}</p>}
+      </Show>
+      <Show when={place()}>
+        {(where) => (
+          <p class={styles.mark} data-testid="card-control-place">
+            {where().kind === "frame"
+              ? t("cards.control.frame", { site: (where() as { site: string }).site })
+              : t("cards.control.page")}
+          </p>
+        )}
+      </Show>
+      <p class={styles.hint}>{t("cards.control.hint")}</p>
+      <div class={styles.buttons}>
+        <Button
+          variant="primary"
+          onClick={() => answerCard(props.card.id, { kind: "control" })}
+          data-testid="card-control-give-back"
+        >
+          {t("cards.control.giveBack")}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /** A card that the user answered: one line (spec 003). */
 const Answered = (props: { card: RunCard }) => {
   const { t } = useApp()
   const line = () => {
     const card = props.card
     const answer = card.answer ?? ""
+    if (card.kind === "control") return t("cards.answered.control")
     if (card.kind === "approval") return t(`cards.answered.${answer}` as MessageKey)
     if (card.kind === "question")
       return card.answeredInChat
@@ -227,6 +274,8 @@ export const RunCards = (props: { cards: readonly RunCard[] }) => (
             <Approval card={card} />
           ) : card.kind === "question" ? (
             <Question card={card} />
+          ) : card.kind === "control" ? (
+            <Control card={card} />
           ) : (
             <Pick card={card} />
           )}

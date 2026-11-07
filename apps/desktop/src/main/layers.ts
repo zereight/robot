@@ -3,6 +3,7 @@ import { Layer } from "effect"
 import type { OpenSocket } from "./link/nearby.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
+import { Browsers } from "./services/Browsers.ts"
 import { Cards } from "./services/Cards.ts"
 import { Chat } from "./services/Chat.ts"
 import { Connections, type ConnectionsOptions } from "./services/Connections.ts"
@@ -52,6 +53,8 @@ export interface AppLayerOptions {
   readonly connections?: ConnectionsOptions
   /** The limits of the check and its background run (spec 010). Only tests set them. */
   readonly check?: WorkflowCheckOptions
+  /** The clock and the idle timer of the browser work (spec 007). Only tests set them. */
+  readonly browser?: { now?: () => number; sweepMs?: number }
 }
 
 /** Every main process service, wired together. */
@@ -68,6 +71,7 @@ export const appLayer = (options: AppLayerOptions) => {
     UiStore.layer,
     Servers.layer(options.localServerName),
     Skills.layer,
+    Browsers.layer(options.browser ?? {}),
   ).pipe(Layer.provideMerge(base))
   const devices = Devices.layer({
     computerName: options.localServerName,

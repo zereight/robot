@@ -7,7 +7,15 @@ import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
 import { PAGE_CONTROLS_MAX } from "../web/pageControls.ts"
 import type { ConnectionsOptions } from "./Connections.ts"
-import type { BrowserAct, BrowserPage, PlatformService } from "./Platform.ts"
+import type {
+  BrowserAct,
+  BrowserActionState,
+  BrowserDialog,
+  BrowserInspect,
+  BrowserPage,
+  NavigationPolicy,
+  PlatformService,
+} from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
 import type { WorkflowCheckOptions } from "./WorkflowCheck.ts"
@@ -19,6 +27,18 @@ export interface FakeBrowserControl {
   label: string
   x: number
   y: number
+  /** The control submits a form with this method (lower case). */
+  submit?: { method: string; host?: string }
+  /** A password, a code or a card field. */
+  secure?: boolean
+  /** A click opens this dialog; the click returns while it waits. */
+  opens?: BrowserDialog
+  /** A click opens a file chooser. */
+  chooser?: boolean
+  /** A click goes to this address, as a link does. */
+  goes?: string
+  /** A select field: the options a choice may name. */
+  options?: string[]
 }
 
 /** What a test puts on a fake page before the agent acts: its controls, focus, errors, load. */
@@ -27,6 +47,19 @@ export interface FakeBrowserSeed {
   focus?: string | null
   errors?: string[]
   loading?: boolean
+  /** The text of the page. Default: "Text of <address>". */
+  text?: string
+  title?: string
+  /** An address that redirects to another one, as a server does: `from -> to`. */
+  redirects?: Record<string, string>
+  /** The page shows a password field in the page itself, or in a frame of this site. */
+  secure?: "page" | { frame: string }
+  /** The page plays sound. */
+  audible?: boolean
+  /** The picture the page gives. */
+  picture?: Uint8Array
+  /** The page does not answer: the next action waits until the test calls the release. */
+  hang?: boolean
 }
 
 /** A platform for unit tests: a temp data folder and a trash list. */
@@ -60,83 +93,167 @@ export const testPlatform = () => {
     /** Whether the computer runs on its battery. A test sets it and calls `powerChanged`. */
     battery: false,
     powerListeners: [] as (() => void)[],
+    /** The system says that memory is low (spec 007, "Idle work"). */
+    memoryListeners: [] as (() => void)[],
+    lowMemory: () => {
+      for (const l of shell.memoryListeners) l()
+    },
     /** The computer changes between its battery and power. */
     powerChanged: () => {
       for (const l of shell.powerListeners) l()
     },
   }
-  const browserSeeds = new Map<
-    string,
-    { controls: FakeBrowserControl[]; focus: string | null; errors: string[]; loading: boolean }
-  >()
+  interface Seed {
+    controls: FakeBrowserControl[]
+    focus: string | null
+    errors: string[]
+    loading: boolean
+    text: string | null
+    title: string
+    redirects: Record<string, string>
+    secure: "page" | { frame: string } | null
+    audible: boolean
+    picture: Uint8Array
+    hang: boolean
+  }
+  const browserSeeds = new Map<string, Seed>()
+  const freshSeed = (): Seed => ({
+    controls: [],
+    focus: null,
+    errors: [],
+    loading: false,
+    text: null,
+    title: "Fake page",
+    redirects: {},
+    secure: null,
+    audible: false,
+    picture: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    hang: false,
+  })
   const seedBrowserPage = (workflowId: string, seed: FakeBrowserSeed) => {
     browserSeeds.set(workflowId, {
+      ...freshSeed(),
       controls: seed.controls ?? [],
       focus: seed.focus ?? null,
       errors: [...(seed.errors ?? [])],
       loading: seed.loading ?? false,
+      text: seed.text ?? null,
+      title: seed.title ?? "Fake page",
+      redirects: seed.redirects ?? {},
+      secure: seed.secure ?? null,
+      audible: seed.audible ?? false,
+      picture: seed.picture ?? freshSeed().picture,
+      hang: seed.hang ?? false,
     })
   }
+  /** What a test may change on a page that is open. */
+  const browserHang = new Map<string, { release: () => void }>()
   const fakeBrowser = (workflowId: string): BrowserPage => {
     let open = false
     let url = ""
+    let dialog: BrowserDialog | null = null
+    let chooser = false
+    let policy: NavigationPolicy | undefined
+    let blocked: string[] = []
     const listeners: (() => void)[] = []
     const state = () => {
       const known = browserSeeds.get(workflowId)
       if (known) return known
-      const fresh = {
-        controls: [] as FakeBrowserControl[],
-        focus: null as string | null,
-        errors: [] as string[],
-        loading: false,
-      }
+      const fresh = freshSeed()
       browserSeeds.set(workflowId, fresh)
       return fresh
     }
-    /** A click or a type: a number picks from the list, a selector must fit exactly one. */
-    const act = (target: string): BrowserAct => {
+    /** Goes to an address as a page does: each hop meets the rule. */
+    const go = async (to: string): Promise<string> => {
+      let next = to
+      for (let hops = 0; hops < 10; hops++) {
+        if (policy && !(await policy(next))) {
+          try {
+            blocked.push(new URL(next).hostname)
+          } catch {
+            blocked.push(next)
+          }
+          return "about:blank"
+        }
+        const moved = state().redirects[next]
+        if (!moved) return next
+        next = moved
+      }
+      return next
+    }
+    const stall = async () => {
+      if (!state().hang) return
+      await new Promise<void>((resolve) => browserHang.set(workflowId, { release: resolve }))
+    }
+    const fit = (target: string): FakeBrowserControl | BrowserAct => {
       const s = state()
       if (/^\d+$/.test(target)) {
         const at = Number(target) - 1
-        if (at < 0 || at >= s.controls.length) return { ok: false, reason: "none" }
-      } else {
-        const fits = s.controls.filter((c) => c.selector === target)
-        if (fits.length === 0) return { ok: false, reason: "none" }
-        if (fits.length > 1)
-          return {
-            ok: false,
-            reason: "many",
-            candidates: fits.slice(0, 5).map((c) => ({
-              index: s.controls.indexOf(c) + 1,
-              role: c.role,
-              label: c.label,
-              x: c.x,
-              y: c.y,
-            })),
-            total: fits.length,
-          }
+        const found = s.controls[at]
+        if (!found) return { ok: false, reason: "none" }
+        return found
       }
+      const fits = s.controls.filter((c) => c.selector === target)
+      if (fits.length === 0) return { ok: false, reason: "none" }
+      if (fits.length > 1)
+        return {
+          ok: false,
+          reason: "many",
+          candidates: fits.slice(0, 5).map((c) => ({
+            index: s.controls.indexOf(c) + 1,
+            role: c.role,
+            label: c.label,
+            x: c.x,
+            y: c.y,
+          })),
+          total: fits.length,
+        }
+      return fits[0] as FakeBrowserControl
+    }
+    const current = (): BrowserActionState => {
+      const s = state()
       const errors = s.errors
       s.errors = []
       return {
-        ok: true,
-        state: { url, title: "Fake page", loading: s.loading, focus: s.focus, errors },
+        url,
+        title: s.title,
+        loading: s.loading,
+        focus: s.focus,
+        errors,
+        dialog,
+        chooser,
       }
+    }
+    const act = async (target: string, click: boolean): Promise<BrowserAct> => {
+      await stall()
+      const found = fit(target)
+      if (!("selector" in found)) return found
+      if (click) {
+        if (found.opens) dialog = found.opens
+        if (found.chooser) chooser = true
+        if (found.goes) url = await go(found.goes)
+      }
+      return { ok: true, state: current() }
     }
     return {
       isOpen: () => open,
+      currentUrl: () => (open ? url : ""),
       open: async (next) => {
+        await stall()
         open = true
-        url = next
+        url = await go(next)
+        dialog = null
+        chooser = false
         browserLog.push(`${workflowId}:open ${next}`)
-        return { url, title: "Fake page" }
+        return { url, title: state().title }
       },
       read: async () => {
+        await stall()
         const s = state()
         return {
           url,
-          title: "Fake page",
-          text: `Text of ${url}`,
+          title: s.title,
+          text: s.text ?? `Text of ${url}`,
           controls: s.controls
             .slice(0, PAGE_CONTROLS_MAX)
             .map((c, i) => ({ index: i + 1, role: c.role, label: c.label })),
@@ -145,12 +262,68 @@ export const testPlatform = () => {
       },
       click: async (target) => {
         browserLog.push(`${workflowId}:click ${target}`)
-        return act(target)
+        return act(target, true)
       },
       type: async (target, text) => {
         browserLog.push(`${workflowId}:type ${target} ${text}`)
-        return act(target)
+        return act(target, false)
       },
+      inspect: async (target): Promise<BrowserInspect> => {
+        const found = fit(target)
+        if (!("selector" in found)) return found as BrowserInspect
+        return {
+          ok: true,
+          facts: {
+            role: found.role,
+            label: found.label,
+            submit: found.submit !== undefined,
+            method: found.submit?.method ?? "get",
+            secure: found.secure === true,
+          },
+          formHost: found.submit?.host ?? null,
+        }
+      },
+      select: async (target, value) => {
+        browserLog.push(`${workflowId}:select ${target} ${value}`)
+        const found = fit(target)
+        if (!("selector" in found)) return found
+        if (!found.options?.includes(value)) return { ok: false, reason: "none" }
+        return { ok: true, state: current() }
+      },
+      screenshot: async () => {
+        browserLog.push(`${workflowId}:screenshot`)
+        return state().picture
+      },
+      securePlace: async () => {
+        const secure = state().secure
+        if (secure === null) return null
+        return secure === "page" ? { kind: "page" } : { kind: "frame", site: secure.frame }
+      },
+      dialog: () => dialog,
+      answerDialog: async (accept, text) => {
+        if (!dialog) return { ok: false }
+        browserLog.push(
+          `${workflowId}:dialog ${accept ? "accept" : "dismiss"}${text ? ` ${text}` : ""}`,
+        )
+        dialog = null
+        return { ok: true, state: current() }
+      },
+      chooserOpen: () => chooser,
+      upload: async (paths) => {
+        if (!chooser) return { ok: false, reason: "no_chooser" }
+        chooser = false
+        browserLog.push(`${workflowId}:upload ${paths.length}`)
+        return { ok: true }
+      },
+      setPolicy: (next) => {
+        policy = next
+      },
+      drainBlocked: () => {
+        const list = blocked
+        blocked = []
+        return list
+      },
+      audible: () => open && state().audible,
       evaluate: async () => {
         throw new Error("The fake browser runs no script")
       },
@@ -165,7 +338,11 @@ export const testPlatform = () => {
       close: () => {
         if (!open) return
         open = false
+        dialog = null
+        chooser = false
         browserLog.push(`${workflowId}:close`)
+        // A step that waits for a page that is gone ends with the page.
+        browserHang.get(workflowId)?.release()
         for (const l of listeners) l()
       },
       onClosed: (l) => {
@@ -234,6 +411,9 @@ export const testPlatform = () => {
     clearBrowserProfile: async (profileId) => {
       clearedProfiles.push(profileId)
     },
+    onLowMemory: (listener) => {
+      shell.memoryListeners.push(listener)
+    },
     diagnosticReport: async () => ({ text: "report", path: join(dataDir, "logs", "report.txt") }),
   }
   return {
@@ -249,6 +429,8 @@ export const testPlatform = () => {
     clearedProfiles,
     shell,
     seedBrowserPage,
+    /** Lets a page that was seeded to hang answer. */
+    releaseBrowser: (workflowId: string) => browserHang.get(workflowId)?.release(),
   }
 }
 
@@ -265,6 +447,8 @@ export const testRuntime = (
     connections?: ConnectionsOptions
     /** The check of workflows (spec 010). A test turns the check in the background off. */
     check?: WorkflowCheckOptions
+    /** The clock and the idle timer of the browser work (spec 007). A test calls the sweep. */
+    browser?: { now?: () => number; sweepMs?: number }
   } = {},
 ) => {
   const {
@@ -280,6 +464,7 @@ export const testRuntime = (
     clearedProfiles,
     shell,
     seedBrowserPage,
+    releaseBrowser,
   } = testPlatform()
   const events: { event: string; payload: unknown; server?: string }[] = []
   const runtime = ManagedRuntime.make(
@@ -296,6 +481,7 @@ export const testRuntime = (
       ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
       ...(options.connections ? { connections: options.connections } : {}),
       check: { auto: false, ...options.check },
+      browser: { sweepMs: 0, ...options.browser },
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.
@@ -314,6 +500,8 @@ export const testRuntime = (
     clearedProfiles,
     shell,
     seedBrowserPage,
+    releaseBrowser,
+    platform,
   }
 }
 

@@ -33,6 +33,7 @@ import { ActionLog } from "./services/ActionLog.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
+import { Browsers } from "./services/Browsers.ts"
 import { Cards } from "./services/Cards.ts"
 import { Chat } from "./services/Chat.ts"
 import { Connections } from "./services/Connections.ts"
@@ -289,6 +290,31 @@ export const handlers: Handlers = {
     ).pipe(
       Effect.flatMap(({ workflowId, profileId }) =>
         BrowserProfiles.use((b) => b.assign(workflowId, profileId)),
+      ),
+      done,
+    ),
+  "browser.state": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) =>
+        Browsers.use((b) => Effect.sync(() => b.state(workflowId))),
+      ),
+    ),
+  "browser.place": (input) =>
+    decode(
+      Schema.Struct({
+        workflowId: Schema.String,
+        bounds: Schema.NullOr(
+          Schema.Struct({
+            x: Schema.Number,
+            y: Schema.Number,
+            width: Schema.Number,
+            height: Schema.Number,
+          }),
+        ),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ workflowId, bounds }) =>
+        Browsers.use((b) => Effect.sync(() => b.place(workflowId, bounds))),
       ),
       done,
     ),
@@ -773,6 +799,7 @@ export const handlers: Handlers = {
           }),
           Schema.Struct({ kind: Schema.Literal("question"), text: Schema.String }),
           Schema.Struct({ kind: Schema.Literal("pick"), optionId: Schema.String }),
+          Schema.Struct({ kind: Schema.Literal("control") }),
         ]),
       }),
     )(input).pipe(

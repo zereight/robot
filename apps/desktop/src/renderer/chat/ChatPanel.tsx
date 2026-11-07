@@ -27,6 +27,7 @@ import { Button } from "../ui/controls.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
+import { BrowserStrip } from "./BrowserStrip.tsx"
 import { Composer } from "./Composer.tsx"
 import cards from "./cards.module.css"
 import styles from "./chat.module.css"
@@ -512,6 +513,7 @@ export const ChatPanel = (props: {
                 </div>
               )}
             </Show>
+            <BrowserStrip workflowId={props.workflowId} />
             <Composer
               history={h()}
               replyTo={replyTo()}

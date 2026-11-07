@@ -41,6 +41,17 @@ const roleOf = (el) => {
   if (el.isContentEditable) return "textbox";
   return tag.toLowerCase();
 };
+const SECURE_NAME = /pass(?:word|wd)?|passcode|otp|one.?time|verification|card.?(?:number|no)|cvv|cvc|secret|token|비밀번호|인증|카드번호/i;
+const SECURE_AUTO = /cc-|one-time-code|current-password|new-password/i;
+const isSecure = (el) => {
+  if (!el || el.tagName !== "INPUT") return false;
+  const kind = (el.type || "text").toLowerCase();
+  if (kind === "password") return true;
+  if (kind === "hidden" || kind === "checkbox" || kind === "radio" || kind === "submit" || kind === "button") return false;
+  const auto = el.getAttribute("autocomplete") || "";
+  if (SECURE_AUTO.test(auto)) return true;
+  return SECURE_NAME.test([el.name, el.id, el.getAttribute("aria-label") || ""].join(" "));
+};
 const labelOf = (el) => {
   const aria = el.getAttribute && el.getAttribute("aria-label");
   if (aria) return aria.trim().split("\\n")[0].slice(0, 80);
@@ -51,7 +62,7 @@ const labelOf = (el) => {
   }
   const raw =
     el.innerText ||
-    el.value ||
+    (isSecure(el) ? "" : el.value) ||
     (el.getAttribute &&
       (el.getAttribute("placeholder") ||
         el.getAttribute("alt") ||
@@ -105,29 +116,13 @@ if (!window.__robotErrors) {
 }
 `
 
-/** What an act script answers: acted, no fit, or the fit is unclear. */
-export interface PageActAnswer {
-  ok: boolean
-  reason?: "none" | "many"
-  total?: number
-  candidates?: { index: number; role: string; label: string; x: number; y: number }[]
-}
-
 /**
- * A script that clicks the control that the target names, or types into it. A plain number
- * picks from the listing; anything else is a CSS selector. A selector that fits more than one
- * listed control acts on nothing and answers with up to 5 candidates instead. A fit outside
- * the listing (a hidden control) keeps the old behaviour: the first fit acts.
+ * The part of an act script that finds the control. A plain number picks from the listing; anything
+ * else is a CSS selector. A selector that fits more than one listed control gives up with up to 5
+ * candidates; a fit outside the listing (a hidden control) keeps the old behaviour: the first fit.
+ * It needs `target` and `list`, and sets `el`.
  */
-export const pageActScript = (
-  kind: "click" | "type",
-  target: string,
-  text = "",
-): string => `(() => {
-${CONTROLS_CORE}
-${TRAP_ERRORS}
-const target = ${JSON.stringify(target)};
-const list = listOf();
+const FIND_TARGET = `
 let el = null;
 if (/^\\d+$/.test(target)) {
   const found = list[Number(target) - 1];
@@ -156,6 +151,32 @@ if (/^\\d+$/.test(target)) {
   el = listed.length === 1 ? listed[0] : matches[0] || null;
   if (!el) return { ok: false, reason: "none" };
 }
+`
+
+/** What an act script answers: acted, no fit, or the fit is unclear. */
+export interface PageActAnswer {
+  ok: boolean
+  reason?: "none" | "many"
+  total?: number
+  candidates?: { index: number; role: string; label: string; x: number; y: number }[]
+}
+
+/**
+ * A script that clicks the control that the target names, or types into it. A plain number
+ * picks from the listing; anything else is a CSS selector. A selector that fits more than one
+ * listed control acts on nothing and answers with up to 5 candidates instead. A fit outside
+ * the listing (a hidden control) keeps the old behaviour: the first fit acts.
+ */
+export const pageActScript = (
+  kind: "click" | "type",
+  target: string,
+  text = "",
+): string => `(() => {
+${CONTROLS_CORE}
+${TRAP_ERRORS}
+const target = ${JSON.stringify(target)};
+const list = listOf();
+${FIND_TARGET}
 ${
   kind === "click"
     ? "el.click();"
@@ -210,4 +231,84 @@ const focus =
     ? roleOf(active) + ' "' + labelOf(active) + '"'
     : null;
 return { focus, errors: errors.slice(0, 5) };
+})()`
+
+/** What the inspect script answers: the facts of one control, or no fit, or an unclear fit. */
+export interface PageInspectAnswer {
+  ok: boolean
+  reason?: "none" | "many"
+  total?: number
+  candidates?: { index: number; role: string; label: string; x: number; y: number }[]
+  facts?: { role: string; label: string; submit: boolean; method: string; secure: boolean }
+  formHost?: string | null
+}
+
+/**
+ * A script that finds the control a target names, with the same fit rules as `pageActScript`, and
+ * answers what a click on it would be (spec 007): does it submit a form, with which method and to
+ * which host, and is it a password, a code or a card field. It acts on nothing.
+ */
+export const pageInspectScript = (target: string): string => `(() => {
+${CONTROLS_CORE}
+const target = ${JSON.stringify(target)};
+const list = listOf();
+${FIND_TARGET}
+const form = el.form || (el.closest ? el.closest("form") : null);
+const kind = (el.type || "").toLowerCase();
+const submit =
+  !!form &&
+  ((el.tagName === "BUTTON" && (kind === "" || kind === "submit")) ||
+    (el.tagName === "INPUT" && (kind === "submit" || kind === "image")));
+let formHost = null;
+if (form) {
+  try {
+    formHost = new URL(form.getAttribute("action") || location.href, location.href).host;
+  } catch (bad) {
+    formHost = null;
+  }
+}
+return {
+  ok: true,
+  facts: {
+    role: roleOf(el),
+    label: labelOf(el),
+    submit,
+    method: form ? String(form.getAttribute("method") || "get").toLowerCase() : "get",
+    secure: isSecure(el),
+  },
+  formHost,
+};
+})()`
+
+/**
+ * A script that chooses an option of a list. The option is found by its value, then by its text.
+ * It answers with the same shape as an act script.
+ */
+export const pageSelectScript = (target: string, value: string): string => `(() => {
+${CONTROLS_CORE}
+${TRAP_ERRORS}
+const target = ${JSON.stringify(target)};
+const want = ${JSON.stringify(value)};
+const list = listOf();
+${FIND_TARGET}
+if (el.tagName !== "SELECT") return { ok: false, reason: "none" };
+const options = Array.from(el.options);
+const hit =
+  options.find((o) => o.value === want) ||
+  options.find((o) => o.text.trim() === want.trim()) ||
+  options.find((o) => o.text.trim().toLowerCase() === want.trim().toLowerCase());
+if (!hit) return { ok: false, reason: "none" };
+el.value = hit.value;
+el.dispatchEvent(new Event("input", { bubbles: true }));
+el.dispatchEvent(new Event("change", { bubbles: true }));
+return { ok: true };
+})()`
+
+/** A script that says if the document shows a password, a code or a card field. */
+export const pageSecureScript = (): string => `(() => {
+${CONTROLS_CORE}
+for (const el of document.querySelectorAll("input")) {
+  if (isSecure(el) && visibleOf(el)) return true;
+}
+return false;
 })()`

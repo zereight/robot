@@ -1,3 +1,4 @@
+import type { ControlFacts, ControlPlace } from "@robot/shared"
 import { Context } from "effect"
 import type { Resolver } from "../web/fetch.ts"
 
@@ -36,6 +37,12 @@ export interface BrowserCandidate {
   y: number
 }
 
+/** A dialog of the page that waits for an answer (spec 007, "Page dialogs"). */
+export interface BrowserDialog {
+  readonly kind: "alert" | "confirm" | "prompt" | "beforeunload"
+  readonly text: string
+}
+
 /** The short state that an action in the page (click, type) returns. */
 export interface BrowserActionState {
   url: string
@@ -46,6 +53,12 @@ export interface BrowserActionState {
   focus: string | null
   /** The errors of the page since the last action. Reading them clears them. */
   errors: string[]
+  /** A dialog of the page that the action opened and nobody answered yet. */
+  dialog?: BrowserDialog | null
+  /** True when the action opened a file chooser that the next upload answers. */
+  chooser?: boolean
+  /** A dialog that nobody answered in 30 seconds, and the page dismissed (spec 007). */
+  dismissed?: BrowserDialog
 }
 
 /** What a click or a type gives back: the new state, no fit, or up to 5 candidates. */
@@ -53,6 +66,18 @@ export type BrowserAct =
   | { ok: true; state: BrowserActionState }
   | { ok: false; reason: "none" }
   | { ok: false; reason: "many"; candidates: BrowserCandidate[]; total: number }
+
+/** What the app knows about the one control that a target names, before an action on it. */
+export type BrowserInspect =
+  | { ok: true; facts: ControlFacts; formHost: string | null }
+  | { ok: false; reason: "none" }
+  | { ok: false; reason: "many"; candidates: BrowserCandidate[]; total: number }
+
+/**
+ * Says if a page may go to an address (spec 007, "Addresses of a web page fetch"). The page asks
+ * it for every request of its own: the first load, a redirect, a link, a frame, a script.
+ */
+export type NavigationPolicy = (url: string) => Promise<boolean>
 
 export interface BrowserPage {
   isOpen(): boolean
@@ -73,6 +98,36 @@ export interface BrowserPage {
   click(target: string): Promise<BrowserAct>
   /** Types into the control that the target names, with the same fit rules as a click. */
   type(target: string, text: string): Promise<BrowserAct>
+  /** Says what a click on this target would be, with the same fit rules as a click. */
+  inspect(target: string): Promise<BrowserInspect>
+  /** Chooses an option of a list: the option whose value or text is `value`. */
+  select(target: string, value: string): Promise<BrowserAct>
+  /** A picture of the page as PNG. */
+  screenshot(): Promise<Uint8Array>
+  /**
+   * Where a password, a code or a card field is: in the page itself, or in a frame (spec 007,
+   * "Secure fields in frames"). Null when the page shows none.
+   */
+  securePlace(): Promise<ControlPlace | null>
+  /** The dialog of the page that waits now, or null. A dialog nobody answers in 30 seconds is dismissed. */
+  dialog(): BrowserDialog | null
+  /** Answers the dialog that waits. Fails when none waits. */
+  answerDialog(accept: boolean, text?: string): Promise<{ ok: boolean; state?: BrowserActionState }>
+  /**
+   * Fills the file chooser that an action opened with these files. Fails when no chooser waits.
+   * The caller checked the paths.
+   */
+  upload(paths: string[]): Promise<{ ok: true } | { ok: false; reason: "no_chooser" | "failed" }>
+  /** True while an action's file chooser waits for `upload`. */
+  chooserOpen(): boolean
+  /** Sets the rule for the addresses of this page, or removes it. */
+  setPolicy(policy: NavigationPolicy | undefined): void
+  /** Takes the hosts that the page was kept from since the last call. */
+  drainBlocked(): string[]
+  /** True while the page plays sound. */
+  audible(): boolean
+  /** The address of the page now, or an empty text when no page is open. */
+  currentUrl(): string
   /**
    * Runs a script in the page and gives back its result. Only the app's own pages use it (the
    * Teams page, spec 028). No tool of an agent passes text of a model to it.
@@ -160,6 +215,11 @@ export interface PlatformService {
   setBrowserProfile(workflowId: string, profileId: string | undefined): void
   /** Deletes the saved data of a browser profile: cookies, sign-ins and the rest. */
   clearBrowserProfile(profileId: string): Promise<void>
+  /**
+   * Calls back when the system says that memory is low (spec 007, "Idle work"). The app then
+   * unloads idle pages at once.
+   */
+  onLowMemory(listener: () => void): void
   /**
    * The diagnostic report of the whole app: the app screen, the Teams page and the browser pages
    * (sizes, places, counts of clicks), the processes, and the tail of each log. It holds no

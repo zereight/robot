@@ -35,6 +35,8 @@ export interface CardAsk {
   readonly options?: RunCard["options"]
   readonly pickReason?: string | null
   readonly threshold?: number | null
+  /** A control card: the host of the page and the place of the secure field (spec 007). */
+  readonly control?: RunCard["control"]
   /** Ends the wait and removes the card: the run was stopped, or the turn ended. */
   readonly signal: AbortSignal
 }
@@ -133,6 +135,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           options: p.options,
           pickReason: p.pickReason,
           threshold: p.threshold,
+          control: p.control ?? null,
           createdAt: r.created_at,
           answeredAt: r.answered_at,
           answer: r.answer,
@@ -163,6 +166,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
             options: a.options ?? [],
             pickReason: a.pickReason ?? null,
             threshold: a.threshold ?? null,
+            control: a.control ?? null,
           }
           db.run(
             `INSERT INTO task_card (id, workflow_id, run_id, task_id, kind, payload, created_at)
@@ -232,6 +236,10 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
               const text = answer.text.trim()
               if (text === "") return yield* new AppError({ code: "invalid_input" })
               close(cardId, text, false, actor?.name ?? null)
+            } else if (answer.kind === "control") {
+              // A linked device cannot take or give back the browser of this computer (spec 012).
+              if (actor) return yield* new AppError({ code: "not_allowed" })
+              close(cardId, "given_back", false)
             } else {
               if (!waiter.payload.options.some((o) => o.id === answer.optionId))
                 return yield* new AppError({ code: "invalid_input" })
