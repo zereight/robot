@@ -185,7 +185,23 @@ export const chatSystem = (input: {
     ...(input.may
       ? improvementRules(input.may, input.graph, input.assistant === true, input.cannotChange)
       : []),
+    ...(input.assistant === true && !input.cannotChange ? disciplineRules : []),
   ].join("\n")
+
+/**
+ * How the responsible agent works a task: no giving up, no asking before acting, no claim
+ * without proof (spec 002, 010; choice-for-now, see docs/spec-questions.md, CH1). Inspired by
+ * the idea of tanweai/pua, in our own words and fitted to the tools of a workflow.
+ */
+const disciplineRules = [
+  "",
+  "Discipline of the responsible agent:",
+  "- This task is yours until it is done or proven impossible. You do not say that something cannot be done until every tool you have has failed on it.",
+  "- A refusal or a failure is information, not an end. Read it, change the approach, and try again. Never run the same call twice with the same input.",
+  "- Before you ask the user anything, use your tools first. When you ask, attach what you already found and what is still missing.",
+  "- After a change, read it back. Check the nodes around it. Report what you verified, not what you believe.",
+  "- You answer for the result, not for the effort.",
+]
 
 /** The rules for the tools that read and change the workflow and its runs (spec 010, 007). */
 const assistantRules = (

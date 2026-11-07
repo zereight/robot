@@ -71,3 +71,29 @@ describe("what the chat may change (spec 010, 012)", () => {
     expect(system).toContain("change the graph and the prompts of nodes directly")
   })
 })
+
+describe("discipline of the responsible agent (spec 002, 010)", () => {
+  test("a turn with full rights reads the no-give-up discipline", () => {
+    const system = chatSystem(base)
+    expect(system).toContain("Discipline of the responsible agent")
+    expect(system).toContain("until it is done or proven impossible")
+    expect(system).toContain("Never run the same call twice with the same input")
+    expect(system).toContain("read it back")
+  })
+
+  test("a turn that cannot change reads no discipline to exhaust change tools", () => {
+    const device = chatSystem({
+      ...base,
+      cannotChange: { reason: "device", server: "Office" },
+    })
+    expect(device).not.toContain("Discipline of the responsible agent")
+    const readOnly = chatSystem({ ...base, cannotChange: { reason: "read_only" } })
+    expect(readOnly).not.toContain("Discipline of the responsible agent")
+  })
+
+  test("a reflect turn without tools reads no discipline", () => {
+    const { assistant: _assistant, ...rest } = base
+    const system = chatSystem(rest)
+    expect(system).not.toContain("Discipline of the responsible agent")
+  })
+})
