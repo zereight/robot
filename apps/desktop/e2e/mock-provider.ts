@@ -18,6 +18,10 @@ export interface MockProvider {
   readonly openaiUrl: string
   /** Every chat request that the app sent, in order. */
   readonly requests: RecordedRequest[]
+  /** How many requests wait for `release` (a message `tool-hold ...`). */
+  held(): number
+  /** Lets every request that waits go on. */
+  release(): void
   close(): Promise<void>
 }
 
@@ -43,6 +47,8 @@ const text = (content: unknown) =>
  * A stand-in for an OpenAI-compatible provider. What it answers depends on the last message:
  * - `slow`: 60 words, one every 50 ms, so a test can stop the reply;
  * - `tool <name> <json>`: one call of that tool; after the tool result it says "Tool said: ...";
+ * - `tool-hold <name> <json>`: the same, but the answer waits until the test calls `release()`, so the
+ *   test can change something in the app while the turn works;
  * - `tools <n> <name> <json>`: the same call n times in a row, then "Tool said: ...";
  * - the turn after a run (a message that starts "The run <id> has ended."): one call of the tool that a
  *   line `PROPOSE:<name> <json>` in the facts of the run names, when there is one;
@@ -55,6 +61,7 @@ const text = (content: unknown) =>
 export const startMockProvider = async (): Promise<MockProvider> => {
   const requests: RecordedRequest[] = []
   const flaky = new Map<string, number>()
+  let waiting: (() => void)[] = []
   const server: Server = createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) {
       res.writeHead(401, { "content-type": "application/json" })
@@ -123,14 +130,15 @@ export const startMockProvider = async (): Promise<MockProvider> => {
         finish()
         return
       }
-      const tool = /^tool (\w+)\s*(.*)$/s.exec(said)
+      const tool = /^tool(-hold)? (\w+)\s*(.*)$/s.exec(said)
       if (tool) {
+        if (tool[1]) await new Promise<void>((resolve) => waiting.push(resolve))
         send({
           tool_calls: [
             {
               index: 0,
               id: `call-${requests.length}`,
-              function: { name: tool[1], arguments: tool[2] || "{}" },
+              function: { name: tool[2], arguments: tool[3] || "{}" },
             },
           ],
         })
@@ -184,6 +192,12 @@ export const startMockProvider = async (): Promise<MockProvider> => {
   return {
     openaiUrl: `http://127.0.0.1:${port}/v1`,
     requests,
+    held: () => waiting.length,
+    release: () => {
+      const go = waiting
+      waiting = []
+      for (const resolve of go) resolve()
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections()

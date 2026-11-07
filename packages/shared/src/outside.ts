@@ -56,7 +56,10 @@ export const carriesProgramMark = (source: OutsideSource | null | undefined): bo
  * - `feedback`: adding feedback to a run in the chat (003, 007),
  * - `change`: a change of a node prompt or of the graph that the responsible document proposes in a
  *   turn of the chat (007, "Guarded steps"; 002, "Self-improvement"). A change of the document is
- *   not a guarded step: it is a proposal, and the user decides on its card.
+ *   not a guarded step: it is a proposal, and the user decides on its card,
+ * - `run`: a run that the responsible document starts in a turn of the chat. The spec does not list
+ *   it as a guarded step. It is one here because a run uses the tools of the workflow, and a turn
+ *   that holds outside content may be steered (docs/spec-questions.md, 010).
  */
 export const GUARDED_STEPS = [
   "memory",
@@ -65,6 +68,7 @@ export const GUARDED_STEPS = [
   "secret_new",
   "feedback",
   "change",
+  "run",
 ] as const
 export type GuardedStep = (typeof GUARDED_STEPS)[number]
 
@@ -176,6 +180,7 @@ export const ACTION_KINDS = [
   "secret_new",
   "feedback",
   "change",
+  "run",
   MANAGE_STEP,
   "file",
   "shell",

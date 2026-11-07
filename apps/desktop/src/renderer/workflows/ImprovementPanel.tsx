@@ -2,13 +2,14 @@ import {
   charLength,
   type DiffSegment,
   DOCUMENT_MAX,
+  GRAPH_FIELD_KEYS,
   GRAPH_PROPOSAL_TEXT_MAX,
   type GraphChange,
-  type GraphConnectionChange,
   type GraphNodeChange,
   graphChangeSize,
+  graphConnectionLine,
+  graphNodeLine,
   MEMORY_USER_MAX,
-  type MessageKey,
   type Proposal,
   type ProposalsView,
   type WorkflowDetail,
@@ -24,7 +25,7 @@ import { Button, Switch } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { tabKeyDown } from "../ui/tabKeys.ts"
 import styles from "./improve.module.css"
-import { GRAPH_FIELD_KEYS, nodeDetails, problemLine } from "./improveView.ts"
+import { nodeDetails, problemLine } from "./improveView.ts"
 
 const TABS = ["waiting", "log"] as const
 type Tab = (typeof TABS)[number]
@@ -55,25 +56,6 @@ const Diff = (props: { segments: readonly DiffSegment[] }) => {
       </For>
     </pre>
   )
-}
-
-const nodeLine = (t: ReturnType<typeof useApp>["t"], n: GraphNodeChange) =>
-  n.fields.length > 0
-    ? t("improve.graph.node.fields", {
-        number: n.number,
-        name: n.name,
-        fields: n.fields
-          .map((f) => t(GRAPH_FIELD_KEYS[f as keyof typeof GRAPH_FIELD_KEYS] as MessageKey))
-          .join(", "),
-      })
-    : t("improve.graph.node", { number: n.number, name: n.name })
-
-const connectionLine = (t: ReturnType<typeof useApp>["t"], c: GraphConnectionChange) => {
-  const from = t("improve.graph.node", { number: c.from.number, name: c.from.name })
-  const to = t("improve.graph.node", { number: c.to.number, name: c.to.name })
-  return c.option === null
-    ? t("improve.graph.connection", { from, to })
-    : t("improve.graph.connection.option", { from, to, option: c.option })
 }
 
 /** The values of one node of a graph change, as text: the new text is on the card before "Accept". */
@@ -131,12 +113,12 @@ const GraphDiff = (props: { change: GraphChange }) => {
   const connections = [
     [
       "improve.graph.connectionsAdded",
-      () => props.change.addedConnections.map((c) => connectionLine(t, c)),
+      () => props.change.addedConnections.map((c) => graphConnectionLine(t, c)),
       "connections-added",
     ],
     [
       "improve.graph.connectionsRemoved",
-      () => props.change.removedConnections.map((c) => connectionLine(t, c)),
+      () => props.change.removedConnections.map((c) => graphConnectionLine(t, c)),
       "connections-removed",
     ],
   ] as const
@@ -161,7 +143,7 @@ const GraphDiff = (props: { change: GraphChange }) => {
               <For each={list()}>
                 {(n) => (
                   <li data-testid="proposal-graph-node">
-                    {nodeLine(t, n)}
+                    {graphNodeLine(t, n)}
                     <NodeDetails node={n} />
                   </li>
                 )}

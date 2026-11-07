@@ -145,7 +145,7 @@ export interface RunCard {
   /** What the node wants to do: the command, the path, the host, the question, the feedback text. */
   readonly summary: string
   /** The kind of step of an approval card, for the rules; "feedback" for the chat. */
-  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | null
+  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | "run" | null
   /** True when the card has Allow once and Deny only (no "Always allow"). */
   readonly once: boolean
   /** The first source of outside content, when the card says that the turn or task holds it. */

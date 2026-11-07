@@ -1,4 +1,5 @@
 import {
+  assistantStepText,
   type ChatPart,
   catalogues,
   chatFiles,
@@ -45,6 +46,7 @@ const NoteLine = (props: { note: Note; workflowId: string }) => {
     const n = props.note
     if (n.note === "busy_retry") return t("chat.busy", { n: n.n, of: n.of })
     if (n.note === "proposals_full") return t("improve.full")
+    if (n.note === "not_allowed") return t("chat.notAllowed", { server: n.server })
     if (n.note === "memory_saved") return t("chat.memory.saved", { text: n.text })
     if (n.note === "proposal")
       return n.proposalKind === "prompt"
@@ -99,26 +101,57 @@ const NoteLine = (props: { note: Note; workflowId: string }) => {
   )
 }
 
+/**
+ * The line of the card of such a tool, in the words of the interface. Plain text, never markup.
+ * The deed form ("Removed node 2") shows only for a step that happened. A step that is still
+ * running, that failed, or that did not happen shows as a wish ("Remove node 2"), so the card never
+ * claims a change that the graph does not have.
+ */
+const assistantCardText = (
+  part: Tool,
+  t: (key: MessageKey, params?: MessageParams) => string,
+): string | null =>
+  assistantStepText(
+    t,
+    part.name,
+    part.input,
+    part.state === "done" && part.notRun !== true ? "deed" : "wanted",
+  )
+
+/** The word for the state of a step: a step that did not happen says so, whatever its state. */
+const stateWord = (part: Tool, t: (key: MessageKey, params?: MessageParams) => string): string =>
+  part.notRun === true ? t("chat.tool.notRun") : t(`chat.tool.${part.state}`)
+
 /** A tool step as a compact card: its name and its state. A click opens the details. */
 const ToolCard = (props: { part: Tool }) => {
   const { t } = useApp()
   // The tool that adds feedback shows the line of the spec, not its name and its arguments.
   if (props.part.name === "add_run_feedback")
     return (
-      <div class={styles.tool} data-testid="tool-card" data-state={props.part.state}>
+      <div
+        class={styles.tool}
+        data-testid="tool-card"
+        data-state={props.part.state}
+        data-not-run={props.part.notRun === true}
+      >
         <span class={styles.toolSummary}>
           <Wrench size={14} aria-hidden="true" />
           <span class={styles.toolText}>{t("chat.tool.feedback")}</span>
-          <span class={styles.toolState}>{t(`chat.tool.${props.part.state}`)}</span>
+          <span class={styles.toolState}>{stateWord(props.part, t)}</span>
         </span>
       </div>
     )
   return (
-    <details class={styles.tool} data-testid="tool-card" data-state={props.part.state}>
+    <details
+      class={styles.tool}
+      data-testid="tool-card"
+      data-state={props.part.state}
+      data-not-run={props.part.notRun === true}
+    >
       <summary>
         <Wrench size={14} aria-hidden="true" />
-        <span class={styles.toolName}>{props.part.label}</span>
-        <span class={styles.toolState}>{t(`chat.tool.${props.part.state}`)}</span>
+        <span class={styles.toolName}>{assistantCardText(props.part, t) ?? props.part.label}</span>
+        <span class={styles.toolState}>{stateWord(props.part, t)}</span>
       </summary>
       <pre class={styles.toolBody}>{props.part.input}</pre>
       <Show when={props.part.output}>
