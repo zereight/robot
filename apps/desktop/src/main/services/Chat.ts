@@ -1725,6 +1725,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           void Effect.runPromiseExit(startTurn(workflowId))
           return
         }
+        // A message that came in as a turn or a compact began, and that no turn answered: it is
+        // the last message of the chat and no reply follows it. Fail closed: it gets its answer.
+        const last = db
+          .all<MessageRow>(
+            "SELECT * FROM chat_message WHERE workflow_id = ? AND status != 'queued' AND author != 'app' ORDER BY created_at, rowid",
+            workflowId,
+          )
+          .at(-1)
+        if (last?.author === "user" && last.status === "done" && last.read_at === null) {
+          void Effect.runPromiseExit(startTurn(workflowId))
+          return
+        }
         const next = db.get<MessageRow>(
           "SELECT * FROM chat_message WHERE workflow_id = ? AND status = 'queued' ORDER BY created_at, rowid LIMIT 1",
           workflowId,
@@ -1843,21 +1855,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 joinedTo: null,
                 actor,
               })
+              // The answer of a card starts no turn: no later turn has to answer it.
+              db.run("UPDATE chat_message SET read_at = ? WHERE id = ?", Date.now(), id)
               emitMessage(id)
               cards.answerInChat(input.workflowId, text)
               emitState(input.workflowId)
               return toMessage(row(id) as MessageRow)
             }
           }
-          const w = working.get(input.workflowId)
-          // A compact that the user started holds the chat: a message waits in the queue, whatever
-          // the setting says. During an automatic compact a message joins the turn (spec 003).
-          const compactHeld = manualCompacts.has(input.workflowId)
-          const mode = compactHeld ? "queue" : (yield* settings.get).duringTurn
-          if ((w || compactHeld) && mode === "queue") {
-            const waiting = queueOf(input.workflowId).length
-            if (waiting >= CHAT_QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
-          }
+          const duringTurn = (yield* settings.get).duringTurn
           const parts: ChatPart[] = []
           if (input.skillId) {
             const skill = yield* skills.usable(input.skillId)
@@ -1865,6 +1871,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }
           if (text !== "") parts.push({ kind: "text", text })
           parts.push(...(yield* attach(workflow.folder, paths)))
+          // The state is read here, after the last wait and before the row goes in, with no wait
+          // between the two. A compact or a turn that started while the files were copied holds
+          // the message (spec 003): the row is then never "done" with no turn to answer it.
+          const w = working.get(input.workflowId)
+          // A compact that the user started holds the chat: a message waits in the queue, whatever
+          // the setting says. During an automatic compact a message joins the turn (spec 003).
+          const compactHeld = manualCompacts.has(input.workflowId)
+          const mode = compactHeld ? "queue" : duringTurn
+          if ((w || compactHeld) && mode === "queue") {
+            const waiting = queueOf(input.workflowId).length
+            if (waiting >= CHAT_QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
+          }
           const id = randomUUID()
           const queued = (w !== undefined || compactHeld) && mode === "queue"
           insert({

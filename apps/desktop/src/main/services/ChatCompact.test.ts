@@ -14,6 +14,7 @@ import { Database } from "./Database.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { Skills } from "./Skills.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -365,6 +366,114 @@ describe("the idle guard (spec 003, Compact)", () => {
   })
 })
 
+describe("a message that is on its way when a compact starts (spec 003, Compact)", () => {
+  /** Holds the check of a skill, which `send` awaits before the row goes in, until `release`. */
+  const hold = async (t: Chat3) => {
+    const skill = await t.run(
+      Skills.use((s) =>
+        s.create(t.flow.serverId, { name: "Gap", description: "", instructions: "x" }),
+      ),
+    )
+    const service = await t.run(Skills.use((s) => Effect.succeed(s)))
+    const original = service.usable
+    let release = () => {}
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let entered = false
+    ;(service as { usable: typeof original }).usable = (id) =>
+      Effect.promise(async () => {
+        entered = true
+        await gate
+      }).pipe(Effect.flatMap(() => original(id)))
+    return {
+      skillId: skill.id,
+      release,
+      entered: () => until(() => entered),
+    }
+  }
+  const sendWith = (t: Chat3, text: string, skillId: string) =>
+    t.chat((c) => c.send({ workflowId: t.flow.id, text, skillId }))
+  const unanswered = (t: Chat3) =>
+    t.rows(
+      "SELECT id FROM chat_message WHERE workflow_id = ? AND author = 'user' AND status = 'done' AND read_at IS NULL AND joined_to IS NULL AND created_at > (SELECT COALESCE(MAX(created_at), 0) FROM chat_message WHERE workflow_id = ? AND author = 'assistant')",
+      t.flow.id,
+      t.flow.id,
+    )
+
+  test("a compact of the user that starts in the gap holds the message: it is queued and answered after the compact", async () => {
+    const t = await setup(await fresh(LARGE))
+    await t.turn("turn one long summary")
+    await t.turn("turn two")
+    await t.turn("turn three")
+    const gap = await hold(t)
+    const sending = sendWith(t, "in the gap", gap.skillId)
+    await gap.entered()
+    // The message is not in the database yet, so the idle guard lets the compact start.
+    const job = t.compact()
+    await until(async () => (await t.history()).compacting)
+    gap.release()
+    const sent = await sending
+    expect(sent.pending).toBe(false)
+    expect((await t.history()).queue.map((q) => q.text)).toEqual(["in the gap"])
+    expect(answers(t.mock).some((r) => JSON.stringify(r.body).includes("in the gap"))).toBe(false)
+    await job
+    await t.idle()
+    expect(await unanswered(t)).toEqual([])
+    expect((await t.history()).queue).toHaveLength(0)
+    expect(lastAnswerBody(t.mock)).toContain("in the gap")
+    expect((await t.history()).messages.at(-1)?.author).toBe("assistant")
+    expect(await t.compacted()).toHaveLength(1)
+  })
+
+  test("a turn with an automatic compact that starts in the gap: the message joins it, or waits in the queue, and is answered", async () => {
+    for (const mode of ["join", "queue"] as const) {
+      const t = await setup(await fresh(LARGE))
+      await t.run(SettingsStore.use((s) => s.update({ duringTurn: mode })))
+      await t.turn("turn one long summary")
+      await t.turn("turn two")
+      await t.turn("turn three use 400000")
+      const gap = await hold(t)
+      const sending = sendWith(t, "in the gap", gap.skillId)
+      await gap.entered()
+      // The turn that starts now compacts first, because the use is over the limit.
+      await t.send("turn four")
+      await until(async () => (await t.history()).compacting)
+      gap.release()
+      await sending
+      await t.idle()
+      expect(await unanswered(t)).toEqual([])
+      const h = await t.history()
+      expect(h.queue).toHaveLength(0)
+      // A message that joined the turn sits after its reply; a queued one has its own reply.
+      if (mode === "queue") expect(h.messages.at(-1)?.author).toBe("assistant")
+      expect(lastAnswerBody(t.mock)).toContain("in the gap")
+      expect(await t.compacted()).toHaveLength(1)
+    }
+  })
+
+  test("the end of a compact answers a final message of the user that nothing holds (fail closed)", async () => {
+    const t = await setup(await fresh(LARGE))
+    await t.turn("turn one long summary")
+    await t.turn("turn two")
+    await t.turn("turn three")
+    const job = t.compact()
+    await until(async () => (await t.history()).compacting)
+    // A row that came in as a normal message while the compact held the chat.
+    await t.sql(
+      "INSERT INTO chat_message (id, workflow_id, author, parts, status, created_at) VALUES ('late', ?, 'user', ?, 'done', ?)",
+      t.flow.id,
+      JSON.stringify([{ kind: "text", text: "late words" }]),
+      Date.now() + 1,
+    )
+    await job
+    await t.idle()
+    expect(lastAnswerBody(t.mock)).toContain("late words")
+    expect((await t.history()).messages.at(-1)?.author).toBe("assistant")
+    expect(await unanswered(t)).toEqual([])
+  })
+})
+
 describe("the context meter (spec 003)", () => {
   test("it shows the use that the last reply reported and the size of the model", async () => {
     const t = await setup(await fresh(LARGE))
@@ -662,17 +771,24 @@ describe("what the summary keeps and what it must not replace (spec 003, 002, 00
     expect(reply?.parts.some((p) => p.kind === "note" && p.note === "feedback_added")).toBe(true)
   })
 
-  test("the line Compacted is no word of the user: a turn that holds only the summary has no words", async () => {
+  test("the line Compacted is no word of the user: feedback text that only the summary holds is refused", async () => {
     const t = await setup(await fresh(LARGE))
     await turns(t, 4)
     await seedRun(t)
     await t.compact()
-    // The model asks to add feedback with words that only the summary holds.
-    await t.turn('tool add_run_feedback {"text":"Summary of 4 messages"}')
-    const stored = await t.rows<{ text: string }>("SELECT text FROM run_feedback")
-    // The words are in the message of the user itself (the stand-in copies them), so the guard
-    // accepts them as the words of the user; the summary row adds none.
-    expect(stored.length).toBeLessThanOrEqual(1)
+    // The summary of the stand-in is "Summary of 4 messages". The user wrote the same words only
+    // in a form that is no copy: the escape \u0065 is no "e" in the message of the user.
+    const feedback = (word: string) =>
+      `tool add_run_feedback {"text":"Summary of 4 m${word}ssages"}`
+    await t.turn(feedback("\\u0065"))
+    expect(await t.rows("SELECT text FROM run_feedback")).toEqual([])
+    const refused = JSON.stringify((await t.history()).messages.at(-1)?.parts)
+    expect(refused).toContain("not in the words that the user wrote")
+    // The same text, written by the user in this turn, is accepted.
+    await t.turn(feedback("e"))
+    expect(await t.rows<{ text: string }>("SELECT text FROM run_feedback")).toEqual([
+      { text: "Summary of 4 messages" },
+    ])
     const marks = await t.rows<{ author: string }>(
       'SELECT author FROM chat_message WHERE parts LIKE \'%"kind":"compacted"%\'',
     )

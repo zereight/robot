@@ -1103,7 +1103,7 @@ export const en = {
   "chat.compacted.auto": "The app compacted this chat by itself.",
   "chat.compact.failed": "The compact failed, and the chat went on without it. {reason}",
   "chat.meter": "Context",
-  "chat.meter.used": "{used} of {size} tokens used ({percent} %)",
+  "chat.meter.used": "{used} of {size} tokens used ({percent}%)",
   "chat.meter.unknown": "Not known until the next reply. Size: {size} tokens.",
   "chat.meter.sizeUnknown": "The size of the context is not known.",
   "chat.compact.off.not_connected": "Compact is off: no account answers in this chat.",

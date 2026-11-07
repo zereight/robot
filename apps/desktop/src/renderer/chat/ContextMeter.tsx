@@ -14,6 +14,8 @@ const RING = 16
 const STROKE = 2.5
 const RADIUS = (RING - STROKE) / 2
 const LENGTH = 2 * Math.PI * RADIUS
+const MENU_WIDTH = 260
+const EDGE = 8
 
 /** The words of the reason why Compact is off (spec 003). */
 export const compactOffKey = (off: CompactOff) => `chat.compact.off.${off}` as MessageKey
@@ -62,7 +64,13 @@ export const ContextMeter = (props: {
   const toggle = () => {
     if (position()) return setPosition(undefined)
     const box = trigger?.getBoundingClientRect()
-    if (box) setPosition({ top: box.bottom + 4, left: box.left })
+    if (!box) return
+    // The menu stays inside the chat panel: the header of the chat has the width of the panel.
+    const panel = trigger?.parentElement?.getBoundingClientRect()
+    const left = panel
+      ? Math.max(panel.left + EDGE, Math.min(box.left, panel.right - MENU_WIDTH - EDGE))
+      : box.left
+    setPosition({ top: box.bottom + 4, left })
   }
 
   return (
@@ -110,7 +118,7 @@ export const ContextMeter = (props: {
             items={items()}
             top={at().top}
             left={at().left}
-            width={260}
+            width={MENU_WIDTH}
             label={t("chat.meter")}
             testId="meter-menu"
             onClose={(refocus) => {
