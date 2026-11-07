@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   CLAIM_NOTE_PATHS,
+  escapeInvisible,
   NOTE_NAME_CHARS,
   NOTE_PATH_CHARS,
   plainLine,
@@ -204,5 +205,24 @@ describe("text of another workflow is plain (spec 025, 007)", () => {
     expect(promptStart("use sk-abcdefghijklmnopqrstuvwxyz0123456789\u0007 now")).toBe(
       "use [redacted] now",
     )
+  })
+})
+
+describe("escapeInvisible", () => {
+  test("shows each invisible character as an escape", () => {
+    expect(escapeInvisible("a\u202eb\u200bc\ufeffd\u0085e")).toBe(
+      "a\\u202eb\\u200bc\\ufeffd\\u0085e",
+    )
+    // Tag characters are above U+FFFF.
+    expect(escapeInvisible("x\u{E0068}\u{E0069}")).toBe("x\\u{e0068}\\u{e0069}")
+    // A lone surrogate, a private-use character and an unassigned character.
+    expect(escapeInvisible("\ud800\ue000\u0378")).toBe("\\ud800\\ue000\\u0378")
+    // A variation selector and a Hangul filler hide text in the same way.
+    expect(escapeInvisible("\ufe0f\u3164")).toBe("\\ufe0f\\u3164")
+  })
+
+  test("leaves ordinary text, the characters in keep, and a typed backslash alone", () => {
+    expect(escapeInvisible("안녕 😀 ok\\u200b")).toBe("안녕 😀 ok\\u200b")
+    expect(escapeInvisible("a\nb\tc", "\n")).toBe("a\nb\\u0009c")
   })
 })

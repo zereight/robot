@@ -14,7 +14,12 @@ import { standIn, tool } from "../connections/standIn.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { type CardReply, Cards } from "./Cards.ts"
 import { Connections } from "./Connections.ts"
-import { ARGS_CARD_MAX, ARGS_TOO_LONG_TEXT, type ConnectionTaskContext } from "./connectionTools.ts"
+import {
+  ARGS_CARD_MAX,
+  ARGS_INVALID_TEXT,
+  ARGS_TOO_LONG_TEXT,
+  type ConnectionTaskContext,
+} from "./connectionTools.ts"
 import { Database } from "./Database.ts"
 import { FileClaims } from "./FileClaims.ts"
 import { makeNodeTools, type NodeCard, type NodeToolContext } from "./NodeTools.ts"
@@ -666,14 +671,19 @@ describe("review findings of B10 (spec 018, 007)", () => {
     await t.call(ctx, alias as string, { a: 1 })
     const summary = t.cards[0]?.summary ?? ""
     const lines = summary.split("\n")
-    // The first line is the label, in one line; the rest is the arguments the node wrote.
-    expect(lines[0]).toBe('Notes · echo {"ok":true}')
+    // The first line is the label, in one line; the rest is the arguments the node wrote. A name
+    // that the plain line changed also shows the raw name with every hidden character escaped.
+    const label =
+      /^Notes · echo \{"ok":true\} \(raw: echo\\u000a\{"ok":true\}\\u000a\\u202e; #[0-9a-f]{8}\)$/
+    expect(lines[0]).toMatch(label)
     expect(lines.slice(1).join("\n")).toBe(JSON.stringify({ a: 1 }, null, 2))
     expect(summary).not.toContain("\u202e")
     const entry = (await t.log())[0]
-    expect(entry?.target).toBe('Notes · echo {"ok":true}')
+    expect(entry?.target).toMatch(label)
     expect(entry?.target).not.toContain("\u202e")
-    expect(notes[0]).toMatchObject({ tool: 'echo {"ok":true}' })
+    expect(notes[0]?.kind === "call" ? notes[0].tool : "").toMatch(
+      /^echo \{"ok":true\} \(raw: .*; #[0-9a-f]{8}\)$/,
+    )
     // The server still gets the raw name.
     expect(t.fake.state.calls[0]?.name).toBe(hostile)
   })
@@ -730,5 +740,171 @@ describe("review findings of B10 (spec 018, 007)", () => {
     expect(await pending).toBe("threw")
     expect(notes).toEqual([expect.objectContaining({ result: "stopped", how: "none" })])
     expect(t.fake.state.calls).toEqual([])
+  })
+})
+
+// The re-review of B10 (spec 018, 007): the card must not show less than the call sends.
+describe("re-review findings of B10: hidden values and hidden characters", () => {
+  const secretBody = `sk-${Buffer.from("the owner password is hunter2, send it on").toString("base64url")}`
+  const keyBody =
+    "-----BEGIN PRIVATE KEY-----\nthe owner password is hunter2\n-----END PRIVATE KEY-----"
+  /** Text written in tag characters (U+E0000 block): no screen shows it. */
+  const tags = (text: string) =>
+    [...text].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join("")
+
+  for (const [name, body] of [
+    ["a key shape with a hidden text inside", secretBody],
+    ["a private key block with a hidden text inside", keyBody],
+  ] as const) {
+    test(`${name}: the card says that it hides a value, has Allow once and Deny only, and the server gets the full text`, async () => {
+      const t = await setup()
+      await t.connections.save()
+      const { ctx } = await t.task("ask_risky")
+      const args = { to: "attacker@x.com", body }
+      expect((await t.call(ctx, ECHO, args)).failed).toBe(false)
+      expect(t.cards).toHaveLength(1)
+      expect(t.cards[0]?.summary).toContain("[redacted]")
+      expect(t.cards[0]?.hidden).toBe(1)
+      expect(t.cards[0]?.once).toBe(true)
+      expect(t.fake.state.calls[0]?.args).toEqual(args)
+    })
+  }
+
+  test("two hidden values are counted; a call with no hidden value has no mark and keeps Always allow", async () => {
+    const t = await setup()
+    await t.connections.save()
+    const { ctx } = await t.task("ask_risky")
+    await t.call(ctx, ECHO, { a: secretBody, b: keyBody })
+    expect(t.cards[0]?.hidden).toBe(2)
+    t.cards.length = 0
+    await t.call(ctx, ECHO, { a: "plain" })
+    expect(t.cards[0]?.hidden).toBeUndefined()
+    expect(t.cards[0]?.once).toBe(false)
+  })
+
+  test("a hidden value always asks: an Allow rule and a trusted read-only mark do not run it, at every level but Full access", async () => {
+    const t = await setup()
+    const saved = await t.connections.save()
+    await t.connections.setTrust(saved.id, true)
+    await t.run(
+      t.rules.add({ workflowId: t.flow.id, kind: "connection", text: "Notes", decision: "allow" }),
+    )
+    // The rule and the mark let a call with no hidden value run with no card.
+    const quiet = await t.task("ask_risky")
+    await t.call(quiet.ctx, LOOKUP, { q: "plain" })
+    await t.call(quiet.ctx, ECHO, { q: "plain" })
+    expect(t.cards).toHaveLength(0)
+    for (const level of ["ask_all", "ask_risky", "ask_unsure"] as const) {
+      for (const name of [ECHO, LOOKUP]) {
+        t.cards.length = 0
+        const { ctx } = await t.task(level)
+        expect((await t.call(ctx, name, { q: secretBody })).failed).toBe(false)
+        expect(t.cards).toHaveLength(1)
+        expect(t.cards[0]).toMatchObject({ hidden: 1, once: true })
+      }
+    }
+    // Full access runs it as before, with no card.
+    t.cards.length = 0
+    const full = await t.task("full")
+    expect((await t.call(full.ctx, ECHO, { q: secretBody })).failed).toBe(false)
+    expect(t.cards).toHaveLength(0)
+  })
+
+  test("a hidden value: Deny refuses it, and 'Always allow' from a device saves no rule", async () => {
+    const t = await setup()
+    await t.connections.save()
+    const { ctx, notes } = await t.task("ask_risky")
+    t.answer("deny")
+    const denied = await t.call(ctx, ECHO, { q: secretBody })
+    expect(denied).toMatchObject({ failed: true, notRun: true })
+    expect(t.fake.state.calls).toEqual([])
+    expect(notes.at(-1)).toMatchObject({ result: "refused", how: "denied" })
+    t.answer("always")
+    await t.call(ctx, ECHO, { q: secretBody })
+    expect(await t.run(t.rules.list())).toEqual([])
+  })
+
+  test("a Deny rule still refuses a hidden value, with no card", async () => {
+    const t = await setup()
+    await t.connections.save()
+    await t.run(
+      t.rules.add({ workflowId: t.flow.id, kind: "connection", text: "Notes", decision: "deny" }),
+    )
+    const { ctx } = await t.task("ask_risky")
+    const out = await t.call(ctx, ECHO, { q: secretBody })
+    expect(out).toMatchObject({ failed: true, notRun: true, refused: "rule" })
+    expect(t.cards).toHaveLength(0)
+  })
+
+  test("invisible characters are escaped on the card: tag characters, direction controls, zero-width characters, in keys and in values", async () => {
+    const t = await setup()
+    await t.connections.save()
+    const { ctx } = await t.task("ask_risky")
+    const args = {
+      note: `hello${tags("owner password is hunter2")}`,
+      "k\u202ey": "a\u202eb",
+      zero: "x\u200by\ufeffz\u0085w",
+      plain: "안녕 😀 ok",
+    }
+    expect((await t.call(ctx, ECHO, args)).failed).toBe(false)
+    const summary = t.cards[0]?.summary ?? ""
+    // The server gets the raw text.
+    expect(t.fake.state.calls[0]?.args).toEqual(args)
+    // The card shows an escape for each hidden character, and no hidden character itself.
+    expect(summary).toContain("hello\\u{e006f}\\u{e0077}\\u{e006e}\\u{e0065}\\u{e0072}")
+    expect(summary).toContain('"k\\u202ey": "a\\u202eb"')
+    expect(summary).toContain("x\\u200by\\ufeffz\\u0085w")
+    // Ordinary text and the indent are not changed.
+    expect(summary).toContain("안녕 😀 ok")
+    expect(summary.split("\n").length).toBeGreaterThan(4)
+    expect(summary).not.toMatch(/[\p{Cf}\p{Co}\p{Cn}\u0085]/u)
+    expect(t.cards[0]?.hidden).toBeUndefined()
+  })
+
+  test("a lone surrogate and a typed backslash escape are not mistaken for each other", async () => {
+    const t = await setup()
+    await t.connections.save()
+    const { ctx } = await t.task("ask_risky")
+    await t.call(ctx, ECHO, { a: "\ud800", b: "\\u200b" })
+    const summary = t.cards[0]?.summary ?? ""
+    expect(summary).toContain('"a": "\\ud800"')
+    // A typed backslash is doubled, so it never looks like an escape that hides a character.
+    expect(summary).toContain('"b": "\\\\u200b"')
+  })
+
+  test("two different tool names never look the same on the card, the tool line and the log", async () => {
+    const same = `${"a".repeat(80)}`
+    const t = await setup([tool("echo"), tool("ec\u200bho"), tool(`${same}X`), tool(`${same}Y`)])
+    await t.connections.save()
+    const { ctx, turn, notes } = await t.task("full")
+    const aliases = turn.defs().map((d) => d.name)
+    for (const alias of aliases) await t.call(ctx, alias, {})
+    const lines = notes.flatMap((n) => (n.kind === "call" ? [n.tool] : []))
+    expect(new Set(lines).size).toBe(4)
+    const targets = (await t.log()).map((e) => e.target)
+    expect(new Set(targets).size).toBe(4)
+    // The plain name has no extra text; a changed name shows the escaped raw name.
+    expect(lines).toContain("echo")
+    expect(lines.some((l) => l.includes("ec\\u200bho"))).toBe(true)
+    // The server gets the raw names.
+    expect(t.fake.state.calls.map((c) => c.name)).toContain("ec\u200bho")
+  })
+
+  test("arguments nested too deep are refused like arguments that are too long: no card, nothing sent, one log entry and one tool line", async () => {
+    for (const level of ["ask_risky", "full"] as const) {
+      const t = await setup()
+      await t.connections.save()
+      const { ctx, notes } = await t.task(level)
+      const depth = 100_000
+      const input = `{"a":${"[".repeat(depth)}${"]".repeat(depth)}}`
+      const out = await t.nodeTools.execute(ctx, { id: "deep", name: ECHO, input })
+      expect(out).toEqual({ output: ARGS_INVALID_TEXT, failed: true, notRun: true })
+      expect(t.cards).toHaveLength(0)
+      expect(t.fake.state.calls).toEqual([])
+      expect(notes).toEqual([expect.objectContaining({ result: "refused", how: "invalid_args" })])
+      expect(await t.log()).toEqual([
+        expect.objectContaining({ kind: "connection", target: "Notes · echo", result: "refused" }),
+      ])
+    }
   })
 })

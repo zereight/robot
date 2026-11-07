@@ -1003,6 +1003,7 @@ export const en = {
   "runs.tool.how.denied": "Denied by you",
   "runs.tool.how.unknown": "Unknown tool. Search for it first.",
   "runs.tool.how.too_long": "The arguments are too long for the card",
+  "runs.tool.how.invalid_args": "The arguments could not be shown on the card",
   "runs.tool.search": "Searched tools: {words} · found {count}",
   "runs.refused": "Refused: in use by {holder}: {path}",
   "runs.refused.limit": "Refused: this task changed {count} files. Finish it. ({path})",
@@ -1025,6 +1026,8 @@ export const en = {
   "cards.outside": "Outside content: {source}",
   "cards.sensitive": "A secret place was read: {label}",
   "cards.unreadable": "A rule that the app cannot read stopped this step.",
+  "cards.hidden":
+    "Values hidden because they look like a secret: {count}. The call sends them in full, and you cannot check them here.",
   "cards.allow": "Allow",
   "cards.always": "Always allow",
   "cards.deny": "Deny",

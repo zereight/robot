@@ -630,6 +630,30 @@ export class Connections extends Context.Service<Connections, ConnectionsService
           return made
         }
 
+        /**
+         * The result of `pending`, or a stop at once when `signal` aborts first. A result that
+         * comes later is not lost: the connection that started stays in `live` and ends when idle.
+         */
+        const untilStopped = <A>(pending: Promise<A>, signal: AbortSignal): Promise<A> => {
+          // A start that fails after the stop must not be an unhandled rejection.
+          pending.catch(() => undefined)
+          if (signal.aborted) return Promise.reject(new McpCallStopped("stop"))
+          return new Promise<A>((resolve, reject) => {
+            const stopNow = () => reject(new McpCallStopped("stop"))
+            signal.addEventListener("abort", stopNow, { once: true })
+            pending.then(
+              (value) => {
+                signal.removeEventListener("abort", stopNow)
+                resolve(value)
+              },
+              (error) => {
+                signal.removeEventListener("abort", stopNow)
+                reject(error)
+              },
+            )
+          })
+        }
+
         // -- The tools of one turn. --
 
         const objectSchema = (tool: McpTool): Record<string, unknown> => {
@@ -718,7 +742,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               name: alias,
               // The name is one plain line, so no name can start a line of its own in the text
               // that the model reads (spec 018, 007).
-              description: `[Connection "${plainLine(found.target.connection, 40)}"] ${text || "No description."}`,
+              description: `[Connection ${JSON.stringify(plainLine(found.target.connection, 40))}] ${text || "No description."}`,
               schema: objectSchema(found.tool),
             }
           }
@@ -808,7 +832,10 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               let running: Live | undefined
               let stopped = false
               try {
-                running = await ensure(found.target.connectionId)
+                // Stop does not wait for the start of the connection (it may take `startMs`): the
+                // call ends at once. A connection that is still starting is not kept by this call:
+                // `start` arms its idle timer, so it ends when nobody holds it (spec 018).
+                running = await untilStopped(ensure(found.target.connectionId), signal)
                 running.active++
                 if (running.idle) clearTimeout(running.idle)
                 const result = await running.session.call(found.target.tool, args, {

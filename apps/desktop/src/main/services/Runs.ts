@@ -1207,6 +1207,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 outside: card.outside ?? null,
                 sensitive: card.sensitive ?? null,
                 ...(card.unreadable ? { unreadable: true } : {}),
+                ...(card.hidden ? { hidden: card.hidden } : {}),
                 ...(card.choices ? { choices: card.choices } : {}),
               },
               signal,
@@ -1233,7 +1234,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             tools: true,
             memory: memoryOn,
             sharedFolderNote: claims.note(n.run.workflow_id),
-            connectionRule: connectionsOf ? connectionsOf.turn.rule() : "",
+            // A program has no tools of the app (spec 018). After a switch to a backup of another
+            // kind the rule follows the model that answers now, not the one that began the task.
+            connectionRule: connectionsOf && !isProgram ? connectionsOf.turn.rule() : "",
           })
         const prompt = renderPrompt(node.prompt, input, n.trigger)
         const turns: Turn[] = [

@@ -19,8 +19,8 @@ import {
 /** The protocol versions that the client knows. The first is the one that it asks for. */
 export const MCP_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const
 
-/** The longest answer that the client reads from one request, in characters. */
-const ANSWER_MAX = 20_000_000
+/** The longest answer that the client reads from one request, in bytes. */
+export const ANSWER_MAX = 20_000_000
 /** The most pages of tools that the client reads, and the most tools in all. */
 const PAGES_MAX = 20
 const TOOLS_READ_MAX = 1000
@@ -469,6 +469,30 @@ const startWeb = (spec: Extract<McpSpec, { kind: "web" }>): Transport => {
       )
   }
 
+  /**
+   * The body as text. The bytes are counted as they come and the read stops at `ANSWER_MAX`, so a
+   * server that sends a huge body cannot fill the memory (spec 018). The rest of the body is
+   * dropped: the connection to the server ends.
+   */
+  const readCapped = async (res: Response): Promise<string> => {
+    if (!res.body) return ""
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let bytes = 0
+    let text = ""
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > ANSWER_MAX) {
+        await reader.cancel().catch(() => {})
+        throw new McpError("invalid", "The answer is too long.")
+      }
+      text += decoder.decode(value, { stream: true })
+    }
+    return text + decoder.decode()
+  }
+
   const answer = async (id: number, res: Response, signal: AbortSignal): Promise<unknown> => {
     const type = res.headers.get("content-type") ?? ""
     if (type.includes("text/event-stream") && res.body) {
@@ -490,8 +514,7 @@ const startWeb = (spec: Extract<McpSpec, { kind: "web" }>): Transport => {
       }
       throw new McpError("ended", "The answer ended with no result.")
     }
-    const text = await res.text()
-    if (text.length > ANSWER_MAX) throw new McpError("invalid", "The answer is too long.")
+    const text = await readCapped(res)
     let message: unknown
     try {
       message = JSON.parse(text)
@@ -665,7 +688,15 @@ const sessionOf = (transport: Transport): McpSession => ({
         { name, arguments: args },
         { signal: options.signal, timeoutMs: options.timeoutMs },
       )
-      return { text: resultText(result), isError: isObject(result) && result.isError === true }
+      // An answer that is not the shape of a result is an invalid answer, not an empty result:
+      // the node must not read "ok, nothing" from a server that sent something else.
+      if (
+        !isObject(result) ||
+        (result.content !== undefined && !Array.isArray(result.content)) ||
+        (result.isError !== undefined && typeof result.isError !== "boolean")
+      )
+        throw new McpError("invalid", "The answer is not valid.")
+      return { text: resultText(result), isError: result.isError === true }
     } catch (error) {
       if (error instanceof McpError) throw new McpCallError(error.message)
       throw error

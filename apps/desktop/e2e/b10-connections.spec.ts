@@ -287,3 +287,64 @@ test("connections: scope per workflow, the card at the permission levels, Always
   await app.close()
   await mock.close()
 })
+
+test("connections: a value that looks like a secret is hidden, the card says so and has no Always allow; invisible characters show as escapes", async () => {
+  const mock = await startMockProvider()
+  const calls = join(mkdtempSync(join(tmpdir(), "robot-b10-")), "calls.jsonl")
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1200, 900)
+  await page.getByTestId("new-workflow-empty").waitFor()
+  const secret = `sk-${Buffer.from("owner password is hunter2").toString("base64url")}`
+  const ids = await makeFlows(page, mock.openaiUrl, [
+    ["Secret", `tool mcp__notes__echo {"text":"${secret}"}`],
+    ["Tags", 'tool mcp__notes__echo {"text":"hello\\udb40\\udc68\\u202e"}'],
+  ])
+  const connection = {
+    name: "Notes",
+    kind: "program",
+    command: process.execPath,
+    args: [SERVER],
+    folder: "",
+    env: [{ name: "MCP_TEST_CALLS", value: calls, secret: false }],
+    address: "",
+    headers: [],
+  }
+  await invokeCall(page, "connections.test", { connection })
+  await invokeCall(page, "connections.save", { connection, confirmed: true })
+  // Even when the user allowed this tool for the workflow, a hidden value asks.
+  await invokeCall(page, "rules.add", {
+    workflowId: ids.Secret,
+    kind: "connection",
+    text: "Notes",
+    detail: "echo",
+    decision: "allow",
+  })
+
+  await startIn(page, "Secret", ids.Secret ?? "")
+  await expect(page.getByTestId("card-approval")).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId("card-summary")).toContainText("[redacted]")
+  await expect(page.getByTestId("card-summary")).not.toContainText(secret)
+  await expect(page.getByTestId("card-hidden")).toHaveText(
+    "Values hidden because they look like a secret: 1. The call sends them in full, and you cannot check them here.",
+  )
+  await expect(page.getByTestId("card-always")).toHaveCount(0)
+  await shot(page, "b10-09-card-hidden")
+  await invokeCall(page, "settings.update", { language: "ko" })
+  await expect(page.getByTestId("card-hidden")).toContainText("비밀처럼 보여서 가린 값: 1개")
+  await shot(page, "b10-10-card-hidden-ko")
+  await invokeCall(page, "settings.update", { language: "en" })
+  await page.getByTestId("card-allow").click()
+  await expect.poll(() => callsIn(calls).length, { timeout: 20_000 }).toBe(1)
+  expect(JSON.stringify(callsIn(calls)[0])).toContain(secret)
+  await closeWorkflow(page)
+
+  await startIn(page, "Tags", ids.Tags ?? "")
+  await expect(page.getByTestId("card-approval")).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId("card-summary")).toContainText('"text": "hello\\u{e0068}\\u202e"')
+  await expect(page.getByTestId("card-hidden")).toHaveCount(0)
+  await expect(page.getByTestId("card-always")).toBeVisible()
+  await shot(page, "b10-11-card-escapes")
+  await page.getByTestId("card-deny").click()
+  await app.close()
+  await mock.close()
+})

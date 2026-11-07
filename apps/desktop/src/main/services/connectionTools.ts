@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto"
 import {
   connectionToolLabel,
+  escapeInvisible,
   plainLine,
   type RefusalReason,
   type RuleRef,
   readOnlyMarkCounts,
+  redactCounted,
   redactSecrets,
   SEARCH_TOOLS_NAME,
   type TaskConnectionStep,
@@ -50,6 +53,8 @@ export interface ConnectionHost {
       readonly summary: string
       readonly risky: boolean
       readonly target: string
+      /** How many values of the arguments the card hides (see `argumentsText`). */
+      readonly hidden: number
     },
     work: (decided: ConnectionDecided) => Promise<A>,
   ): Promise<A>
@@ -71,6 +76,9 @@ export interface ConnectionHost {
 export const ARGS_CARD_MAX = 20_000
 /** What the node reads when the arguments are too long. */
 export const ARGS_TOO_LONG_TEXT = `Refused: the arguments are longer than ${ARGS_CARD_MAX} characters, so the user cannot check them. Nothing was sent. Call the tool again with shorter arguments.`
+/** What the node reads when the arguments cannot be turned into text for the card. */
+export const ARGS_INVALID_TEXT =
+  "Refused: the arguments cannot be shown to the user (they are nested too deep or are not valid), so the user cannot check them. Nothing was sent. Call the tool again with plain arguments."
 /** A connection name in a line of the card or the log is cut here, and a tool name at NAME_MAX. */
 const CONNECTION_NAME_MAX = 40
 /** The words of a search in the run view are cut here. */
@@ -89,17 +97,63 @@ const parseArgs = (call: ToolCall): Record<string, unknown> => {
   }
 }
 
+/** The arguments as a card shows them, or why the call is refused (spec 018, "Rules"). */
+export type ShownArguments =
+  | {
+      readonly ok: true
+      /** The text of the card: indented, every invisible character escaped. */
+      readonly text: string
+      /** How many values the card hides because they look like a secret. */
+      readonly hidden: number
+    }
+  | { readonly ok: false; readonly why: "too_long" | "invalid_args" }
+
 /**
- * The arguments as the card shows them: indented, with a secret hidden, and whole. Null when they
- * are longer than `ARGS_CARD_MAX`: the call is refused then, never shown in part.
+ * The arguments as the card shows them: indented and whole. A value that looks like a secret is
+ * hidden, and `hidden` counts them: the card then says that it shows less than the call sends, and
+ * it has Allow once and Deny only (spec 018, 007). Every control, format, private-use and
+ * unassigned character and every lone surrogate is an escape (`\uXXXX`), in keys and values, so
+ * no text hides in the card (bidi controls, zero-width and tag characters). Not ok when they are
+ * longer than `ARGS_CARD_MAX` or cannot be turned into text: the call is refused then, never shown
+ * in part.
  */
-export const argumentsText = (args: Record<string, unknown>): string | null => {
-  const raw = JSON.stringify(args, null, 2)
+export const argumentsText = (args: Record<string, unknown>): ShownArguments => {
+  let raw: string
+  try {
+    raw = JSON.stringify(args, null, 2)
+  } catch {
+    // Nesting that is too deep, or a value that cannot be written.
+    return { ok: false, why: "invalid_args" }
+  }
   // The size is checked before the secrets are hidden, so a huge value costs no scan.
-  if (raw.length > ARGS_CARD_MAX) return null
-  const text = redactSecrets(raw)
-  return text.length > ARGS_CARD_MAX ? null : text
+  if (raw.length > ARGS_CARD_MAX) return { ok: false, why: "too_long" }
+  const redacted = redactCounted(raw)
+  // The line breaks of the indent stay; the line breaks inside a value are `\n` already.
+  const text = escapeInvisible(redacted.text, "\n")
+  return text.length > ARGS_CARD_MAX
+    ? { ok: false, why: "too_long" }
+    : { ok: true, text, hidden: redacted.count }
 }
+
+/**
+ * A name from the connection or the user, for a line of the card, the tool line and the log. It is
+ * a plain line (see `plainLine`). When that changes the name (a character goes, the name is cut),
+ * the line also holds the name with every invisible character escaped and a short mark of the raw
+ * name, so two different names never look the same (spec 018, 007). A rule still matches the raw
+ * name.
+ */
+export const shownName = (raw: string, max: number): string => {
+  const plain = plainLine(raw, max)
+  if (plain === raw) return plain
+  const mark = createHash("sha256").update(raw).digest("hex").slice(0, 8)
+  const escaped = redactSecrets(escapeInvisible(raw))
+  const cut =
+    [...escaped].length > RAW_NAME_MAX
+      ? `${[...escaped].slice(0, RAW_NAME_MAX).join("")}…`
+      : escaped
+  return `${plain} (raw: ${cut}; #${mark})`
+}
+const RAW_NAME_MAX = 120
 
 export const makeConnectionTools = (host: ConnectionHost) => {
   /** True when the call is one that this module answers. */
@@ -139,8 +193,8 @@ export const makeConnectionTools = (host: ConnectionHost) => {
     // line and the action log they are plain lines: no newline or direction control can forge a
     // line above the real arguments (spec 018, 007). A rule still matches the raw names.
     const names = {
-      connection: plainLine(target.connection, CONNECTION_NAME_MAX),
-      tool: plainLine(target.tool, NAME_MAX),
+      connection: shownName(target.connection, CONNECTION_NAME_MAX),
+      tool: shownName(target.tool, NAME_MAX),
     }
     const label = connectionToolLabel(names.connection, names.tool)
     // "Read only" refuses every tool of a connection, also one with the read-only mark: the app
@@ -151,10 +205,14 @@ export const makeConnectionTools = (host: ConnectionHost) => {
     }
     // The card shows the arguments whole or the call does not go on: nothing is sent, no card.
     const shown = argumentsText(args)
-    if (shown === null) {
+    if (!shown.ok) {
       host.log(ctx, label, "refused")
-      cx.note({ kind: "call", ...names, result: "refused", how: "too_long" })
-      return { output: ARGS_TOO_LONG_TEXT, failed: true, notRun: true }
+      cx.note({ kind: "call", ...names, result: "refused", how: shown.why })
+      return {
+        output: shown.why === "too_long" ? ARGS_TOO_LONG_TEXT : ARGS_INVALID_TEXT,
+        failed: true,
+        notRun: true,
+      }
     }
     const outside = ctx.marks.outside !== null
     // A call is not a risky step only when the connection marks the tool, the user trusts the mark,
@@ -167,9 +225,10 @@ export const makeConnectionTools = (host: ConnectionHost) => {
         {
           connection: target.connection,
           tool: target.tool,
-          summary: `${label}\n${shown}`,
+          summary: `${label}\n${shown.text}`,
           risky: !markHelps,
           target: label,
+          hidden: shown.hidden,
         },
         async (by) => {
           state.decided = by

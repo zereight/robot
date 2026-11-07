@@ -156,6 +156,8 @@ export interface NodeCard {
   readonly outside?: OutsideSource | null
   readonly sensitive?: SensitiveLabel | null
   readonly unreadable?: boolean
+  /** The count of values of the arguments that the card hides (spec 018). */
+  readonly hidden?: number
   readonly choices?: readonly string[]
 }
 
@@ -280,6 +282,12 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       readonly sends: boolean
       /** The sensitive read that this step itself makes, when the task held none before. */
       readonly sensitive?: SensitiveLabel | null
+      /**
+       * How many values of the arguments the card hides because they look like a secret (spec 018).
+       * Above zero, the card shows less than the step sends: no Allow rule and no mark lets the
+       * step run, the card has Allow once and Deny only, and only "Full access" runs it with no card.
+       */
+      readonly hidden?: number
     },
   ): Promise<Decided> => {
     const held = ctx.marks.sensitive ?? input.sensitive ?? null
@@ -301,6 +309,26 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       if (reply.answer === "deny")
         throw Object.assign(new Refusal(DENIED_MESSAGE), { device: reply.device ?? null })
       return { by: "user", rule: null, device: reply.device ?? null }
+    }
+    if ((input.hidden ?? 0) > 0 && ctx.level !== "full") {
+      const unreadable = verdict.kind === "unreadable"
+      const reply = await ctx.ask({
+        kind: "approval",
+        summary: input.summary,
+        step: input.kind,
+        once: true,
+        outside: ctx.marks.outside,
+        sensitive: ctx.marks.sensitive,
+        unreadable,
+        hidden: input.hidden ?? 0,
+      })
+      if (reply.answer === "deny")
+        throw Object.assign(new Refusal(DENIED_MESSAGE), { device: reply.device ?? null })
+      return {
+        by: unreadable ? "unreadable_rule" : "user",
+        rule: unreadable && verdict.kind === "unreadable" ? verdict.rule : null,
+        device: reply.device ?? null,
+      }
     }
     const level = levelForNode(ctx.level)
     const outcome = ruleOutcome({ level, risky: input.risky, verdict })
@@ -438,6 +466,7 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
           step: { kind: "connection", connection: input.connection, tool: input.tool },
           summary: input.summary,
           risky: input.risky,
+          hidden: input.hidden,
           // The arguments of a call go to the connection, but spec 007 lists no tool of a
           // connection among the steps that send data out of a task with a sensitive read.
           sends: false,

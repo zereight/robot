@@ -995,6 +995,7 @@ export const ko: Record<MessageKey, string> = {
   "runs.tool.how.denied": "내가 거부함",
   "runs.tool.how.unknown": "알 수 없는 도구예요. 먼저 도구를 찾아보세요.",
   "runs.tool.how.too_long": "인수가 너무 길어서 카드에 다 보여 줄 수 없어요",
+  "runs.tool.how.invalid_args": "인수를 카드에 보여 줄 수 없어요",
   "runs.tool.search": "도구 찾기: {words} · {count}개 찾음",
   "runs.refused": "거절됨: {holder}에서 사용 중이에요: {path}",
   "runs.refused.limit": "거절됨: 이 작업이 파일 {count}개를 바꿨어요. 끝내 주세요. ({path})",
@@ -1017,6 +1018,8 @@ export const ko: Record<MessageKey, string> = {
   "cards.outside": "외부 콘텐츠: {source}",
   "cards.sensitive": "비밀 장소를 읽었어요: {label}",
   "cards.unreadable": "앱이 읽을 수 없는 규칙 때문에 이 단계가 멈췄어요.",
+  "cards.hidden":
+    "비밀처럼 보여서 가린 값: {count}개. 호출은 이 값을 그대로 보내고, 여기서는 확인할 수 없어요.",
   "cards.allow": "허용",
   "cards.always": "항상 허용",
   "cards.deny": "거부",

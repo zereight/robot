@@ -97,7 +97,8 @@ export const TASK_CONNECTION_STEPS_MAX = 100
  * `read_only_level`: the level "Read only" refuses a tool of a connection. `user`: the user
  * answered a card. `denied`: the user denied the card. `unknown`: the node named a tool that it
  * may not call. `too_long`: the arguments are too long to show whole on a card, so the app refused
- * the call. `none`: Stop came before anyone decided the step.
+ * the call. `invalid_args`: the arguments could not be turned into text for the card (for example,
+ * nesting that is too deep), so the app refused the call. `none`: Stop came before anyone decided the step.
  */
 export type ConnectionStepHow =
   | "mark"
@@ -109,6 +110,7 @@ export type ConnectionStepHow =
   | "denied"
   | "unknown"
   | "too_long"
+  | "invalid_args"
   | "none"
 
 /** One tool line of a task: a call of a tool of a connection, or the step "Search tools". */
@@ -240,6 +242,11 @@ export interface RunCard {
   readonly sensitive: SensitiveLabel | null
   /** True when a rule that the app cannot read stopped the step (spec 007). */
   readonly unreadable: boolean
+  /**
+   * How many values of the arguments the card hides because they look like a secret. Above zero,
+   * the card says so and has Allow once and Deny only (spec 018, 007).
+   */
+  readonly hidden: number
   readonly choices: readonly string[]
   /** A pick card: the options with the probability the model gave, when it gave one. */
   readonly options: readonly {
