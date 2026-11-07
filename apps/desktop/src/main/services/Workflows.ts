@@ -435,6 +435,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         rename: (id, name) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
             const trimmed = name.trim()
             const problem = checkName(row.server_id, trimmed, id)
             if (problem) return yield* problem
@@ -451,6 +453,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         remove: (id) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            // A workflow that runs is not deleted: the cascade would remove its run rows.
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
             // Every table of the workflow holds a foreign key with ON DELETE CASCADE.
             db.run("DELETE FROM workflow WHERE id = ?", id)
             changed(row.server_id)

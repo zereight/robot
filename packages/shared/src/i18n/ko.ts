@@ -684,6 +684,8 @@ export const ko: Record<MessageKey, string> = {
   "firstRun.done": "완료",
   "workflows.cancel": "취소",
   "workflows.create": "만들기",
+  "workflows.readonly":
+    "실행 중이에요. 실행이 끝날 때까지 워크플로우 이름을 바꾸거나 삭제할 수 없어요.",
   "workflows.delete": "워크플로우 삭제",
   "workflows.nodes": "노드 {n}개",
   "workflows.nodes.one": "노드 1개",

@@ -157,6 +157,23 @@ describe("the responsible document (spec 002)", () => {
     )
     expect(await t.code((x) => x.saveDocument(flow.id, "two"))).toBe("workflow_running")
   })
+
+  test("a workflow cannot be renamed or deleted while a run works; the run rows stay", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "one")
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'working', 'hand', ?)",
+      flow.id,
+      Date.now(),
+    )
+    expect(await t.code((x) => x.rename(flow.id, "Other"))).toBe("workflow_running")
+    expect(await t.code((x) => x.remove(flow.id))).toBe("workflow_running")
+    expect((await t.w((x) => x.get(flow.id))).name).toBe("Report")
+    expect(await t.rows("SELECT id FROM run WHERE workflow_id = ?", flow.id)).toHaveLength(1)
+    await t.sql("UPDATE run SET finished_at = ? WHERE id = 'r1'", Date.now())
+    await t.w((x) => x.rename(flow.id, "Other"))
+    expect((await t.w((x) => x.get(flow.id))).name).toBe("Other")
+  })
 })
 
 describe("the graph (spec 010)", () => {
