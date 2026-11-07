@@ -4,6 +4,7 @@ import {
   CLAIMS_MAX,
   type ClaimHolder,
   type NoteClaim,
+  plainLine,
   sharedFolderNote,
   type TaskClaims,
 } from "@robot/shared"
@@ -136,7 +137,7 @@ export const makeFileClaims = (db: DatabaseService): FileClaimsService => {
           taskId,
           CLAIM_NOTE_PATHS,
         )
-        .map((r) => r.path),
+        .map((r) => plainLine(r.path)),
     }),
     note: (workflowId) => {
       const others = sharingWorkflows(db, workflowId)
@@ -150,8 +151,6 @@ export const makeFileClaims = (db: DatabaseService): FileClaimsService => {
       const claims: NoteClaim[] = rows.map((r) => ({
         path: r.path,
         workflow: r.workflow_name,
-        nodeNumber: r.node_number,
-        node: r.node_name,
       }))
       return sharedFolderNote({ others: others.map((o) => o.name), claims })
     },

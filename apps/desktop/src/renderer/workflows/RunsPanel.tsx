@@ -1,4 +1,13 @@
-import type { MessageKey, RunDetail, RunNode, RunSummary, RunTask } from "@robot/shared"
+import {
+  CLAIMS_MAX,
+  type MessageKey,
+  NOTE_NAME_CHARS,
+  plainLine,
+  type RunDetail,
+  type RunNode,
+  type RunSummary,
+  type RunTask,
+} from "@robot/shared"
 import { createResource, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { describeError } from "../lib/errors.ts"
@@ -63,32 +72,38 @@ const TaskMarks = (props: { task: RunTask; number: number }) => {
  */
 const TaskClaims = (props: { task: RunTask; number: number }) => {
   const { t } = useApp()
-  const more = () => props.task.claims.count - props.task.claims.paths.length
+  // A build on a linked computer (012) may be older and send a task with no claims or refusals.
+  const claims = () => props.task.claims ?? { count: 0, paths: [] }
+  const refusals = () => props.task.refusals ?? []
+  const more = () => claims().count - claims().paths.length
   return (
     <>
-      <Show when={props.task.claims.count > 0}>
+      <Show when={claims().count > 0}>
         <details class={styles.io} data-testid={`run-node-claims-${props.number}`}>
           <summary>
-            {props.task.claims.count === 1
+            {claims().count === 1
               ? t("runs.claims.one")
-              : t("runs.claims.other", { count: props.task.claims.count })}
+              : t("runs.claims.other", { count: claims().count })}
           </summary>
           <ul class={styles.marks}>
-            <For each={props.task.claims.paths}>{(path) => <li>{path}</li>}</For>
+            <For each={claims().paths}>{(path) => <li>{plainLine(path)}</li>}</For>
             <Show when={more() > 0}>
               <li>{t("runs.claims.more", { count: more() })}</li>
             </Show>
           </ul>
         </details>
       </Show>
-      <Show when={props.task.refusals.length > 0}>
+      <Show when={refusals().length > 0}>
         <ul class={styles.marks} data-testid={`run-node-refused-${props.number}`}>
-          <For each={props.task.refusals}>
+          <For each={refusals()}>
             {(r) => (
               <li data-testid="run-refused-line">
                 {r.holder === ""
-                  ? t("runs.refused.limit", { path: r.path })
-                  : t("runs.refused", { holder: r.holder, path: r.path })}
+                  ? t("runs.refused.limit", { count: CLAIMS_MAX, path: plainLine(r.path) })
+                  : t("runs.refused", {
+                      holder: plainLine(r.holder, NOTE_NAME_CHARS),
+                      path: plainLine(r.path),
+                    })}
               </li>
             )}
           </For>

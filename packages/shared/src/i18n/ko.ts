@@ -942,7 +942,7 @@ export const ko: Record<MessageKey, string> = {
   "runs.claims.other": "사용 중으로 표시한 파일 {count}개",
   "runs.claims.more": "외 {count}개",
   "runs.refused": "거절됨: {holder}에서 사용 중이에요: {path}",
-  "runs.refused.limit": "거절됨: 이 작업이 파일 1000개를 바꿨어요. 끝내 주세요. ({path})",
+  "runs.refused.limit": "거절됨: 이 작업이 파일 {count}개를 바꿨어요. 끝내 주세요. ({path})",
   "runs.stoppedAt": "실행이 노드 {number}에서 멈췄어요.",
   "runs.back": "실행 목록으로",
   "cards.title.approval": "승인이 필요해요",

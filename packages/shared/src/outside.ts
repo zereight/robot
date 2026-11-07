@@ -246,3 +246,10 @@ export const guardVerdict = (input: {
   if (!input.outside) return "run"
   return input.level === "full" ? "run" : "ask"
 }
+
+/**
+ * Makes a text from a run safe to put in a prompt as data (spec 003, 007): the characters of a tag
+ * cannot close the mark around it, so the text cannot pose as the rest of the prompt.
+ */
+export const escapeOutside = (text: string): string =>
+  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")

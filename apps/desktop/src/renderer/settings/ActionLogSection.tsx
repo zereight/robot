@@ -5,6 +5,8 @@ import {
   type ActionResult,
   type ActionRule,
   type MessageKey,
+  NOTE_NAME_CHARS,
+  plainLine,
 } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../lib/format.ts"
@@ -79,7 +81,9 @@ export const ActionLogSection = () => {
           {t(`permissions.log.result.${e.result}` as MessageKey)}
         </span>
       </div>
-      <div class={styles.logTarget}>{e.target}</div>
+      <div class={styles.logTarget}>
+        {e.decidedBy === "shared_folder" ? plainLine(e.target) : e.target}
+      </div>
       <div class={styles.hint}>
         {[
           formatDateTime(app.locale(), e.at),
@@ -87,7 +91,9 @@ export const ActionLogSection = () => {
           ...(e.nodeName === null ? [] : [`${e.nodeNumber}. ${e.nodeName}`]),
           t(`permissions.log.decided.${e.decidedBy}` as MessageKey),
           ...(e.device === null ? [] : [t("permissions.log.device", { name: e.device })]),
-          ...(e.holder === null ? [] : [t("permissions.log.holder", { holder: e.holder })]),
+          ...(e.holder === null
+            ? []
+            : [t("permissions.log.holder", { holder: plainLine(e.holder, NOTE_NAME_CHARS) })]),
         ].join(" · ")}
       </div>
       <div class={styles.hint} data-testid="action-log-outside">

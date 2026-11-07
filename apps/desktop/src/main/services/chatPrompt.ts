@@ -1,16 +1,17 @@
-import { type RunFact, type RunNodeFact, redactSecrets, type WorkflowGraph } from "@robot/shared"
+import {
+  escapeOutside,
+  type RunFact,
+  type RunNodeFact,
+  redactSecrets,
+  type WorkflowGraph,
+} from "@robot/shared"
 
 /** A result longer than this shows its first part (spec 003, "What the results are"). */
 export const RESULT_SHOWN = 600
 
 const stamp = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice(0, 16)
 
-/**
- * Makes a text from a run safe to put in the prompt as data (spec 003, 007): the characters of a
- * tag cannot close the mark around it, so the text cannot pose as the rest of the prompt.
- */
-export const escapeOutside = (text: string): string =>
-  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+export { escapeOutside }
 
 const resultText = (result: string) => {
   const safe = redactSecrets(result)

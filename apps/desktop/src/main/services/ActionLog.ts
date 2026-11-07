@@ -66,6 +66,11 @@ export interface ActionLogService {
    * tool of a connection), oldest first. The retry note of spec 005 reads them.
    */
   ofTask(taskId: string): readonly ActionLogEntry[]
+  /**
+   * The steps of these tasks that a file claim of another workflow refused (spec 025), oldest
+   * first, from one query for all the tasks.
+   */
+  refusedOf(taskIds: readonly string[]): readonly ActionLogEntry[]
 }
 
 interface Row {
@@ -236,6 +241,18 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
               ...LOGGED_KINDS,
             )
             .map(toEntry),
+        refusedOf: (taskIds) =>
+          taskIds.length === 0
+            ? []
+            : db
+                .all<Row>(
+                  `SELECT ${COLUMNS} FROM action_log l
+                   WHERE l.task_id IN (${taskIds.map(() => "?").join(", ")})
+                     AND l.decided_by = 'shared_folder' AND l.result = 'refused'
+                   ORDER BY l.at, l.rowid`,
+                  ...taskIds,
+                )
+                .map(toEntry),
         list: (filter = {}, limit = 500) =>
           Effect.sync(() => {
             const where: string[] = []

@@ -11,10 +11,12 @@ import {
   MODEL_RETRY_WAIT_MS,
   MODEL_TRIES,
   NO_USAGE,
+  NOTE_NAME_CHARS,
   nextKeepGoing,
   type OutsideSource,
   type PermissionLevel,
   parseOutsideSource,
+  plainLine,
   RUN_QUEUE_MAX,
   type RunCard,
   type RunDetail,
@@ -216,14 +218,27 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
       // --- reading ------------------------------------------------------------------------
 
-      /** The steps of the task that a file claim of another workflow refused (spec 025). */
-      const refusalsOf = (taskId: string): RunTask["refusals"] =>
-        actionLog
-          .ofTask(taskId)
-          .filter((e) => e.decidedBy === "shared_folder" && e.result === "refused")
-          .map((e) => ({ path: e.target, holder: e.holder ?? "" }))
+      /**
+       * The steps of these tasks that a file claim of another workflow refused (spec 025), by task,
+       * from one query. The texts are plain lines (spec 007, 025).
+       */
+      const refusalsOf = (
+        taskIds: readonly string[],
+      ): Map<string, RunTask["refusals"][number][]> => {
+        const byTask = new Map<string, RunTask["refusals"][number][]>()
+        for (const e of actionLog.refusedOf(taskIds)) {
+          if (e.taskId === null) continue
+          const list = byTask.get(e.taskId) ?? []
+          list.push({
+            path: plainLine(e.target),
+            holder: plainLine(e.holder ?? "", NOTE_NAME_CHARS),
+          })
+          byTask.set(e.taskId, list)
+        }
+        return byTask
+      }
 
-      const toTask = (t: TaskRow): RunTask => {
+      const toTask = (t: TaskRow, refusals: RunTask["refusals"] = []): RunTask => {
         let decisionView: RunTask["decision"] = null
         if (t.decision) {
           try {
@@ -281,7 +296,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           steps: t.steps,
           memory: memory.ofTask(t.id),
           claims: claims.ofTask(t.id),
-          refusals: refusalsOf(t.id),
+          refusals,
         }
       }
 
@@ -319,6 +334,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           "SELECT * FROM task WHERE run_id = ? ORDER BY created_at, rowid",
           r.id,
         )
+        const refusals = refusalsOf(tasks.map((t) => t.id))
         const byNumber = new Map<number, TaskRow>()
         for (const t of tasks) byNumber.set(t.node_number, t)
         const ended = r.finished_at !== null
@@ -330,7 +346,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               state: ended && r.state === "done" ? "skipped" : "not_reached",
               task: null,
             }
-          const task = toTask(t)
+          const task = toTask(t, refusals.get(t.id))
           return { ...n, state: task.state, task }
         })
         let usage = NO_USAGE

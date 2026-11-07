@@ -948,7 +948,7 @@ export const en = {
   "runs.claims.other": "Holds {count} file claims",
   "runs.claims.more": "and {count} more",
   "runs.refused": "Refused: in use by {holder}: {path}",
-  "runs.refused.limit": "Refused: this task changed 1000 files. Finish it. ({path})",
+  "runs.refused.limit": "Refused: this task changed {count} files. Finish it. ({path})",
   "runs.stoppedAt": "The run stopped at node {number}.",
   "runs.back": "Back to the runs",
   "cards.title.approval": "Approval needed",

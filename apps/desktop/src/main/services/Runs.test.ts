@@ -1250,7 +1250,8 @@ describe("file claims of a run in a shared folder (spec 025)", () => {
       .filter((r) => JSON.stringify(r.body.messages).includes("from Other"))
       .at(-1)
     const system = String(request?.body.messages.find((m) => m.role === "system")?.content)
-    expect(system).toContain("Shared folder. These workflows use your folder too: Report.")
+    expect(system).toContain("Shared folder. Other workflows use your folder too.")
+    expect(system).toContain("Workflows: Report")
     expect(system).toContain("notes.md")
 
     // The task of Report ends: its claim ends, and Other may write the file.
