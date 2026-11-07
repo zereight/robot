@@ -179,7 +179,8 @@ test("run: a model call is tried again; a node that fails 3 times stops the run"
   await expect(page.getByTestId("run-node-state-2")).toHaveText("Failed")
   await expect(page.getByTestId("run-node-state-3")).toHaveText("Not reached")
   await expect(page.getByTestId("run-node-reason-2")).toBeVisible()
-  expect(mock.requests.length - before).toBe(6)
+  // 6 requests of the nodes, then 1 request of the reflection after the run (spec 002).
+  await expect.poll(() => mock.requests.length - before).toBe(7)
   await shot(page, "w6-06-run-failed")
   await app.close()
   await mock.close()

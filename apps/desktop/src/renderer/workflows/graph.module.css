@@ -186,9 +186,13 @@ textarea.control {
   display: flex;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-md);
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .tab {
+  flex: none;
+  white-space: nowrap;
   padding: 6px 12px;
   border: 0;
   border-radius: var(--radius-m);
