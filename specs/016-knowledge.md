@@ -65,7 +65,8 @@ keeps short facts. Knowledge keeps longer, structured notes that cite where they
   the change is saved.
 - Failed: a change that cannot be saved shows its error in the card. The task continues.
 - Off: the list stays visible, with the muted line "Knowledge is off for this workflow." The
-  switch for one workflow acts at once.
+  switch "Knowledge is off" sits on the Knowledge page, in its header, and acts at once for that
+  workflow (see the questions for 016).
 - Over the limit: with 500 articles, a node cannot add more, and the button for a new article is
   off. The node tells the user in its result.
 - No folder yet: the "Open folder" control is off until the first article is saved.

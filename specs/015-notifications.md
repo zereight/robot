@@ -11,25 +11,28 @@ while the run works (003).
 
 - Kinds:
   - **Reply**: a reply in the chat of a workflow while the window is not focused.
-  - **Approval request**: an approval card of a node or of a turn of the chat (007). The pick of a
-    decision node (010) is an approval request.
+  - **Approval request**: an approval card of a node or of a turn of the chat (007), or a request
+    card of a manage request from an outside program or from the chat that waits for the user
+    (037). The pick of a decision node (010) is an approval request.
   - **Question**: a question card, also a protected card for a secret (020).
   - **Node failed**: a task that ends as failed or blocked (see 005). A run stops when a node
     fails, unless the node has the mark "Continue on failure" (010). The notice names the workflow,
     the node and the reason.
   - **Run done**: a run of a workflow ends as done.
   - **Proposal waits**: a proposal of self-improvement or a memory proposal waits for the user
-    (002, 008). One notice goes out for each run, turn of the chat or memory check that made
-    proposals. It gives the number of proposals.
+    (002, 008). One notice goes out for each run or turn of the chat that made proposals. It gives
+    the number of proposals. A memory check (008) makes no notice, also when it fails.
   - **Teams link needs you**: the link is signed out or paused (see 028).
 - A run that the user stopped makes no notice. The user did it.
 - Each kind can be turned off. A server can be muted for 1 hour, 8 hours, 1 day, or until turned
   back on.
-- Clicking a notification opens the chat of the workflow. For a reply, an approval request and a
-  question, it scrolls to the message or the card. For a node failure, a finished run and a
-  proposal, it opens the chat of the workflow with the run view (010). For a proposal it also
-  offers the link "Review" (002). The text of a notice holds no result of a node, no command and no
-  path.
+- Clicking a notification opens the chat of the workflow. A manage request (037) makes a workflow
+  that does not exist yet, so its notice opens the request card. For a reply, an approval request
+  and a question, the click scrolls to the message or the card. For a node failure and a finished
+  run, it opens the chat of the workflow with the run view (010). For a proposal, it opens the chat
+  of the workflow: with the run view when a run made the proposal, and at the proposal when a turn
+  of the chat made it (a turn of the chat has no run). It also offers the link "Review" (002). The
+  text of a notice holds no result of a node, no command and no path.
 - A computer that has a linked server open (012) shows the kinds reply, approval request, question
   and node failed for that server while the link is online. The notification names the server.
   Mutes work per server, so the user can mute one computer and not the other. A request that a
@@ -203,6 +206,8 @@ while the run works (003).
 ## Rules
 
 - Do-not-disturb of the system is respected.
+- The notice "Run done" goes out only while no window of the app has the focus, as a reply does.
+  This is the choice for now (see the questions for 015).
 - The pause of a turn for a compact (026) is not the end of a turn. It makes no notification,
   no sound and no result card.
 - After an app restart, a run that was going, with its tasks that waited for an approval or a
@@ -290,6 +295,13 @@ while the run works (003).
 - A run ends and the workflow proposes a change to its responsible document: one notice "Proposal
   waits" shows, with the number. The click opens the chat of the workflow, and the link "Review"
   opens the card (002).
+- A turn of the chat makes a proposal: one notice "Proposal waits" shows. The click opens the chat
+  of the workflow with the proposal, not a run view.
+- A memory check (008) makes proposals, or fails: no notice goes out.
+- A stand-in outside program asks to make a workflow (037), with the window hidden: a notice of the
+  kind approval shows, and the phone gets it too. The click opens the request card.
+- A run ends as done while the window of the app has the focus: no notice goes out. Hide the
+  window and end another run: the notice "Run done" shows.
 - No workflow works. The user points at the island: nothing opens.
 - The island is open and the user changes the language to Korean: the text of the island
   changes at once.

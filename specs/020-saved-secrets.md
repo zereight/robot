@@ -21,9 +21,10 @@ request.
     password.
 - **Protected card**: a card in the chat of the workflow (003) with a field for the value. See
   "Flows".
-- **Owner of a secret**: a secret belongs to the workflow whose text node asked for it. The user
-  sees and manages every secret in Settings (see "Flows", item 4). A decision node uses no secret
-  (010). The responsible document has no tool for secrets (007).
+- **Owner of a secret and of a login**: a secret or a login belongs to the workflow whose text
+  node asked for it. Other workflows cannot use it. The user sees and manages every secret in
+  Settings (see "Flows", item 4). A decision node uses no secret (010). The responsible document
+  has no tool for secrets (007).
 
 ## Flows
 
@@ -95,15 +96,12 @@ the user name or the password.
   row shows the name of the workflow, the name, the origin, the user name, the date it was saved
   and the date it was last used. It never shows a password. The user can replace the values and
   delete a login after a confirm.
-- A login belongs to the workflow whose node asked for it. A workflow file (010) holds no login,
-  so a workflow that an import makes has none. Deleting a workflow deletes its logins. A workflow
-  holds at most 50 logins.
+- A workflow file (010) holds no login, so a workflow that an import makes has none. Deleting a
+  workflow deletes its logins. A workflow holds at most 50 logins.
 - An export holds the name, the workflow and the origin of each login, not the values. After an
   import each login shows "Value missing". Logins do not sync (019).
 - On a linked device (012), the protected card shows "Answer this on NAME". A value never goes
   over a device link.
-- These tools are for text nodes whose model comes from an API provider (see 006), as the other
-  tools of this spec are.
 - A node never types a card number, an address for payment, or a one-time code. These are not
   saved logins and are not in this version.
 
@@ -144,8 +142,7 @@ the user name or the password.
 - At the level "Read only", a request for a new secret and a request with a method other than GET
   are refused (007, "Permission levels").
 - A workflow holds at most 100 saved secrets. A value holds at most 16384 characters.
-- A secret belongs to the workflow whose node asked for it. Other workflows cannot use it. A
-  workflow file (010) holds no secret, so a workflow that an import makes has none. Deleting a
+- A workflow file (010) holds no secret, so a workflow that an import makes has none. Deleting a
   workflow deletes its secrets.
 - An export holds the name, the workflow, the origin and the way to send each secret, not the
   value. After an import, each secret shows "Value missing".

@@ -135,13 +135,13 @@ The app answers a message only when all of these are true, in this order:
   sender. The message shows in the chat of the workflow with the mark "From Teams" and the name of
   the sender.
 - The message starts a turn of the chat (003). It is not a node and not a task (005). It starts no
-  run. A turn that such a message starts cannot start or stop a run (see the questions for 028).
-  It can read the state and the results of the runs of the workflow, and answer about them (007,
-  "Following a run in the chat").
-- A turn that such a message starts holds outside content (007) from its start, with the source
-  "Teams", and holds the program mark (007). So guarded steps ask, also at "Full access". The mark
-  stays with the chat (007): until the user clears it, a later turn in the app holds outside
-  content too.
+  run. A turn in the chat that such a message starts cannot start or stop a run (see the questions
+  for 028). It can read the state and the results of the runs of the workflow, and answer about
+  them (007, "Following a run in the chat").
+- A turn in the chat that such a message starts holds outside content (007) from its start, with
+  the source "Teams", and holds the program mark (007). So guarded steps ask, also at "Full
+  access". The mark stays with the chat (007): until the user clears it, a later turn in the app
+  holds outside content too.
 - A Teams message is never feedback (003). When it reads as feedback on a result, the responsible
   document says that feedback is given in the app, and adds nothing to the run.
 - A Teams message never answers a card. While an approval or a question waits, a message that says
