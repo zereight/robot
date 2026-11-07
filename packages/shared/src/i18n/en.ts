@@ -222,7 +222,7 @@ export const en = {
   "error.decision_not_set_up":
     "The decision model is not set up. Choose Jev through OpenRouter, then save a key and a model name.",
   "error.read_only_unsupported":
-    "This agent is at the level Read only, and its program has no read-only mode. Pick another level.",
+    "This node is at the level Read only, and its program has no read-only mode. Pick another level.",
   "error.runtime_not_signed_in": "The program is not signed in. Sign in first.",
   "error.runtime_api_key_login":
     "The program is signed in with an API key, not a subscription. Sign in with your subscription.",

@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process"
+import { type ChildProcess, execFile, spawn } from "node:child_process"
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 
@@ -144,15 +144,26 @@ const end = async (pid: number) => {
     await run("taskkill", ["/pid", String(pid), "/T", "/F"])
     return
   }
+  // A program of this app leads its own process group (see `spawnProgram`), so the whole group
+  // ends, with the children that the program started.
+  const signal = (name: NodeJS.Signals) => {
+    try {
+      process.kill(-pid, name)
+      return
+    } catch {
+      // Not the leader of a group: end the process alone.
+    }
+    process.kill(pid, name)
+  }
   try {
-    process.kill(pid, "SIGTERM")
+    signal("SIGTERM")
   } catch {
     return
   }
   for (let i = 0; i < 20 && alive(pid); i++) await sleep(100)
   if (alive(pid)) {
     try {
-      process.kill(pid, "SIGKILL")
+      signal("SIGKILL")
     } catch {
       // It ended in the meantime.
     }
@@ -208,7 +219,17 @@ const forget = (pid: number) => {
  * the app can end it if this run dies before it does.
  */
 export const spawnProgram = ((...args: Parameters<typeof spawn>) => {
-  const child = spawn(...args)
+  // The program leads a process group of its own, so that Stop ends the program and everything
+  // that it started (`killProgram`). Windows ends the tree with `taskkill`.
+  const [command, rest, options] = args as unknown as [
+    string,
+    readonly string[],
+    Record<string, unknown> | undefined,
+  ]
+  const child = spawn(command, rest, {
+    ...(process.platform === "win32" ? {} : { detached: true }),
+    ...options,
+  } as never)
   const pid = child.pid
   if (pid !== undefined && listFile) {
     current = [...current, { pid, command: String(args[0]), startedAt: Date.now() }]
@@ -218,3 +239,24 @@ export const spawnProgram = ((...args: Parameters<typeof spawn>) => {
   }
   return child
 }) as typeof spawn
+
+/**
+ * Ends a program started with `spawnProgram`, and every process in its group: the tools and
+ * servers that it started must not outlive Stop (spec 007, 005). Falls back to the program alone.
+ */
+export const killProgram = (child: ChildProcess, signal: NodeJS.Signals = "SIGTERM") => {
+  const pid = child.pid
+  if (pid !== undefined && process.platform === "win32") {
+    execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {})
+    return
+  }
+  if (pid !== undefined) {
+    try {
+      process.kill(-pid, signal)
+      return
+    } catch {
+      // The program is not the leader of a group, or it has ended.
+    }
+  }
+  child.kill(signal)
+}

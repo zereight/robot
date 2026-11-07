@@ -6,7 +6,7 @@ import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
-import { spawnProgram } from "./programs.ts"
+import { killProgram, spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
@@ -359,7 +359,7 @@ export async function* runCursor(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       resolve(code)
     }),
   )
-  const stop = () => child.kill()
+  const stop = () => killProgram(child)
   run.signal.addEventListener("abort", stop, { once: true })
 
   const state = newCursorState()
@@ -390,7 +390,7 @@ export async function* runCursor(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   } finally {
     run.signal.removeEventListener("abort", stop)
     if (child.exitCode === null) {
-      const timer = setTimeout(stop, 2000)
+      const timer = setTimeout(() => killProgram(child, "SIGKILL"), 2000)
       await exited
       clearTimeout(timer)
     }

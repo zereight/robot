@@ -9,7 +9,7 @@ import { stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
-import { spawnProgram } from "./programs.ts"
+import { killProgram, spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
@@ -138,11 +138,15 @@ export const piEfforts = async (
     for (const answer of pending.values()) answer(null)
     pending.clear()
   })
-  const timer = setTimeout(() => child.kill(), timeoutMs)
+  let ended = false
+  const timer = setTimeout(() => {
+    ended = true
+    killProgram(child)
+  }, timeoutMs)
   let count = 0
   const ask = (command: Json) =>
     new Promise<Json | null>((resolve) => {
-      if (child.exitCode !== null || child.killed) return resolve(null)
+      if (child.exitCode !== null || ended) return resolve(null)
       const id = String(++count)
       pending.set(id, resolve)
       child.stdin.write(`${JSON.stringify({ id, ...command })}\n`)
@@ -164,7 +168,7 @@ export const piEfforts = async (
   } finally {
     clearTimeout(timer)
     lines.close()
-    child.kill()
+    killProgram(child)
   }
   return found
 }
@@ -345,7 +349,7 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       resolve(code)
     }),
   )
-  const stop = () => child.kill()
+  const stop = () => killProgram(child)
   run.signal.addEventListener("abort", stop, { once: true })
   child.stdin.on("error", () => {})
   child.stdin.end(run.prompt)
@@ -379,7 +383,7 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   } finally {
     run.signal.removeEventListener("abort", stop)
     if (child.exitCode === null) {
-      const timer = setTimeout(stop, 2000)
+      const timer = setTimeout(() => killProgram(child, "SIGKILL"), 2000)
       await exited
       clearTimeout(timer)
     }

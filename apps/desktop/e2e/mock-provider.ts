@@ -75,6 +75,13 @@ export const startMockProvider = async (): Promise<MockProvider> => {
         res.end(JSON.stringify({ error: { message: "mock failure" } }))
         return
       }
+      if (said.includes("[[failsecret]]")) {
+        res.writeHead(500, { "content-type": "application/json" })
+        res.end(
+          JSON.stringify({ error: { message: `bad key sk-${"leak".repeat(8)}1234 refused` } }),
+        )
+        return
+      }
       if (said.includes("[[hang]]")) {
         res.writeHead(200, { "content-type": "text/event-stream" })
         res.on("close", () => {})
