@@ -147,7 +147,7 @@ export interface TaskMarks {
 export interface NodeCard {
   readonly kind: "approval" | "question"
   readonly summary: string
-  readonly step: "file" | "shell" | "web" | "ask"
+  readonly step: "file" | "shell" | "web" | "ask" | "memory"
   readonly once: boolean
   readonly outside?: OutsideSource | null
   readonly sensitive?: SensitiveLabel | null

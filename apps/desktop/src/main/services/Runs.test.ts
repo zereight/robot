@@ -17,6 +17,7 @@ import { Cards } from "./Cards.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
+import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { RunFacts } from "./RunFacts.ts"
@@ -76,6 +77,8 @@ const setup = async (
   options: {
     databaseFile?: string
     level?: string
+    /** Leaves memory and self-improvement on (the default of the app). The tests of the run engine turn them off, so that no model call follows a run. */
+    improve?: boolean
     check?: Parameters<typeof testRuntime>[0] extends infer O
       ? O extends { check?: infer C }
         ? C
@@ -98,6 +101,10 @@ const setup = async (
   const account = (await run(Providers.use((p) => p.accounts)))[0]
   if (!account) throw new Error("no account")
   const flow = await run(Workflows.use((w) => w.create({ serverId: server.id, name: "Report" })))
+  if (!options.improve) {
+    await run(Workflows.use((w) => w.setSelfImprovement(flow.id, false)))
+    await run(Memory.use((m) => m.setEnabled(flow.id, false)))
+  }
   if (options.level)
     await run(Workflows.use((w) => w.setPermission(flow.id, options.level as "ask_all" | "full")))
   const node = (spec: NodeSpec): Promise<WorkflowNode> =>
@@ -1081,5 +1088,105 @@ describe("a card answered from a linked device (spec 012, 007)", () => {
       "SELECT device FROM action_log WHERE kind = 'shell'",
     )
     expect(log).toEqual([{ device: null }])
+  })
+})
+
+describe("the memory tool of a text node (spec 008)", () => {
+  const SAVE = 'tool memory_save {"text":"Reports are in Korean."}'
+  /** What the last tool call of a node got back. The turn after a run (spec 002) comes later and has no such result. */
+  const lastToolResult = () =>
+    mock.requests
+      .findLast((r) => r.body.messages.some((m) => m.role === "tool"))
+      ?.body.messages.findLast((m) => m.role === "tool")?.content
+  const factsOf = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(Memory.use((m) => m.state(t.flow.id))).then((s) => s.items.map((i) => i.text))
+
+  test("'Ask me first': the node suggests a fact; no item; one proposal that names the run; the run view has the line", async () => {
+    const t = await setup({ improve: true })
+    await t.node({ name: "Draft", prompt: SAVE })
+    const started = await t.start()
+    const d = await t.ended(started.id)
+    expect(d.state).toBe("done")
+    expect(await factsOf(t)).toEqual([])
+    const p = await t.rows<{
+      kind: string
+      state: string
+      source_kind: string
+      source_id: string
+      task_id: string
+    }>("SELECT kind, state, source_kind, source_id, task_id FROM proposal")
+    expect(p).toHaveLength(1)
+    expect(p[0]).toMatchObject({
+      kind: "memory",
+      state: "waiting",
+      source_kind: "run",
+      source_id: started.id,
+    })
+    expect(d.nodes[0]?.task?.memory).toMatchObject([
+      { kind: "suggested", text: "Reports are in Korean." },
+    ])
+  })
+
+  test("'Save at once': the item is saved with Undo; a later node reads it with the tool; delete the item and the node does not find it", async () => {
+    const t = await setup({ improve: true })
+    await t.run(Memory.use((m) => m.setMode(t.flow.id, "now")))
+    const a = await t.node({ name: "Save", prompt: SAVE })
+    const b = await t.node({ name: "Read", prompt: 'tool memory_search {"query":"korean"}' })
+    await t.connect(a, b)
+    const d = await t.ended((await t.start()).id)
+    expect(await factsOf(t)).toEqual(["Reports are in Korean."])
+    expect(d.nodes[0]?.task?.memory).toMatchObject([{ kind: "saved", canUndo: true }])
+    const tool = lastToolResult()
+    expect(String(tool)).toContain("Reports are in Korean.")
+    const item = (await t.run(Memory.use((m) => m.state(t.flow.id)))).items[0]
+    await t.run(Memory.use((m) => m.remove(item?.id ?? "")))
+    await t.run(Workflows.use((w) => w.removeNode(a.id)))
+    await t.ended((await t.start()).id)
+    const gone = lastToolResult()
+    expect(String(gone)).toContain("The memory is empty")
+  })
+
+  test("the request of a node holds no memory item; the node gets an item only through the tool", async () => {
+    const t = await setup({ improve: true })
+    await t.run(Memory.use((m) => m.add(t.flow.id, "Secret preference zebra")))
+    await t.node({ name: "Draft", prompt: "Write a report." })
+    await t.ended((await t.start()).id)
+    const body = JSON.stringify(mock.requests.at(-1)?.body.messages)
+    expect(body).not.toContain("zebra")
+    expect(mock.requests.at(-1)?.body.tools?.map((x) => x.function.name)).toEqual(
+      expect.arrayContaining(["memory_search", "memory_save"]),
+    )
+  })
+
+  test("memory off: the node has no memory tool", async () => {
+    const t = await setup()
+    await t.node({ name: "Draft", prompt: "Write a report." })
+    await t.ended((await t.start()).id)
+    const names = mock.requests.at(-1)?.body.tools?.map((x) => x.function.name) ?? []
+    expect(names.some((n) => n.startsWith("memory_"))).toBe(false)
+  })
+
+  test("a fact that looks like a key makes no item and no proposal; the node is told", async () => {
+    const t = await setup({ improve: true })
+    await t.node({
+      name: "Draft",
+      prompt: 'tool memory_save {"text":"key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"}',
+    })
+    await t.ended((await t.start()).id)
+    expect(await factsOf(t)).toEqual([])
+    expect(await t.rows("SELECT id FROM proposal")).toEqual([])
+    const tool = lastToolResult()
+    expect(String(tool)).toContain("looks like a secret")
+  })
+
+  test("the same fact twice adds nothing, and the node is told that it is known", async () => {
+    const t = await setup({ improve: true })
+    await t.run(Memory.use((m) => m.setMode(t.flow.id, "now")))
+    await t.node({ name: "One", prompt: SAVE })
+    await t.ended((await t.start()).id)
+    await t.ended((await t.start()).id)
+    expect(await factsOf(t)).toEqual(["Reports are in Korean."])
+    const tool = lastToolResult()
+    expect(String(tool)).toContain("known already")
   })
 })

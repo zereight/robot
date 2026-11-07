@@ -135,7 +135,15 @@ describe("client requests", () => {
   })
 
   test("the requests that change workflows are listed, and each needs the switch", () => {
-    expect([...CHANGE_METHODS].sort() as string[]).toEqual(["workflows.create", "workflows.delete"])
+    expect([...CHANGE_METHODS].sort() as string[]).toEqual([
+      "memory.add",
+      "memory.delete",
+      "memory.setEnabled",
+      "memory.setMode",
+      "memory.update",
+      "workflows.create",
+      "workflows.delete",
+    ])
     for (const method of CHANGE_METHODS) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(true)

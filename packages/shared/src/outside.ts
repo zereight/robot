@@ -53,7 +53,10 @@ export const carriesProgramMark = (source: OutsideSource | null | undefined): bo
  * - `settings`: a change of the agent's own settings or instructions (002),
  * - `secret_request`: a request with a saved secret that uses a method other than GET (020),
  * - `secret_new`: a request for a new secret (020),
- * - `feedback`: adding feedback to a run in the chat (003, 007).
+ * - `feedback`: adding feedback to a run in the chat (003, 007),
+ * - `change`: a change of a node prompt or of the graph that the responsible document proposes in a
+ *   turn of the chat (007, "Guarded steps"; 002, "Self-improvement"). A change of the document is
+ *   not a guarded step: it is a proposal, and the user decides on its card.
  */
 export const GUARDED_STEPS = [
   "memory",
@@ -61,6 +64,7 @@ export const GUARDED_STEPS = [
   "secret_request",
   "secret_new",
   "feedback",
+  "change",
 ] as const
 export type GuardedStep = (typeof GUARDED_STEPS)[number]
 
@@ -171,6 +175,7 @@ export const ACTION_KINDS = [
   "secret_request",
   "secret_new",
   "feedback",
+  "change",
   MANAGE_STEP,
   "file",
   "shell",

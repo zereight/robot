@@ -1,4 +1,4 @@
-import { type CheckOutcome, checkGraphKey } from "@robot/shared"
+import { type CheckOutcome, checkGraphKey, type WorkflowGraph } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { checkWorkflow } from "../check/model.ts"
 import { CHECK_LIMITS, type CheckLimits, withChecker } from "../check/runner.ts"
@@ -30,6 +30,11 @@ export interface WorkflowCheckService {
     workflowId: string,
     options?: { readonly force?: boolean },
   ) => Effect.Effect<CheckOutcome, AppError>
+  /**
+   * The result of the check of a graph that is not saved: the graph of a proposal (spec 002, "Card";
+   * spec 010: a change that fails the check cannot be accepted). It stores nothing.
+   */
+  readonly checkGraph: (graph: WorkflowGraph) => Effect.Effect<CheckOutcome>
 }
 
 /** Checks the graph of a workflow, keeps the result, and tells the windows (spec 010, "Check"). */
@@ -130,6 +135,15 @@ export class WorkflowCheck extends Context.Service<WorkflowCheck, WorkflowCheckS
 
         return WorkflowCheck.of({
           check: (workflowId, opts) => run(workflowId, opts?.force === true),
+          checkGraph: (graph) =>
+            Effect.promise(() =>
+              withChecker(limits, (model) => checkWorkflow(graph, model)).catch(
+                (error): CheckOutcome => ({
+                  state: "failed",
+                  message: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            ),
         })
       }),
     )

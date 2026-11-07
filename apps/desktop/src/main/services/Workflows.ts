@@ -68,7 +68,11 @@ export interface WorkflowsService {
   /** The nodes and connections of the graph, in the order of the numbers of the nodes. */
   readonly graph: (id: string) => Effect.Effect<WorkflowGraph, AppError>
   readonly addNode: (workflowId: string, input: NodeInput) => Effect.Effect<WorkflowNode, AppError>
-  readonly updateNode: (nodeId: string, patch: NodePatch) => Effect.Effect<WorkflowNode, AppError>
+  readonly updateNode: (
+    nodeId: string,
+    patch: NodePatch,
+    source?: VersionSource,
+  ) => Effect.Effect<WorkflowNode, AppError>
   readonly removeNode: (nodeId: string) => Effect.Effect<void, AppError>
   /**
    * Moves a node on the canvas. A move is not a change of the graph: it keeps no version, and the
@@ -87,6 +91,24 @@ export interface WorkflowsService {
     optionId?: string | null,
   ) => Effect.Effect<WorkflowConnection, AppError>
   readonly disconnect: (connectionId: string) => Effect.Effect<void, AppError>
+  /**
+   * Replaces the graph with another one: the change of an accepted graph proposal, and the undo of
+   * one (spec 002, "Self-improvement"). The graph as it is now is kept as a version, and its id is
+   * returned. A node that stays keeps its id, so the tasks of the node keep their node.
+   */
+  readonly applyGraph: (
+    id: string,
+    graph: WorkflowGraph,
+    source: VersionSource,
+  ) => Effect.Effect<{ versionId: string }, AppError>
+  /** Changes the prompt of one node and keeps the graph as it was as a version (spec 002). */
+  readonly applyPrompt: (
+    nodeId: string,
+    prompt: string,
+    source: VersionSource,
+  ) => Effect.Effect<{ versionId: string }, AppError>
+  /** The switch "Self-improvement" of a workflow. Only the user sets it (spec 002). */
+  readonly setSelfImprovement: (id: string, enabled: boolean) => Effect.Effect<Workflow, AppError>
   /** The versions of the graph, newest first (spec 010, "Flows", item 4). */
   readonly versions: (id: string) => Effect.Effect<readonly GraphVersion[], AppError>
   /** Restores a version. The graph as it is now is kept as a version too. */
@@ -250,6 +272,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           folder: r.folder,
           permission: r.permission,
           selfImprovement: r.self_improvement === 1,
+          proposals:
+            db.get<{ n: number }>(
+              "SELECT COUNT(*) AS n FROM proposal WHERE workflow_id = ? AND state = 'waiting'",
+              r.id,
+            )?.n ?? 0,
           nodeCount: nodeCount(r.id),
           running: checkIdle(r.id) !== null,
           lastRun: last ? { state: last.state, startedAt: last.started_at } : null,
@@ -287,15 +314,17 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           : null
 
       /** Keeps the graph as it is now as a version, before a change (spec 010). */
-      const keepVersion = (workflowId: string, source: VersionSource) => {
+      const keepVersion = (workflowId: string, source: VersionSource): string => {
+        const id = randomUUID()
         db.run(
           "INSERT INTO workflow_version (id, workflow_id, graph, source, created_at) VALUES (?, ?, ?, ?, ?)",
-          randomUUID(),
+          id,
           workflowId,
           JSON.stringify(readGraph(db, workflowId)),
           source,
           Date.now(),
         )
+        return id
       }
       const touch = (workflowId: string) =>
         db.run("UPDATE workflow SET updated_at = ? WHERE id = ?", Date.now(), workflowId)
@@ -435,6 +464,76 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           if (text !== row.document) writeDocument(row, text, source, device)
           return detail(yield* findRow(id))
         })
+
+      /**
+       * Writes a whole graph in place of the one that the workflow has: keeps the graph as it is now
+       * as a version, and returns the id of that version. A node that comes back keeps the tasks of
+       * its id (deleting a node sets the node of its tasks to NULL).
+       */
+      const writeGraph = (
+        row: WorkflowRow,
+        graph: WorkflowGraph,
+        source: VersionSource,
+      ): string => {
+        const id = row.id
+        let versionId = ""
+        db.transaction(() => {
+          versionId = keepVersion(id, source)
+          const links = db.all<{ id: string; node_id: string }>(
+            "SELECT id, node_id FROM task WHERE workflow_id = ? AND node_id IS NOT NULL",
+            id,
+          )
+          db.run("DELETE FROM workflow_node WHERE workflow_id = ?", id)
+          for (const n of graph.nodes) {
+            db.run(
+              `INSERT INTO workflow_node (id, workflow_id, number, kind, name, prompt, account_id, model, effort,
+                 permission, continue_on_failure, question, threshold, x, y)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              n.id,
+              id,
+              n.number,
+              n.kind,
+              n.name,
+              n.prompt,
+              n.accountId,
+              n.model,
+              n.effort,
+              n.permission,
+              n.continueOnFailure ? 1 : 0,
+              n.question,
+              n.threshold,
+              n.x,
+              n.y,
+            )
+            n.options.forEach((o, i) => {
+              db.run(
+                "INSERT INTO workflow_option (id, node_id, position, label) VALUES (?, ?, ?, ?)",
+                o.id,
+                n.id,
+                i,
+                o.label,
+              )
+            })
+          }
+          for (const c of graph.connections) {
+            db.run(
+              "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id) VALUES (?, ?, ?, ?, ?)",
+              c.id,
+              id,
+              c.from,
+              c.to,
+              c.optionId,
+            )
+          }
+          const back = new Set(graph.nodes.map((n) => n.id))
+          for (const link of links)
+            if (back.has(link.node_id))
+              db.run("UPDATE task SET node_id = ? WHERE id = ?", link.node_id, link.id)
+          touch(id)
+        })
+        changed(row.server_id)
+        return versionId
+      }
 
       const nodeOf = (id: string): WorkflowNode =>
         readGraph(
@@ -628,7 +727,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             changed(row.server_id)
             return nodeOf(id)
           }),
-        updateNode: (nodeId, patch) =>
+        updateNode: (nodeId, patch, source = "editor") =>
           Effect.gen(function* () {
             const node = yield* nodeRow(nodeId)
             const row = yield* findRow(node.workflow_id)
@@ -646,7 +745,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             }
             const pick = <T>(next: T | undefined, now: T) => (next === undefined ? now : next)
             db.transaction(() => {
-              keepVersion(row.id, "editor")
+              keepVersion(row.id, source)
               db.run(
                 `UPDATE workflow_node SET name = ?, prompt = ?, account_id = ?, model = ?, effort = ?,
                    permission = ?, continue_on_failure = ?, question = ?, threshold = ?, x = ?, y = ?
@@ -875,65 +974,46 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             // The workflow level may be stricter now than when the version was saved.
             if (loosestNode(graph.nodes, row.permission))
               return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
+            // A restore keeps the graph as it is now as a version (spec 010).
+            writeGraph(row, graph, "restore")
+            return readGraph(db, id)
+          }),
+        applyGraph: (id, graph, source) =>
+          Effect.gen(function* () {
+            const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
+            if (loosestNode(graph.nodes, row.permission))
+              return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
+            return { versionId: writeGraph(row, graph, source) }
+          }),
+        applyPrompt: (nodeId, prompt, source) =>
+          Effect.gen(function* () {
+            const node = yield* nodeRow(nodeId)
+            const row = yield* findRow(node.workflow_id)
+            const busy = checkIdle(row.id)
+            if (busy) return yield* busy
+            let versionId = ""
             db.transaction(() => {
-              // A restore keeps the graph as it is now as a version (spec 010).
-              keepVersion(id, "restore")
-              // Deleting a node sets the node of its tasks to NULL. The restored graph keeps the
-              // ids of its nodes, so the tasks of a node that comes back get their node again.
-              const links = db.all<{ id: string; node_id: string }>(
-                "SELECT id, node_id FROM task WHERE workflow_id = ? AND node_id IS NOT NULL",
-                id,
-              )
-              db.run("DELETE FROM workflow_node WHERE workflow_id = ?", id)
-              for (const n of graph.nodes) {
-                db.run(
-                  `INSERT INTO workflow_node (id, workflow_id, number, kind, name, prompt, account_id, model, effort,
-                     permission, continue_on_failure, question, threshold, x, y)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                  n.id,
-                  id,
-                  n.number,
-                  n.kind,
-                  n.name,
-                  n.prompt,
-                  n.accountId,
-                  n.model,
-                  n.effort,
-                  n.permission,
-                  n.continueOnFailure ? 1 : 0,
-                  n.question,
-                  n.threshold,
-                  n.x,
-                  n.y,
-                )
-                n.options.forEach((o, i) => {
-                  db.run(
-                    "INSERT INTO workflow_option (id, node_id, position, label) VALUES (?, ?, ?, ?)",
-                    o.id,
-                    n.id,
-                    i,
-                    o.label,
-                  )
-                })
-              }
-              for (const c of graph.connections) {
-                db.run(
-                  "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id) VALUES (?, ?, ?, ?, ?)",
-                  c.id,
-                  id,
-                  c.from,
-                  c.to,
-                  c.optionId,
-                )
-              }
-              const back = new Set(graph.nodes.map((n) => n.id))
-              for (const link of links)
-                if (back.has(link.node_id))
-                  db.run("UPDATE task SET node_id = ? WHERE id = ?", link.node_id, link.id)
-              touch(id)
+              versionId = keepVersion(row.id, source)
+              db.run("UPDATE workflow_node SET prompt = ? WHERE id = ?", prompt, nodeId)
+              touch(row.id)
             })
             changed(row.server_id)
-            return readGraph(db, id)
+            return { versionId }
+          }),
+        setSelfImprovement: (id, enabled) =>
+          Effect.gen(function* () {
+            const row = yield* findRow(id)
+            db.run(
+              "UPDATE workflow SET self_improvement = ?, updated_at = ? WHERE id = ?",
+              enabled ? 1 : 0,
+              Date.now(),
+              id,
+            )
+            changed(row.server_id)
+            bus.emit("proposals.changed", { workflowId: id })
+            return toWorkflow(yield* findRow(id))
           }),
       })
     }),

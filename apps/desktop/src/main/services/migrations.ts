@@ -493,4 +493,48 @@ export const migrations: readonly string[] = [
     checked_at INTEGER NOT NULL
   );
   `,
+  `
+  -- Self-improvement (spec 002): the proposals of a workflow and its change log. A row that waits is
+  -- a proposal. A row of another state is the change log. Neither syncs (spec 002, "Data"); they go
+  -- with the workflow when it is deleted.
+  -- "kind": 'document', 'prompt', 'graph' or 'memory'. "node_*": the node of a prompt change, as it
+  -- was. "source_kind": 'run', 'chat' or 'check'; "source_id": the run or the message; "task_id": the
+  -- task of a node that suggested a memory item. "outside": the first source of outside content, as
+  -- JSON, or NULL. "old_text" and "new_text": the text before and after, or the fact of a memory item.
+  -- "graph": the new graph as JSON, for a graph change. "check": the result of the check of that graph.
+  -- "base_key" is the fingerprint of the target when the proposal was made: a proposal whose target
+  -- changed after is stale. "after_key" is the fingerprint after the change: Undo is on only while
+  -- the target still has it. "applied": JSON with the version or the history row that the change
+  -- made, which Undo reads.
+  CREATE TABLE proposal (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('document', 'prompt', 'graph', 'memory')),
+    node_id TEXT,
+    node_number INTEGER,
+    node_name TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('run', 'chat', 'check')),
+    source_id TEXT,
+    task_id TEXT,
+    outside TEXT,
+    state TEXT NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting', 'applied', 'rejected', 'failed', 'undone')),
+    state_reason TEXT,
+    old_text TEXT,
+    new_text TEXT,
+    graph TEXT,
+    check_outcome TEXT,
+    base_key TEXT,
+    after_key TEXT,
+    applied TEXT,
+    created_at INTEGER NOT NULL,
+    answered_at INTEGER,
+    undone_at INTEGER
+  );
+  CREATE INDEX proposal_workflow ON proposal (workflow_id, state, created_at);
+  CREATE INDEX proposal_source ON proposal (workflow_id, source_kind, source_id);
+  CREATE INDEX proposal_task ON proposal (task_id);
+  -- The items that a task saved, for the run view (spec 008, "Flows", 1).
+  CREATE INDEX memory_task ON memory (task_id);
+  `,
 ]

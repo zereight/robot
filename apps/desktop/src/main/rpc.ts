@@ -38,7 +38,9 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { AppError } from "./services/errors.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
+import { Memory } from "./services/Memory.ts"
 import { Platform } from "./services/Platform.ts"
+import { Proposals } from "./services/Proposals.ts"
 import { Providers } from "./services/Providers.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runs } from "./services/Runs.ts"
@@ -104,6 +106,29 @@ const ByRuntime = Schema.Struct({
   signIn: Schema.optionalKey(Schema.NullOr(SignInId)),
 })
 const done = Effect.as(undefined)
+
+/**
+ * Only the window of this computer answers a proposal or a switch of self-improvement. A linked
+ * device never does (spec 002, "Surfaces"; spec 012). The link has no such method, and this check
+ * holds even when a caller forgets the list.
+ */
+/**
+ * A linked device (012) and the phone (011) do not show proposals: the page and the cards stay on
+ * the computer that holds them (spec 002, "Surfaces"). The count that the server sends to such a
+ * device is 0, so the device shows no line "N proposals wait".
+ */
+const countForActor = <A extends { proposals: number }>(value: A) =>
+  Effect.gen(function* () {
+    const actor = yield* CurrentActor
+    return actor ? { ...value, proposals: 0 } : value
+  })
+
+const ownerOnly = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const actor = yield* CurrentActor
+    if (actor) return yield* new AppError({ code: "not_allowed" })
+    return yield* effect
+  })
 
 /** The connected accounts and their models, without any key. */
 const modelChoices = Effect.gen(function* () {
@@ -519,6 +544,7 @@ export const handlers: Handlers = {
   "workflows.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Workflows.use((w) => w.list(serverId))),
+      Effect.flatMap((list) => Effect.forEach(list, (flow) => countForActor(flow))),
     ),
   "workflows.get": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.get(id)))),
@@ -711,6 +737,80 @@ export const handlers: Handlers = {
         }),
       ),
       done,
+    ),
+  "memory.state": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String, search: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ workflowId, search }) => Memory.use((m) => m.state(workflowId, search))),
+      Effect.flatMap(countForActor),
+    ),
+  "memory.history": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Memory.use((m) => m.history(workflowId))),
+    ),
+  "memory.add": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId, text }) => Memory.use((m) => m.add(workflowId, text))),
+    ),
+  "memory.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, text }) => Memory.use((m) => m.update(id, text))),
+    ),
+  "memory.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Memory.use((m) => m.remove(id))),
+      done,
+    ),
+  "memory.undo": (input) =>
+    decode(Schema.Struct({ historyId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ historyId }) => Memory.use((m) => m.undo(historyId))),
+      done,
+    ),
+  "memory.setEnabled": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String, enabled: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ workflowId, enabled }) =>
+        Memory.use((m) => m.setEnabled(workflowId, enabled)),
+      ),
+    ),
+  "memory.setMode": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String, mode: Schema.Literals(["ask", "now"]) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ workflowId, mode }) => Memory.use((m) => m.setMode(workflowId, mode))),
+    ),
+  "proposals.list": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) =>
+        Effect.gen(function* () {
+          const view = yield* ownerOnly(Proposals.use((p) => p.list(workflowId)))
+          const programBlock = yield* Chat.use((c) => c.programBlock(workflowId))
+          return { ...view, programBlock }
+        }),
+      ),
+    ),
+  "proposals.accept": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, text }) => ownerOnly(Proposals.use((p) => p.accept(id, text)))),
+      done,
+    ),
+  "proposals.reject": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => ownerOnly(Proposals.use((p) => p.reject(id)))),
+      done,
+    ),
+  "proposals.undo": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => ownerOnly(Proposals.use((p) => p.undo(id)))),
+      done,
+    ),
+  "workflows.setSelfImprovement": (input) =>
+    decode(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, enabled }) =>
+        ownerOnly(Workflows.use((w) => w.setSelfImprovement(id, enabled))),
+      ),
     ),
   "workflows.delete": (input) =>
     decode(ById)(input).pipe(

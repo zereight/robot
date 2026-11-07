@@ -143,4 +143,45 @@ describe("the reset of a database from before the workflow model (owner decision
     ).toBe(migrations.length + 1)
     check.close()
   })
+  test("an upgrade from the version before the proposals keeps the data and adds the table of proposals", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const before = migrations.slice(0, 9)
+    for (const sql of before) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${before.length};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO memory (id, workflow_id, text, source, created_at, updated_at)
+        VALUES ('m1', 'w1', 'Likes tea', 'user', 1, 1);
+      INSERT INTO memory_history (id, workflow_id, memory_id, at, actor, kind, source, old_text, new_text)
+        VALUES ('h1', 'w1', 'm1', 1, 'user', 'added', 'user', NULL, 'Likes tea');
+    `)
+    expect(old.prepare("SELECT name FROM sqlite_master WHERE name = 'proposal'").all()).toEqual([])
+    old.close()
+    expect(fileState(file)).toBe("current")
+    const db = openDatabase(file)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
+    expect(db.all("SELECT text FROM memory")).toEqual([{ text: "Likes tea" }])
+    expect(db.all("SELECT id FROM memory_history")).toEqual([{ id: "h1" }])
+    expect(db.get<{ document: string }>("SELECT document FROM workflow")?.document).toBe("Doc.")
+    // The new table takes a proposal, checks its kind and goes with the workflow.
+    db.run(
+      `INSERT INTO proposal (id, workflow_id, kind, reason, source_kind, state, created_at)
+       VALUES ('p1', 'w1', 'document', 'why', 'chat', 'waiting', 1)`,
+    )
+    expect(() =>
+      db.run(
+        `INSERT INTO proposal (id, workflow_id, kind, reason, source_kind, state, created_at)
+         VALUES ('p2', 'w1', 'skill', 'why', 'chat', 'waiting', 1)`,
+      ),
+    ).toThrow()
+    db.run("DELETE FROM workflow WHERE id = 'w1'")
+    expect(db.all("SELECT id FROM proposal")).toEqual([])
+    expect(db.all("SELECT id FROM memory")).toEqual([])
+  })
 })

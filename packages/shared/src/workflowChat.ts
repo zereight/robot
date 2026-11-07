@@ -47,6 +47,27 @@ export type ChatPart =
     }
   /** The muted line of a busy provider (spec 006). The model never reads it. */
   | { readonly kind: "note"; readonly note: "busy_retry"; readonly n: number; readonly of: number }
+  /**
+   * The muted line after a proposal of the turn (spec 002, "Self-improvement", "Flows", 1): "Suggested
+   * a change to the responsible document", "... to the prompt of node <number>", "... to the graph",
+   * or "Suggested for memory". It has the link "Review".
+   */
+  | {
+      readonly kind: "note"
+      readonly note: "proposal"
+      readonly proposalId: string
+      readonly proposalKind: "document" | "prompt" | "graph" | "memory"
+      readonly nodeNumber: number | null
+    }
+  /** The muted line "20 proposals wait. Answer some before the responsible document can propose more." */
+  | { readonly kind: "note"; readonly note: "proposals_full" }
+  /** The muted line "Saved to memory" with its undo control (spec 008, "Flows", 1). */
+  | {
+      readonly kind: "note"
+      readonly note: "memory_saved"
+      readonly text: string
+      readonly historyId: string
+    }
 
 export type ChatStatus = "done" | "streaming" | "stopped" | "failed"
 

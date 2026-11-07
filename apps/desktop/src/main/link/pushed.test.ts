@@ -28,6 +28,7 @@ describe("the events that a server pushes to linked devices (spec 012)", () => {
     expect([...PUSHED_EVENTS].sort()).toEqual([
       "chat.message",
       "chat.state",
+      "memory.changed",
       "runs.changed",
       "workflows.changed",
     ])

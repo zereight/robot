@@ -5,9 +5,13 @@ import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { outsideText, reasonText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
+import { openImprovement } from "../state/improve.ts"
+import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { showToast } from "../ui/toast.ts"
+import improve from "./improve.module.css"
+import { showsProposals } from "./improveView.ts"
 import styles from "./runs.module.css"
 
 /** The word of a state of a run, a task or a node that has no task (spec 005). */
@@ -53,7 +57,58 @@ const TaskMarks = (props: { task: RunTask; number: number }) => {
   )
 }
 
-const NodeCard = (props: { node: RunNode }) => {
+/**
+ * The memory work of a task (spec 008, "Flows" 1): "Saved to memory" with an undo control, and
+ * "Suggested for memory" with the link "Review". The lines are muted.
+ */
+const TaskMemory = (props: { task: RunTask; workflowId: string; number: number }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  // A linked device shows no proposals and cannot undo memory (spec 002, "Surfaces").
+  const local = () => showsProposals(ui.server()?.kind)
+  const undo = (historyId: string) =>
+    call("memory.undo", { historyId }).catch((e: unknown) => {
+      const text = describeError(e)
+      showToast("error", text.key, text.params)
+    })
+  return (
+    <Show when={props.task.memory.length > 0}>
+      <ul class={styles.marks} data-testid={`run-node-memory-${props.number}`}>
+        <Keyed
+          each={props.task.memory}
+          by={(m) => `${m.kind}:${m.historyId ?? m.proposalId ?? m.text}`}
+        >
+          {(m) => (
+            <li data-testid="run-memory-line" data-kind={m().kind}>
+              {m().kind === "saved"
+                ? t("runs.memory.saved", { text: m().text })
+                : t("runs.memory.suggested", { text: m().text })}{" "}
+              <Show when={local() && m().kind === "saved" && m().canUndo && m().historyId}>
+                {(id) => (
+                  <Button onClick={() => void undo(id())} data-testid="run-memory-undo">
+                    {t("runs.memory.undo")}
+                  </Button>
+                )}
+              </Show>
+              <Show when={local() && m().kind === "suggested"}>
+                <button
+                  type="button"
+                  class={improve.link}
+                  onClick={() => openImprovement(props.workflowId, m().proposalId)}
+                  data-testid="run-memory-review"
+                >
+                  {t("runs.memory.review")}
+                </button>
+              </Show>
+            </li>
+          )}
+        </Keyed>
+      </ul>
+    </Show>
+  )
+}
+
+const NodeCard = (props: { node: RunNode; workflowId: string }) => {
   const { t } = useApp()
   const task = () => props.node.task
   const reason = () => reasonText(t, task()?.reasonCode ?? null, task()?.reasonText ?? null)
@@ -75,6 +130,7 @@ const NodeCard = (props: { node: RunNode }) => {
         {(task) => (
           <>
             <TaskMarks task={task()} number={props.node.number} />
+            <TaskMemory task={task()} workflowId={props.workflowId} number={props.node.number} />
             <Show when={task().decision}>
               {(decision) => (
                 <div class={styles.decision} data-testid={`run-node-decision-${props.node.number}`}>
@@ -176,7 +232,7 @@ const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void
       </Show>
       <ol class={styles.nodes}>
         <Keyed each={props.run.nodes} by={(node) => node.number}>
-          {(node) => <NodeCard node={node()} />}
+          {(node) => <NodeCard node={node()} workflowId={props.run.workflowId} />}
         </Keyed>
       </ol>
       <Show when={props.run.feedback.length > 0}>
@@ -232,6 +288,13 @@ export const RunsPanel = (props: {
       if (payload.workflowId === props.workflowId) void refetch()
     }),
   )
+  // A memory line of a task changes when the user answers its proposal or undoes the item.
+  for (const event of ["memory.changed", "proposals.changed"] as const)
+    onCleanup(
+      window.robot.on(event, (payload) => {
+        if (payload.workflowId === props.workflowId) void refetch()
+      }),
+    )
   const stop = (id: string) =>
     void call("runs.stop", { runId: id }).catch((e: unknown) => {
       const text = describeError(e)

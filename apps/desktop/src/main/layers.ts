@@ -11,7 +11,9 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Host } from "./services/Host.ts"
+import { Memory } from "./services/Memory.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
+import { Proposals } from "./services/Proposals.ts"
 import { Providers } from "./services/Providers.ts"
 import { Rules } from "./services/Rules.ts"
 import { RunFacts } from "./services/RunFacts.ts"
@@ -85,7 +87,11 @@ export const appLayer = (options: AppLayerOptions) => {
   const workflowCheck = WorkflowCheck.layer({ auto: true, ...options.check }).pipe(
     Layer.provideMerge(workflows),
   )
-  const runFacts = RunFacts.layer.pipe(Layer.provideMerge(workflowCheck))
+  // The memory (spec 008) and the proposals of self-improvement (spec 002) come before the runs and
+  // the chat, which use their tools.
+  const memory = Memory.layer.pipe(Layer.provideMerge(workflowCheck))
+  const proposals = Proposals.layer.pipe(Layer.provideMerge(memory))
+  const runFacts = RunFacts.layer.pipe(Layer.provideMerge(proposals))
   const cards = Cards.layer.pipe(Layer.provideMerge(runFacts))
   const runs = Runs.layer.pipe(Layer.provideMerge(cards))
   const chat = Chat.layer.pipe(Layer.provideMerge(runs))

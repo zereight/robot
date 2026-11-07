@@ -70,9 +70,13 @@ describe("Stop kills the process group of a vendor program", () => {
         }
       })()
       const until = Date.now() + 5000
-      while (!existsSync(program.pids) && Date.now() < until)
-        await new Promise((r) => setTimeout(r, 20))
-      const [child, grandchild] = readFileSync(program.pids, "utf8").trim().split(" ").map(Number)
+      // The file can exist before the program wrote both numbers: wait for both.
+      const pidsOf = () =>
+        existsSync(program.pids)
+          ? readFileSync(program.pids, "utf8").trim().split(" ").filter(Boolean).map(Number)
+          : []
+      while (pidsOf().length < 2 && Date.now() < until) await new Promise((r) => setTimeout(r, 20))
+      const [child, grandchild] = pidsOf()
       expect(grandchild).toBeGreaterThan(1)
       expect(gone(grandchild as number)).toBe(false)
       controller.abort()

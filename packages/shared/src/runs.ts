@@ -74,6 +74,18 @@ export interface RunTask {
   readonly sensitive: SensitiveLabel | null
   /** The steps (tool calls) that the task took. */
   readonly steps: number
+  /** What the task did with the memory: items it saved, facts it suggested (spec 008, "Flows", 1). */
+  readonly memory: readonly TaskMemoryLine[]
+}
+
+/** A muted line of the run view: "Saved to memory" with its undo, or "Suggested for memory" with "Review". */
+export interface TaskMemoryLine {
+  readonly kind: "saved" | "suggested"
+  readonly text: string
+  /** The row of the memory history that the undo control reads. */
+  readonly historyId: string | null
+  readonly canUndo: boolean
+  readonly proposalId: string | null
 }
 
 export interface RunNode {
@@ -133,7 +145,7 @@ export interface RunCard {
   /** What the node wants to do: the command, the path, the host, the question, the feedback text. */
   readonly summary: string
   /** The kind of step of an approval card, for the rules; "feedback" for the chat. */
-  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | null
+  readonly step: "file" | "shell" | "web" | "feedback" | "ask" | "memory" | "change" | null
   /** True when the card has Allow once and Deny only (no "Always allow"). */
   readonly once: boolean
   /** The first source of outside content, when the card says that the turn or task holds it. */

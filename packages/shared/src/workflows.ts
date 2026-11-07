@@ -54,6 +54,8 @@ export interface Workflow {
   readonly folder: string
   readonly permission: PermissionLevel
   readonly selfImprovement: boolean
+  /** The proposals of self-improvement that wait for the user (spec 002). The list shows that one waits. */
+  readonly proposals: number
   readonly nodeCount: number
   /** True while a run works or waits. The editor is read-only then (spec 010, "Rules"). */
   readonly running: boolean
