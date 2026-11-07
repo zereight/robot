@@ -148,7 +148,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | --- | --- | --- | --- |
 | Test device | An iOS simulator, an Android emulator, or an iPhone, iPad, Android phone or tablet that the program finds on this Mac (032). | 테스트 기기 (proposed) | device (alone, for a simulator), phone (for a simulator) |
 | Panel | The surface that the downloaded program of test devices draws: the live picture, the logs, the charts and the app data (032). Not drawn or translated by ROBot. | 패널 (proposed) | device panel, mirror (as a name), viewer |
-| Panel column | The column at the right of the window that holds one panel: the activity panel or the panel of test devices (001). | 패널 열 (proposed) | sidebar, dock |
+| Panel column | The column at the right of the window that holds one panel: the chat of the open workflow or the panel of test devices (001). | 패널 열 (proposed) | sidebar, dock |
+| Studio | The main window: the workflow list, the canvas, the run strip and the chat in one view (001). | 스튜디오 (proposed) | dashboard, home |
+| Run strip | The lower part of the workflow view: the runs of the open workflow and the tasks of the selected run (001). | 실행 기록 (proposed) | run panel, timeline |
 | Test devices connection | The built-in connection that the app makes for test devices (018, 032). | 테스트 기기 연결 (proposed) | device runtime, plugin, driver |
 | Screen snapshot | The list of controls on the screen of a test device, with role, label and value (032). | 화면 스냅숏 (proposed) | dump, tree, DOM |
 | Device step | A step of an agent that reads or changes a test device (032). | 기기 작업 (proposed) | command (a command is a shell step) |
