@@ -144,38 +144,21 @@ export const isChangeMethod = (method: string): method is ChangeMethod =>
 export const isClientMethod = (method: string): method is ClientMethod =>
   (CLIENT_METHODS as readonly string[]).includes(method)
 
-/** The events that a server pushes to every linked device. */
+/**
+ * The events that a server pushes to every linked device. Each one has an emitter in the server
+ * (a test checks it): an event with no emitter is not listed. A client reads a part again when its
+ * event comes, and a part that has no event is read when the client opens it. The event "revoked"
+ * is not here: the server sends it to the device that it concerns, not to every device.
+ */
 export const PUSHED_EVENTS = [
+  // A message of a chat was made or changed (spec 003).
   "chat.message",
-  "chat.removed",
-  "chat.queue",
-  "channel.message",
-  "channel.removed",
-  "channels.changed",
-  "places.changed",
-  "agents.changed",
-  "tasks.changed",
-  // A follow-up was made, deleted, or started its task (spec 005, 012).
-  "followups.changed",
-  "notice",
-  "revoked",
-  "memory.changed",
-  // The handbook of the server changed (spec 002, 012): a client that shows it reads it again.
-  "handbook.changed",
+  // The workflows of the server changed (spec 010, 012): a client reads the list again.
   "workflows.changed",
   // A run, a task or a card changed, and the state of a chat changed (spec 010, 003): a client
   // reads the run or the history again.
   "runs.changed",
   "chat.state",
-  // The part "Organization" changed (spec 030, 012): a client that shows it reads it again.
-  "organization.changed",
-  // An organization was made, changed or deleted (spec 030, 012): a client reads the list again.
-  "organizations.changed",
-  // The org chart changed (spec 029, 012): the whole ready model, so a client reads nothing again.
-  "orgChart.model",
-  // A turn became quiet, went on, or ended (spec 005, "Quiet line", 012). The start and the end
-  // only: a client counts the seconds itself.
-  "quiet.changed",
 ] as const
 export type PushedEvent = (typeof PUSHED_EVENTS)[number]
 

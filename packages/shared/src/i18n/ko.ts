@@ -290,6 +290,7 @@ export const ko: Record<MessageKey, string> = {
   "permissions.log.result.refused": "거부됨",
   "permissions.log.result.stopped": "중지됨",
   "permissions.log.outside": "외부 내용: {source}",
+  "permissions.log.device": "{name}에서 답함",
   "permissions.log.noOutside": "외부 내용 없음",
   "permissions.log.sensitive": "민감한 정보 읽기: {label}",
   "permissions.log.noSensitive": "민감한 정보 읽기 없음",

@@ -86,6 +86,7 @@ export const ActionLogSection = () => {
           e.workflowName || t("permissions.log.deletedWorkflow"),
           ...(e.nodeName === null ? [] : [`${e.nodeNumber}. ${e.nodeName}`]),
           t(`permissions.log.decided.${e.decidedBy}` as MessageKey),
+          ...(e.device === null ? [] : [t("permissions.log.device", { name: e.device })]),
         ].join(" · ")}
       </div>
       <div class={styles.hint} data-testid="action-log-outside">
