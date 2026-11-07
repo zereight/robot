@@ -28,8 +28,20 @@ import type {
   ToolConnectionInput,
 } from "./toolConnections.ts"
 import type { HeldToolView } from "./toolReview.ts"
+import type { PermissionLevel } from "./tools.ts"
 import type { Server, UiState, UiStatePatch } from "./ui.ts"
-import type { DocumentVersion, Workflow, WorkflowCreate, WorkflowDetail } from "./workflows.ts"
+import type {
+  DocumentVersion,
+  GraphVersion,
+  NodeInput,
+  NodePatch,
+  Workflow,
+  WorkflowConnection,
+  WorkflowCreate,
+  WorkflowDetail,
+  WorkflowGraph,
+  WorkflowNode,
+} from "./workflows.ts"
 
 /** Information about the running app. */
 export interface AppInfo {
@@ -267,6 +279,30 @@ export interface RpcMethods {
   "workflows.document.restore": {
     input: { id: string; versionId: string }
     output: WorkflowDetail
+  }
+  /** Only the user changes the level and the folder of a workflow (spec 010). */
+  "workflows.setPermission": { input: { id: string; level: PermissionLevel }; output: Workflow }
+  "workflows.setFolder": { input: { id: string; folder: string }; output: Workflow }
+  /** Opens the system folder dialog for the folder of the workflow. Cancel changes nothing. */
+  "workflows.pickFolder": { input: { id: string }; output: Workflow }
+  /** The graph editor (spec 010). Each change that is not a move keeps the graph as a version. */
+  "workflows.node.add": { input: { workflowId: string; node: NodeInput }; output: WorkflowNode }
+  "workflows.node.update": { input: { id: string; patch: NodePatch }; output: WorkflowNode }
+  "workflows.node.move": { input: { id: string; x: number; y: number }; output: undefined }
+  "workflows.node.remove": { input: { id: string }; output: undefined }
+  "workflows.option.add": { input: { nodeId: string; label: string }; output: WorkflowNode }
+  "workflows.option.rename": { input: { id: string; label: string }; output: WorkflowNode }
+  "workflows.option.remove": { input: { id: string }; output: WorkflowNode }
+  "workflows.connect": {
+    input: { workflowId: string; from: string; to: string; optionId?: string | null }
+    output: WorkflowConnection
+  }
+  "workflows.disconnect": { input: { id: string }; output: undefined }
+  "workflows.versions": { input: { id: string }; output: readonly GraphVersion[] }
+  /** Restores a version of the graph. The graph as it is now is kept as a version too. */
+  "workflows.versions.restore": {
+    input: { id: string; versionId: string }
+    output: WorkflowGraph
   }
   "decision.status": { input: undefined; output: DecisionStatus }
   /** Saves or removes the keys that the patch names; a key that is not named stays. */

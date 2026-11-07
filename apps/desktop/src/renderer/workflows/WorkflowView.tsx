@@ -1,6 +1,6 @@
 import type { WorkflowDetail } from "@robot/shared"
 import { ArrowLeft, Trash2 } from "lucide-solid"
-import { createResource, createSignal, onCleanup, Show } from "solid-js"
+import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
@@ -8,7 +8,13 @@ import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { IconButton } from "../ui/controls.tsx"
 import { DocumentEditor } from "./DocumentEditor.tsx"
+import { GraphEditor } from "./GraphEditor.tsx"
+import graph from "./graph.module.css"
+import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
+
+const TABS = ["graph", "document", "settings"] as const
+type Tab = (typeof TABS)[number]
 
 /** The workflow that is open: its name, and the editor of its responsible document. */
 export const WorkflowView = (props: { id: string }) => {
@@ -21,6 +27,7 @@ export const WorkflowView = (props: { id: string }) => {
   )
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
   const [asking, setAsking] = createSignal(false)
+  const [tab, setTab] = createSignal<Tab>("graph")
   return (
     <>
       <header class={shell.header} data-testid="workflow-header">
@@ -32,6 +39,7 @@ export const WorkflowView = (props: { id: string }) => {
         <Show when={detail()}>
           <IconButton
             label={t("workflows.delete")}
+            disabled={detail()?.running}
             onClick={() => setAsking(true)}
             data-testid="workflow-delete"
           >
@@ -40,7 +48,12 @@ export const WorkflowView = (props: { id: string }) => {
         </Show>
       </header>
       <div class={styles.page} data-testid="workflow-view">
-        <Show when={asking() && detail()}>
+        <Show when={detail()?.running}>
+          <p class={styles.hint} role="status" data-testid="workflow-running-readonly">
+            {t("workflows.readonly")}
+          </p>
+        </Show>
+        <Show when={asking() && !detail()?.running ? detail() : undefined}>
           {(flow) => (
             <Confirm
               ask={t("workflows.delete.ask", { name: flow().name })}
@@ -56,7 +69,39 @@ export const WorkflowView = (props: { id: string }) => {
             />
           )}
         </Show>
-        <Show when={detail()}>{(flow) => <DocumentEditor workflow={flow()} />}</Show>
+        <Show when={detail()}>
+          {(flow) => (
+            <>
+              <div class={graph.tabs} role="tablist" aria-label={t("workflows.tabs")}>
+                <For each={TABS}>
+                  {(name) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      class={graph.tab}
+                      aria-selected={tab() === name}
+                      data-testid={`tab-${name}`}
+                      onClick={() => setTab(name)}
+                    >
+                      {t(`workflows.tab.${name}`)}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <Switch>
+                <Match when={tab() === "graph"}>
+                  <GraphEditor workflow={flow()} />
+                </Match>
+                <Match when={tab() === "document"}>
+                  <DocumentEditor workflow={flow()} />
+                </Match>
+                <Match when={tab() === "settings"}>
+                  <WorkflowSettings workflow={flow()} />
+                </Match>
+              </Switch>
+            </>
+          )}
+        </Show>
       </div>
     </>
   )

@@ -10,6 +10,7 @@ test("document: edit and save, the limits, the history, restore", async () => {
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
+  await page.getByTestId("tab-document").click()
   const text = page.getByTestId("document-text")
   await expect(text).toHaveValue(/You answer for this workflow/)
   const original = await text.inputValue()
@@ -67,6 +68,7 @@ test("document: edit and save, the limits, the history, restore", async () => {
   // The text stays after a restart.
   // The app opens the workflow that was open (spec 001).
   ;({ app, page } = await launch(userData, env))
+  await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-text")).toHaveValue("Last text.")
   await expect(page.getByTestId("document-version")).toHaveCount(4)
   await app.close()
@@ -78,6 +80,7 @@ test("document: the editor is read-only while a run works", async () => {
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
+  await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-text")).toBeVisible()
   await app.close()
 
@@ -92,6 +95,7 @@ test("document: the editor is read-only while a run works", async () => {
   db.close()
 
   ;({ app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" }))
+  await page.getByTestId("tab-document").click()
   await expect(page.getByTestId("document-readonly")).toBeVisible()
   await expect(page.getByTestId("document-text")).toHaveAttribute("readonly", "")
   await expect(page.getByTestId("document-save")).toBeDisabled()

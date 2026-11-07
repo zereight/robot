@@ -8,9 +8,12 @@ import {
   DOCUMENT_VERSIONS_MAX,
   type DocumentSource,
   type DocumentVersion,
+  type GraphVersion,
   graphProblems,
   isLooser,
   NODES_MAX,
+  type NodeInput,
+  type NodePatch,
   nameKey,
   OPTIONS_MIN,
   type PermissionLevel,
@@ -33,26 +36,7 @@ import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { SettingsStore } from "./Settings.ts"
 
-/** A node to add (spec 010). A decision node needs at least two options. */
-export interface NodeInput {
-  readonly kind: "text" | "decision"
-  readonly name: string
-  readonly prompt?: string
-  readonly accountId?: string | null
-  readonly model?: string | null
-  readonly effort?: string | null
-  readonly permission?: PermissionLevel | null
-  readonly continueOnFailure?: boolean
-  readonly question?: string
-  readonly threshold?: number
-  /** The labels of the options of a decision node. */
-  readonly options?: readonly string[]
-  readonly x?: number
-  readonly y?: number
-}
-
-/** A change of a node. A field that is left out stays as it was. */
-export type NodePatch = Partial<Omit<NodeInput, "kind" | "options">>
+export type { GraphVersion, NodeInput, NodePatch }
 
 export interface WorkflowsService {
   readonly list: (serverId: string) => Effect.Effect<readonly Workflow[]>
@@ -84,6 +68,16 @@ export interface WorkflowsService {
   readonly addNode: (workflowId: string, input: NodeInput) => Effect.Effect<WorkflowNode, AppError>
   readonly updateNode: (nodeId: string, patch: NodePatch) => Effect.Effect<WorkflowNode, AppError>
   readonly removeNode: (nodeId: string) => Effect.Effect<void, AppError>
+  /**
+   * Moves a node on the canvas. A move is not a change of the graph: it keeps no version, and the
+   * number of the node stays (spec 010).
+   */
+  readonly moveNode: (nodeId: string, x: number, y: number) => Effect.Effect<void, AppError>
+  /** Adds an option to a decision node. The option has no connection yet. */
+  readonly addOption: (nodeId: string, label: string) => Effect.Effect<WorkflowNode, AppError>
+  readonly renameOption: (optionId: string, label: string) => Effect.Effect<WorkflowNode, AppError>
+  /** Removes an option with its connection. A decision node keeps at least two options. */
+  readonly removeOption: (optionId: string) => Effect.Effect<WorkflowNode, AppError>
   readonly connect: (
     workflowId: string,
     from: string,
@@ -95,13 +89,6 @@ export interface WorkflowsService {
   readonly versions: (id: string) => Effect.Effect<readonly GraphVersion[], AppError>
   /** Restores a version. The graph as it is now is kept as a version too. */
   readonly restoreVersion: (id: string, versionId: string) => Effect.Effect<WorkflowGraph, AppError>
-}
-
-export interface GraphVersion {
-  readonly id: string
-  readonly source: VersionSource
-  readonly createdAt: number
-  readonly graph: WorkflowGraph
 }
 
 interface WorkflowRow {
@@ -302,6 +289,34 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           ? new AppError({ code: "node_permission_looser", detail: "permission" })
           : null
 
+      /** A decision node uses no model, no reasoning level and no tools (spec 010). */
+      const checkDecisionFields = (patch: {
+        accountId?: string | null
+        model?: string | null
+        effort?: string | null
+        permission?: PermissionLevel | null
+      }) => {
+        if (patch.effort !== undefined && patch.effort !== null)
+          return new AppError({ code: "decision_effort", detail: "effort" })
+        if (
+          (patch.accountId !== undefined && patch.accountId !== null) ||
+          (patch.model !== undefined && patch.model !== null)
+        )
+          return new AppError({ code: "decision_model", detail: "model" })
+        if (patch.permission !== undefined && patch.permission !== null)
+          return new AppError({ code: "decision_permission", detail: "permission" })
+        return null
+      }
+
+      /** True when a text node of the graph holds a level that is looser than the given level. */
+      const loosestNode = (
+        nodes: readonly { kind: string; permission: PermissionLevel | null }[],
+        level: PermissionLevel,
+      ) =>
+        nodes.some(
+          (n) => n.kind === "text" && n.permission !== null && isLooser(n.permission, level),
+        )
+
       const create = (input: WorkflowCreate) =>
         Effect.gen(function* () {
           if (!db.get("SELECT 1 FROM server WHERE id = ?", input.serverId))
@@ -420,6 +435,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         rename: (id, name) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
             const trimmed = name.trim()
             const problem = checkName(row.server_id, trimmed, id)
             if (problem) return yield* problem
@@ -436,6 +453,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         remove: (id) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            // A workflow that runs is not deleted: the cascade would remove its run rows.
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
             // Every table of the workflow holds a foreign key with ON DELETE CASCADE.
             db.run("DELETE FROM workflow WHERE id = ?", id)
             changed(row.server_id)
@@ -443,6 +463,15 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         setPermission: (id, level) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
+            // Spec 010 says a node is never looser than its workflow, and does not say what a
+            // tighter workflow does to a looser node. The app refuses and names no node.
+            if (loosestNode(readGraph(db, id).nodes, level))
+              return yield* new AppError({
+                code: "workflow_permission_nodes",
+                detail: "permission",
+              })
             db.run(
               "UPDATE workflow SET permission = ?, updated_at = ? WHERE id = ?",
               level,
@@ -455,6 +484,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         setFolder: (id, folder) =>
           Effect.gen(function* () {
             const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
             if (folder.trim() === "")
               return yield* new AppError({ code: "workflow_folder_empty", detail: "folder" })
             db.run(
@@ -521,6 +552,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               return yield* new AppError({ code: "node_name_empty", detail: "name" })
             const level = checkLevel(row, input.permission)
             if (level) return yield* level
+            if (input.kind === "decision") {
+              const fields = checkDecisionFields(input)
+              if (fields) return yield* fields
+            }
             const options = input.options ?? []
             if (input.kind === "decision" && options.length < OPTIONS_MIN)
               return yield* new AppError({ code: "decision_options", detail: "options" })
@@ -578,9 +613,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (level) return yield* level
             if (patch.threshold !== undefined && !(patch.threshold >= 0 && patch.threshold <= 1))
               return yield* new AppError({ code: "decision_threshold", detail: "threshold" })
-            // A decision node has no reasoning level and no tools (spec 010).
-            if (node.kind === "decision" && patch.effort !== undefined && patch.effort !== null)
-              return yield* new AppError({ code: "decision_effort", detail: "effort" })
+            if (node.kind === "decision") {
+              const fields = checkDecisionFields(patch)
+              if (fields) return yield* fields
+            }
             const pick = <T>(next: T | undefined, now: T) => (next === undefined ? now : next)
             db.transaction(() => {
               keepVersion(row.id, "editor")
@@ -624,6 +660,93 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               touch(row.id)
             })
             changed(row.server_id)
+          }),
+        moveNode: (nodeId, x, y) =>
+          Effect.gen(function* () {
+            const node = yield* nodeRow(nodeId)
+            const row = yield* findRow(node.workflow_id)
+            const busy = checkIdle(row.id)
+            if (busy) return yield* busy
+            if (!Number.isFinite(x) || !Number.isFinite(y))
+              return yield* new AppError({ code: "invalid_input" })
+            db.run("UPDATE workflow_node SET x = ?, y = ? WHERE id = ?", x, y, nodeId)
+            changed(row.server_id)
+          }),
+        addOption: (nodeId, label) =>
+          Effect.gen(function* () {
+            const node = yield* nodeRow(nodeId)
+            const row = yield* findRow(node.workflow_id)
+            const busy = checkIdle(row.id)
+            if (busy) return yield* busy
+            if (node.kind !== "decision") return yield* new AppError({ code: "text_node_options" })
+            if (label.trim() === "")
+              return yield* new AppError({ code: "option_label_empty", detail: "options" })
+            db.transaction(() => {
+              keepVersion(row.id, "editor")
+              const next =
+                db.get<{ n: number }>(
+                  "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM workflow_option WHERE node_id = ?",
+                  nodeId,
+                )?.n ?? 0
+              db.run(
+                "INSERT INTO workflow_option (id, node_id, position, label) VALUES (?, ?, ?, ?)",
+                randomUUID(),
+                nodeId,
+                next,
+                label.trim(),
+              )
+              touch(row.id)
+            })
+            changed(row.server_id)
+            return nodeOf(nodeId)
+          }),
+        renameOption: (optionId, label) =>
+          Effect.gen(function* () {
+            const option = db.get<{ node_id: string }>(
+              "SELECT node_id FROM workflow_option WHERE id = ?",
+              optionId,
+            )
+            if (!option) return yield* new AppError({ code: "option_not_found" })
+            const node = yield* nodeRow(option.node_id)
+            const row = yield* findRow(node.workflow_id)
+            const busy = checkIdle(row.id)
+            if (busy) return yield* busy
+            if (label.trim() === "")
+              return yield* new AppError({ code: "option_label_empty", detail: "options" })
+            db.transaction(() => {
+              keepVersion(row.id, "editor")
+              db.run("UPDATE workflow_option SET label = ? WHERE id = ?", label.trim(), optionId)
+              touch(row.id)
+            })
+            changed(row.server_id)
+            return nodeOf(option.node_id)
+          }),
+        removeOption: (optionId) =>
+          Effect.gen(function* () {
+            const option = db.get<{ node_id: string }>(
+              "SELECT node_id FROM workflow_option WHERE id = ?",
+              optionId,
+            )
+            if (!option) return yield* new AppError({ code: "option_not_found" })
+            const node = yield* nodeRow(option.node_id)
+            const row = yield* findRow(node.workflow_id)
+            const busy = checkIdle(row.id)
+            if (busy) return yield* busy
+            const count =
+              db.get<{ n: number }>(
+                "SELECT COUNT(*) AS n FROM workflow_option WHERE node_id = ?",
+                option.node_id,
+              )?.n ?? 0
+            if (count <= OPTIONS_MIN)
+              return yield* new AppError({ code: "decision_options", detail: "options" })
+            db.transaction(() => {
+              keepVersion(row.id, "editor")
+              // The connection of the option goes with it (ON DELETE CASCADE).
+              db.run("DELETE FROM workflow_option WHERE id = ?", optionId)
+              touch(row.id)
+            })
+            changed(row.server_id)
+            return nodeOf(option.node_id)
           }),
         connect: (workflowId, from, to, optionId = null) =>
           Effect.gen(function* () {
@@ -722,6 +845,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const busy = checkIdle(id)
             if (busy) return yield* busy
             const graph = JSON.parse(version.graph) as WorkflowGraph
+            // The workflow level may be stricter now than when the version was saved.
+            if (loosestNode(graph.nodes, row.permission))
+              return yield* new AppError({ code: "node_permission_looser", detail: "permission" })
             db.transaction(() => {
               // A restore keeps the graph as it is now as a version (spec 010).
               keepVersion(id, "restore")

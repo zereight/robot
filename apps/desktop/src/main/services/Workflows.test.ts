@@ -157,6 +157,23 @@ describe("the responsible document (spec 002)", () => {
     )
     expect(await t.code((x) => x.saveDocument(flow.id, "two"))).toBe("workflow_running")
   })
+
+  test("a workflow cannot be renamed or deleted while a run works; the run rows stay", async () => {
+    const t = await setup()
+    const flow = await t.create("Report", "one")
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'working', 'hand', ?)",
+      flow.id,
+      Date.now(),
+    )
+    expect(await t.code((x) => x.rename(flow.id, "Other"))).toBe("workflow_running")
+    expect(await t.code((x) => x.remove(flow.id))).toBe("workflow_running")
+    expect((await t.w((x) => x.get(flow.id))).name).toBe("Report")
+    expect(await t.rows("SELECT id FROM run WHERE workflow_id = ?", flow.id)).toHaveLength(1)
+    await t.sql("UPDATE run SET finished_at = ? WHERE id = 'r1'", Date.now())
+    await t.w((x) => x.rename(flow.id, "Other"))
+    expect((await t.w((x) => x.get(flow.id))).name).toBe("Other")
+  })
 })
 
 describe("the graph (spec 010)", () => {
@@ -372,6 +389,133 @@ describe("the graph (spec 010)", () => {
     expect(await t.code((x) => x.addNode(flow.id, { kind: "text", name: "A" }))).toBe(
       "workflow_running",
     )
+  })
+})
+
+describe("folder, level and decision fields (spec 010)", () => {
+  const running = (t: Awaited<ReturnType<typeof setup>>, id: string) =>
+    t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'working', 'hand', 1)",
+      id,
+    )
+
+  test("the folder and the permission level are refused while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await running(t, flow.id)
+    expect(await t.code((x) => x.setPermission(flow.id, "read_only"))).toBe("workflow_running")
+    expect(await t.code((x) => x.setFolder(flow.id, "/tmp/elsewhere"))).toBe("workflow_running")
+    const after = await t.w((x) => x.get(flow.id))
+    expect([after.permission, after.folder]).toEqual([flow.permission, flow.folder])
+    // The run ends: the same calls work.
+    await t.sql("UPDATE run SET state = 'done', finished_at = 2 WHERE id = 'r1'")
+    expect((await t.w((x) => x.setPermission(flow.id, "read_only"))).permission).toBe("read_only")
+    expect((await t.w((x) => x.setFolder(flow.id, "/tmp/elsewhere"))).folder).toBe("/tmp/elsewhere")
+  })
+
+  test("a stricter workflow level is refused while a node is looser, and a restore re-checks the nodes", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setPermission(flow.id, "full"))
+    const loose = await t.w((x) =>
+      x.addNode(flow.id, { kind: "text", name: "A", permission: "ask_unsure" }),
+    )
+    expect(await t.code((x) => x.setPermission(flow.id, "ask_risky"))).toBe(
+      "workflow_permission_nodes",
+    )
+    expect((await t.w((x) => x.get(flow.id))).permission).toBe("full")
+    // A level that no node exceeds works. A node that is stricter than it stays.
+    await t.w((x) => x.setPermission(flow.id, "ask_unsure"))
+    await t.w((x) => x.updateNode(loose.id, { permission: "ask_all" }))
+    await t.w((x) => x.setPermission(flow.id, "ask_risky"))
+    // The version before the last edit holds the node at "ask_unsure": looser than the workflow.
+    const versions = await t.w((x) => x.versions(flow.id))
+    const old = versions.find((v) => v.graph.nodes[0]?.permission === "ask_unsure")
+    expect(old).toBeDefined()
+    expect(await t.code((x) => x.restoreVersion(flow.id, (old as { id: string }).id))).toBe(
+      "node_permission_looser",
+    )
+    expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.permission).toBe("ask_all")
+  })
+
+  test("a decision node takes no model, no reasoning level and no permission level", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const bad = { kind: "decision", name: "Ok?", options: ["Yes", "No"] } as const
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, model: "m" }))).toBe("decision_model")
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, accountId: "a" }))).toBe(
+      "decision_model",
+    )
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, effort: "high" }))).toBe(
+      "decision_effort",
+    )
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, permission: "read_only" }))).toBe(
+      "decision_permission",
+    )
+    const d = await t.w((x) => x.addNode(flow.id, bad))
+    expect(await t.code((x) => x.updateNode(d.id, { model: "m" }))).toBe("decision_model")
+    expect(await t.code((x) => x.updateNode(d.id, { effort: "low" }))).toBe("decision_effort")
+    expect(await t.code((x) => x.updateNode(d.id, { permission: "read_only" }))).toBe(
+      "decision_permission",
+    )
+    expect(await t.code((x) => x.updateNode(d.id, { model: null, name: "Fine?" }))).toBe("ok")
+    const node = (await t.w((x) => x.graph(flow.id))).nodes[0]
+    expect([node?.model, node?.accountId, node?.effort, node?.permission]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+})
+
+describe("the graph editor (spec 010, flow 2)", () => {
+  test("a move changes the place only: no version, same number", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    const before = (await t.w((x) => x.versions(flow.id))).length
+    await t.w((x) => x.moveNode(a.id, 120, 80))
+    const moved = (await t.w((x) => x.graph(flow.id))).nodes[0]
+    expect([moved?.x, moved?.y, moved?.number]).toEqual([120, 80, 1])
+    expect((await t.w((x) => x.versions(flow.id))).length).toBe(before)
+    expect(await t.code((x) => x.moveNode(a.id, Number.NaN, 1))).toBe("invalid_input")
+  })
+
+  test("a move is refused while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', 1)",
+      flow.id,
+    )
+    expect(await t.code((x) => x.moveNode(a.id, 5, 5))).toBe("workflow_running")
+  })
+
+  test("options: add, rename, remove with its connection, keep at least two", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const d = await t.w((x) =>
+      x.addNode(flow.id, { kind: "decision", name: "Ok?", options: ["Yes", "No"] }),
+    )
+    const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
+    const three = await t.w((x) => x.addOption(d.id, "Maybe"))
+    expect(three.options.map((o) => o.label)).toEqual(["Yes", "No", "Maybe"])
+    const maybe = three.options[2]?.id ?? ""
+    await t.w((x) => x.connect(flow.id, d.id, next.id, maybe))
+    const renamed = await t.w((x) => x.renameOption(maybe, " Perhaps "))
+    expect(renamed.options[2]?.label).toBe("Perhaps")
+    expect(await t.code((x) => x.renameOption(maybe, "  "))).toBe("option_label_empty")
+    expect(await t.code((x) => x.addOption(next.id, "No"))).toBe("text_node_options")
+    const two = await t.w((x) => x.removeOption(maybe))
+    expect(two.options.map((o) => o.label)).toEqual(["Yes", "No"])
+    // The connection of the removed option went with it.
+    expect((await t.w((x) => x.graph(flow.id))).connections).toEqual([])
+    expect(await t.code((x) => x.removeOption(two.options[0]?.id ?? ""))).toBe("decision_options")
+    expect(await t.code((x) => x.removeOption("nope"))).toBe("option_not_found")
+    // Each change kept the graph before it as a version.
+    expect((await t.w((x) => x.versions(flow.id))).length).toBeGreaterThanOrEqual(5)
   })
 })
 
