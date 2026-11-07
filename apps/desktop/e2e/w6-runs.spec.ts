@@ -241,6 +241,64 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await mock.close()
 })
 
+test("run: the card of the list keeps no spinner while the run waits for a card and turns again after the answer", async () => {
+  const mock = await startMockProvider()
+  const { app, page } = await launch(undefined, env)
+  await newWorkflow(page, "Approvals")
+  const workflowId = await buildFlow(page, {
+    provider: { openaiUrl: mock.openaiUrl, key: GOOD_KEY },
+    level: "ask_all",
+    nodes: [
+      { name: "Shell", prompt: 'tool run_command {"command":"echo list-ok"}' },
+      { name: "Work", prompt: "[[hang]]" },
+    ],
+    edges: [[0, 1]],
+  })
+  // Stay on the list: the page never opens the workflow (specs/039).
+  await page.getByTestId("workflow-back").click()
+  const spinner = page.getByTestId("workflow-card-spinner")
+  await expect(page.getByTestId("workflow-row")).toBeVisible()
+  await expect(spinner).toHaveCount(0)
+  const { cardId } = await page.evaluate(
+    async ({ workflowId }) => {
+      type Invoke = (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }>
+      const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+      const started = await invoke("runs.start", { workflowId })
+      if (!started.ok) throw new Error(JSON.stringify(started))
+      const end = Date.now() + 10000
+      while (Date.now() < end) {
+        const history = await invoke("chat.history", { workflowId })
+        const card = (
+          history.value as { cards: { id: string; kind: string; answeredAt: number | null }[] }
+        ).cards.find((c) => c.kind === "approval" && c.answeredAt === null)
+        if (card) return { cardId: card.id }
+        await new Promise((r) => setTimeout(r, 50))
+      }
+      throw new Error("no card")
+    },
+    { workflowId },
+  )
+  // The run waits for the user: the card of the list stops turning.
+  await expect(spinner).toHaveCount(0)
+  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  // The answer: the second node works, so the spinner comes back.
+  await page.evaluate(
+    async ({ cardId }) => {
+      type Invoke = (m: string, i?: unknown) => Promise<{ ok: boolean }>
+      const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
+      const r = await invoke("cards.answer", {
+        cardId,
+        answer: { kind: "approval", answer: "allow" },
+      })
+      if (!r.ok) throw new Error(JSON.stringify(r))
+    },
+    { cardId },
+  )
+  await expect(spinner).toHaveCount(1)
+  await app.close()
+  await mock.close()
+})
+
 test("run: feedback in the chat reaches the next text node, not the node that has started", async () => {
   const mock = await startMockProvider()
   const { app, page } = await launch(undefined, env)

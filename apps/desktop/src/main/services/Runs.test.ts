@@ -335,6 +335,7 @@ describe("a run of a workflow (spec 010)", () => {
   test("one run at a time: the next run waits in the queue and starts after the first", async () => {
     const t = await setup()
     await t.node({ name: "Slow", prompt: "slow one" })
+    const before = t.events.filter((e) => e.event === "workflows.changed").length
     const first = await t.start()
     const second = await t.start()
     expect(second.state).toBe("queued")
@@ -342,6 +343,10 @@ describe("a run of a workflow (spec 010)", () => {
     const f = await t.ended(first.id)
     expect(f.state).toBe("cancelled")
     await until(async () => (await t.get(second.id)).state !== "queued")
+    // Two starts, the end of the first run, and queued -> running tell the lists (spec 039).
+    expect(
+      t.events.filter((e) => e.event === "workflows.changed").length - before,
+    ).toBeGreaterThanOrEqual(4)
     await t.run(Runs.use((r) => r.stop(second.id)))
     await t.ended(second.id)
   })
@@ -549,6 +554,34 @@ describe("approval and question cards (spec 007, 003)", () => {
       "SELECT result, decided_by FROM action_log WHERE kind = 'shell'",
     )
     expect(log).toEqual([{ result: "ran", decided_by: "user" }])
+  })
+
+  test("the lists hear when a run waits on a card and when it goes on (spec 039)", async () => {
+    const t = await setup({ level: "ask_all" })
+    await t.node({ name: "Shell", prompt: command })
+    const changes = () => t.events.filter((e) => e.event === "workflows.changed").length
+    const run = await t.start()
+    const card = await t.waitCard()
+    expect((await t.get(run.id)).state).toBe("waiting")
+    const afterWait = changes()
+    // The run moved running -> waiting after the start: one more event than the start gave.
+    expect(afterWait).toBeGreaterThanOrEqual(2)
+    await t.answer(card.id, { kind: "approval", answer: "allow" })
+    await t.ended(run.id)
+    // waiting -> running, and then the end: both tell the lists.
+    expect(changes()).toBeGreaterThanOrEqual(afterWait + 2)
+  })
+
+  test("a write that does not move the run state sends no event to the lists", async () => {
+    const t = await setup()
+    await t.node({ name: "Slow", prompt: "slow one" })
+    const run = await t.start()
+    await until(async () => (await t.get(run.id)).state === "running")
+    const before = t.events.filter((e) => e.event === "workflows.changed").length
+    await new Promise((r) => setTimeout(r, 100))
+    expect(t.events.filter((e) => e.event === "workflows.changed").length).toBe(before)
+    await t.run(Runs.use((r) => r.stop(run.id)))
+    await t.ended(run.id)
   })
 
   test("Deny refuses the step: the command does not run and the log says refused", async () => {
