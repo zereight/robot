@@ -1,11 +1,23 @@
-import { describe, expect, test } from "bun:test"
-import type { WorkflowGraph, WorkflowNode } from "@robot/shared"
-import { checkWorkflow, type RunModel } from "./model.ts"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import {
+  type CheckOutcome,
+  type CheckProblem,
+  NODES_MAX,
+  problemNodeIds,
+  problemPath,
+  type WorkflowGraph,
+  type WorkflowNode,
+} from "@robot/shared"
+import { buildModule, checkWorkflow, type RunModel } from "./model.ts"
 import { CHECK_LIMITS, withChecker } from "./runner.ts"
 
-// The check reads the shape of a workflow only. No text of the user may reach the checker: a name,
-// a prompt, a question and an option label are free text, and the form that the checker reads is
-// code. These tests send hostile text through the real worker and read the form that it gets.
+// These tests run the real checker (tla-ts) in the real worker.
+//
+// The first part checks what the rules of a workflow say (spec 010, "Check"). The second part
+// checks that the check reads the shape of a workflow only. No text of the user may reach the
+// checker: a name, a prompt, a question and an option label are free text, and the form that the
+// checker reads is code. These tests send hostile text through the real worker and read the form
+// that it gets.
 
 /** Text that breaks a form that is built with string pasting, or a shell, or a parser. */
 const HOSTILE = [
@@ -134,5 +146,257 @@ describe("no text of the user reaches the checker", () => {
     const { outcome, seen } = one ?? { outcome: null, seen: [] }
     expect(outcome).toMatchObject({ state: "problem", problems: [{ code: "option_unconnected" }] })
     expect(seen).toEqual([])
+  })
+})
+
+// ---- The rules of the check ----
+
+interface Spec {
+  /** A node: its id, and for a decision node the labels of its options. */
+  readonly nodes: readonly (readonly [string, ...string[]])[]
+  /** A connection: from, to, and for a decision node the label of the option. */
+  readonly edges: readonly (readonly [string, string] | readonly [string, string, string])[]
+}
+
+const graphOf = (spec: Spec): WorkflowGraph => ({
+  nodes: spec.nodes.map(([id, ...options], i) => ({
+    ...node(id, i + 1, options.length > 0 ? "decision" : "text", `Name ${id}`),
+    prompt: "",
+    question: "",
+    options: options.map((label) => ({ id: `${id}:${label}`, label })),
+  })),
+  connections: spec.edges.map(([from, to, option], i) => ({
+    id: `c${i}`,
+    from,
+    to,
+    optionId: option === undefined ? null : `${from}:${option}`,
+  })),
+})
+
+const problemOf = (outcome: CheckOutcome): CheckProblem => {
+  if (outcome.state !== "problem") throw new Error(`Expected a problem, got ${outcome.state}`)
+  const first = outcome.problems[0]
+  if (!first) throw new Error("No problem in the list")
+  return first
+}
+
+describe("the check of a workflow (spec 010)", () => {
+  // The tests of this part share one worker: the start of a worker is the slow part of a check.
+  // The time limit counts from the start of the worker, so the shared worker gets room for all
+  // the tests. The test of 30 nodes keeps the limit of one check.
+  let run: RunModel = () => Promise.reject(new Error("The worker is not started."))
+  let stop: () => void = () => {}
+  let finished: Promise<unknown> = Promise.resolve()
+  beforeAll(async () => {
+    await new Promise<void>((ready) => {
+      finished = withChecker({ ...CHECK_LIMITS, timeMs: CHECK_LIMITS.timeMs * 20 }, (shared) => {
+        run = shared
+        ready()
+        return new Promise<void>((resolve) => {
+          stop = resolve
+        })
+      })
+    })
+  })
+  afterAll(async () => {
+    stop()
+    await finished
+  })
+
+  const check = (graph: WorkflowGraph, wrap: (run: RunModel) => RunModel = (x) => x) =>
+    checkWorkflow(graph, wrap(run))
+
+  test("a workflow with no node passes", async () => {
+    expect(await check({ nodes: [], connections: [] })).toEqual({ state: "passed" })
+  })
+
+  test("a chain of text nodes passes, and a node with no input is a start node", async () => {
+    const graph = graphOf({
+      nodes: [["a"], ["b"], ["c"], ["lonely"]],
+      edges: [
+        ["a", "b"],
+        ["b", "c"],
+      ],
+    })
+    expect(await check(graph)).toEqual({ state: "passed" })
+  })
+
+  test("a decision node with each option connected passes, and so does a join after it", async () => {
+    const graph = graphOf({
+      nodes: [["a"], ["d", "yes", "no"], ["x"], ["y"], ["join"]],
+      edges: [
+        ["a", "d"],
+        ["d", "x", "yes"],
+        ["d", "y", "no"],
+        ["x", "join"],
+        ["y", "join"],
+      ],
+    })
+    expect(await check(graph)).toEqual({ state: "passed" })
+  })
+
+  test("a loop is a deadlock: the nodes of the loop wait for each other, with the path to it", async () => {
+    const graph = graphOf({
+      nodes: [["start"], ["a"], ["b"], ["after"]],
+      edges: [
+        ["start", "a"],
+        ["a", "b"],
+        ["b", "a"],
+        ["b", "after"],
+      ],
+    })
+    const problem = problemOf(await check(graph))
+    expect(problem.code).toBe("deadlock")
+    expect([...problemNodeIds(problem)].sort()).toEqual(["a", "b"])
+    // The shortest path: the start node runs, then no node can start.
+    expect(problemPath(problem)).toEqual([{ nodeId: "start", event: "ran", optionId: null }])
+  })
+
+  test("a workflow where every node has an input has no start: it is a deadlock", async () => {
+    const graph = graphOf({
+      nodes: [["a"], ["b"]],
+      edges: [
+        ["a", "b"],
+        ["b", "a"],
+      ],
+    })
+    const problem = problemOf(await check(graph))
+    expect(problem.code).toBe("deadlock")
+    expect(problemPath(problem)).toEqual([])
+  })
+
+  test("a node after a loop is blocked, and the problem names the loop", async () => {
+    const graph = graphOf({
+      nodes: [["a"], ["b"], ["tail"]],
+      edges: [
+        ["a", "b"],
+        ["b", "a"],
+        ["b", "tail"],
+      ],
+    })
+    expect([...problemNodeIds(problemOf(await check(graph)))].sort()).toEqual(["a", "b"])
+  })
+
+  test("a deadlock after a decision node: the path names the option that the run takes", async () => {
+    const graph = graphOf({
+      nodes: [["d", "yes", "no"], ["ok"], ["bad1"], ["bad2"]],
+      edges: [
+        ["d", "ok", "yes"],
+        ["d", "bad1", "no"],
+        ["bad1", "bad2"],
+        ["bad2", "bad1"],
+      ],
+    })
+    const problem = problemOf(await check(graph))
+    expect(problem.code).toBe("deadlock")
+    // The shortest way to the deadlock: d takes an option, and the node of that option ends.
+    const path = problemPath(problem)
+    expect(path).toHaveLength(2)
+    expect(path[0]).toMatchObject({ nodeId: "d", event: "ran" })
+    expect(["d:yes", "d:no"]).toContain(path[0]?.optionId ?? "")
+    // The loop is named, not the node "ok" and not the nodes that wait for the loop.
+    expect([...problemNodeIds(problem)].sort()).toEqual(["bad1", "bad2"])
+  })
+
+  test("a join after a decision node: the node that joins waits for both ends", async () => {
+    // Only one option runs. The node "join" has two inputs. It runs when one of them passes on,
+    // and the other input ends as skipped: a join after a decision is no deadlock.
+    const graph = graphOf({
+      nodes: [["d", "yes", "no"], ["x"], ["y"], ["join"], ["after"]],
+      edges: [
+        ["d", "x", "yes"],
+        ["d", "y", "no"],
+        ["x", "join"],
+        ["y", "join"],
+        ["join", "after"],
+      ],
+    })
+    expect(await check(graph)).toEqual({ state: "passed" })
+  })
+
+  test("a decision option with no connection is a problem of the graph, with its place", async () => {
+    const graph = graphOf({
+      nodes: [["d", "yes", "no"], ["x"]],
+      edges: [["d", "x", "yes"]],
+    })
+    expect(problemOf(await check(graph))).toEqual({
+      code: "option_unconnected",
+      nodeId: "d",
+      optionId: "d:no",
+    })
+  })
+
+  test("a decision node with one option is a problem of the graph", async () => {
+    const graph = graphOf({ nodes: [["d", "only"], ["x"]], edges: [["d", "x", "only"]] })
+    expect(problemOf(await check(graph))).toEqual({ code: "decision_options", nodeId: "d" })
+  })
+
+  test("more than 30 nodes is a problem of the graph", async () => {
+    const graph = graphOf({
+      nodes: Array.from({ length: NODES_MAX + 1 }, (_, i) => [`n${i}`] as [string]),
+      edges: [],
+    })
+    expect(problemOf(await check(graph))).toEqual({ code: "nodes_full" })
+  })
+
+  test("a graph of 30 nodes with decisions and joins passes inside the limits", async () => {
+    // Fourteen decision nodes in a row: each option leads to the next decision, or to a text node
+    // that joins the line again. 28 nodes, an end node and a start node: 30. There are 2^14 ways
+    // to run, and the check must not try every one of them.
+    const nodes: [string, ...string[]][] = []
+    const edges: ([string, string] | [string, string, string])[] = []
+    for (let i = 0; i < 14; i++) {
+      const next = i === 13 ? "end" : `d${i + 1}`
+      nodes.push([`d${i}`, "a", "b"], [`t${i}`])
+      edges.push([`d${i}`, `t${i}`, "a"], [`d${i}`, next, "b"], [`t${i}`, next])
+    }
+    nodes.push(["end"], ["start"])
+    const graph = graphOf({ nodes, edges })
+    expect(graph.nodes).toHaveLength(NODES_MAX)
+    const started = performance.now()
+    expect(await check(graph)).toEqual({ state: "passed" })
+    // The check of 30 nodes ends far inside the time limit. This only guards a runaway.
+    expect(performance.now() - started).toBeLessThan(CHECK_LIMITS.timeMs)
+  })
+
+  test("a node that no run reaches shows the shortest run that skips it", async () => {
+    // The rules of a run give a node that never runs only after a loop, and the check names the
+    // loop then. This module takes the input of node 3 away to read the path of that rule.
+    const graph = graphOf({
+      nodes: [["a"], ["b"], ["c"]],
+      edges: [
+        ["a", "b"],
+        ["b", "c"],
+      ],
+    })
+    const outcome = await check(
+      graph,
+      (inner) => (source, config) =>
+        inner(source.replace("Passes(i) == ", "Passes(i) == Conn[i].to # 3 /\\ "), config),
+    )
+    const problem = problemOf(outcome)
+    expect(problem.code).toBe("never_runs")
+    expect(problemNodeIds(problem)).toEqual(["c"])
+    expect(problemPath(problem)).toEqual([
+      { nodeId: "a", event: "ran", optionId: null },
+      { nodeId: "b", event: "ran", optionId: null },
+      { nodeId: "c", event: "skipped", optionId: null },
+    ])
+  })
+})
+
+describe("the module that the check reads", () => {
+  test("it holds the graph and the standard rules, and no prompt and no name", () => {
+    const graph = graphOf({ nodes: [["a"], ["d", "yes", "no"]], edges: [["a", "d"]] })
+    const nodes = graph.nodes.map((n) => ({ ...n, prompt: "SECRET PROMPT" }))
+    const source = buildModule(nodes, graph, null)
+    expect(source).toContain("N == 2")
+    expect(source).toContain("OptionCount == <<0, 2>>")
+    expect(source).toContain("Conn == <<[from |-> 1, to |-> 2, opt |-> 0]>>")
+    expect(source).toContain("no deadlock")
+    expect(source).toContain("every node can run")
+    expect(source).not.toContain("SECRET PROMPT")
+    expect(source).not.toContain("Name a")
+    expect(source).not.toContain("Name d")
   })
 })

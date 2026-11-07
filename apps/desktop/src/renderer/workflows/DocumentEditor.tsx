@@ -1,10 +1,11 @@
 import { charLength, DOCUMENT_MAX, type DocumentVersion, type WorkflowDetail } from "@robot/shared"
-import { createEffect, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createResource, createSignal, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
+import { Keyed } from "../ui/Keyed.tsx"
 import { documentSourceKey } from "./labels.ts"
 import styles from "./workflows.module.css"
 
@@ -48,25 +49,25 @@ const History = (props: {
           {t("workflows.document.history.count", { n: props.versions.length })}
         </p>
         <ul class={styles.versions}>
-          <For each={props.versions}>
+          <Keyed each={props.versions} by={(v) => v.id}>
             {(version) => (
               <li class={styles.version} data-testid="document-version">
                 <span>
                   <span class={styles.versionTime}>
-                    {formatDateTime(locale(), version.createdAt)}
+                    {formatDateTime(locale(), version().createdAt)}
                   </span>
-                  <span class={styles.versionSource}>{sourceText(version)}</span>
+                  <span class={styles.versionSource}>{sourceText(version())}</span>
                 </span>
                 <Button
-                  onClick={() => setOpen(version)}
+                  onClick={() => setOpen(version())}
                   data-testid="document-version-open"
-                  aria-pressed={open()?.id === version.id}
+                  aria-pressed={open()?.id === version().id}
                 >
                   {t("workflows.document.version.open")}
                 </Button>
               </li>
             )}
-          </For>
+          </Keyed>
         </ul>
       </Show>
       <Show when={restored()}>

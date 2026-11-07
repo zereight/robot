@@ -13,7 +13,6 @@ import {
   createMemo,
   createResource,
   createSignal,
-  For,
   on,
   onCleanup,
   Show,
@@ -322,11 +321,11 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
                     <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
                   </marker>
                 </defs>
-                <For each={graph().connections}>
+                <Keyed each={graph().connections} by={(c) => c.id}>
                   {(c) => {
-                    const from = () => graph().nodes.find((n) => n.id === c.from)
-                    const to = () => graph().nodes.find((n) => n.id === c.to)
-                    const label = () => from()?.options.find((o) => o.id === c.optionId)?.label
+                    const from = () => graph().nodes.find((n) => n.id === c().from)
+                    const to = () => graph().nodes.find((n) => n.id === c().to)
+                    const label = () => from()?.options.find((o) => o.id === c().optionId)?.label
                     return (
                       <Show when={from() && to()}>
                         {(() => {
@@ -356,7 +355,7 @@ export const GraphEditor = (props: { workflow: WorkflowDetail }) => {
                       </Show>
                     )
                   }}
-                </For>
+                </Keyed>
               </svg>
               <Keyed each={graph().nodes} by={(x) => x.id}>
                 {(node) => (

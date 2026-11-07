@@ -807,7 +807,7 @@ export const ko: Record<MessageKey, string> = {
   "check.step.option": "노드 {number} “{name}”이(가) 선택지 “{option}”을(를) 골라요",
   "check.step.skipped": "노드 {number} “{name}” 건너뜀",
   "check.node": "{number} “{name}”",
-  "check.marked": "경로의 {line}번째 줄",
+  "check.marked": "경로의 {line}번째 단계",
   "check.marked.problem": "문제가 있는 노드",
   "check.stopped.time": "검사가 {seconds}초 뒤에 멈췄어요. 워크플로우를 더 작게 나누세요.",
   "check.stopped.states":
