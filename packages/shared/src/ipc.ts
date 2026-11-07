@@ -24,6 +24,7 @@ import type { CardAnswer, RunDetail, RunStart, RunSummary } from "./runs.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
+import type { QuietTurn, RetryResult, TaskFilter, TaskItem, TaskView } from "./tasks.ts"
 import type {
   ConnectionSaveInput,
   ConnectionTestResult,
@@ -340,6 +341,21 @@ export interface RpcMethods {
   "runs.list": { input: { workflowId: string }; output: readonly RunSummary[] }
   /** One run with its nodes, tasks, results, feedback and usage. */
   "runs.get": { input: { runId: string }; output: RunDetail }
+  /** The tasks of all workflows of this computer, newest first (spec 005, "Tasks page"). */
+  "tasks.list": { input: TaskFilter | undefined; output: readonly TaskItem[] }
+  /** One task with its input, result, times, moments and usage. */
+  "tasks.get": { input: { taskId: string }; output: TaskView }
+  /** Stops a task that is queued, running or waiting. This ends its run (spec 005). */
+  "tasks.stop": { input: { taskId: string }; output: undefined }
+  /** "Run next" on a queued task (spec 005, "Queue"). */
+  "tasks.runNext": { input: { taskId: string }; output: undefined }
+  /**
+   * Retry of a failed, blocked or cancelled task. Without `confirmed`, a first try that may have
+   * changed things gives the retry note and starts nothing (spec 005, "Retry note").
+   */
+  "tasks.retry": { input: { taskId: string; confirmed?: boolean }; output: RetryResult }
+  /** The turns that are quiet now (spec 005, "Quiet line"). Not stored. */
+  "tasks.quiet": { input: undefined; output: readonly QuietTurn[] }
   /**
    * The memory of a workflow (spec 008): the choices of the page, the items with a search, the
    * history, and the changes of the user. These are for the computer. A linked client may list,
@@ -422,6 +438,8 @@ export interface RpcEvents {
   "proposals.changed": { workflowId: string }
   /** A run, a task or a card of a workflow changed (spec 010, 005). */
   "runs.changed": { workflowId: string; runId: string | null }
+  /** A turn became quiet (seconds on the quiet clock) or went on again (null). Not stored. */
+  "tasks.quiet": { taskId: string; workflowId: string; name: string; seconds: number | null }
   /** A message of a chat was added or changed (spec 003). */
   "chat.message": { workflowId: string; message: WorkflowChatMessage }
   /** The queue, the notice or the working state of a chat changed: read the history again. */

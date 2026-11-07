@@ -15,10 +15,12 @@ import {
   type RpcMethod,
   type RpcOutput,
   type RpcResult,
+  RUN_SOURCES,
   RUNTIME_KINDS,
   redactSecrets,
   SettingsPatch,
   SIGN_IN_ID,
+  TASK_STATES,
   UiStatePatch,
   type Workflow,
   WorkflowChatSend,
@@ -49,6 +51,7 @@ import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Skills } from "./services/Skills.ts"
+import { Tasks } from "./services/Tasks.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { WorkflowCheck } from "./services/WorkflowCheck.ts"
 import { Workflows } from "./services/Workflows.ts"
@@ -714,6 +717,35 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Runs.use((r) => r.get(runId))),
     ),
+  "tasks.list": (input) =>
+    decode(
+      Schema.UndefinedOr(
+        Schema.Struct({
+          state: Schema.optionalKey(Schema.Literals(TASK_STATES)),
+          workflowId: Schema.optionalKey(Schema.String),
+          source: Schema.optionalKey(Schema.Literals(RUN_SOURCES)),
+        }),
+      ),
+    )(input).pipe(Effect.flatMap((filter) => Tasks.use((t) => t.list(filter ?? {})))),
+  "tasks.get": (input) =>
+    decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ taskId }) => Tasks.use((t) => t.get(taskId))),
+    ),
+  "tasks.stop": (input) =>
+    decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ taskId }) => Tasks.use((t) => t.stop(taskId))),
+      done,
+    ),
+  "tasks.runNext": (input) =>
+    decode(Schema.Struct({ taskId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ taskId }) => Tasks.use((t) => t.runNext(taskId))),
+      done,
+    ),
+  "tasks.retry": (input) =>
+    decode(Schema.Struct({ taskId: Schema.String, confirmed: Schema.optionalKey(Schema.Boolean) }))(
+      input,
+    ).pipe(Effect.flatMap(({ taskId, confirmed }) => Tasks.use((t) => t.retry(taskId, confirmed)))),
+  "tasks.quiet": () => Tasks.use((t) => Effect.sync(() => t.quiet())),
   "cards.answer": (input) =>
     decode(
       Schema.Struct({

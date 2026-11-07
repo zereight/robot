@@ -1,6 +1,7 @@
 import { Schema, Struct } from "effect"
 import { DECISION_CHOICES, DECISION_MODEL_DEFAULT, DECISION_MODEL_MAX } from "./decision.ts"
 import { DEVICE_NAME_MAX } from "./link.ts"
+import { TASKS_AT_ONCE_DEFAULT, TASKS_AT_ONCE_MAX, TASKS_AT_ONCE_MIN } from "./tasks.ts"
 
 /** The step limit of a task (spec 005, "Limits of a task"). */
 export const STEP_LIMIT_MIN = 20
@@ -72,6 +73,10 @@ export const Settings = Schema.Struct({
   autoCompact: Schema.Boolean,
   /** "Keep going on open steps" (spec 005, 013). On by default. */
   keepGoing: Schema.Boolean,
+  /** "Tasks at once" (spec 005, "Queue"; 013): a whole number from 1 to 8. */
+  tasksAtOnce: Schema.Int.check(
+    Schema.isBetween({ minimum: TASKS_AT_ONCE_MIN, maximum: TASKS_AT_ONCE_MAX }),
+  ),
   /** "While an agent works, new messages" (spec 003, 013): join the current turn, or wait. */
   duringTurn: Schema.Literals(["join", "queue"]),
 })
@@ -99,6 +104,7 @@ export const defaultSettings: Settings = {
   permissionChecks: false,
   autoCompact: true,
   keepGoing: true,
+  tasksAtOnce: TASKS_AT_ONCE_DEFAULT,
   duringTurn: "join",
 }
 

@@ -18,6 +18,7 @@ import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { improveRequest, openImprovement } from "../state/improve.ts"
+import { clearRunRequest, runRequest } from "../state/runTarget.ts"
 import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -63,6 +64,14 @@ export const WorkflowView = (props: { id: string }) => {
       { defer: true },
     ),
   )
+  // The action "Open the run" of the Tasks page opens the runs of this workflow at that run.
+  createEffect(() => {
+    const r = runRequest()
+    if (!r || r.workflowId !== props.id) return
+    setTab("runs")
+    setSelected(r.runId)
+    clearRunRequest()
+  })
   const [trigger, setTrigger] = createSignal("")
   const toastError = (e: unknown) => {
     const text = describeError(e)

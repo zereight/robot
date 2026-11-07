@@ -4,6 +4,7 @@ import { HelpPage } from "../pages/HelpPage.tsx"
 import { SettingsPage, type SettingsSection } from "../settings/SettingsPage.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
+import { TasksPage } from "../tasks/TasksPage.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { WorkflowsPage } from "../workflows/WorkflowsPage.tsx"
 import { ServerRail } from "./ServerRail.tsx"
@@ -37,6 +38,9 @@ export const Shell = (props: ShellProps) => {
                 <span class={styles.headerTitle}>{pageTitle("help")}</span>
               </header>
               <HelpPage />
+            </Match>
+            <Match when={ui.ui.page === "tasks"}>
+              <TasksPage />
             </Match>
             <Match when={true}>
               <WorkflowsPage />

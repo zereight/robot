@@ -24,6 +24,8 @@ import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Skills } from "./services/Skills.ts"
+import { TaskQueue } from "./services/TaskQueue.ts"
+import { Tasks } from "./services/Tasks.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { WorkflowCheck, type WorkflowCheckOptions } from "./services/WorkflowCheck.ts"
 import { Workflows } from "./services/Workflows.ts"
@@ -93,8 +95,11 @@ export const appLayer = (options: AppLayerOptions) => {
   const proposals = Proposals.layer.pipe(Layer.provideMerge(memory))
   const runFacts = RunFacts.layer.pipe(Layer.provideMerge(proposals))
   const cards = Cards.layer.pipe(Layer.provideMerge(runFacts))
-  const runs = Runs.layer.pipe(Layer.provideMerge(cards))
-  const chat = Chat.layer.pipe(Layer.provideMerge(runs))
+  // The queue and the slots of the tasks (spec 005) come before the runs, which join them.
+  const taskQueue = TaskQueue.layer.pipe(Layer.provideMerge(cards))
+  const runs = Runs.layer.pipe(Layer.provideMerge(taskQueue))
+  const tasks = Tasks.layer.pipe(Layer.provideMerge(runs))
+  const chat = Chat.layer.pipe(Layer.provideMerge(tasks))
   return BrowserProfiles.layer.pipe(Layer.provideMerge(chat))
 }
 
