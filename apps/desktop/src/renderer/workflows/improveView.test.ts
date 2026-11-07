@@ -60,8 +60,25 @@ describe("the values of a node on the card of a graph change", () => {
         now: values({ question: "Is it good?", options: ["Yes", "No"] }),
       }),
     )
-    expect(rows.map((r) => r.field)).toEqual(["name", "question", "options", "threshold"])
+    expect(rows.map((r) => r.field)).toEqual([
+      "name",
+      "question",
+      "options",
+      "continueOnFailure",
+      "threshold",
+    ])
     expect(rows.find((r) => r.field === "options")?.now).toBe("Yes\nNo")
+  })
+
+  test("an added decision node shows that it goes on after a failure", () => {
+    const rows = nodeDetails(
+      t,
+      node({
+        kind: "decision",
+        now: values({ question: "Ok?", options: ["Yes"], continueOnFailure: true }),
+      }),
+    )
+    expect(rows.find((r) => r.field === "continueOnFailure")?.now).toBe("yes")
   })
 
   test("a changed node shows only the changed fields, old and new", () => {

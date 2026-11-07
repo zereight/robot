@@ -118,7 +118,8 @@ export const nodeDetails = (t: Translate, n: GraphNodeChange): NodeDetail[] => {
   }
   for (const field of SHOWN) {
     if (field === "continueOnFailure" || field === "threshold") {
-      if (n.kind === "decision" ? field === "threshold" : field === "continueOnFailure")
+      // The flag "go on after a failure" works for both kinds of node; the threshold only for a decision.
+      if (field === "continueOnFailure" || n.kind === "decision")
         out.push({ field, old: null, now: fieldValue(t, n.now, field), long: false })
       continue
     }

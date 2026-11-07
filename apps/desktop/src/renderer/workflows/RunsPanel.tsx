@@ -6,10 +6,12 @@ import { call } from "../lib/rpc.ts"
 import { outsideText, reasonText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
 import { openImprovement } from "../state/improve.ts"
+import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { showToast } from "../ui/toast.ts"
 import improve from "./improve.module.css"
+import { showsProposals } from "./improveView.ts"
 import styles from "./runs.module.css"
 
 /** The word of a state of a run, a task or a node that has no task (spec 005). */
@@ -61,6 +63,9 @@ const TaskMarks = (props: { task: RunTask; number: number }) => {
  */
 const TaskMemory = (props: { task: RunTask; workflowId: string; number: number }) => {
   const { t } = useApp()
+  const ui = useUi()
+  // A linked device shows no proposals and cannot undo memory (spec 002, "Surfaces").
+  const local = () => showsProposals(ui.server()?.kind)
   const undo = (historyId: string) =>
     call("memory.undo", { historyId }).catch((e: unknown) => {
       const text = describeError(e)
@@ -78,14 +83,14 @@ const TaskMemory = (props: { task: RunTask; workflowId: string; number: number }
               {m().kind === "saved"
                 ? t("runs.memory.saved", { text: m().text })
                 : t("runs.memory.suggested", { text: m().text })}{" "}
-              <Show when={m().kind === "saved" && m().canUndo && m().historyId}>
+              <Show when={local() && m().kind === "saved" && m().canUndo && m().historyId}>
                 {(id) => (
                   <Button onClick={() => void undo(id())} data-testid="run-memory-undo">
                     {t("runs.memory.undo")}
                   </Button>
                 )}
               </Show>
-              <Show when={m().kind === "suggested"}>
+              <Show when={local() && m().kind === "suggested"}>
                 <button
                   type="button"
                   class={improve.link}
