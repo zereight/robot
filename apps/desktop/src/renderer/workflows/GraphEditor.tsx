@@ -7,14 +7,14 @@ import {
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { TriangleAlert } from "lucide-solid"
-import { createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
+import { TriangleAlert, X } from "lucide-solid"
+import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button } from "../ui/controls.tsx"
+import { Button, IconButton } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
 import { marksOf } from "./checkView.ts"
@@ -100,8 +100,10 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
 }
 
 /**
- * The editor of the graph (spec 010, flow 2). The canvas shows each node as a button at its place
- * and each connection as a line. A node moves with the pointer or with the arrow keys; it
+ * The editor of the graph (spec 010, flow 2). The canvas fills the workflow view (spec 001); the
+ * buttons and the versions float over it, and the node panel docks beside it. The
+ * canvas shows each node as a button at its place and each connection as a line. A drag on an
+ * empty part moves the view; a click there clears the selection. A node moves with the pointer or with the arrow keys; it
  * connects through its side panel, so the whole editor works with the keyboard. The canvas marks
  * the nodes of the problem and of its path while the run strip shows the check (spec 001).
  */
@@ -242,49 +244,61 @@ export const GraphEditor = (props: {
     }
   }
 
+  // A drag on an empty part of the canvas moves the view; a click there clears the selection.
+  let canvasEl: HTMLElement | undefined
+  const onCanvasPointerDown = (e: PointerEvent) => {
+    const el = canvasEl
+    if (!el || e.button !== 0 || (e.target as Element).closest("button, path, text")) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const from = { left: el.scrollLeft, top: el.scrollTop }
+    let moved = false
+    el.setPointerCapture(e.pointerId)
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX
+      const dy = ev.clientY - startY
+      if (!moved && Math.hypot(dx, dy) < 4) return
+      moved = true
+      el.dataset.panning = "true"
+      el.scrollLeft = from.left - dx
+      el.scrollTop = from.top - dy
+    }
+    const onUp = () => {
+      el.removeEventListener("pointermove", onMove)
+      el.removeEventListener("pointerup", onUp)
+      el.removeEventListener("pointercancel", onUp)
+      delete el.dataset.panning
+      if (!moved) props.onSelectNode(undefined)
+    }
+    el.addEventListener("pointermove", onMove)
+    el.addEventListener("pointerup", onUp)
+    el.addEventListener("pointercancel", onUp)
+  }
+  // Escape closes the node panel (spec 001), unless a field of the panel has the focus.
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !props.selectedNode || e.defaultPrevented) return
+      const target = e.target as Element | null
+      if (target?.closest("input, textarea, select, [role=dialog], [data-confirm]")) return
+      props.onSelectNode(undefined)
+    }
+    window.addEventListener("keydown", onKey)
+    onCleanup(() => window.removeEventListener("keydown", onKey))
+  })
   return (
     <div class={styles.layout} data-narrow={ui.narrow()} data-testid="graph-editor">
-      <div class={styles.main}>
-        <Show when={readOnly()}>
-          <p class={styles.panel} role="status" data-testid="graph-readonly">
-            {t("graph.readonly")}
-          </p>
-        </Show>
-        <div class={styles.toolbar}>
-          <Button
-            disabled={readOnly()}
-            onClick={() => void add("text")}
-            data-testid="graph-add-text"
-          >
-            {t("graph.add.text")}
-          </Button>
-          <Button
-            disabled={readOnly()}
-            onClick={() => void add("decision")}
-            data-testid="graph-add-decision"
-          >
-            {t("graph.add.decision")}
-          </Button>
-          <Button
-            onClick={() => setShowVersions(!showVersions())}
-            aria-pressed={showVersions()}
-            data-testid="graph-versions-toggle"
-          >
-            {showVersions() ? t("graph.version.hide") : t("graph.version.show")}
-          </Button>
-        </div>
-        <Show when={problem()}>
-          {(p) => (
-            <p class={styles.errorText} role="alert" data-testid="graph-error">
-              {t(p().key, p().params)}
-            </p>
-          )}
-        </Show>
-        <section class={styles.canvas} aria-label={t("graph.canvas")} data-testid="graph-canvas">
+      <div class={styles.canvasArea}>
+        <section
+          ref={canvasEl}
+          class={styles.canvas}
+          aria-label={t("graph.canvas")}
+          data-testid="graph-canvas"
+          onPointerDown={onCanvasPointerDown}
+        >
           <Show
             when={graph().nodes.length > 0}
             fallback={
-              <p class={styles.hintText} style={{ padding: "16px" }} data-testid="graph-empty">
+              <p class={styles.canvasEmpty} data-testid="graph-empty">
                 {t("graph.empty")}
               </p>
             }
@@ -403,19 +417,68 @@ export const GraphEditor = (props: {
             </div>
           </Show>
         </section>
-        <Show when={showVersions()}>
-          <Versions workflow={props.workflow} readOnly={readOnly()} />
+        <div class={styles.float}>
+          <div class={styles.toolbar}>
+            <Button
+              disabled={readOnly()}
+              onClick={() => void add("text")}
+              data-testid="graph-add-text"
+            >
+              {t("graph.add.text")}
+            </Button>
+            <Button
+              disabled={readOnly()}
+              onClick={() => void add("decision")}
+              data-testid="graph-add-decision"
+            >
+              {t("graph.add.decision")}
+            </Button>
+            <Button
+              onClick={() => setShowVersions(!showVersions())}
+              aria-pressed={showVersions()}
+              data-testid="graph-versions-toggle"
+            >
+              {showVersions() ? t("graph.version.hide") : t("graph.version.show")}
+            </Button>
+          </div>
+          <Show when={readOnly()}>
+            <p class={styles.floatNote} role="status" data-testid="graph-readonly">
+              {t("graph.readonly")}
+            </p>
+          </Show>
+          <Show when={problem()}>
+            {(p) => (
+              <p
+                class={`${styles.floatNote} ${styles.errorText}`}
+                role="alert"
+                data-testid="graph-error"
+              >
+                {t(p().key, p().params)}
+              </p>
+            )}
+          </Show>
+          <Show when={showVersions()}>
+            <Versions workflow={props.workflow} readOnly={readOnly()} />
+          </Show>
+        </div>
+        <Show when={!props.selectedNode && graph().nodes.length > 0}>
+          <p class={styles.canvasHint}>{t("graph.panel.empty")}</p>
         </Show>
       </div>
-      <div>
-        <Show
-          when={props.selectedNode}
-          keyed
-          fallback={<p class={styles.hintText}>{t("graph.panel.empty")}</p>}
-        >
-          {(id) => (
-            <Show when={graph().nodes.find((x) => x.id === id)}>
-              {(n) => (
+      <Show when={props.selectedNode} keyed>
+        {(id) => (
+          <Show when={graph().nodes.find((x) => x.id === id)}>
+            {(n) => (
+              <div class={styles.side} data-testid="node-side">
+                <span class={styles.sideClose}>
+                  <IconButton
+                    label={t("graph.panel.close")}
+                    onClick={() => props.onSelectNode(undefined)}
+                    data-testid="node-panel-close"
+                  >
+                    <X size={16} />
+                  </IconButton>
+                </span>
                 <NodePanel
                   workflow={props.workflow}
                   node={n()}
@@ -423,11 +486,11 @@ export const GraphEditor = (props: {
                   readOnly={readOnly()}
                   onDeleted={() => props.onSelectNode(undefined)}
                 />
-              )}
-            </Show>
-          )}
-        </Show>
-      </div>
+              </div>
+            )}
+          </Show>
+        )}
+      </Show>
     </div>
   )
 }

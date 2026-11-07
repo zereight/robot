@@ -84,6 +84,9 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** The panel column of the studio is open (spec 001). */
     panelOpen: () => ui.activityPanel,
     selectPanelOpen: (open: boolean) => update({ activityPanel: open }),
+    /** The run strip is folded to its tab row (spec 001). */
+    stripFolded: () => ui.stripFolded,
+    selectStripFolded: (stripFolded: boolean) => update({ stripFolded }),
     selectPanelWidth: (panelWidth: number) => update({ panelWidth: clampPanelWidth(panelWidth) }),
     /** The tab of the Tasks page; it stays after a restart (spec 005, 038). */
     selectTasksTab: (tasksTab: UiState["tasksTab"]) => update({ tasksTab }),

@@ -270,9 +270,20 @@
   container-name: centre;
 }
 
+/* The canvas tab: the canvas takes the whole part, edge to edge (spec 001). */
+.part[data-canvas="true"] {
+  padding: 12px 0 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.part[data-canvas="true"] > :not([data-testid="graph-editor"]) {
+  margin: 0 32px 12px;
+}
+
 /* The run strip below the open part: the runs, or the result of the check (spec 001). */
 .strip {
-  flex: 0 0 36%;
+  flex: 0 0 32%;
   min-height: 180px;
   border-top: 1px solid var(--c-border);
   display: flex;
@@ -283,6 +294,7 @@
 
 .stripTabs {
   display: flex;
+  align-items: center;
   gap: var(--spacing-xs);
   padding: 8px 32px 0;
   flex-shrink: 0;
@@ -307,6 +319,19 @@
 .stripTab[aria-selected="true"] {
   background: var(--c-selected);
   color: var(--c-text);
+}
+
+.strip[data-folded="true"] {
+  flex: none;
+  min-height: 0;
+}
+
+.strip[data-folded="true"] .stripTabs {
+  padding-bottom: 8px;
+}
+
+.stripFold {
+  margin-left: auto;
 }
 
 .stripBody {

@@ -64,6 +64,7 @@ export const WorkflowView = (props: {
   const [checkPinned, setCheckPinned] = createSignal(false)
   const showStrip = (mode: StripMode) => {
     setStrip(mode)
+    ui.selectStripFolded(false)
     setCheckPinned(mode === "check")
   }
   // A new result of the check shows in the strip. A pass returns to the runs, unless the user
@@ -76,7 +77,18 @@ export const WorkflowView = (props: {
           if (!checkPinned()) setStrip("runs")
         } else {
           setStrip("check")
+          ui.selectStripFolded(false)
         }
+      },
+      { defer: true },
+    ),
+  )
+  // A run that starts, by hand or by a trigger, unfolds the run strip (spec 001).
+  createEffect(
+    on(
+      () => runs().active().length,
+      (now, before) => {
+        if (now > (before ?? 0)) ui.selectStripFolded(false)
       },
       { defer: true },
     ),
@@ -183,7 +195,7 @@ export const WorkflowView = (props: {
         </Show>
       </header>
       <div class={styles.view} data-testid="workflow-view">
-        <div class={styles.part}>
+        <div class={styles.part} data-canvas={tab() === "graph"}>
           <Show when={detail()?.running}>
             <p class={styles.hint} role="status" data-testid="workflow-running-readonly">
               {t("workflows.readonly")}
@@ -273,6 +285,8 @@ export const WorkflowView = (props: {
               onTrigger={setTrigger}
               mode={strip()}
               onMode={showStrip}
+              folded={ui.stripFolded()}
+              onFold={ui.selectStripFolded}
               onSelectNode={(id) => {
                 setTab("graph")
                 setNodeSelected(id)

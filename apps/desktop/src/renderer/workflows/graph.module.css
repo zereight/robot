@@ -1,46 +1,146 @@
+/* The canvas fills the workflow view; the buttons float over it, the node panel docks beside it
+   (spec 001). */
 .layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-  gap: var(--spacing-lg);
-  align-items: start;
-}
-
-.layout[data-narrow="true"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* In a narrow centre column the node panel stacks under the canvas. */
-@container centre (max-width: 600px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
+}
+
+.canvasArea {
+  position: relative;
+  flex: 1;
   min-width: 0;
 }
 
+.canvas {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background-color: var(--c-main);
+  background-image: radial-gradient(var(--c-border) 1px, transparent 1px);
+  background-size: 16px 16px;
+  cursor: default;
+}
+
+.canvas[data-panning="true"] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.canvasEmpty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: var(--spacing-lg);
+  color: var(--c-text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+
+.canvasHint {
+  position: absolute;
+  left: var(--spacing-md);
+  bottom: var(--spacing-md);
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+
+.float {
+  position: absolute;
+  z-index: 1;
+  top: var(--spacing-md);
+  left: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  max-width: min(420px, calc(100% - 2 * var(--spacing-md)));
+  max-height: calc(100% - 2 * var(--spacing-md));
+  pointer-events: none;
+}
+
+.float > * {
+  pointer-events: auto;
+}
+
+/* One row, whatever the width of the canvas, so the toolbar never grows over the graph. */
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm);
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  gap: var(--spacing-xs);
   align-items: center;
-}
-
-.canvas {
-  position: relative;
-  min-height: 360px;
-  overflow: auto;
+  padding: var(--spacing-xs);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-m);
-  background: var(--c-sidebar);
+  background: var(--c-elevated);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
 }
 
+.toolbar > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.floatNote {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+/* The node panel docks beside the canvas and scrolls by itself. */
+.side {
+  flex: 0 0 340px;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--c-border);
+  background: var(--c-elevated);
+}
+
+.side > section {
+  border: 0;
+  border-radius: 0;
+}
+
+.sideClose {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  height: 0;
+  padding-right: var(--spacing-xs);
+  transform: translateY(var(--spacing-xs));
+}
+
+/* In a narrow window the panel opens over the canvas, below the floating buttons. */
+.layout[data-narrow="true"] .side {
+  position: absolute;
+  top: 64px;
+  right: var(--spacing-md);
+  bottom: var(--spacing-md);
+  left: var(--spacing-md);
+  z-index: 2;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+}
+
+/* The graph starts below the floating buttons, so they never hide a node. */
 .canvasInner {
   position: relative;
+  margin-top: 64px;
+  min-width: 100%;
+  min-height: calc(100% - 64px);
 }
 
 .lines {
@@ -193,9 +293,13 @@ textarea.control {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--spacing-md);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
 }
 
 .tabs {
