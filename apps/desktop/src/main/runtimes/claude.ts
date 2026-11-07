@@ -5,7 +5,7 @@ import { createInterface } from "node:readline"
 import { hostOf, insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { limitFailure, ProviderFailure } from "../providers/client.ts"
-import { bridgeToolName, stage } from "./bridge.ts"
+import { BRIDGE_SERVER, bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { planFromTodos } from "./plan.ts"
 import { execute } from "./proc.ts"
@@ -528,6 +528,10 @@ export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
   // of the program is off: with it on, a request for a workflow makes the program's own. The tool
   // name "Workflow" is the one of claude 2.1.318. A rename in a later version needs a new name here.
   if (run.useTools) args.push("--disallowedTools", "AskUserQuestion,Workflow")
+  // The tools of the app with no tool of the program (spec 006, "Chat tools on a vendor
+  // runtime"): `--tools` names the MCP tools of the bridge, and the built-ins stay off.
+  else if (run.bridge)
+    args.push("--tools", run.bridge.tools.map((t) => `mcp__${BRIDGE_SERVER}__${t.name}`).join(","))
   else args.push("--tools", "")
   // "Read only": the program starts with the tools that read and fetch, and no tool that writes a
   // file or runs a command. The program itself has nothing to do the work with (spec 007).
@@ -627,7 +631,10 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
         } else if (mapped.kind === "permission") {
           const call = describeRequest(mapped.toolUseId, mapped.tool, mapped.input, run.workspace)
           // A tool of the app asks the user by itself, at the permission level of the agent.
-          let allowed = bridgeToolName(mapped.tool) !== null
+          // The bridge of the run decides which names are tools of the app (the chat holds
+          // other tools than a node).
+          const bridged = run.bridge?.tools.map((t) => t.name)
+          let allowed = bridgeToolName(mapped.tool, bridged) !== null
           try {
             if (!allowed) allowed = await run.approve(call)
           } catch (error) {

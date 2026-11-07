@@ -73,10 +73,14 @@ export const BRIDGE_SERVER = "robot"
 /**
  * The name that the app uses for a tool, from the name that a program shows for it: the program
  * puts the name of the server before it, in its own way ("mcp__robot__browser_open",
- * "robot.browser_open"). Null when the tool is not one of these.
+ * "robot.browser_open"). Null when the tool is not one of these. `names` replaces the default
+ * list: a turn whose bridge holds other tools (the chat) gives its own.
  */
-export const bridgeToolName = (shown: string): string | null => {
-  for (const name of [...BRIDGE_TOOL_NAMES, ...MANAGE_TOOL_NAMES]) {
+export const bridgeToolName = (
+  shown: string,
+  names: readonly string[] | undefined = [...BRIDGE_TOOL_NAMES, ...MANAGE_TOOL_NAMES],
+): string | null => {
+  for (const name of names) {
     if (shown === name) return name
     if (!shown.endsWith(name)) continue
     const head = shown.slice(0, -name.length)

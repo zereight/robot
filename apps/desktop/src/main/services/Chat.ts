@@ -46,7 +46,8 @@ import type { ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
-import { chatMayUse } from "../runtimes/driver.ts"
+import { type BridgeHandler, bridgeToolName } from "../runtimes/bridge.ts"
+import { chatMayUse, drivers } from "../runtimes/driver.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import {
@@ -378,8 +379,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const resolveModel = (workflowId: string) =>
         resolveChoice(workflowId).pipe(Effect.map((r) => r.model))
 
-      /** A vendor program has its own tools: the chat gives it none (spec 007). */
-      const chatHasTools = (accountId: string) => !providers.isRuntime(accountId)
+      /**
+       * How a turn gets the tools of the chat (spec 006, "Chat tools on a vendor runtime"): an
+       * API account gets them directly; pi and Claude Code get them through the bridge, with
+       * their own tools off; any other program answers in text only.
+       */
+      const chatToolMode = (accountId: string): "api" | "bridge" | "none" => {
+        const kind = providers.runtimeKind(accountId)
+        if (kind === null) return "api"
+        return drivers[kind].chatSafe && drivers[kind].chatBridge ? "bridge" : "none"
+      }
 
       const answerOf = (m: AnswerModel | null) =>
         Effect.gen(function* () {
@@ -389,7 +398,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             accountId: m.accountId,
             accountName: account?.name ?? "",
             model: m.model,
-            feedback: chatHasTools(m.accountId),
+            feedback: chatToolMode(m.accountId) !== "none",
           } satisfies ChatAnswer
         })
 
@@ -1525,9 +1534,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         let failure: { code: string; detail: string } | null = null
         try {
           const workflow = await Effect.runPromise(findWorkflow(workflowId))
-          // The chat has the tools of the chat (spec 007) and no others. A vendor program brings
-          // shell and file tools of its own, so it answers in text only, outside the folder.
-          const withTools = chatHasTools(model.accountId)
+          // The chat has the tools of the chat (spec 007) and no others. A program without the
+          // bridge answers in text only, outside the folder.
+          const toolMode = chatToolMode(model.accountId)
+          const withTools = toolMode !== "none"
           // A long conversation is compacted first, then the turn goes on (spec 003).
           await autoCompact(workflowId, w, model, parts, touch, resumed)
           // The run facts are read after the compact, and fresh in each turn: a summary never
@@ -1548,6 +1558,62 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             : workflow.permission === "read_only"
               ? { reason: "read_only" as const }
               : undefined
+          const runToolCall = async (call: ToolCall): Promise<ToolOutcome> => {
+            if (call.name === FEEDBACK_TOOL.name)
+              return feedbackTool(workflowId, w, workflow.permission, call, parts, touch)
+            if (isAssistantTool(call.name))
+              return assistantTool(workflowId, w, turnState, call, parts, touch)
+            return improveTool(workflowId, w, workflow.permission, call, parts, touch)
+          }
+          const chatNames = toolSet.defs.map((d) => d.name)
+          /**
+           * The tools of the chat for a turn on pi or Claude Code (spec 006, "Chat tools on a
+           * vendor runtime"). A call runs the same execution as with an API account. The bridge
+           * owns the card of each call: the transcript of the program names the same step again,
+           * and the turn does not show it twice.
+           */
+          const chatBridge = (): BridgeHandler => ({
+            tools: toolSet.defs,
+            call: async (name, args) => {
+              const call: ToolCall = { id: randomUUID(), name, input: JSON.stringify(args ?? {}) }
+              parts.push({
+                kind: "tool",
+                id: call.id,
+                name,
+                label: name,
+                state: "running",
+                input: call.input,
+                output: "",
+              })
+              touch()
+              let outcome: ToolOutcome
+              try {
+                outcome = await runToolCall(call)
+              } catch (error) {
+                outcome = {
+                  output: error instanceof Error ? error.message : String(error),
+                  failed: true,
+                }
+              }
+              const at = parts.findIndex((p) => p.kind === "tool" && p.id === call.id)
+              const before = at >= 0 ? parts[at] : undefined
+              const part: ChatPart = {
+                kind: "tool",
+                id: call.id,
+                name,
+                label: name,
+                state: outcome.failed ? "failed" : "done",
+                input: call.input,
+                output: outcome.output,
+                ...(outcome.notRun ? { notRun: true } : {}),
+                ...(before?.kind === "tool" && before.asked ? { asked: true } : {}),
+              }
+              if (at >= 0) parts[at] = part
+              else parts.push(part)
+              touch()
+              return { output: outcome.output, failed: outcome.failed }
+            },
+          })
           const events = await Effect.runPromise(
             providers.events(
               model.accountId,
@@ -1565,6 +1631,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                         may: toolSet.may,
                         assistant: true,
                         ...(cannotChange ? { cannotChange } : {}),
+                        // Claude Code puts `mcp__robot__` before each tool of the bridge.
+                        ...(toolMode === "bridge" &&
+                        providers.runtimeKind(model.accountId) === "claude_code"
+                          ? { mcpTools: true }
+                          : {}),
                       }
                     : {}),
                 }),
@@ -1572,8 +1643,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 signal: w.controller.signal,
                 workspace: withTools ? workflow.folder : chatDir(),
                 permission: withTools ? workflow.permission : "read_only",
-                ...(withTools ? { tools: toolSet.defs } : {}),
-                useTools: withTools,
+                ...(toolMode === "api" ? { tools: toolSet.defs } : {}),
+                // A bridge turn keeps the own tools of the program off: only the bridge
+                // reaches it (spec 006).
+                useTools: toolMode === "api",
                 cache: "long",
                 inbox: inboxFor(workflowId, w),
                 busy: {
@@ -1585,14 +1658,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 },
               },
               {
-                execute: async (call) => {
-                  if (call.name === FEEDBACK_TOOL.name)
-                    return feedbackTool(workflowId, w, workflow.permission, call, parts, touch)
-                  if (isAssistantTool(call.name))
-                    return assistantTool(workflowId, w, turnState, call, parts, touch)
-                  return improveTool(workflowId, w, workflow.permission, call, parts, touch)
-                },
+                execute: runToolCall,
                 approve: async () => false,
+                ...(toolMode === "bridge" ? { bridge: chatBridge() } : {}),
               },
             ),
           )
@@ -1605,6 +1673,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               else parts.push({ kind: event.type, text: event.text })
               touch()
             } else if (event.type === "tool") {
+              // The bridge owns the card of a tool of the chat (spec 006): the transcript of
+              // the program names the same step again.
+              if (toolMode === "bridge" && bridgeToolName(event.call.name, chatNames) !== null)
+                continue
               const index = parts.findIndex((p) => p.kind === "tool" && p.id === event.call.id)
               const before = parts[index]
               const part: ChatPart = {
@@ -1693,7 +1765,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const run = all.find((r) => r.id === runId)
         if (!run || run.active || run.state === "cancelled") return
         const model = await Effect.runPromise(resolveModel(workflowId))
-        if (!model || !usable(model.accountId) || !chatHasTools(model.accountId)) return
+        // Self-improvement after a run offers its tools directly, so it stays on an API
+        // account in this version (see spec-questions, 003).
+        if (!model || !usable(model.accountId) || chatToolMode(model.accountId) !== "api") return
         // The turn holds what the run held: a proposal after it carries the outside mark (spec 002).
         let outside: OutsideSource | null = null
         let program = false

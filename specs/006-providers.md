@@ -244,6 +244,22 @@ not sign in for it. The sign-in stays in the program on this computer.
 - A usage limit is not a busy provider. See "Backup model" and "Rules". A vendor runtime shows
   what its program reports.
 
+## Chat tools on a vendor runtime
+
+- In the chat of a workflow (003), pi and Claude Code get the same tools that an API account
+  gets: the tools that read and change the workflow and its runs, the feedback tool, the
+  proposal tools, and the memory and chat search tools when they are on. Their own tools stay
+  off for the turn: only the tools of the app reach the program.
+- The app passes the tools through its bridge: an extension file for pi, an MCP server file for
+  Claude Code. The program calls them by their names (Claude Code puts `mcp__robot__` before
+  each name). A call runs the same execution as with an API account: the same guards, the same
+  cards, and the same refusal at "Read only".
+- A tool step of such a turn shows one card, as with an API account. The transcript of the
+  program names the same step again: the app does not show it twice.
+- opencode has no bridge in this version, so it answers in the chat in text only, with no
+  tools. Codex, Muse Code and Cursor cannot answer in the chat, as before: the app cannot lock
+  them to text only.
+
 ## Rules
 
 - Keys and tokens are stored in the system keychain, never in the database or logs.
@@ -359,3 +375,7 @@ not sign in for it. The sign-in stays in the program on this computer.
   approval card from the program.
 - The stand-in ends with no token counts: the task shows "—" for the tokens.
 - The usage page shows the tokens of two workflows apart, for each day.
+- A chat turn on pi asks for a new workflow: the list shows it, and the card shows the deed.
+  The program calls no tool of its own in the turn.
+- A chat turn on opencode answers in text only, and the prompt says that the chat has no
+  tools.

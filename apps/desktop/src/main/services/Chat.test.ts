@@ -20,17 +20,25 @@ let mock: MockProvider
 let fake: FakeRuntimes
 const savedClaudeBin = process.env.ROBOT_CLAUDE_BIN
 const savedCodexBin = process.env.ROBOT_CODEX_BIN
+const savedPiBin = process.env.ROBOT_PI_BIN
+const savedOpencodeBin = process.env.ROBOT_OPENCODE_BIN
 beforeAll(async () => {
   mock = await startMockProvider()
   fake = makeFakeRuntimes()
   process.env.ROBOT_CLAUDE_BIN = fake.claude
   process.env.ROBOT_CODEX_BIN = fake.codex
+  process.env.ROBOT_PI_BIN = fake.pi
+  process.env.ROBOT_OPENCODE_BIN = fake.opencode
 })
 afterAll(async () => {
   if (savedClaudeBin === undefined) delete process.env.ROBOT_CLAUDE_BIN
   else process.env.ROBOT_CLAUDE_BIN = savedClaudeBin
   if (savedCodexBin === undefined) delete process.env.ROBOT_CODEX_BIN
   else process.env.ROBOT_CODEX_BIN = savedCodexBin
+  if (savedPiBin === undefined) delete process.env.ROBOT_PI_BIN
+  else process.env.ROBOT_PI_BIN = savedPiBin
+  if (savedOpencodeBin === undefined) delete process.env.ROBOT_OPENCODE_BIN
+  else process.env.ROBOT_OPENCODE_BIN = savedOpencodeBin
   await mock.close()
 })
 
@@ -553,7 +561,35 @@ describe("the tools of the chat (spec 007, 003)", () => {
     expect(JSON.stringify(request?.body.messages[0])).toContain("call the tool add_run_feedback")
   })
 
-  test("a runtime account answers in text only: no tools, no shell, not in the folder", async () => {
+  test("opencode answers in text only: no tools, no shell, not in the folder", async () => {
+    // opencode has no bridge in this version (spec 006, "Chat tools on a vendor runtime").
+    const t = await setup({ connect: false })
+    await t.run(Providers.use((p) => p.connect({ kind: "opencode", name: "Opencode" })))
+    await t.send("hello")
+    await t.idle()
+    const reply = (await t.history()).messages.at(-1)
+    expect(reply?.status).toBe("done")
+    const turn = fake.opencodeCalls().at(-1) as unknown as {
+      cwd: string
+      instructions: string
+      config: { permission: Record<string, string> }
+    }
+    // Every tool stays off, and the program runs outside the folder of the workflow.
+    expect(turn.config.permission).toEqual({ "*": "deny" })
+    const { realpathSync } = await import("node:fs")
+    expect(realpathSync(turn.cwd)).not.toContain(realpathSync(t.flow.folder))
+    expect(turn.cwd).not.toBe(t.flow.folder)
+    // It is also outside the data folder, which holds the database and the sign-ins.
+    expect(realpathSync(turn.cwd).startsWith(realpathSync(t.dataDir))).toBe(false)
+    expect(realpathSync(t.dataDir).startsWith(realpathSync(turn.cwd))).toBe(false)
+    // The prompt does not claim a tool that the turn lacks.
+    expect(turn.instructions).toContain("You have no tools in this chat")
+    expect(turn.instructions).not.toContain("call the tool add_run_feedback")
+    // The header says why feedback is not there.
+    expect((await t.history()).answer).toMatchObject({ accountName: "Opencode", feedback: false })
+  })
+
+  test("a claude turn gets the chat tools through the bridge, with its own tools off", async () => {
     fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
     const t = await setup({ connect: false })
     await t.run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Claude" })))
@@ -562,25 +598,47 @@ describe("the tools of the chat (spec 007, 003)", () => {
     const reply = (await t.history()).messages.at(-1)
     expect(reply?.status).toBe("done")
     const turn = claudeTurns().at(-1) as { args: string[]; cwd: string; prompt: string }
-    // The program starts with the empty list of tools, not the tools of the program.
-    const at = turn.args.indexOf("--tools")
-    expect(at).toBeGreaterThanOrEqual(0)
-    expect(turn.args[at + 1]).toBe("")
+    // `--tools` names only the MCP tools of the bridge; the built-ins stay off.
+    const tools = turn.args[turn.args.indexOf("--tools") + 1] ?? ""
+    expect(tools.split(",").length).toBeGreaterThan(5)
+    for (const name of tools.split(",")) expect(name.startsWith("mcp__robot__")).toBe(true)
+    expect(tools).toContain("mcp__robot__create_workflow")
+    expect(turn.args).toContain("--mcp-config")
     expect(turn.args).not.toContain("--disallowedTools")
-    expect(turn.args).not.toContain("--mcp-config")
-    // The program runs outside the folder of the workflow.
+    // The turn works in the folder of the workflow: the bridge owns the tools.
     const { realpathSync } = await import("node:fs")
-    expect(realpathSync(turn.cwd)).not.toContain(realpathSync(t.flow.folder))
-    expect(turn.cwd).not.toBe(t.flow.folder)
-    // It is also outside the data folder, which holds the database and the sign-ins.
-    expect(realpathSync(turn.cwd).startsWith(realpathSync(t.dataDir))).toBe(false)
-    expect(realpathSync(t.dataDir).startsWith(realpathSync(turn.cwd))).toBe(false)
-    // The prompt does not claim a tool that the turn lacks.
+    expect(realpathSync(turn.cwd)).toBe(realpathSync(t.flow.folder))
+    // The prompt names the tools and their MCP names.
     const system = turn.args[turn.args.indexOf("--append-system-prompt") + 1] ?? ""
-    expect(system).toContain("You have no tools in this chat")
-    expect(system).not.toContain("call the tool add_run_feedback")
-    // The header says why feedback is not there.
-    expect((await t.history()).answer).toMatchObject({ accountName: "Claude", feedback: false })
+    expect(system).toContain("Rules for the tools of the workflow")
+    expect(system).toContain("mcp__robot__<name>")
+    expect((await t.history()).answer).toMatchObject({ accountName: "Claude", feedback: true })
+  })
+
+  test("a pi turn gets the chat tools through the bridge, with its own tools off", async () => {
+    const t = await setup({ connect: false })
+    await t.run(Providers.use((p) => p.connect({ kind: "pi", name: "Pi" })))
+    await t.send("hello")
+    await t.idle()
+    const reply = (await t.history()).messages.at(-1)
+    expect(reply?.status).toBe("done")
+    const turn = fake.piCalls().at(-1) as unknown as {
+      args: string[]
+      prompt: string
+      cwd: string
+      system: string
+    }
+    // The extension of the bridge stays on; the built-ins stay off.
+    expect(turn.args).toContain("--extension")
+    expect(turn.args).toContain("--no-builtin-tools")
+    expect(turn.args).not.toContain("--no-tools")
+    // The turn works in the folder of the workflow: the bridge owns the tools.
+    const { realpathSync } = await import("node:fs")
+    expect(realpathSync(turn.cwd)).toBe(realpathSync(t.flow.folder))
+    // The prompt names the tools of the chat.
+    expect(turn.system).toContain("Rules for the tools of the workflow")
+    expect(turn.system).toContain("call create_workflow")
+    expect((await t.history()).answer).toMatchObject({ accountName: "Pi", feedback: true })
   })
 })
 

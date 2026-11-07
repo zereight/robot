@@ -71,6 +71,12 @@ describe("what the chat may change (spec 010, 012)", () => {
     expect(system).toContain("The chat stays in this workflow")
   })
 
+  test("a Claude Code bridge turn maps the tool names to their MCP names", () => {
+    const system = chatSystem({ ...base, mcpTools: true })
+    expect(system).toContain("mcp__robot__<name>")
+    expect(chatSystem(base)).not.toContain("mcp__robot__<name>")
+  })
+
   test("without rights the prompt forbids making a new workflow", () => {
     const device = chatSystem({ ...base, cannotChange: { reason: "device", server: "Office" } })
     expect(device).toContain("make a new workflow")

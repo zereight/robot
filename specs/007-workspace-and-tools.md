@@ -603,7 +603,9 @@ steer the node to an address that only this computer or its network can reach.
   fetch of a local address (see "Sensitive places").
 - A runtime from a vendor (see 006) uses the vendor's own permission prompts; the app shows them as
   approval cards. The level of the node also sets how the app starts the program (see "Permission
-  levels").
+  levels"). In the chat, pi and Claude Code use the tools of the app, and their own tools stay
+  off (006, "Chat tools on a vendor runtime"). A text node on a vendor runtime keeps using the
+  tools of its program.
 - Browser data (cookies, logins) is kept for each workflow, on the computer.
 - The list of browser tabs is read again when the browser window gets the focus, and when a press
   fails on a tab that no longer exists.

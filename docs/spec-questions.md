@@ -28,6 +28,8 @@ implementer made to continue. A spec author answers by changing the spec.
 | 003 | Does Stop also cancel the queue? | No. Stop ends the current turn; the next queued message is then sent. |
 | 003 | What does "edit" on the user's last message do? | It saves the new text, removes the replies after it, and asks the agent again. Only when the agent is not working. |
 | 003 | Which failed turns can be retried? | Only the last reply, when it failed. Retry replaces the failed row. |
+| 003 | Do vendor runtimes get the chat tools, or do they answer in text only? | pi and Claude Code get the same chat tools through the bridge (006); their own tools stay off. opencode answers in text only. Codex, Muse Code and Cursor cannot answer in the chat. Specs 003, 006 and 007 updated. |
+| 006 | How does a program run with the app tools only? | pi: `--no-builtin-tools` with the extension file. Claude Code: `--tools` with the `mcp__robot__` names and `--mcp-config`. Verified live against both programs. |
 | 003 | "Stored as each part arrives": how often? | The partial reply is written at most every 500 ms and when the turn ends. A turn still marked as streaming at start-up becomes "stopped". |
 | 003 | Does Markdown allow raw HTML, and where do links and images go? | Raw HTML shows as plain text. Links open in the system browser (http, https, mailto only). A link with no scheme that names a host opens with https (localhost opens with http). A bare mail address opens as mailto. A link that opens nothing shows its words as plain text. Images load only from https addresses. |
 | 003 | Attach (flow 4) and Approve (flow 6) | Attach comes in slice S7. Approve needs agent tools (007), which are not in M1. |
