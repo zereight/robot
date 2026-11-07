@@ -40,6 +40,7 @@ export const WorkflowView = (props: { id: string }) => {
         <Show when={detail()}>
           <IconButton
             label={t("workflows.delete")}
+            disabled={detail()?.running}
             onClick={() => setAsking(true)}
             data-testid="workflow-delete"
           >
@@ -49,7 +50,12 @@ export const WorkflowView = (props: { id: string }) => {
       </header>
       <div class={styles.split} data-narrow={ui.narrow()} data-testid="workflow-view">
         <div class={styles.splitMain}>
-          <Show when={asking() && detail()}>
+          <Show when={detail()?.running}>
+            <p class={styles.hint} role="status" data-testid="workflow-running-readonly">
+              {t("workflows.readonly")}
+            </p>
+          </Show>
+          <Show when={asking() && !detail()?.running ? detail() : undefined}>
             {(flow) => (
               <Confirm
                 ask={t("workflows.delete.ask", { name: flow().name })}

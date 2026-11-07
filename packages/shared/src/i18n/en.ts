@@ -689,6 +689,8 @@ export const en = {
   "firstRun.done": "Done",
   "workflows.cancel": "Cancel",
   "workflows.create": "Create",
+  "workflows.readonly":
+    "A run works. The workflow cannot be renamed or deleted until the run ends.",
   "workflows.delete": "Delete workflow",
   "workflows.nodes": "{n} nodes",
   "workflows.nodes.one": "1 node",

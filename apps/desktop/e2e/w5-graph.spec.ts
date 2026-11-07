@@ -199,5 +199,12 @@ test("workflow settings: the folder and the level are read-only while a run work
   await expect(page.getByTestId("workflow-settings-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-permission")).toBeDisabled()
   await expect(page.getByTestId("workflow-folder-pick")).toBeDisabled()
+  // A workflow that runs is not deleted: the button is off and the read-only line shows.
+  await expect(page.getByTestId("workflow-running-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-delete")).toBeDisabled()
+  await page.getByTestId("workflow-back").click()
+  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-card-delete")).toBeDisabled()
+  await shot(page, "w5-27-card-running")
   await app.close()
 })
