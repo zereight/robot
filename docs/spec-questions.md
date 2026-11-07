@@ -1158,3 +1158,4 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | Spec | Question | Choice for now |
 | --- | --- | --- |
 | 002, 010 | When the turn has both the direct tools and the propose tools, which path does a change of the graph or of a node prompt take: a direct change, or a proposal that waits? | A change that the user asks for goes direct; a proposal is for a better way that the responsible document sees by itself, after a run or from feedback. The prompt states this. To confirm. |
+| 002, 010 | Does the responsible document follow a no-give-up discipline: exhaust every tool before saying it cannot, act before asking, verify a change by reading it back? Inspired by tanweai/pua, in our own words; the repo has no license grant, so no text is copied. | Yes for a chat turn with full rights; the prompt states it. Read-only and no-switch turns are exempt. To confirm. |
