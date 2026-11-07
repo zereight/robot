@@ -81,6 +81,9 @@ export const ko: Record<MessageKey, string> = {
   "error.database_newer":
     "이 컴퓨터의 ROBot 데이터는 더 새로운 버전의 앱이 만든 거예요. 열려면 최신 버전의 ROBot을 설치하세요. 데이터는 바뀌지 않았어요.",
 
+  "error.database_failed.title": "ROBot이 데이터 파일을 열 수 없어요",
+  "error.database_failed":
+    "ROBot이 데이터 파일 {path}을(를) 열지 못했어요. 파일이 손상되었거나, 이 계정에 파일이나 폴더를 읽고 쓸 권한이 없을 수 있어요. 파일과 권한을 확인한 뒤 ROBot을 다시 시작하세요. 파일은 바뀌지 않았어요. 자세한 내용: {detail}",
   "providers.add": "계정 추가",
   "providers.kind": "제공자",
   "providers.kind.openai": "OpenAI",
@@ -358,7 +361,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.name": "워크플로우 이름",
   "workflows.empty": "워크플로우가 아직 없어요.",
   "workflows.delete.ask":
-    "워크플로우 “{name}”을(를) 삭제할까요? 책임 문서, 대화, 실행 기록, 기억도 함께 사라져요.",
+    "워크플로우 “{name}”을(를) 삭제할까요? 담당 문서, 대화, 실행 기록, 기억도 함께 사라져요.",
   "toast.dismiss": "메시지 닫기",
   "error.workflow_not_found": "이 워크플로우가 더 이상 없습니다.",
   "error.workflow_running": "이 워크플로우가 실행 중입니다.",
@@ -686,8 +689,6 @@ export const ko: Record<MessageKey, string> = {
   "workflows.nodes.one": "노드 1개",
   "workflows.document.default":
     "당신은 이 워크플로우를 책임집니다. 그래프, 실행, 결과에 대한 질문에 답하세요. 이 워크플로우의 일에만 집중하세요. 요청이 그 밖의 일이면 그렇게 말하세요. 사용자가 요청하지 않은 것을 바꾸기 전에 먼저 물어보세요.",
-  "workflows.document": "책임 문서",
-  "workflows.document.empty": "책임 문서에 아직 글이 없어요.",
   "permissions.log.deletedWorkflow": "삭제된 워크플로우",
   "permissions.log.filterWorkflow": "워크플로우",
   "permissions.log.anyWorkflow": "모든 워크플로우",
@@ -701,7 +702,7 @@ export const ko: Record<MessageKey, string> = {
   "rules.field.workflow": "워크플로우",
   "error.workflow_name_empty": "워크플로우 이름을 입력해 주세요.",
   "error.workflow_name_taken": "이 서버에 같은 이름의 워크플로우가 이미 있어요.",
-  "error.document_too_long": "책임 문서가 너무 길어요. 20,000자 이하로 써 주세요.",
+  "error.document_too_long": "담당 문서가 너무 길어요. 20,000자 이하로 써 주세요.",
   "error.document_secret": "글이 비밀 값처럼 보여요. ROBot은 문서에 비밀 값을 저장하지 않아요.",
   "error.workflow_nodes_full": "워크플로우에는 노드를 30개까지 둘 수 있어요.",
   "error.node_name_empty": "노드 이름을 입력해 주세요.",
@@ -718,4 +719,46 @@ export const ko: Record<MessageKey, string> = {
   "error.connection_option_unexpected": "선택지는 결정 노드에서 나가는 연결에만 있어요.",
   "error.node_not_found": "이 노드는 더 이상 없어요.",
   "error.workflow_folder_empty": "워크플로우 폴더를 골라 주세요.",
+  "workflows.empty.hint":
+    "워크플로우는 노드로 이루어진 그래프예요. 모델이 정해진 순서대로 노드를 실행해요.",
+  "workflows.card.open": "{name} 열기",
+  "workflows.run.none": "아직 실행한 적이 없어요",
+  "workflows.run.last": "마지막 실행: {state}",
+  "workflows.run.state.queued": "대기열",
+  "workflows.run.state.running": "실행 중",
+  "workflows.run.state.waiting": "입력 기다리는 중",
+  "workflows.run.state.done": "완료",
+  "workflows.run.state.failed": "실패",
+  "workflows.run.state.blocked": "막힘",
+  "workflows.run.state.cancelled": "취소됨",
+  "workflows.check.line": "검사: {state}",
+  "workflows.check.not_checked": "검사 안 함",
+  "workflows.check.problem": "문제 발견",
+  "workflows.new.hint":
+    "워크플로우 이름을 정하세요. 짧은 담당 문서가 함께 만들어지고, 나중에 고칠 수 있어요.",
+  "workflows.document.hint":
+    "담당 문서는 이 워크플로우를 누가 책임지는지, 어떤 성격인지, 어디까지 하는지를 적어요. 모든 노드와 채팅의 모델 제공자에게 전달돼요. 비밀 값은 적지 마세요.",
+  "workflows.document.count": "{n} / 20000자",
+  "workflows.document.save": "저장",
+  "workflows.document.discard": "변경 취소",
+  "workflows.document.saved": "저장했어요. 다음 채팅 응답과 다음 실행부터 적용돼요.",
+  "workflows.document.readonly":
+    "실행 중이에요. 실행이 끝날 때까지 담당 문서는 읽기만 할 수 있어요.",
+  "workflows.document.emptyNote":
+    "담당 문서가 비어 있어요. 노드는 자기 프롬프트만으로 실행되고, 채팅은 앱의 규칙만으로 답해요.",
+  "workflows.document.label": "담당 문서 내용",
+  "workflows.document.history": "기록",
+  "workflows.document.history.empty":
+    "이전 버전이 아직 없어요. 글을 바꿀 때마다 이전 글이 여기에 남아요.",
+  "workflows.document.history.count": "버전 {n} / 50개 보관 중",
+  "workflows.document.version.open": "열기",
+  "workflows.document.version.close": "편집기로 돌아가기",
+  "workflows.document.version.restore": "이 버전으로 복원",
+  "workflows.document.version.restored": "복원했어요. 복원 전의 글이 새 버전으로 남았어요.",
+  "workflows.document.version.empty": "이 버전에는 글이 없어요.",
+  "workflows.document.source.editor": "편집기",
+  "workflows.document.source.proposal": "수락한 제안",
+  "workflows.document.source.undo": "되돌리기",
+  "workflows.document.source.restore": "복원",
+  "workflows.document.source.device": "{device}에서",
 }

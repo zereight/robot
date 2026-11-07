@@ -79,6 +79,9 @@ export const en = {
   "error.database_newer":
     "The data of ROBot on this computer comes from a newer version of the app. Install the newest version of ROBot to open it. The data is not changed.",
 
+  "error.database_failed.title": "ROBot cannot open its data",
+  "error.database_failed":
+    "ROBot could not open its data file {path}. The file may be damaged, or this account may not read and write it or its folder. Check the file and its rights, then start ROBot again. The file is not changed. Details: {detail}",
   "providers.add": "Add account",
   "providers.kind": "Provider",
   "providers.kind.openai": "OpenAI",
@@ -690,8 +693,6 @@ export const en = {
   "workflows.nodes.one": "1 node",
   "workflows.document.default":
     "You answer for this workflow. Answer questions about its graph, its runs and its results. Keep to the task of this workflow. If a request is outside it, say so. Ask the user before you change something that the user did not ask for.",
-  "workflows.document": "Responsible document",
-  "workflows.document.empty": "The responsible document has no text yet.",
   "permissions.log.deletedWorkflow": "Deleted workflow",
   "permissions.log.filterWorkflow": "Workflow",
   "permissions.log.anyWorkflow": "Any workflow",
@@ -724,6 +725,47 @@ export const en = {
   "error.connection_option_unexpected": "Only a connection from a decision node has an option.",
   "error.node_not_found": "This node does not exist any more.",
   "error.workflow_folder_empty": "Pick a folder for the workflow.",
+  "workflows.empty.hint":
+    "A workflow is a graph of nodes. A model runs the nodes in a fixed order.",
+  "workflows.card.open": "Open {name}",
+  "workflows.run.none": "No run yet",
+  "workflows.run.last": "Last run: {state}",
+  "workflows.run.state.queued": "Queued",
+  "workflows.run.state.running": "Running",
+  "workflows.run.state.waiting": "Waiting for you",
+  "workflows.run.state.done": "Done",
+  "workflows.run.state.failed": "Failed",
+  "workflows.run.state.blocked": "Blocked",
+  "workflows.run.state.cancelled": "Cancelled",
+  "workflows.check.line": "Check: {state}",
+  "workflows.check.not_checked": "Not checked",
+  "workflows.check.problem": "Problem found",
+  "workflows.new.hint":
+    "Give the workflow a name. It gets a short responsible document that you can edit.",
+  "workflows.document.hint":
+    "The responsible document says who answers for this workflow, its character and its limits. It goes to the model provider of every node and of the chat. Do not write a secret in it.",
+  "workflows.document.count": "{n} of 20000 characters",
+  "workflows.document.save": "Save",
+  "workflows.document.discard": "Discard changes",
+  "workflows.document.saved": "Saved. It counts from the next chat turn and the next run.",
+  "workflows.document.readonly": "A run works. The document is read-only until the run ends.",
+  "workflows.document.emptyNote":
+    "The document is empty. A node runs with its own prompt only, and the chat answers with the rules of the app only.",
+  "workflows.document.label": "Text of the responsible document",
+  "workflows.document.history": "History",
+  "workflows.document.history.empty":
+    "No earlier versions yet. Each change keeps the old text here.",
+  "workflows.document.history.count": "{n} of 50 versions kept",
+  "workflows.document.version.open": "Open",
+  "workflows.document.version.close": "Back to the editor",
+  "workflows.document.version.restore": "Restore this version",
+  "workflows.document.version.restored": "Restored. The text before is a new version.",
+  "workflows.document.version.empty": "This version has no text.",
+  "workflows.document.source.editor": "Editor",
+  "workflows.document.source.proposal": "A proposal that you accepted",
+  "workflows.document.source.undo": "Undo",
+  "workflows.document.source.restore": "Restore",
+  "workflows.document.source.device": "from {device}",
 } as const
 
 export type MessageKey = keyof typeof en
