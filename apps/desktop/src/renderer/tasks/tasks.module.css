@@ -129,6 +129,13 @@
   width: min(520px, 80vw);
   min-width: 0;
   max-height: 70vh;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-height: 0;
   overflow-y: auto;
 }
 

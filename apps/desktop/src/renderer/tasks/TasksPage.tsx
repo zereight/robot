@@ -185,55 +185,57 @@ const TaskDetail = (props: { id: string; onClose: () => void; onChanged: () => v
       <Show when={view()}>
         {(v) => (
           <div class={styles.detail}>
-            <h2 class={styles.title}>{v().workflowName}</h2>
-            <p class={styles.meta}>
-              {t("tasks.node", { number: v().nodeNumber, name: v().nodeName })} ·{" "}
-              {t(`tasks.source.${v().source}` as MessageKey)} · <StateText task={v()} />
-            </p>
-            <p class={styles.meta}>
-              {t("tasks.run", {
-                time: formatDateTime(locale(), v().runStartedAt),
-                source: t(`tasks.source.${v().source}` as MessageKey),
-              })}
-            </p>
-            <Reason task={v()} testid="task-detail-reason" class={styles.meta} />
-            <Show when={v().retryOf}>
-              <p class={styles.meta}>{t("tasks.retryOf")}</p>
-            </Show>
-            <h3>{t("tasks.times")}</h3>
-            <TimesList view={v()} />
-            <h3>{t("tasks.moments")}</h3>
-            <Moments view={v()} />
-            <Usage view={v()} />
-            <Show when={v().steps > 0}>
-              <p class={styles.meta}>{t("tasks.steps", { count: v().steps })}</p>
-            </Show>
-            <Show when={v().input !== ""}>
-              <h3>{t("tasks.input")}</h3>
-              <pre class={styles.text} data-testid="task-input">
-                {v().input}
-              </pre>
-            </Show>
-            <h3>{t("tasks.result")}</h3>
-            <Show
-              when={v().result !== ""}
-              fallback={<p class={styles.meta}>{t("tasks.result.none")}</p>}
-            >
-              <pre class={styles.text} data-testid="task-result">
-                {v().result}
-              </pre>
-            </Show>
-            <Show when={progressLine(v())}>
-              {(key) => (
-                <p
-                  class={styles.meta}
-                  data-testid="task-progress-line"
-                  data-progress={v().progress}
-                >
-                  {t(key())}
-                </p>
-              )}
-            </Show>
+            <div class={styles.body}>
+              <h2 class={styles.title}>{v().workflowName}</h2>
+              <p class={styles.meta}>
+                {t("tasks.node", { number: v().nodeNumber, name: v().nodeName })} ·{" "}
+                {t(`tasks.source.${v().source}` as MessageKey)} · <StateText task={v()} />
+              </p>
+              <p class={styles.meta}>
+                {t("tasks.run", {
+                  time: formatDateTime(locale(), v().runStartedAt),
+                  source: t(`tasks.source.${v().source}` as MessageKey),
+                })}
+              </p>
+              <Reason task={v()} testid="task-detail-reason" class={styles.meta} />
+              <Show when={v().retryOf}>
+                <p class={styles.meta}>{t("tasks.retryOf")}</p>
+              </Show>
+              <h3>{t("tasks.times")}</h3>
+              <TimesList view={v()} />
+              <h3>{t("tasks.moments")}</h3>
+              <Moments view={v()} />
+              <Usage view={v()} />
+              <Show when={v().steps > 0}>
+                <p class={styles.meta}>{t("tasks.steps", { count: v().steps })}</p>
+              </Show>
+              <Show when={v().input !== ""}>
+                <h3>{t("tasks.input")}</h3>
+                <pre class={styles.text} data-testid="task-input">
+                  {v().input}
+                </pre>
+              </Show>
+              <h3>{t("tasks.result")}</h3>
+              <Show
+                when={v().result !== ""}
+                fallback={<p class={styles.meta}>{t("tasks.result.none")}</p>}
+              >
+                <pre class={styles.text} data-testid="task-result">
+                  {v().result}
+                </pre>
+              </Show>
+              <Show when={progressLine(v())}>
+                {(key) => (
+                  <p
+                    class={styles.meta}
+                    data-testid="task-progress-line"
+                    data-progress={v().progress}
+                  >
+                    {t(key())}
+                  </p>
+                )}
+              </Show>
+            </div>
             <div class={styles.actions}>
               <Show when={isStoppable(v().state)}>
                 <Button
@@ -468,8 +470,7 @@ export const TasksPage = () => {
   const { t } = useApp()
   const ui = useUi()
   const tab = () => ui.ui.tasksTab
-  const pick = (next: "tasks" | "events") =>
-    void call("ui.update", { tasksTab: next }).catch(() => undefined)
+  const pick = ui.selectTasksTab
   const tabs = ["tasks", "events"] as const
   return (
     <>

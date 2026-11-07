@@ -960,3 +960,17 @@ Two rows ask who changes these specs: one row of W2, for 006 and 009, and one ro
 | 033, 034 | The earlier 034 showed each finding as a card in the chat, and 033 showed the result of a measurement as a card in the chat. The page "Test devices" has no chat of a workflow, so the card has no place there. | The findings and the measurement result are cards in the panel. A measurement that a node starts shows its tool card in the chat (032). Whether a card also goes to the chat is open. |
 | 035, 007 | A text node can write `robot.json`, a control place (007). 035 said that a node cannot change the setup list. | 035 says that a node can change the list only by a write to a control place, which follows the rules of 007 for a change to a control place (it asks, runs or is refused by the level and the rules), and that a changed list loses its allow. The responsible document has no file tools and cannot change it. |
 | 013, 022, 025, 027, 032, 033, 034, 035, 039 | The W3 row for 013, 015, 022, 033, 034 and 003 and the W1 row for these specs ask who changes them. This slice (R3) changed 013, 022, 025, 027, 032, 033, 034, 035 and 039. | Answered for these nine specs. R1 (006, 018, 023, 026) and R2 (015, 016, 020, 028, 038) answer the other specs that this row named, so no spec of this row still names agents or routines. The open points stay in the rows of R1, R2 and R3. |
+
+## B2: Tasks page, queue and slots (open points for 005 and 013)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 005, 013 | 005 still says "Agents working at once" in some lines. The setting is "Tasks at once". | The app uses "Tasks at once" (1 to 8, default 4). 005 needs the same word in these lines. This is a spec cleanup row. |
+| 005 | The W2 row 726 asks what Retry does to a run: a new task in the same run, or a new run from this node. | Fail-closed: Retry makes a new run of that one node, with the same input, and links it to the old task. The old run does not change. To confirm. |
+| 005 | What happens to a task when the setting "Tasks at once" is made smaller while more tasks run? | A task that runs is never stopped. No new task starts until the number of tasks that run is below the new number. |
+| 005 | Where does a task that waits for the user (approval, question, pick) stand when it goes on? | It gives up its slot while it waits, keeps its workflow held, and goes on at the front of the queue, before the picks of "Run next". To confirm. |
+| 005 | Where does a memory check stand in the queue (008)? | Last. It starts only when its workflow has no other task that runs or waits. |
+| 005 | What does the quiet line count when the silent limit is "Never"? | 90 seconds. With a limit, the quiet time is the smaller of 90 seconds and half of the limit. The clock stops while a tool step runs or a card waits. It is not stored. |
+| 005 | A refused start (the 21st waiting task of a workflow) of a schedule run has no person to tell. | The run is made as Failed, with the reason text of the refusal. A start by hand or from the chat is refused with the name of the workflow. |
+| 005 | Retry note: does the list of steps show the computer where the first try ran, when it was not this computer? | Not yet. The note names no computer. The list shows at most 5 steps, newest first, and "and N more". To confirm with 011 and 012. |
+| 005 | The tab "Events" is on the page. What does it hold? | It is empty with the text "No events yet". The events come with slice B-events (016, 038). |

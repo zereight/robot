@@ -73,6 +73,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       update({ places: rest })
     },
     selectPage: (page: Page) => update({ page }),
+    /** The tab of the Tasks page; it stays after a restart (spec 005, 038). */
+    selectTasksTab: (tasksTab: UiState["tasksTab"]) => update({ tasksTab }),
   }
 }
 
