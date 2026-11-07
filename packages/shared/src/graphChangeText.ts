@@ -182,6 +182,7 @@ const indent = (text: string, by = 8) =>
 export const ASSISTANT_STEP_NAMES: ReadonlySet<string> = new Set([
   "list_workflows",
   "read_workflow",
+  "create_workflow",
   "add_node",
   "edit_node",
   "remove_node",
@@ -219,5 +220,11 @@ export const assistantStepText = (
   }
   const n = (v: unknown) => (typeof v === "number" && Number.isInteger(v) ? v : "?")
   const key = form === "deed" ? `chat.tool.${name}` : `chat.tool.wanted.${name}`
-  return t(key as MessageKey, { node: n(args.node), from: n(args.from), to: n(args.to) })
+  const named = typeof args.name === "string" && args.name.trim() !== "" ? args.name.trim() : "?"
+  return t(key as MessageKey, {
+    node: n(args.node),
+    from: n(args.from),
+    to: n(args.to),
+    name: named,
+  })
 }

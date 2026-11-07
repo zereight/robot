@@ -126,7 +126,8 @@ A long series of tool steps fills the chat. The user can fold it away.
 13. Give feedback: while a run works or waits, the user writes feedback on a result. See "Progress,
     stops, results and feedback".
 14. Edit the workflow: the user asks the responsible document to change the workflow. It uses the
-    tools of 010, "Assistant". The rules of that section hold in this chat.
+    tools of 010, "Assistant". The rules of that section hold in this chat. The user can also ask
+    for a new workflow with a name. The chat makes it and stays where it is.
 
 ## Progress, stops, results and feedback
 

@@ -121,6 +121,11 @@ user can read, edit and check the whole workflow.
 - The chat can change the graph. It can add, edit and remove nodes and connections, and clear a
   field. It can set the model or the reasoning level of a node only to a value that the account of
   the node offers (006).
+- The chat can make a new workflow with a name that the user gives. The new workflow has the same
+  defaults as one made with "New workflow" (see "Flows", item 1): an empty graph, the default
+  responsible document, an empty folder and the default permission level. A name that is empty or
+  taken (ignoring case) is refused, and the chat tells the user why. The chat stays in the open
+  workflow. It does not move to the new one, and it cannot change the new one from this chat.
 - If the user changes the workflow while the chat works, the app refuses the chat's change. The
   chat then reads the graph again and tells the user.
 - A change in a wrong form is refused. The chat tells the user what is wrong. The graph does not
@@ -244,7 +249,7 @@ user can read, edit and check the whole workflow.
 ## Surfaces
 
 - **Ways in**: "New workflow" on the workflow list, the card of a workflow, "Run" in the workflow
-  view, and the trigger on the canvas.
+  view, the trigger on the canvas, and the chat of a workflow for a new workflow (see "Assistant").
 - **Devices**: this computer shows and changes the workflow. A linked client (012) sees it, can
   start a run, and uses its chat. The phone has no workflow editor (011).
 - **Runtimes**: each text node uses the provider and the model that it names (006). A decision node
@@ -267,6 +272,8 @@ user can read, edit and check the whole workflow.
   the graph from before.
 - Ask the chat to set a model that the account of the node does not offer: the change is refused,
   and the chat tells the user.
+- Ask the chat to make a workflow named "Weekly": the list shows "Weekly" with 0 nodes, and the
+  chat stays in the open workflow. Ask again with the same name: the chat refuses and says why.
 - Ask the chat to run the workflow: one run starts, and the chat reports its state.
 - Ask the chat for a schedule: it tells the user to set the schedule on the canvas.
 - Ask the chat "How far is the run?" while a run works: the chat names the node that works and

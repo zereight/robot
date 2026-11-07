@@ -527,6 +527,7 @@ describe("the tools of the chat (spec 007, 003)", () => {
       "add_run_feedback",
       "list_workflows",
       "read_workflow",
+      "create_workflow",
       "add_node",
       "edit_node",
       "remove_node",

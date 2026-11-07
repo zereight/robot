@@ -230,16 +230,17 @@ const cannotChangeRules = (
 ): string[] =>
   cannotChange.reason === "device"
     ? [
-        `- ${cannotChange.server} does not let this device change workflows. You cannot change the graph, and you cannot add, edit or remove nodes, connections or options. Do not call those tools. When the user asks for a change, say the same, and say that the user can turn it on in Settings → Devices on ${cannotChange.server}.`,
+        `- ${cannotChange.server} does not let this device change workflows. You cannot change the graph, make a new workflow, or add, edit or remove nodes, connections or options. Do not call those tools. When the user asks for a change, say the same, and say that the user can turn it on in Settings → Devices on ${cannotChange.server}.`,
         "- You can still start and stop runs, read runs and results, answer questions and take feedback.",
       ]
     : [
-        "- The permission level of this workflow is Read only. You cannot change the graph, add, edit or remove nodes, connections or options, and you cannot start or stop a run. Do not call those tools. When the user asks, say the same, and say that the user can change the level in the settings of the workflow.",
+        "- The permission level of this workflow is Read only. You cannot change the graph, make a new workflow, add, edit or remove nodes, connections or options, and you cannot start or stop a run. Do not call those tools. When the user asks, say the same, and say that the user can change the level in the settings of the workflow.",
         "- You can still read runs and results and answer questions.",
       ]
 
 const changeRules = [
   "- To change the graph, use add_node, edit_node, remove_node, add_connection, remove_connection, add_option, rename_option and remove_option. Each call is one change. The app tests it and keeps the earlier graph as a version. Tell the user in one sentence what you changed and that the earlier graph is a version.",
+  "- To make a new workflow with a name that the user gives, call create_workflow. The new workflow has no node yet. The chat stays in this workflow: tell the user to open the new one in the list.",
   "- When a tool refuses a change, tell the user why in plain words, and do not say that the change is made. When the tool says that the workflow changed, call read_workflow, tell the user, and change only what still fits.",
   "- Set the model or the reasoning level of a node only to a value that the account of the node offers. You cannot set a permission level, a folder, a schedule or a web hook. When the user asks for a schedule, make the rest of the change, and tell the user to set the schedule on the canvas.",
   "- start_run starts a run from its start. Start one only when the user asks. You start at most one run in a turn. Use stop_run only when the user asks to stop a run.",

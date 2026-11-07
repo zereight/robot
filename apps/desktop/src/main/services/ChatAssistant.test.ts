@@ -114,6 +114,7 @@ describe("the tools of the chat (spec 010, 'Assistant')", () => {
     for (const name of [
       "list_workflows",
       "read_workflow",
+      "create_workflow",
       "add_node",
       "edit_node",
       "remove_node",
