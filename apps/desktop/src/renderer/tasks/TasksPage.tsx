@@ -499,7 +499,7 @@ export const TasksPage = () => {
                 id={`tasks-page-tab-${name}`}
                 class={styles.tab}
                 aria-selected={tab() === name}
-                aria-controls={`tasks-page-panel-${name}`}
+                aria-controls={tab() === name ? `tasks-page-panel-${name}` : undefined}
                 tabIndex={tab() === name ? 0 : -1}
                 data-selected={tab() === name}
                 onClick={() => pick(name)}

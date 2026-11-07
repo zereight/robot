@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { RunSource, RunSummary, TaskItem, WorkflowNode } from "@robot/shared"
 import { Effect } from "effect"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
+import { runRequest } from "../rpc.ts"
 import { Cards } from "./Cards.ts"
 import { Database } from "./Database.ts"
 import { Memory } from "./Memory.ts"
@@ -886,5 +887,74 @@ describe("the Tasks page: the list and the filters (spec 005, Tasks page)", () =
       "Waits for your approval of the step: echo why. The approval card is in the chat.",
     )
     await t.stop(r.id)
+  })
+})
+
+describe("a run that a linked device starts is attributed to it (spec 012, 005)", () => {
+  /** The device that a run records, or null for a start in the window. */
+  const deviceOf = async (t: Awaited<ReturnType<typeof setup>>, runId: string) =>
+    (await t.sql<{ device: string | null }>("SELECT device FROM run WHERE id = ?", runId))[0]
+      ?.device
+
+  const link = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.run(
+            "INSERT INTO device_link (id, name, kind, public_key, inbound, position, created_at, can_change) VALUES ('phone-1', 'Anna phone', 'phone', '', 1, 0, 0, 0)",
+          ),
+        ),
+      ),
+    )
+  const ask = (t: Awaited<ReturnType<typeof setup>>, method: string, input: unknown) =>
+    runRequest(t.runtime, method, input, { id: "phone-1", name: "Anna phone" })
+
+  test("the link handler records the device, also when the run waits in the queue and then runs", async () => {
+    const t = await setup()
+    await link(t)
+    const a = await t.flow("A", [HANG])
+    // The window starts the first run: no device. The device starts the second: it waits.
+    const first = await t.start(a.id)
+    await until(async () => (await t.stateOf(first.id)) === "running", "first runs")
+    const asked = await ask(t, "runs.start", { workflowId: a.id })
+    expect(asked.ok).toBe(true)
+    const second = (asked as { value: RunSummary }).value
+    await until(async () => (await t.stateOf(second.id)) === "queued", "second queues")
+    expect(await deviceOf(t, first.id)).toBeNull()
+    expect(await deviceOf(t, second.id)).toBe("Anna phone")
+    // The queue lets the second run go on: the device stays on the record.
+    await t.stop(first.id)
+    await until(async () => (await t.stateOf(second.id)) === "running", "second runs")
+    expect(await deviceOf(t, second.id)).toBe("Anna phone")
+    await t.stop(second.id)
+  })
+
+  test("a retry names the device that asks; a retry in the window names none, also for a run that a device started", async () => {
+    const t = await setup()
+    await link(t)
+    await t.run(SettingsStore.use((s) => s.update({ stepLimit: 20 })))
+    const a = await t.flow("A", ['tools 25 run_command {"command":"echo changed"}'], "full")
+    const started = await ask(t, "runs.start", { workflowId: a.id })
+    expect(started.ok).toBe(true)
+    const first = (started as { value: RunSummary }).value
+    await t.ended(first.id)
+    const task = await t.taskOf(first.id)
+    expect(await deviceOf(t, first.id)).toBe("Anna phone")
+    // The link does not list "Retry": a device cannot reach it (spec 012).
+    expect(await ask(t, "tasks.retry", { taskId: task.id, confirmed: true })).toMatchObject({
+      ok: false,
+      error: { code: "not_allowed" },
+    })
+    // The service takes the device that asks. The window has none: the retry run names none.
+    const byWindow = await t.run(Tasks.use((x) => x.retry(task.id, true)))
+    expect(byWindow.started).toBe(true)
+    if (!byWindow.started) return
+    await t.ended(byWindow.runId)
+    expect(await deviceOf(t, byWindow.runId)).toBeNull()
+    const byDevice = await t.run(Tasks.use((x) => x.retry(task.id, true, "Anna phone")))
+    expect(byDevice.started).toBe(true)
+    if (!byDevice.started) return
+    await t.ended(byDevice.runId)
+    expect(await deviceOf(t, byDevice.runId)).toBe("Anna phone")
   })
 })

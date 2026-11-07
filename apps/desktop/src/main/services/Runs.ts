@@ -87,7 +87,12 @@ export const runClock = {
 
 export interface RunsService {
   /** Starts a run. The run works on and the call returns at once (spec 010). */
-  readonly start: (input: RunStart, source?: RunSource) => Effect.Effect<RunSummary, AppError>
+  readonly start: (
+    input: RunStart,
+    source?: RunSource,
+    /** The linked device that started the run: "Started by <device>" (spec 012). */
+    device?: string | null,
+  ) => Effect.Effect<RunSummary, AppError>
   /** Stops a run: its tasks are cancelled and a card that waits goes away (spec 005). */
   readonly stop: (runId: string) => Effect.Effect<void, AppError>
   /** Stops one task. This ends its run (spec 005, "Tasks page"). */
@@ -96,7 +101,11 @@ export interface RunsService {
    * Tries a failed, blocked or cancelled task again: a new run of that one node, with the same
    * input, linked to the old task. The nodes after it do not run (docs/spec-questions.md, B2).
    */
-  readonly retryTask: (taskId: string) => Effect.Effect<string, AppError>
+  readonly retryTask: (
+    taskId: string,
+    /** The linked device that tries again: the retry run is "Started by <device>" (spec 012). */
+    device?: string | null,
+  ) => Effect.Effect<string, AppError>
   readonly list: (workflowId: string) => Effect.Effect<readonly RunSummary[]>
   readonly get: (runId: string) => Effect.Effect<RunDetail, AppError>
   /** True while a run of the workflow works, waits or is queued. */
@@ -1329,6 +1338,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         name: string,
         source: RunSource,
         trigger: string,
+        device: string | null,
         only?: OnlyNode,
       ) => {
         const waiting =
@@ -1360,13 +1370,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         const another = [...active.values()].some((e) => e.workflowId === workflowId)
         db.run(
-          `INSERT INTO run (id, workflow_id, state, source, trigger_text, started_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           id,
           workflowId,
           another || queue.scheduler.wouldWait(workflowId) ? "queued" : "running",
           source,
           trigger,
+          device,
           now,
         )
         changed(workflowId, id)
@@ -1394,10 +1405,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           return detail
         })
 
-      const start = (input: RunStart, source: RunSource = "hand") =>
+      const start = (input: RunStart, source: RunSource = "hand", device: string | null = null) =>
         Effect.gen(function* () {
           const detail = yield* preflight(input.workflowId)
-          const made = launch(input.workflowId, detail.name, source, input.trigger ?? "")
+          const made = launch(input.workflowId, detail.name, source, input.trigger ?? "", device)
           if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
           return summaryOf(runRow(made.id) as RunRow)
         })
@@ -1456,7 +1467,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           endWaiting(t.run_id, taskId)
         })
 
-      const retryTask = (taskId: string) =>
+      const retryTask = (taskId: string, device: string | null = null) =>
         Effect.gen(function* () {
           const t = taskRow(taskId)
           if (!t) return yield* new AppError({ code: "task_not_found" })
@@ -1469,12 +1480,19 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             return yield* new AppError({ code: "cannot_retry_task" })
           // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the
           // marks of the task that it tries again (spec 007, "Outside content").
-          const made = launch(r.workflow_id, detail.name, r.source as RunSource, r.trigger_text, {
-            nodeNumber: t.node_number,
-            input: t.input,
-            retryOf: t.id,
-            marks: marksOf(t),
-          })
+          const made = launch(
+            r.workflow_id,
+            detail.name,
+            r.source as RunSource,
+            r.trigger_text,
+            device,
+            {
+              nodeNumber: t.node_number,
+              input: t.input,
+              retryOf: t.id,
+              marks: marksOf(t),
+            },
+          )
           if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
           return made.id
         })

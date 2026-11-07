@@ -152,6 +152,12 @@ test("tasks page: the button opens it with the tabs Tasks and Events; the tab st
     "aria-labelledby",
     "tasks-page-tab-tasks",
   )
+  // Only the selected tab points to a panel: the panel of the other tab is not in the page.
+  await expect(page.getByTestId("tasks-tab")).toHaveAttribute(
+    "aria-controls",
+    "tasks-page-panel-tasks",
+  )
+  await expect(page.getByTestId("events-tab")).not.toHaveAttribute("aria-controls", /.+/)
   await page.getByTestId("tasks-tab").focus()
   await page.keyboard.press("ArrowRight")
   await expect(page.getByTestId("events-tab")).toBeFocused()

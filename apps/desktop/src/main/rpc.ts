@@ -703,7 +703,15 @@ export const handlers: Handlers = {
         workflowId: Schema.String,
         trigger: Schema.optionalKey(Schema.String),
       }),
-    )(input).pipe(Effect.flatMap((v) => Runs.use((r) => r.start(v)))),
+    )(input).pipe(
+      Effect.flatMap((v) =>
+        Effect.gen(function* () {
+          // The device that starts the run is named in its record: "Started by <device>" (012).
+          const actor = yield* CurrentActor
+          return yield* Runs.use((r) => r.start(v, "hand", actor?.name ?? null))
+        }),
+      ),
+    ),
   "runs.stop": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Runs.use((r) => r.stop(runId))),
@@ -744,7 +752,15 @@ export const handlers: Handlers = {
   "tasks.retry": (input) =>
     decode(Schema.Struct({ taskId: Schema.String, confirmed: Schema.optionalKey(Schema.Boolean) }))(
       input,
-    ).pipe(Effect.flatMap(({ taskId, confirmed }) => Tasks.use((t) => t.retry(taskId, confirmed)))),
+    ).pipe(
+      Effect.flatMap(({ taskId, confirmed }) =>
+        Effect.gen(function* () {
+          // A retry from a linked device is a run that this device started (spec 012).
+          const actor = yield* CurrentActor
+          return yield* Tasks.use((t) => t.retry(taskId, confirmed, actor?.name ?? null))
+        }),
+      ),
+    ),
   "tasks.quiet": () => Tasks.use((t) => Effect.sync(() => t.quiet())),
   "cards.answer": (input) =>
     decode(

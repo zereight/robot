@@ -961,6 +961,21 @@ Two rows ask who changes these specs: one row of W2, for 006 and 009, and one ro
 | 035, 007 | A text node can write `robot.json`, a control place (007). 035 said that a node cannot change the setup list. | 035 says that a node can change the list only by a write to a control place, which follows the rules of 007 for a change to a control place (it asks, runs or is refused by the level and the rules), and that a changed list loses its allow. The responsible document has no file tools and cannot change it. |
 | 013, 022, 025, 027, 032, 033, 034, 035, 039 | The W3 row for 013, 015, 022, 033, 034 and 003 and the W1 row for these specs ask who changes them. This slice (R3) changed 013, 022, 025, 027, 032, 033, 034, 035 and 039. | Answered for these nine specs. R1 (006, 018, 023, 026) and R2 (015, 016, 020, 028, 038) answer the other specs that this row named, so no spec of this row still names agents or routines. The open points stay in the rows of R1, R2 and R3. |
 
+## B1: chat tools of the responsible document (open points for 007, 010)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 010, 007 | The chat can change the graph. At "Read only", is such a change refused? 007 lists the steps that "Read only" refuses for a text node, and the start of a run. It does not name a change of the graph by the chat. | Refused, with "Read only" as the one who decided, and the step is in the action log. Reads work at every level. |
+| 007 | The start of a run in a turn that holds outside content: 007 does not list it among the guarded steps. | It is a guarded step here (step "Start of a run"). It asks the user at every level except "Read only" (refused), also at "Full access". A change of the graph follows the rule of 007 as it stands: at "Full access" it asks only with the program mark. |
+| 010 | "Set the model of a node only to a value that the account of the node offers." May the chat move a node to another account? | No. A node that has an account keeps it. A node with no account gets an account and a model together, and the model must be one that the account offers. |
+| 010 | May the chat clear a field? Which fields? | The prompt, the question, the reasoning level, and the model (this clears the account, the model and the reasoning level together). It cannot clear the name or the options. |
+| 010, 003 | "The chat can start a run from a node that the user names." The engine starts a run from its start only. | The tool refuses a start from a node and says that it is not built. The run engine is not changed in this slice. |
+| 010 | May the chat start a run while another run works or waits? | No. The tool refuses it. The user can ask the chat to stop the run first. |
+| 010 | A decision node needs a connection for each option when the change saves (the check reports an option with no connection). How does the chat make a decision node or a new option? | A new decision node and a new option name the node that each option leads to, in the same call. A call that leaves an option with no connection does not save. |
+| 010 | May the chat remove the last node of a workflow? | Yes. A workflow with no node is valid; a run of it does not start. |
+| 010 | Which permission level does a change of the chat use for a node? | The chat sets no permission level of a node. A node keeps the level that it had. |
+| 010, 007 | Who may stop a run in the chat? 010 names "stop" in the brief of this slice only; the spec names the start. | The chat stops a run of its own workflow when the user asks, at every level, with no card. A stop is a way out, never a way to do more. |
+
 ## B2: Tasks page, queue and slots (open points for 005 and 013)
 
 | Spec | Question | Choice for now |

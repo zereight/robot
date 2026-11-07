@@ -33,7 +33,12 @@ export interface TasksService {
    * Tries a failed, blocked or cancelled task again. A first try with a step that may have
    * changed things gives the retry note first, and starts nothing, unless `confirmed`.
    */
-  readonly retry: (taskId: string, confirmed?: boolean) => Effect.Effect<RetryResult, AppError>
+  readonly retry: (
+    taskId: string,
+    confirmed?: boolean,
+    /** The linked device that asks: the retry run is "Started by <device>" (spec 012). */
+    device?: string | null,
+  ) => Effect.Effect<RetryResult, AppError>
   readonly quiet: () => readonly QuietTurn[]
 }
 
@@ -197,7 +202,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         })
       }
 
-      const retry = (taskId: string, confirmed = false) =>
+      const retry = (taskId: string, confirmed = false, device: string | null = null) =>
         Effect.gen(function* () {
           const r = row(taskId)
           if (!r) return yield* new AppError({ code: "task_not_found" })
@@ -208,7 +213,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             const note = retryNote(log.ofTask(taskId))
             if (note) return { started: false, note } satisfies RetryResult
           }
-          const runId = yield* runs.retryTask(taskId)
+          const runId = yield* runs.retryTask(taskId, device)
           return { started: true, runId } satisfies RetryResult
         })
 
