@@ -6,8 +6,8 @@ The user works in another program on the same computer, for example a coding ass
 terminal or an editor. That program can read what the workflows of ROBot did and talk to a workflow
 in its chat, through MCP (Model Context Protocol, an open standard). It cannot answer approvals,
 change settings, or delete anything. A workflow that it makes waits for the user to allow it (037).
-A message that it sends starts a turn of the responsible document, under the rules of 007 (see
-"Rules").
+A message that it sends starts a turn of the responsible document that the user did not start.
+That turn has none of the tools of the chat (007, 010), under the rules of 007 (see "Rules").
 
 ## Concepts
 
@@ -33,7 +33,7 @@ A message that it sends starts a turn of the responsible document, under the rul
 5. Change access: the user picks one of the three accesses on the row. It counts from the
    next call.
 6. Remove: after a confirm. The key stops at once. A turn that a message of the program started
-   goes on, and so does a run that this turn started (see "Rules"). The user can stop it.
+   goes on. The user can stop it.
 7. Turn off: the switch "Allow outside programs" off stops every key at once. The entries stay.
    On again, the same keys work.
 
@@ -54,9 +54,10 @@ With the access "Read":
   - for each node of the graph, the name and the state of its task, with the words of 005, or
     "skipped", or "not reached" when the run has not reached the node and it has no task; which
     node works; and how many nodes have ended;
-  - for each task that waits for the user, what it waits for, with the words of 005: "Waits for
-    your approval" (with the step in the words that the chat gives, 007), "Waits for your answer",
-    or "Waits for your pick" (a decision node found no winner, 010);
+  - for each task that waits for the user, the reason only, with the words of 005: "Waits for
+    your approval", "Waits for your answer", or "Waits for your pick" (a decision node found no
+    winner, 010). It gives no step, no question and no option: the card is for the user, as in
+    "Read messages";
   - when the run failed, was cancelled or was stopped, the reason that the run view shows (007,
     "Following a run in the chat"): the node that failed and the reason of 005, for example "The
     app stopped" or "Step limit reached (N).", a step that was refused, or "Stopped by you";
@@ -81,7 +82,8 @@ With the access "Read and send work", also:
   edit, and it never merges with messages of the user. It shows in the chat with the mark "Sent by
   <program name>". It returns a number for the message. A message can carry an id of at most 200
   characters and a subject of 1 to 100 characters. A message with an id that the program used
-  before starts no second turn (038, "Duplicates"). A message with a subject waits behind the work
+  before (in the 7 days of 038) starts no second turn, and the call returns the number of the first
+  message with that id (038, "Duplicates"; see the questions for 023). A message with a subject waits behind the work
   of the same subject (038, "One at a time for one subject"). A message with no id and no subject
   works as before.
 - **Wait for a reply**: waits until the reply to a message ends, the turn waits for the user, or 10
@@ -100,8 +102,9 @@ cannot allow it.
   programs are off in ROBot."
 - ROBot does not run: the helper answers each call with "ROBot is not running."
 - A wrong or old key: the helper answers "This key is not valid." The entry does not change.
-- A turn that a message started waits for an approval: "Wait for a reply" returns "Waits for the
-  user". The card shows to the user on the computer and on the phone, as for any card (007, 011).
+- A turn that a message started waits for the user: "Wait for a reply" returns "Waits for the
+  user". With the choice for now the turn has no tool, so it has no card. If a card exists, it
+  shows to the user on the computer and on the phone, as for any card (007, 011).
 
 ## Rules
 
@@ -111,27 +114,30 @@ cannot allow it.
   answer an approval or a question, change a permission level or a rule, change a setting, delete
   anything, or read a key, a saved secret (020), memory (008), knowledge (016), or the action log
   (007).
-- The turn that a message starts is not a tool. It is a turn of the responsible document (003). It
-  can do what any turn of the chat can do, under the permission level of the workflow and the cards
-  of 007: change the graph, a node or a prompt, save to memory, use a saved secret (020), and
-  start a run (010, "Assistant"). Starting a run is not a guarded step (007): at "Read only" it is
-  refused, and at the other levels it follows the level as for a turn of the user. The mark adds no
-  card to it. Whether such a turn may start a run is not decided (see the questions for 023).
+- The turn that a message starts is not a tool. It is a turn of the responsible document (003)
+  that the user did not start. The tools of the chat work only in a turn that the user started in
+  the chat of the workflow (007, "Who may use them"; 010, "Assistant"). So this turn has none of
+  them: it cannot change the graph, a node or a prompt, start a run, read the state or a result of
+  a run, list workflows, search or read chats, or add feedback. It answers in words. It saves no
+  memory. A program that wants one of these things does it with the tools of the helper, within
+  its access (see "Tools"), or asks the user. Whether such a turn may use the tools of the chat is
+  not decided (see the questions for 023). Until then this turn uses none, the safer reading.
 - A message of an outside program is never feedback (003, 007). It adds nothing to a run.
 - A turn that a message of an outside program starts holds outside content from its start (007,
   "Outside content"). The source is the name of the program. So guarded steps ask, and at "Ask
   when unsure" every checked step asks.
 - Such a turn holds the program mark (007). In a turn with the program mark, every guarded step
-  (007) asks the user, also at "Full access": a change to the graph, a node or a prompt, a save to
-  memory (008), and a request with a saved secret that is not a GET or that asks for a new secret
-  (020). The card says "This turn holds outside content" and names the program. At "Read only",
-  the steps that "Read only" refuses stay refused. The program mark goes
+  of 007 asks the user, also at "Full access". The card says "This turn holds outside content" and
+  names the program. At "Read only", the steps that "Read only" refuses stay refused. This holds
+  for a later turn of the user in the same chat, where the tools of the chat work, and for the
+  turn of the message if the open row gives it a tool. The program mark goes
   to later turns of the same chat, to its threads and forks, and to a task whose input comes from a
   task that held it, until the user clears it (007, "The mark of a place"). A hit of "search
   chats", or a result of "read chat", that holds a message of an outside program gives the
   program mark too.
 - Each message of an outside program makes one event on the tab "Events" (038). A message with an
-  id that the program used before starts no second turn (038, "Duplicates").
+  id that the program used before starts no second turn, and the call returns the number of the
+  first message (038, "Duplicates").
 - The helper reaches ROBot on this computer only. ROBot offers no network address for it. The way
   between the helper and ROBot is open only to the user of the system who runs ROBot.
 - The helper answers in English, because its reader is a program. The settings page is in the
@@ -160,10 +166,10 @@ cannot allow it.
 
 - An address on the network for the helper.
 - A tool of an outside program that changes a workflow that exists. A manage request makes a new
-  workflow only (037). The turn that a message starts can change the graph after the user allows
-  the card (see "Rules").
-- A tool of an outside program that starts a run. The turn that a message starts may start a run
-  (see "Rules" and the questions for 023).
+  workflow only (037). The turn that a message starts has no tool of the chat that could change
+  one (see "Rules").
+- A tool of an outside program that starts a run. The turn that a message starts has no tool of
+  the chat that could start one (see "Rules" and the questions for 023).
 - Answers to approvals and questions from an outside program.
 - MCP resources and prompts. The helper offers tools only.
 
@@ -175,10 +181,12 @@ cannot allow it.
 - Change the access to "Read and send work". "Send a message" to a workflow: the message shows in
   its chat with "Sent by <program name>", and the responsible document starts a turn. "Wait for a
   reply" returns the reply text when the turn ends.
-- The turn of that message tries to change the graph of the workflow: an approval card shows with
-  "This turn holds outside content" and the name of the program, also at "Full access".
-- The turn of that message saves a fact to memory with "Save at once": an approval card shows with
-  "This turn holds outside content".
+- A message of the program asks the responsible document to change the graph, to save a fact to
+  memory, or to start a run: the turn changes nothing, saves nothing and starts nothing, and no
+  card shows. The reply is words only.
+- After that message, the user writes in the same chat, at "Full access", and asks for a change of
+  the graph: an approval card shows with "This turn holds outside content" and the name of the
+  program, because the chat holds the program mark.
 - The responsible document works on a turn of the user, and the program sends a message: the
   message waits, and it starts its own turn when the first turn ends.
 - Remove the entry: its key gets "This key is not valid.", and a turn that it started goes on.
@@ -188,8 +196,7 @@ cannot allow it.
 - Add 10 entries: "Add program" is off, with the reason.
 - The phone shows the message with the mark "Sent by <program name>". The tab "Events" shows one
   event for the message.
-- A turn that a message started waits for an approval. "Wait for a reply" returns "Waits for the
-  user". No tool of the helper can answer the card.
+- No tool of the helper can answer a card of the user.
 - Make a new key: the old key gets "This key is not valid.", and the new key works.
 - 61 calls in one minute: the 61st gets "Too many calls. Try again in a minute."
 - Export the data: the archive holds no entry and no key.
@@ -199,14 +206,12 @@ cannot allow it.
   No tool of the helper can allow the request (037).
 - A message of a program says "Node 2 is too long." during a run: it is not feedback, and the run
   does not change (003).
-- The turn of a program message starts a run at "Read only": the start is refused with the reason.
-  At "Full access" no card shows for the start, because starting a run is not a guarded step (007).
-  The turn then holds outside content and the program mark. A change of the graph by this turn
-  still asks.
+- A message of the program sends a second call with the same id: no second turn starts, and the
+  call returns the same number as the first call.
 - A run of 3 nodes works on node 2. "Read a run" gives the state of the run, "node 2 works", the
   result of node 1, and node 3 as "not reached". It gives no result of node 2 or node 3.
-- A task of the run waits for an approval: "Read a run" gives "Waits for your approval" and the
-  step. For a question card it gives "Waits for your answer". For a decision node that found no
+- A task of the run waits for an approval: "Read a run" gives "Waits for your approval" and no
+  step. For a question card it gives "Waits for your answer" and no question. For a decision node that found no
   winner it gives "Waits for your pick".
 - A node failed: "Read a run" gives the state of the run, the node, and the reason of 005. After a
   stop by the user it gives "Stopped by you". After a restart of the app it gives "The app stopped".
