@@ -45,7 +45,8 @@ const REQUEST_MS = 30_000
 const PING_MS = 10_000
 /**
  * A socket of the browser API cannot send a ping frame. Then the connection asks for the summary
- * of the server, a request that every client may make and that changes nothing.
+ * of the server. Any reply shows that the server is still there, also an error reply: the server
+ * has no handler for this request, so it answers "not allowed" and does nothing.
  */
 const HEARTBEAT_METHOD = "server.summary"
 

@@ -16,13 +16,7 @@ export * from "@robot/link/wire"
  * The window sends the id of the server with these, and the app sends them over the link.
  */
 export const ROUTED_METHODS = [
-  ...CLIENT_METHODS.filter(
-    (m) =>
-      m !== "server.summary" &&
-      m !== "attachment.upload" &&
-      m !== "attachment.download" &&
-      !m.startsWith("sync."),
-  ),
+  ...CLIENT_METHODS,
   "attachments.save",
   "attachments.picture",
 ] as const

@@ -101,117 +101,33 @@ export const groupCode = (code: string) => `${code.slice(0, 3)} ${code.slice(3)}
 
 /**
  * The requests that a server answers for a linked device. Everything else gets "not allowed"
- * (spec 012, "What a client can do on a server"). `server.summary`, `chat.page`,
- * `attachment.upload`, `attachment.download` and `attention.list` exist only on the link.
+ * (spec 012, "What a client can do on a server"). A method is on this list only when the server
+ * has a handler for it: the server runs the handler of the same name. The list holds what spec
+ * 012 states for workflows: read the list, run, stop, see the runs, answer a card, and chat.
+ * The old requests of agents, channels, tasks, memory, handbook, organizations, sync and the
+ * link-only reads are gone: no handler exists for them (docs/proposal-workflow-first.md, W6).
  */
 export const CLIENT_METHODS = [
-  "server.summary",
-  "places.list",
-  "agents.list",
-  "agents.get",
-  "channels.list",
-  "channels.history",
-  "channels.send",
-  "channels.assign",
-  "channels.stop",
-  "channels.activity",
-  "channels.markRead",
+  // The chat of a workflow (spec 003, 012). Sending and stopping need only the right to send
+  // messages.
   "chat.history",
-  "messages.search",
   "chat.send",
   "chat.stop",
   "chat.retry",
-  "chat.edit",
-  "chat.queue.update",
-  "chat.queue.remove",
-  "chat.queue.sendNow",
-  "chat.unread.delete",
-  "chat.markRead",
-  "tools.respond",
-  // The skills that an agent may use now, for the command list of the message box (spec 003, 017).
-  // A client gets the name and the description, never the instructions.
-  "skills.forAgent",
-  // The organizations of the server, the part "Tools" of an organization, and the lines "From
-  // <organization>" of a profile (spec 030, 012). A client reads them and changes none of them with
-  // these; to make, edit or delete an organization it needs the switch (see `CHANGE_METHODS`).
-  "organizations.list",
-  // The daily token limit of an organization with the tokens used today (spec 030, 012).
-  "organizations.limit",
-  "orgTools.list",
-  "orgTools.forAgent",
-  "tasks.list",
-  "tasks.get",
-  "tasks.recent",
-  "tasks.stop",
-  // The follow-ups in the details of a task (spec 005, 012). They stay on this computer.
-  "followups.list",
-  "followups.remove",
-  "attachment.upload",
-  "attachment.download",
-  "attention.list",
-  // The turns that are quiet now (spec 005, "Quiet line", 012): read when a client connects.
-  "quiet.list",
   // Workflows of the server (spec 012, "Workflows"). Reading, running and stopping need only the
-  // right to send messages.
+  // right to send messages. A card of a run is answered with "cards.answer".
   "workflows.list",
-  "workflows.runs",
-  "workflows.runDetail",
-  "workflows.run",
-  "workflows.stop",
-  "workflows.approve",
-  // The org chart of the server (spec 029, 012), as a ready model. It needs only the link: it is
-  // read only, and a phone asks for it the same way (spec 011).
-  "orgChart.model",
-  // The hand-off rule of the server (spec 030, 012). A client reads the part "Organization" and
-  // never changes it: there is no change request for it, with or without the switch.
-  "organization.get",
-  // The handbook of the server (spec 002, 012). A client reads it and its history with no switch.
-  "handbook.get",
-  "handbook.history",
-  // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
-  "agents.create",
-  "agents.update",
-  "agents.duplicate",
-  "agents.archive",
-  // "Use the main model now": ends the hold of the main model (spec 006, 012).
-  "agents.useMain",
-  "channels.create",
-  "channels.update",
-  // The picture of a channel (spec 004, 012): a client sends a square PNG of at most 256 px.
-  "channels.setPicture",
-  // Make, edit and delete an organization (spec 012, 030).
-  "organizations.create",
-  "organizations.update",
-  "organizations.delete",
-  "memory.list",
-  // The channels for the filter and for a move of a channel note (spec 008, 012).
-  "memory.scopes",
-  "memory.move",
-  "memory.add",
-  "memory.update",
-  "memory.delete",
-  // The memory check of an agent (spec 008, 012): a client sees the choice with the link only, and
-  // changes it only with the switch.
-  "memory.check",
-  "memory.check.set",
-  // Change the handbook (spec 002, 012): save a text, or restore a version.
-  "handbook.save",
-  "handbook.restore",
+  "runs.list",
+  "runs.get",
+  "runs.start",
+  "runs.stop",
+  "cards.answer",
   // The list of models is a constant read. It changes nothing and needs only the link (spec 012).
   "models.available",
+  // Only with the switch "Can create and change workflows" (spec 010, 012). Each one checks it
+  // again (see `CHANGE_METHODS`).
   "workflows.create",
-  "workflows.update",
   "workflows.delete",
-  // Sync between two computers (spec 019). Only the computer that is the sync peer may use them.
-  "sync.hello",
-  "sync.counts",
-  "sync.ids",
-  "sync.names",
-  "sync.offer",
-  "sync.cancel",
-  "sync.push",
-  "sync.control",
-  "sync.stop",
 ] as const
 export type ClientMethod = (typeof CLIENT_METHODS)[number]
 
@@ -220,7 +136,7 @@ export type ClientMethod = (typeof CLIENT_METHODS)[number]
  * for the device that asks (spec 010, 012). The server reads the switch at each request. Anything
  * that is not here and not in `CLIENT_METHODS` is refused.
  */
-export const CHANGE_METHODS = ["workflows.create", "workflows.update", "workflows.delete"] as const
+export const CHANGE_METHODS = ["workflows.create", "workflows.delete"] as const
 export type ChangeMethod = (typeof CHANGE_METHODS)[number]
 export const isChangeMethod = (method: string): method is ChangeMethod =>
   (CHANGE_METHODS as readonly string[]).includes(method)
@@ -247,7 +163,10 @@ export const PUSHED_EVENTS = [
   // The handbook of the server changed (spec 002, 012): a client that shows it reads it again.
   "handbook.changed",
   "workflows.changed",
-  "workflows.run",
+  // A run, a task or a card changed, and the state of a chat changed (spec 010, 003): a client
+  // reads the run or the history again.
+  "runs.changed",
+  "chat.state",
   // The part "Organization" changed (spec 030, 012): a client that shows it reads it again.
   "organization.changed",
   // An organization was made, changed or deleted (spec 030, 012): a client reads the list again.
