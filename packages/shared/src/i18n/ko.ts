@@ -711,7 +711,11 @@ export const ko: Record<MessageKey, string> = {
   "error.decision_options": "결정 노드에는 선택지가 두 개 이상 필요해요.",
   "error.text_node_options": "선택지는 결정 노드에만 있어요.",
   "error.decision_threshold": "기준값은 0에서 1 사이의 숫자로 써 주세요.",
-  "error.decision_effort": "이 노력 수준 설정은 결정 노드에만 있어요.",
+  "error.decision_effort": "결정 노드에는 추론 수준이 없어요.",
+  "error.decision_model": "결정 노드는 설정에 있는 모델을 사용해요.",
+  "error.decision_permission": "결정 노드는 도구를 쓰지 않아서 권한 수준이 없어요.",
+  "error.workflow_permission_nodes":
+    "이 워크플로우의 노드 중에 이 수준보다 느슨한 노드가 있어요. 먼저 노드를 더 엄격하게 바꿔 주세요.",
   "error.connection_node_missing": "이 연결의 노드가 없어요.",
   "error.connection_to_self": "노드를 자기 자신에게 연결할 수 없어요.",
   "error.connection_exists": "이 두 노드는 이미 연결되어 있거나, 이 선택지에 이미 연결이 있어요.",

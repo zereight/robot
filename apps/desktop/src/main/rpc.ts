@@ -553,6 +553,7 @@ export const handlers: Handlers = {
         Effect.gen(function* () {
           const p = yield* Platform
           const current = yield* Workflows.use((w) => w.get(id))
+          if (current.running) return yield* new AppError({ code: "workflow_running" })
           const picked = yield* Effect.promise(() => p.pickFolder(current.folder))
           return picked
             ? yield* Workflows.use((w) => w.setFolder(id, picked))

@@ -375,6 +375,83 @@ describe("the graph (spec 010)", () => {
   })
 })
 
+describe("folder, level and decision fields (spec 010)", () => {
+  const running = (t: Awaited<ReturnType<typeof setup>>, id: string) =>
+    t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'working', 'hand', 1)",
+      id,
+    )
+
+  test("the folder and the permission level are refused while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await running(t, flow.id)
+    expect(await t.code((x) => x.setPermission(flow.id, "read_only"))).toBe("workflow_running")
+    expect(await t.code((x) => x.setFolder(flow.id, "/tmp/elsewhere"))).toBe("workflow_running")
+    const after = await t.w((x) => x.get(flow.id))
+    expect([after.permission, after.folder]).toEqual([flow.permission, flow.folder])
+    // The run ends: the same calls work.
+    await t.sql("UPDATE run SET state = 'done', finished_at = 2 WHERE id = 'r1'")
+    expect((await t.w((x) => x.setPermission(flow.id, "read_only"))).permission).toBe("read_only")
+    expect((await t.w((x) => x.setFolder(flow.id, "/tmp/elsewhere"))).folder).toBe("/tmp/elsewhere")
+  })
+
+  test("a stricter workflow level is refused while a node is looser, and a restore re-checks the nodes", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setPermission(flow.id, "full"))
+    const loose = await t.w((x) =>
+      x.addNode(flow.id, { kind: "text", name: "A", permission: "ask_unsure" }),
+    )
+    expect(await t.code((x) => x.setPermission(flow.id, "ask_risky"))).toBe(
+      "workflow_permission_nodes",
+    )
+    expect((await t.w((x) => x.get(flow.id))).permission).toBe("full")
+    // A level that no node exceeds works. A node that is stricter than it stays.
+    await t.w((x) => x.setPermission(flow.id, "ask_unsure"))
+    await t.w((x) => x.updateNode(loose.id, { permission: "ask_all" }))
+    await t.w((x) => x.setPermission(flow.id, "ask_risky"))
+    // The version before the last edit holds the node at "ask_unsure": looser than the workflow.
+    const versions = await t.w((x) => x.versions(flow.id))
+    const old = versions.find((v) => v.graph.nodes[0]?.permission === "ask_unsure")
+    expect(old).toBeDefined()
+    expect(await t.code((x) => x.restoreVersion(flow.id, (old as { id: string }).id))).toBe(
+      "node_permission_looser",
+    )
+    expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.permission).toBe("ask_all")
+  })
+
+  test("a decision node takes no model, no reasoning level and no permission level", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const bad = { kind: "decision", name: "Ok?", options: ["Yes", "No"] } as const
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, model: "m" }))).toBe("decision_model")
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, accountId: "a" }))).toBe(
+      "decision_model",
+    )
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, effort: "high" }))).toBe(
+      "decision_effort",
+    )
+    expect(await t.code((x) => x.addNode(flow.id, { ...bad, permission: "read_only" }))).toBe(
+      "decision_permission",
+    )
+    const d = await t.w((x) => x.addNode(flow.id, bad))
+    expect(await t.code((x) => x.updateNode(d.id, { model: "m" }))).toBe("decision_model")
+    expect(await t.code((x) => x.updateNode(d.id, { effort: "low" }))).toBe("decision_effort")
+    expect(await t.code((x) => x.updateNode(d.id, { permission: "read_only" }))).toBe(
+      "decision_permission",
+    )
+    expect(await t.code((x) => x.updateNode(d.id, { model: null, name: "Fine?" }))).toBe("ok")
+    const node = (await t.w((x) => x.graph(flow.id))).nodes[0]
+    expect([node?.model, node?.accountId, node?.effort, node?.permission]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+})
+
 describe("the graph editor (spec 010, flow 2)", () => {
   test("a move changes the place only: no version, same number", async () => {
     const t = await setup()
