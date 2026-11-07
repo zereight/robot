@@ -272,16 +272,17 @@ describe("a run of a workflow (spec 010)", () => {
   })
 
   test("a graph with no loop starts when the check stopped, failed, or has no valid result", async () => {
+    const t = await setup()
+    const a = await t.node({ name: "A", prompt: "x" })
+    const b = await t.node({ name: "B", prompt: "y" })
+    await t.connect(a, b)
     for (const outcome of [
       { state: "stopped", reason: "time" },
       { state: "failed", message: "The checker ended too early." },
       null,
       "stale",
     ] as const) {
-      const t = await setup()
-      const a = await t.node({ name: "A", prompt: "x" })
-      const b = await t.node({ name: "B", prompt: "y" })
-      await t.connect(a, b)
+      await t.sql("DELETE FROM workflow_check WHERE workflow_id = ?", t.flow.id)
       if (outcome === "stale") await t.storeCheck({ state: "passed" }, "an older graph")
       else if (outcome) await t.storeCheck(outcome)
       const d = await t.ended((await t.start()).id)

@@ -64,37 +64,43 @@ const graphWith = (
   ],
 })
 
-/** Checks with the real worker, and keeps the forms that the checker got. */
-const checkSeen = async (graph: WorkflowGraph) => {
-  const seen: { source: string; config: string }[] = []
-  const outcome = await withChecker(CHECK_LIMITS, (run) => {
-    const spy: RunModel = (source, config) => {
-      seen.push({ source, config })
-      return run(source, config)
+/** Checks graphs with one real worker, and keeps the forms that the checker got for each. */
+const checkSeen = async (...graphs: WorkflowGraph[]) =>
+  withChecker(CHECK_LIMITS, async (run) => {
+    const results = []
+    for (const graph of graphs) {
+      const seen: { source: string; config: string }[] = []
+      const spy: RunModel = (source, config) => {
+        seen.push({ source, config })
+        return run(source, config)
+      }
+      results.push({ outcome: await checkWorkflow(graph, spy), seen })
     }
-    return checkWorkflow(graph, spy)
+    return results
   })
-  return { outcome, seen }
-}
 
 describe("no text of the user reaches the checker", () => {
   const plain = graphWith((i) => `node ${i}`, ["Yes", "No"])
 
   test("hostile names, prompts, questions and options check as the plain graph does", async () => {
-    const base = await checkSeen(plain)
-    expect(base.outcome).toEqual({ state: "passed" })
-    expect(base.seen.length).toBeGreaterThan(0)
-    for (const bad of HOSTILE) {
-      const hostile = await checkSeen(graphWith(() => bad, [bad, `${bad} 2`]))
-      expect(hostile.outcome).toEqual({ state: "passed" })
+    const [base, ...hostile] = await checkSeen(
+      plain,
+      ...HOSTILE.map((bad) => graphWith(() => bad, [bad, `${bad} 2`])),
+    )
+    expect(base?.outcome).toEqual({ state: "passed" })
+    expect(base?.seen.length).toBeGreaterThan(0)
+    expect(hostile).toHaveLength(HOSTILE.length)
+    for (const one of hostile) {
+      expect(one.outcome).toEqual({ state: "passed" })
       // The checker gets exactly the forms that it gets for the plain graph.
-      expect(hostile.seen).toEqual(base.seen)
+      expect(one.seen).toEqual(base?.seen ?? [])
     }
   })
 
   test("the form of the checker holds none of the text of the user", async () => {
     const marker = "MARKER-7f3a-user-text"
-    const { seen } = await checkSeen(graphWith(() => marker, [marker, `${marker}-2`]))
+    const [one] = await checkSeen(graphWith(() => marker, [marker, `${marker}-2`]))
+    const seen = one?.seen ?? []
     expect(seen.length).toBeGreaterThan(0)
     for (const form of seen) {
       expect(form.source).not.toContain("MARKER")
@@ -112,7 +118,8 @@ describe("no text of the user reaches the checker", () => {
         { id: "c2", from: "b", to: "a", optionId: null },
       ],
     }
-    const { outcome, seen } = await checkSeen(loop)
+    const [one] = await checkSeen(loop)
+    const { outcome, seen } = one ?? { outcome: null, seen: [] }
     expect(outcome).toMatchObject({ state: "problem", problems: [{ code: "deadlock" }] })
     for (const form of seen) expect(form.source).not.toContain("Evil")
   })
@@ -123,7 +130,8 @@ describe("no text of the user reaches the checker", () => {
       nodes: unconnected.nodes,
       connections: unconnected.connections.filter((c) => c.id !== "c2"),
     }
-    const { outcome, seen } = await checkSeen(cut)
+    const [one] = await checkSeen(cut)
+    const { outcome, seen } = one ?? { outcome: null, seen: [] }
     expect(outcome).toMatchObject({ state: "problem", problems: [{ code: "option_unconnected" }] })
     expect(seen).toEqual([])
   })
