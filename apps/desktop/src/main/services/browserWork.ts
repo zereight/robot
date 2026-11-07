@@ -264,6 +264,8 @@ export const makeBrowserWork = (options: BrowserWorkOptions) => {
       const started = now()
       const p = pages.has(workflowId) ? platform.browser(workflowId) : undefined
       const was = p?.isOpen() ?? false
+      // The user's input does not reach a page that Stop closes.
+      if (e.held) p?.allowUserInput(false)
       e.held = false
       e.unloadedUrl = null
       p?.close()

@@ -47,6 +47,8 @@ const text = (content: unknown) =>
  * A stand-in for an OpenAI-compatible provider. What it answers depends on the last message:
  * - `slow`: 60 words, one every 50 ms, so a test can stop the reply;
  * - `tool <name> <json>`: one call of that tool; after the tool result it says "Tool said: ...";
+ * - `seq <json>`: a list of calls, `[["name", {args}], ...]`, one call after the other, each after the
+ *   result of the one before. Then it says "Tool said: ..." with the last result;
  * - `tool-hold <name> <json>`: the same, but the answer waits until the test calls `release()`, so the
  *   test can change something in the app while the turn works;
  * - `tools <n> <name> <json>`: the same call n times in a row, then "Tool said: ...";
@@ -108,6 +110,25 @@ export const startMockProvider = async (): Promise<MockProvider> => {
       }
       const first = body.messages.find((m) => m.role === "user")
       const firstSaid = text(first?.content)
+      const sequence = /^seq (\[.*\])\s*$/s.exec(firstSaid)
+      if (sequence) {
+        const list = JSON.parse(sequence[1] ?? "[]") as [string, unknown][]
+        const done = body.messages.filter((m) => m.role === "tool").length
+        const next = list[done]
+        if (next) {
+          send({
+            tool_calls: [
+              {
+                index: 0,
+                id: `call-${requests.length}`,
+                function: { name: next[0], arguments: JSON.stringify(next[1] ?? {}) },
+              },
+            ],
+          })
+        } else send({ content: `Tool said: ${said}` })
+        finish()
+        return
+      }
       const many = /^tools (\d+) (\w+)\s*(.*)$/s.exec(firstSaid)
       if (many) {
         const done = body.messages.filter((m) => m.role === "tool").length

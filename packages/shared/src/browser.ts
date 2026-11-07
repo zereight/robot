@@ -166,9 +166,9 @@ export const PAGE_TAG = "page-data"
 export const plainPageText = (text: string, max: number): string => {
   const clean = text
     .replace(/\r\n?/g, "\n")
-    .replace(/[^\S\n]+/gu, " ")
-    .replace(/[\p{Cc}\p{Zl}\p{Zp}](?<!\n)/gu, " ")
     .replace(/[\p{Cf}\p{Co}\p{Cs}\p{Cn}]/gu, "")
+    .replace(/[^\S\n]|[\p{Cc}\p{Zl}\p{Zp}](?<!\n)/gu, " ")
+    .replace(/ {2,}/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()

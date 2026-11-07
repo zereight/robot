@@ -210,7 +210,7 @@ const text = (args: Record<string, unknown>, key: string) => {
 class PageTimeout extends Error {}
 
 /** The clock of the page work. A test makes the times short. */
-export const browserClock = {
+export const browserClock: { openMs: number; actionMs: number; waitMs: number; pollMs: number } = {
   openMs: BROWSER_LIMITS.openMs,
   actionMs: BROWSER_LIMITS.actionMs,
   waitMs: BROWSER_LIMITS.waitMs,
