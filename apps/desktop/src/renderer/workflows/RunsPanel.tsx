@@ -58,6 +58,47 @@ const TaskMarks = (props: { task: RunTask; number: number }) => {
 }
 
 /**
+ * The file claims of a task in a shared folder, and the steps that a claim of another workflow
+ * refused (spec 025, "Seeing the state"). The lines are muted. A task that waits keeps its claims.
+ */
+const TaskClaims = (props: { task: RunTask; number: number }) => {
+  const { t } = useApp()
+  const more = () => props.task.claims.count - props.task.claims.paths.length
+  return (
+    <>
+      <Show when={props.task.claims.count > 0}>
+        <details class={styles.io} data-testid={`run-node-claims-${props.number}`}>
+          <summary>
+            {props.task.claims.count === 1
+              ? t("runs.claims.one")
+              : t("runs.claims.other", { count: props.task.claims.count })}
+          </summary>
+          <ul class={styles.marks}>
+            <For each={props.task.claims.paths}>{(path) => <li>{path}</li>}</For>
+            <Show when={more() > 0}>
+              <li>{t("runs.claims.more", { count: more() })}</li>
+            </Show>
+          </ul>
+        </details>
+      </Show>
+      <Show when={props.task.refusals.length > 0}>
+        <ul class={styles.marks} data-testid={`run-node-refused-${props.number}`}>
+          <For each={props.task.refusals}>
+            {(r) => (
+              <li data-testid="run-refused-line">
+                {r.holder === ""
+                  ? t("runs.refused.limit", { path: r.path })
+                  : t("runs.refused", { holder: r.holder, path: r.path })}
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+    </>
+  )
+}
+
+/**
  * The memory work of a task (spec 008, "Flows" 1): "Saved to memory" with an undo control, and
  * "Suggested for memory" with the link "Review". The lines are muted.
  */
@@ -131,6 +172,7 @@ const NodeCard = (props: { node: RunNode; workflowId: string }) => {
           <>
             <TaskMarks task={task()} number={props.node.number} />
             <TaskMemory task={task()} workflowId={props.workflowId} number={props.node.number} />
+            <TaskClaims task={task()} number={props.node.number} />
             <Show when={task().decision}>
               {(decision) => (
                 <div class={styles.decision} data-testid={`run-node-decision-${props.node.number}`}>

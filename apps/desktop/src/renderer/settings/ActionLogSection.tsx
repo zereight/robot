@@ -87,6 +87,7 @@ export const ActionLogSection = () => {
           ...(e.nodeName === null ? [] : [`${e.nodeNumber}. ${e.nodeName}`]),
           t(`permissions.log.decided.${e.decidedBy}` as MessageKey),
           ...(e.device === null ? [] : [t("permissions.log.device", { name: e.device })]),
+          ...(e.holder === null ? [] : [t("permissions.log.holder", { holder: e.holder })]),
         ].join(" · ")}
       </div>
       <div class={styles.hint} data-testid="action-log-outside">
