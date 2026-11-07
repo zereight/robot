@@ -50,7 +50,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 
 describe("the order of the queue (spec 005, Queue)", () => {
   test("a run of the user starts before a run of a trigger, although the trigger came first", async () => {
-    const { s, started, enter, finish } = make(1)
+    const { started, enter, finish } = make(1)
     enter(ticket("w", "hand", 1, "running"))
     enter(ticket("w", "schedule", 2, "schedule-1"))
     enter(ticket("w", "hand", 3, "hand-1"))
@@ -65,7 +65,7 @@ describe("the order of the queue (spec 005, Queue)", () => {
   })
 
   test("the user runs go oldest first, and the chat counts as the user", async () => {
-    const { s, started, enter, finish } = make(1)
+    const { started, enter, finish } = make(1)
     enter(ticket("w", "hand", 1, "a"))
     enter(ticket("w", "chat", 2, "b"))
     enter(ticket("w", "hand", 3, "c"))
@@ -97,7 +97,7 @@ describe("the order of the queue (spec 005, Queue)", () => {
   })
 
   test("Run next is off for a task that is not waiting", () => {
-    const { s, enter, finish } = make(1)
+    const { s, enter } = make(1)
     enter(ticket("w", "hand", 1, "running"))
     enter(ticket("w", "hand", 2, "queued"))
     expect(s.canRunNext("running")).toBe(false)
@@ -107,7 +107,7 @@ describe("the order of the queue (spec 005, Queue)", () => {
   })
 
   test("a memory check starts only when its workflow has no other task that runs or waits", async () => {
-    const { s, started, enter, finish } = make(4)
+    const { started, enter, finish } = make(4)
     enter(ticket("w", "hand", 1, "work"))
     enter(ticket("w", "memory", 2, "memory"))
     await flush()
@@ -175,7 +175,7 @@ describe("the slots (spec 005, Tasks at once)", () => {
   })
 
   test("a task that waits for the user uses no slot, and its workflow stays held", async () => {
-    const { s, started, enter, finish } = make(1)
+    const { s, started, enter } = make(1)
     enter(ticket("a", "hand", 1, "a-approval"))
     enter(ticket("a", "hand", 2, "a-second"))
     enter(ticket("b", "hand", 3, "b"))
@@ -214,7 +214,7 @@ describe("the slots (spec 005, Tasks at once)", () => {
   })
 
   test("stop of a waiting task removes it; its wait rejects", async () => {
-    const { s, enter, finish } = make(1)
+    const { s, enter } = make(1)
     enter(ticket("a", "hand", 1, "a"))
     const controller = new AbortController()
     const place = s.enter(ticket("a", "hand", 2, "b"), controller.signal)
@@ -228,7 +228,7 @@ describe("the slots (spec 005, Tasks at once)", () => {
   })
 
   test("cancelRun fails the waits of the tasks of one run and returns their ids", async () => {
-    const { s, enter, finish } = make(1)
+    const { s, enter } = make(1)
     enter(ticket("a", "hand", 1, "a"))
     const place = enter(ticket("a", "hand", 2, "b"))
     const result = place.ready.then(
