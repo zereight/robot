@@ -336,6 +336,15 @@ export interface RpcMethods {
   /** Deletes a message that no turn has read, or a queued message. Gives back its text. */
   "chat.delete": { input: { id: string }; output: { text: string } }
   "chat.sendNow": { input: { id: string }; output: undefined }
+  /**
+   * Edit of the last message of the user (spec 003, "Message rows"): saves the new text, removes
+   * the replies after it, and asks again. Refused while a turn works, and after a step ran.
+   */
+  "chat.edit": { input: { id: string; text: string }; output: undefined }
+  /** "Mark as unread" on a finished reply (spec 003, "Mark as unread"). */
+  "chat.markUnread": { input: { id: string }; output: undefined }
+  /** The chat shows its latest message: the unread count clears (spec 003, "Mark as unread"). */
+  "chat.read": { input: { workflowId: string }; output: undefined }
   "chat.retry": { input: { workflowId: string }; output: undefined }
   /** The buttons of the notice after a restart: "Continue" and "Send again". */
   "chat.resume": { input: { workflowId: string; mode: "continue" | "again" }; output: undefined }

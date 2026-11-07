@@ -1,6 +1,7 @@
 import {
   ACTION_KINDS,
   BrowserProfileCreate,
+  CHAT_MESSAGE_MAX,
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
@@ -564,7 +565,12 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id, name }) => Workflows.use((w) => w.rename(id, name))),
     ),
   "workflows.document.save": (input) =>
-    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        text: Schema.String.check(Schema.isMaxLength(CHAT_MESSAGE_MAX)),
+      }),
+    )(input).pipe(
       Effect.flatMap(({ id, text }) =>
         Effect.gen(function* () {
           // The device that asks is named in the version (spec 002: "from <device>").
@@ -728,6 +734,21 @@ export const handlers: Handlers = {
   "chat.sendNow": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Chat.use((c) => c.sendNow(id))),
+      done,
+    ),
+  "chat.edit": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, text }) => Chat.use((c) => c.edit(id, text))),
+      done,
+    ),
+  "chat.markUnread": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Chat.use((c) => c.markUnread(id))),
+      done,
+    ),
+  "chat.read": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Chat.use((c) => c.read(workflowId))),
       done,
     ),
   "chat.retry": (input) =>
