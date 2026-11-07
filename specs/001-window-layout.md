@@ -64,7 +64,8 @@ stops and results without opening another page. The app opens on the studio.
 5. The user switches the part of the workflow with the tab row. The run strip and the chat stay
    where they are.
 6. The user presses a page button on the rail. The page shows in the centre column. The user
-   returns to the open workflow by pressing the button again, or by picking a card in the list.
+   returns to the open workflow by picking a card in the list, or by making a workflow. Pressing
+   the Tasks button while the tasks page shows opens the tab "Tasks" (005).
 7. The user opens the test devices panel (032). It replaces the chat in the panel column. The
    user returns to the chat with the header button.
 8. The user hides or shows the panel column with a header button. The app remembers this, and
@@ -86,6 +87,8 @@ stops and results without opening another page. The app opens on the studio.
 - Narrow window, under 800 px: the rail narrows to 56 px. The workflow list and the panel column
   close. A button in the header of the workflow view opens each one as an overlay. The run strip
   stays below the part that is open. The app remembers the open state of each overlay.
+- Medium window, from 800 to 1100 px wide: the rail keeps its width and the panel column stays.
+  The workflow list closes and opens as an overlay, as in a narrow window.
 
 ## Rules
 
@@ -124,7 +127,7 @@ stops and results without opening another page. The app opens on the studio.
   editor (010, 011). Each profile keeps its own selection (022).
 - **Runtimes**: nothing changes. The layout is the same whatever answers in the chat or in a
   node.
-- **Ways out**: a page button pressed again, or a card picked, returns to the open workflow. The
+- **Ways out**: a card picked, or a workflow made, returns to the open workflow. The
   header button returns from the test devices panel to the chat. The close button returns from
   the check result to the runs. An overlay closes to the workflow view. The delete of a workflow
   asks first (000).
@@ -157,7 +160,7 @@ stops and results without opening another page. The app opens on the studio.
 - Make a change that fails the check: the run strip shows "Problem found" with the path, and the
   canvas marks the nodes on the path. Press the close button: the runs show again.
 - Press the Tasks button: the centre column shows the tasks page, and the list and the chat stay.
-  Press the button again: the open workflow shows again.
+  Pick a card: the open workflow shows again.
 - Press "New workflow" in the header of the list and type "Weekly": the new workflow is selected,
   and the canvas opens with the chat beside it.
 - With no workflow: the list shows "New workflow" and one line that says what a workflow is.
@@ -166,6 +169,8 @@ stops and results without opening another page. The app opens on the studio.
   and no activity panel shows anywhere.
 - At 760 px width: the rail is 56 px wide, the list and the panel column are closed, and the run
   strip stays. A header button opens the list as an overlay, and another opens the chat.
+- At 900 px width: the rail keeps its width and the panel column stays. The list is closed, and
+  a header button opens it as an overlay.
 - Select a server, then a workflow: the right workflow opens, and the selection survives a
   restart. This also holds for a linked computer.
 - The add button opens the connect dialog.

@@ -91,8 +91,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
   await resizeWindow(app, 1200, 900)
   await page.getByTestId("new-workflow-empty").waitFor()
   const ids = await makeFlows(page, mock.openaiUrl)
-  await page.getByTestId("page-workflows").click()
-  await page.getByTestId("workflows-page").waitFor()
   // The first workflow that the empty state made has the default folder like the others: delete it
   // is not needed, the page lists all of them.
 
@@ -101,13 +99,11 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
   await page.getByTestId("tab-settings").click()
   await expect(page.getByTestId("workflow-folder")).toBeVisible()
   await expect(page.getByTestId("workflow-shared")).toHaveCount(0)
-  await page.getByTestId("workflow-back").click()
 
   // Weekly report picks the folder: it is alone in it, so no line shows.
   await pickFolder(page, "Weekly report")
   await expect(page.getByTestId("workflow-folder")).toHaveText(folder)
   await expect(page.getByTestId("workflow-shared")).toHaveCount(0)
-  await page.getByTestId("workflow-back").click()
 
   // Notes picks the same folder: the editor of Notes says that it shares the folder with Weekly
   // report, as a muted line, and the user can save (the folder is already set).
@@ -117,16 +113,13 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
   )
   await expect(page.getByTestId("workflow-shared")).not.toHaveAttribute("role", "alert")
   await shot(page, "b8-01-shares-folder")
-  await page.getByTestId("workflow-back").click()
   // The editor of Weekly report names Notes, and Alone (default folder) has no line.
   await openWorkflow(page, "Weekly report")
   await page.getByTestId("tab-settings").click()
   await expect(page.getByTestId("workflow-shared")).toHaveText("Shares this folder with Notes.")
-  await page.getByTestId("workflow-back").click()
   await openWorkflow(page, "Alone")
   await page.getByTestId("tab-settings").click()
   await expect(page.getByTestId("workflow-shared")).toHaveCount(0)
-  await page.getByTestId("workflow-back").click()
 
   // A task of Weekly report writes notes.md and waits on its second card: it holds the claim.
   await openWorkflow(page, "Weekly report")
@@ -141,7 +134,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
   await expect(page.getByTestId("run-node-claims-1")).toContainText(join(folder, "notes.md"))
   expect(readFileSync(join(folder, "notes.md"), "utf8")).toBe("from Weekly report")
   await shot(page, "b8-02-claim-held")
-  await page.getByTestId("workflow-back").click()
 
   // A task of Notes tries to write notes.md: refused, no card, the file keeps the text of the holder.
   await openWorkflow(page, "Notes")
@@ -160,7 +152,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
   expect(readFileSync(join(folder, "notes.md"), "utf8")).toBe("from Weekly report")
   await shot(page, "b8-03-refused")
   // The action log has the step, with the result Refused and the shared folder as the one who decided.
-  await page.getByTestId("workflow-back").click()
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-permissions").click()
   const entry = page.getByTestId("action-log-entry").filter({ hasText: "Shared folder" })
@@ -175,7 +166,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
   await page.getByTestId("card-allow").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-node-claims-1")).toHaveCount(0)
-  await page.getByTestId("workflow-back").click()
   await openWorkflow(page, "Notes")
   await page.getByTestId("tab-runs").click()
   await page.getByTestId("workflow-run").click()
@@ -189,7 +179,6 @@ test("shared folder: the editor says so, a held file is refused with no card, a 
     const invoke = (window as unknown as { robot: { invoke: Invoke } }).robot.invoke
     await invoke("settings.update", { language: "ko" })
   })
-  await page.getByTestId("workflow-back").click()
   await openWorkflow(page, "Weekly report")
   await page.getByTestId("tab-settings").click()
   await expect(page.getByTestId("workflow-shared")).toHaveText(

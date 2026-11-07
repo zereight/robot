@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
+  clampPanelWidth,
   clampPlaceListWidth,
   clampWorkflowSideWidth,
   defaultUiState,
+  PANEL_DEFAULT,
+  PANEL_MAX,
+  PANEL_MIN,
   UiState,
   WORKFLOW_CANVAS_MIN,
   WORKFLOW_HANDLE_WIDTH,
@@ -54,5 +58,14 @@ describe("ui state", () => {
       700 - WORKFLOW_CANVAS_MIN - WORKFLOW_HANDLE_WIDTH,
     )
     expect(clampWorkflowSideWidth(WORKFLOW_SIDE_MAX, 300)).toBe(WORKFLOW_SIDE_MIN)
+  })
+
+  test("the panel column of the studio keeps its default and stays between 320 and 720 px", () => {
+    expect(defaultUiState.panelWidth).toBe(PANEL_DEFAULT)
+    expect(clampPanelWidth(100)).toBe(PANEL_MIN)
+    expect(clampPanelWidth(5000)).toBe(PANEL_MAX)
+    expect(clampPanelWidth(401.4)).toBe(401)
+    expect(Schema.is(UiState)({ ...defaultUiState, panelWidth: PANEL_MIN - 1 })).toBe(false)
+    expect(Schema.is(UiState)({ ...defaultUiState, panelWidth: PANEL_MAX + 1 })).toBe(false)
   })
 })

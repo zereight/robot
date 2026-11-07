@@ -26,13 +26,15 @@ const Card = (props: { flow: Workflow }) => {
     const key = runStateKey(run.state)
     return key ? t("workflows.run.last", { state: t(key) }) : t("workflows.run.unknown")
   }
+  const selected = () => ui.place()?.id === props.flow.id
   return (
-    <li class={styles.card} data-testid="workflow-row">
+    <li class={styles.card} data-selected={selected()} data-testid="workflow-row">
       <div class={styles.cardTop}>
         <button
           type="button"
           class={styles.open}
           aria-label={t("workflows.card.open", { name: props.flow.name })}
+          aria-current={selected() ? true : undefined}
           data-testid="workflow-open"
           onClick={() => ui.selectPlace({ kind: "workflow", id: props.flow.id })}
         >

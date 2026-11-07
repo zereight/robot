@@ -216,13 +216,12 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await expect(page.getByTestId("run-node-state-1")).toHaveText("Waiting for you")
   await page.getByTestId("tab-graph").click()
   await expect(page.getByTestId("graph-node-running")).toHaveCount(0)
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-card-spinner")).toHaveCount(0)
   await page.getByTestId("workflow-open").click()
   await expect(page.getByTestId("chat-spinner")).toHaveCount(0)
   await page.getByTestId("tab-runs").click()
-  await page.getByTestId("runs-list").locator("button").first().click()
+  // The run that the Run button started is already selected: its view shows.
   await expect(page.getByTestId("run-state")).toHaveText("Waiting for you")
   await card.getByTestId("card-allow").click()
   await expect(page.getByTestId("run-state")).toHaveText("Done")
@@ -254,8 +253,7 @@ test("run: the card of the list keeps no spinner while the run waits for a card 
     ],
     edges: [[0, 1]],
   })
-  // Stay on the list: the page never opens the workflow (specs/039).
-  await page.getByTestId("workflow-back").click()
+  // The card of the list shows the spinner while the workflow stays open (specs/039).
   const spinner = page.getByTestId("workflow-card-spinner")
   await expect(page.getByTestId("workflow-row")).toBeVisible()
   await expect(spinner).toHaveCount(0)

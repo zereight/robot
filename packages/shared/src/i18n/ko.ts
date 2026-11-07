@@ -65,8 +65,15 @@ export const ko: Record<MessageKey, string> = {
   "page.help": "도움말",
   "page.settings": "설정",
 
+  "studio.pick": "목록에서 워크플로우를 선택하세요.",
+  "studio.chat.empty": "채팅하려면 워크플로우를 여세요.",
+  "studio.list.show": "워크플로 목록 보기",
+  "studio.chat.show": "채팅 보기",
+  "studio.chat.hide": "채팅 숨기기",
+  "studio.panel.resize": "채팅 너비 바꾸기",
+
   "main.noServer.title": "아직 서버가 없어요",
-  "main.noServer.body": "서버는 에이전트를 실행하는 컴퓨터예요. 서버를 추가해서 시작하세요.",
+  "main.noServer.body": "서버는 워크플로우를 실행하는 컴퓨터예요. 서버를 추가해서 시작하세요.",
 
   "help.shortcuts": "키보드 단축키",
   "help.shortcut.find": "채팅에서 찾기",
@@ -364,7 +371,6 @@ export const ko: Record<MessageKey, string> = {
   "error.skills_full": "이 서버에는 스킬이 이미 100개 있어서 더 만들 수 없어요.",
   "error.skill_unavailable": "이 스킬은 쓸 수 없어요.",
   "workflows.new": "새 워크플로우",
-  "workflows.back": "뒤로",
   "workflows.name": "워크플로우 이름",
   "workflows.empty": "워크플로우가 아직 없어요.",
   "workflows.delete.ask":

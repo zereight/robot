@@ -83,7 +83,6 @@ test("a run proposes a prompt change: card, Accept, new version, change log, Und
   expect(await prompts(page)).toEqual([before])
   await shot(page, "w8-01-proposal-card")
 
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-proposals")).toHaveText("1 proposal waits")
   await page.getByTestId("workflow-open").first().click()
   await page.getByTestId("tab-improvement").click()

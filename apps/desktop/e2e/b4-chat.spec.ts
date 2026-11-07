@@ -536,7 +536,6 @@ test("the Help page lists the keys that work, and the settings controls keep the
   await shot(page, "b4-30-help")
 
   // The key works in a chat, and does nothing where there is no chat.
-  await page.getByTestId("page-workflows").click()
   await newWorkflow(page, "Weekly report")
   await page.keyboard.press("ControlOrMeta+f")
   await expect(page.getByTestId("find-bar")).toBeVisible()

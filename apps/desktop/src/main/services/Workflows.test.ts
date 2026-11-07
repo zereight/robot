@@ -576,6 +576,15 @@ describe("the facts of a card of the list (spec 001)", () => {
     expect(after?.lastRun).toEqual({ state: "done", startedAt: 300 })
     expect(after?.running).toBe(false)
   })
+
+  test("the list shows workflows in alphabetical order, ignoring case", async () => {
+    const t = await setup()
+    await t.create("Weekly")
+    await t.create("daily")
+    await t.create("Monthly")
+    const names = (await t.w((x) => x.list(t.server.id))).map((f) => f.name)
+    expect(names).toEqual(["daily", "Monthly", "Weekly"])
+  })
 })
 
 describe("a delete (spec 010)", () => {

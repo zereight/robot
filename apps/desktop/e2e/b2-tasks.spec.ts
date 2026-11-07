@@ -178,7 +178,6 @@ test("tasks page: the button opens it with the tabs Tasks and Events; the tab st
   const third = await launch(userData, env)
   await expect(third.page.getByTestId("events-tab")).toHaveAttribute("aria-selected", "true")
   await expect(third.page.getByTestId("events-empty")).toBeVisible()
-  await third.page.getByTestId("page-workflows").click()
   await third.page.getByTestId("page-tasks").click()
   await expect(third.page.getByTestId("tasks-tab")).toHaveAttribute("aria-selected", "true")
   await third.app.close()
@@ -453,8 +452,8 @@ test("the 21st waiting start is refused with the name of the workflow", async ()
   await resizeWindow(app, 900, 640)
   const [a] = await makeFlows(page, mock.openaiUrl, [{ name: "Weekly", prompts: [HANG] }])
   for (let i = 0; i < 21; i++) await startRunCall(page, a ?? "")
-  // The workflow view has the Run button of the window.
-  await page.getByTestId("page-workflows").click()
+  // The workflow view has the Run button of the window. At 900 px the list is an overlay.
+  await page.getByTestId("studio-show-list").click()
   await page.getByTestId("workflow-open").first().click()
   await expect(page.getByTestId("workflow-run")).toBeVisible()
   await page.getByTestId("workflow-run").click()

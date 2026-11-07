@@ -7,7 +7,9 @@ export const createRunsState = (workflowId: () => string) => {
   const [runs, { refetch }] = createResource(
     workflowId,
     (id): Promise<readonly RunSummary[]> =>
-      call("runs.list", { workflowId: id }).catch(() => [] as readonly RunSummary[]),
+      id === ""
+        ? Promise.resolve([])
+        : call("runs.list", { workflowId: id }).catch(() => [] as readonly RunSummary[]),
   )
   onCleanup(
     window.robot.on("runs.changed", (payload) => {

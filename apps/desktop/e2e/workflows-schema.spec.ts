@@ -22,7 +22,6 @@ test("workflows: make one, open it, keep it after a restart, delete it", async (
   await expect(page.getByTestId("document-text")).toHaveValue(/You answer for this workflow/)
   await shot(page, "w4-02-open")
 
-  await page.getByTestId("workflow-back").click()
   await expect(page.getByTestId("workflow-row")).toHaveCount(1)
   await expect(page.getByTestId("workflow-row")).toContainText("Weekly report")
   await expect(page.getByTestId("workflow-row")).toContainText("0 nodes")
