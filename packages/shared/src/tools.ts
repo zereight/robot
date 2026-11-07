@@ -185,6 +185,6 @@ export const readOnlyRefusesKey = (level: PermissionLevel, key: string) =>
 
 /**
  * Why a step did not run: the level "Read only", an address that is never allowed (spec 007,
- * "Sensitive places"), or a Deny rule (spec 007, "Permission rules").
+ * "Sensitive places"), a Deny rule (spec 007, "Permission rules"), or a file claim of another workflow (spec 025).
  */
-export type RefusalReason = "read_only" | "address" | "rule"
+export type RefusalReason = "read_only" | "address" | "rule" | "claim"

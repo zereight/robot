@@ -1,7 +1,9 @@
 import {
   type MessageKey,
+  NOTE_NAME_CHARS,
   PERMISSION_LEVELS,
   type PermissionLevel,
+  plainLine,
   type WorkflowDetail,
 } from "@robot/shared"
 import { createSignal, For, Show } from "solid-js"
@@ -41,6 +43,24 @@ export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
             {t("workflow.folder.pick")}
           </Button>
         </div>
+        {/* The folder is shared with another workflow of the profile (spec 025, flow 1). It is
+            not an error: the user can save. */}
+        <Show when={(props.workflow.sharedWith ?? []).length > 0}>
+          <p class={styles.hintText} data-testid="workflow-shared">
+            {t("workflow.shared", {
+              names: (props.workflow.sharedWith ?? [])
+                .map((n) => plainLine(n, NOTE_NAME_CHARS))
+                .join(", "),
+            })}
+          </p>
+          <For each={props.workflow.claimless ?? []}>
+            {(program) => (
+              <p class={styles.hintText} data-testid="workflow-claimless">
+                {t("workflow.claimless", { program })}
+              </p>
+            )}
+          </For>
+        </Show>
       </div>
       <label class={styles.field}>
         <span class={styles.fieldLabel}>{t("workflow.permission")}</span>

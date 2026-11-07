@@ -1190,3 +1190,82 @@ describe("the memory tool of a text node (spec 008)", () => {
     expect(String(tool)).toContain("known already")
   })
 })
+
+describe("file claims of a run in a shared folder (spec 025)", () => {
+  test("a task that waits keeps its claim, the other workflow is refused and told, and the claim ends with the task", async () => {
+    const t = await setup({ level: "ask_all" })
+    const folder = mkdtempSync(join(tmpdir(), "robot-shared-run-"))
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, folder)))
+    const server = await t.run(Servers.use((s) => s.local))
+    const other = await t.run(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Other" })),
+    )
+    await t.run(Workflows.use((w) => w.setFolder(other.id, folder)))
+    await t.run(Workflows.use((w) => w.setSelfImprovement(other.id, false)))
+    await t.run(Memory.use((m) => m.setEnabled(other.id, false)))
+    await t.run(Workflows.use((w) => w.setPermission(other.id, "ask_all")))
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(other.id, {
+          kind: "text",
+          name: "Also write",
+          prompt: 'tool write_file {"path":"notes.md","content":"from Other"}',
+          accountId: t.account.id,
+          model: "mock-fast",
+        }),
+      ),
+    )
+    // The editor of the workflow says that the folder is shared.
+    expect((await t.run(Workflows.use((w) => w.get(t.flow.id)))).sharedWith).toEqual(["Other"])
+
+    // Report writes notes.md twice: the first card is allowed, the second waits.
+    await t.node({
+      name: "Write",
+      prompt: 'tools 2 write_file {"path":"notes.md","content":"from Report"}',
+    })
+    const first = await t.start()
+    await t.answer((await t.waitCard()).id, { kind: "approval", answer: "allow" })
+    await until(
+      async () => (await t.cards()).length === 1 && (await t.cards())[0]?.id !== undefined,
+    )
+    // Wait for the second card: the task waits and holds the claim.
+    await until(async () => (await t.get(first.id)).state === "waiting")
+    const waiting = (await t.get(first.id)).nodes[0]?.task
+    expect(waiting?.state).toBe("waiting")
+    expect(waiting?.claims.count).toBe(1)
+    expect(waiting?.claims.paths[0]).toBe(join(folder, "notes.md"))
+
+    // Other tries the same file: refused with no card, the turn goes on, the file keeps the text.
+    const second = await t.run(Runs.use((r) => r.start({ workflowId: other.id })))
+    await until(async () => (await t.get(second.id)).finishedAt !== null)
+    const refused = await t.get(second.id)
+    const task = refused.nodes[0]?.task
+    expect(refused.state).toBe("done")
+    expect(task?.result).toContain("Refused: another workflow holds this file.")
+    expect(task?.result).toContain('Workflow: "Report"')
+    expect(task?.refusals).toEqual([{ path: join(folder, "notes.md"), holder: "Report" }])
+    expect(readFileSync(join(folder, "notes.md"), "utf8")).toBe("from Report")
+    expect(await t.run(Cards.use((c) => Effect.sync(() => c.open(other.id))))).toEqual([])
+    // The request of Other carried the shared folder note: the other workflow, and its claim.
+    const request = mock.requests
+      .filter((r) => JSON.stringify(r.body.messages).includes("from Other"))
+      .at(-1)
+    const system = String(request?.body.messages.find((m) => m.role === "system")?.content)
+    expect(system).toContain("Shared folder. Other workflows use your folder too.")
+    expect(system).toContain("Workflows: Report")
+    expect(system).toContain("notes.md")
+
+    // The task of Report ends: its claim ends, and Other may write the file.
+    await t.answer((await t.waitCard()).id, { kind: "approval", answer: "allow" })
+    const done = await t.ended(first.id)
+    expect(done.nodes[0]?.task?.claims.count).toBe(0)
+    const third = await t.run(Runs.use((r) => r.start({ workflowId: other.id })))
+    await until(
+      async () => (await t.run(Cards.use((c) => Effect.sync(() => c.open(other.id))))).length > 0,
+    )
+    const card = (await t.run(Cards.use((c) => Effect.sync(() => c.open(other.id)))))[0]
+    await t.run(Cards.use((c) => c.answer(card?.id ?? "", { kind: "approval", answer: "allow" })))
+    await until(async () => (await t.get(third.id)).finishedAt !== null)
+    expect(readFileSync(join(folder, "notes.md"), "utf8")).toBe("from Other")
+  })
+})

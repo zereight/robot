@@ -550,4 +550,23 @@ export const migrations: readonly string[] = [
   ALTER TABLE workflow_version ADD COLUMN device TEXT;
   ALTER TABLE run ADD COLUMN device TEXT;
   `,
+  `
+  -- File claims in shared folders (spec 025). A task holds a claim on a file that its text node
+  -- changed. 'path' is the real path; 'path_key' is the same path as the file system of the folder
+  -- compares names (folded to lower case on a system that ignores case). A claim ends when its
+  -- task is final, and every claim ends at the start of the app: after a restart no task works.
+  -- The claims stay on this computer. They do not sync and no export holds them.
+  CREATE TABLE file_claim (
+    task_id TEXT NOT NULL,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    path_key TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (task_id, path_key)
+  ) WITHOUT ROWID;
+  CREATE INDEX file_claim_key ON file_claim (path_key);
+  CREATE INDEX file_claim_workflow ON file_claim (workflow_id, at);
+  -- The workflow that held the file, for a step that a claim refused (spec 025, "States").
+  ALTER TABLE action_log ADD COLUMN holder TEXT;
+  `,
 ]

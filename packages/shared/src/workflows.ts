@@ -113,6 +113,13 @@ export interface WorkflowDetail extends Workflow {
   readonly graph: WorkflowGraph
   /** The result of the check for this graph, or null when the graph is not checked yet. */
   readonly checkOutcome: CheckOutcome | null
+  /** The names of the other workflows of the profile that share the folder (spec 025). */
+  readonly sharedWith: readonly string[]
+  /**
+   * When the folder is shared: the names of the programs of text nodes that take no part in file
+   * claims (spec 025, "Rules"). Empty when the folder is not shared.
+   */
+  readonly claimless: readonly string[]
 }
 
 export interface DocumentVersion {

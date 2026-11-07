@@ -11,10 +11,12 @@ import {
   MODEL_RETRY_WAIT_MS,
   MODEL_TRIES,
   NO_USAGE,
+  NOTE_NAME_CHARS,
   nextKeepGoing,
   type OutsideSource,
   type PermissionLevel,
   parseOutsideSource,
+  plainLine,
   RUN_QUEUE_MAX,
   type RunCard,
   type RunDetail,
@@ -38,6 +40,7 @@ import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { FileClaims } from "./FileClaims.ts"
 import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
 import { isMemoryTool, MEMORY_TOOL_DEFS, makeMemoryTool } from "./memoryTool.ts"
@@ -171,9 +174,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const facts = yield* RunFacts
       const rules = yield* Rules
       const actionLog = yield* ActionLog
+      const claims = yield* FileClaims
       const memory = yield* Memory
       const proposals = yield* Proposals
-      const tools = makeNodeTools({ rules, actionLog, platform })
+      const tools = makeNodeTools({ rules, actionLog, platform, claims })
       const memoryTool = makeMemoryTool({ memory, proposals, actionLog })
       const endListeners: ((workflowId: string, runId: string) => void)[] = []
 
@@ -219,7 +223,27 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
       // --- reading ------------------------------------------------------------------------
 
-      const toTask = (t: TaskRow): RunTask => {
+      /**
+       * The steps of these tasks that a file claim of another workflow refused (spec 025), by task,
+       * from one query. The texts are plain lines (spec 007, 025).
+       */
+      const refusalsOf = (
+        taskIds: readonly string[],
+      ): Map<string, RunTask["refusals"][number][]> => {
+        const byTask = new Map<string, RunTask["refusals"][number][]>()
+        for (const e of actionLog.refusedOf(taskIds)) {
+          if (e.taskId === null) continue
+          const list = byTask.get(e.taskId) ?? []
+          list.push({
+            path: plainLine(e.target),
+            holder: plainLine(e.holder ?? "", NOTE_NAME_CHARS),
+          })
+          byTask.set(e.taskId, list)
+        }
+        return byTask
+      }
+
+      const toTask = (t: TaskRow, refusals: RunTask["refusals"] = []): RunTask => {
         let decisionView: RunTask["decision"] = null
         if (t.decision) {
           try {
@@ -276,6 +300,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
           steps: t.steps,
           memory: memory.ofTask(t.id),
+          claims: claims.ofTask(t.id),
+          refusals,
         }
       }
 
@@ -313,6 +339,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           "SELECT * FROM task WHERE run_id = ? ORDER BY created_at, rowid",
           r.id,
         )
+        const refusals = refusalsOf(tasks.map((t) => t.id))
         const byNumber = new Map<number, TaskRow>()
         for (const t of tasks) byNumber.set(t.node_number, t)
         const ended = r.finished_at !== null
@@ -324,7 +351,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               state: ended && r.state === "done" ? "skipped" : "not_reached",
               task: null,
             }
-          const task = toTask(t)
+          const task = toTask(t, refusals.get(t.id))
           return { ...n, state: task.state, task }
         })
         let usage = NO_USAGE
@@ -633,6 +660,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         saveMarks(taskId, marks)
         finishTask(taskId, end)
+        // The claims of a task end when the task is final (spec 025, flow 4).
+        claims.release(taskId)
         changed(n.run.workflow_id, n.run.id)
         const done: Done = {
           node: n.node,
@@ -905,15 +934,19 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         // A text node on an API account has the memory tool while memory is on for the workflow. A
         // vendor program has tools of its own and none of the app (spec 008, 007).
         const memoryOn = !isProgram && memory.settings(n.run.workflow_id)?.enabled === true
-        const system = nodeSystem({
-          document: n.detail.document,
-          workflowName: n.detail.name,
-          nodeNumber: node.number,
-          nodeName: node.name,
-          folder: n.detail.folder,
-          tools: true,
-          memory: memoryOn,
-        })
+        // The shared folder note is made again at the start of each turn, so it holds the claims of
+        // that moment (spec 025). A program gets it too: the note is its only guard.
+        const systemNow = () =>
+          nodeSystem({
+            document: n.detail.document,
+            workflowName: n.detail.name,
+            nodeNumber: node.number,
+            nodeName: node.name,
+            folder: n.detail.folder,
+            tools: true,
+            memory: memoryOn,
+            sharedFolderNote: claims.note(n.run.workflow_id),
+          })
         const prompt = renderPrompt(node.prompt, input, n.trigger)
         const turns: Turn[] = [
           { role: "user", content: prompt === "" ? "Do the work of this node." : prompt },
@@ -940,7 +973,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                   {
                     model,
                     effort: node.effort,
-                    system,
+                    system: systemNow(),
                     turns,
                     signal,
                     workspace: n.detail.folder,

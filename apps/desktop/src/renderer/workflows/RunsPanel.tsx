@@ -1,4 +1,13 @@
-import type { MessageKey, RunDetail, RunNode, RunSummary, RunTask } from "@robot/shared"
+import {
+  CLAIMS_MAX,
+  type MessageKey,
+  NOTE_NAME_CHARS,
+  plainLine,
+  type RunDetail,
+  type RunNode,
+  type RunSummary,
+  type RunTask,
+} from "@robot/shared"
 import { createResource, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { describeError } from "../lib/errors.ts"
@@ -54,6 +63,53 @@ const TaskMarks = (props: { task: RunTask; number: number }) => {
         </Show>
       </ul>
     </Show>
+  )
+}
+
+/**
+ * The file claims of a task in a shared folder, and the steps that a claim of another workflow
+ * refused (spec 025, "Seeing the state"). The lines are muted. A task that waits keeps its claims.
+ */
+const TaskClaims = (props: { task: RunTask; number: number }) => {
+  const { t } = useApp()
+  // A build on a linked computer (012) may be older and send a task with no claims or refusals.
+  const claims = () => props.task.claims ?? { count: 0, paths: [] }
+  const refusals = () => props.task.refusals ?? []
+  const more = () => claims().count - claims().paths.length
+  return (
+    <>
+      <Show when={claims().count > 0}>
+        <details class={styles.io} data-testid={`run-node-claims-${props.number}`}>
+          <summary>
+            {claims().count === 1
+              ? t("runs.claims.one")
+              : t("runs.claims.other", { count: claims().count })}
+          </summary>
+          <ul class={styles.marks}>
+            <For each={claims().paths}>{(path) => <li>{plainLine(path)}</li>}</For>
+            <Show when={more() > 0}>
+              <li>{t("runs.claims.more", { count: more() })}</li>
+            </Show>
+          </ul>
+        </details>
+      </Show>
+      <Show when={refusals().length > 0}>
+        <ul class={styles.marks} data-testid={`run-node-refused-${props.number}`}>
+          <For each={refusals()}>
+            {(r) => (
+              <li data-testid="run-refused-line">
+                {r.holder === ""
+                  ? t("runs.refused.limit", { count: CLAIMS_MAX, path: plainLine(r.path) })
+                  : t("runs.refused", {
+                      holder: plainLine(r.holder, NOTE_NAME_CHARS),
+                      path: plainLine(r.path),
+                    })}
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+    </>
   )
 }
 
@@ -131,6 +187,7 @@ const NodeCard = (props: { node: RunNode; workflowId: string }) => {
           <>
             <TaskMarks task={task()} number={props.node.number} />
             <TaskMemory task={task()} workflowId={props.workflowId} number={props.node.number} />
+            <TaskClaims task={task()} number={props.node.number} />
             <Show when={task().decision}>
               {(decision) => (
                 <div class={styles.decision} data-testid={`run-node-decision-${props.node.number}`}>
