@@ -18,7 +18,6 @@ import {
   type PermissionLevel,
   redactSecrets,
   THRESHOLD_DEFAULT,
-  translate,
   type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
