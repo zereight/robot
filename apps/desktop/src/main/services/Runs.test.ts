@@ -520,7 +520,7 @@ describe("failure, retry, blocked, stop (spec 010, 005)", () => {
     expect(d.nodes[0]?.task?.reasonCode).toBe("silent:30")
     expect(d.nodes[0]?.task?.reasonText).toBe("No answer for 30 minutes.")
     // Back to Follow settings: the same node fails after the 10 minutes of the setting.
-    await t.run(Workflows.use((w) => w.updateNode(slow.id, { silentLimit: null })))
+    await t.run(Workflows.use((w) => w.updateNode(slow.id, { silentLimit: "follow" })))
     const again = await t.ended((await t.start()).id)
     expect(again.nodes[0]?.task?.reasonCode).toBe("silent:10")
   })

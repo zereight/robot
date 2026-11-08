@@ -23,7 +23,7 @@ const graph = {
       model: null,
       effort: null,
       backup: null,
-      silentLimit: null,
+      silentLimit: "follow" as const,
       permission: null,
       continueOnFailure: false,
       question: "",

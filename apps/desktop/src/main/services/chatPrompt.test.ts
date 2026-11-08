@@ -14,7 +14,7 @@ const graph: WorkflowGraph = {
       model: null,
       effort: null,
       backup: null,
-      silentLimit: null,
+      silentLimit: "follow",
       permission: null,
       continueOnFailure: false,
       question: "",

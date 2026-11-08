@@ -345,17 +345,17 @@ export const NodePanel = (props: {
               class={styles.control}
               aria-label={t("node.silentLimit")}
               data-testid="node-silent-limit"
-              value={props.node.silentLimit === null ? "" : String(props.node.silentLimit)}
+              value={String(props.node.silentLimit)}
               onChange={(e) =>
                 void patch({
                   silentLimit:
-                    e.currentTarget.value === ""
-                      ? null
+                    e.currentTarget.value === "follow"
+                      ? "follow"
                       : (Number(e.currentTarget.value) as SilentLimit),
                 })
               }
             >
-              <option value="">{t("node.silentLimit.follow")}</option>
+              <option value="follow">{t("node.silentLimit.follow")}</option>
               <For each={SILENT_LIMITS}>
                 {(minutes) => (
                   <option value={minutes} selected={props.node.silentLimit === minutes}>

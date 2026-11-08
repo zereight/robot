@@ -442,7 +442,7 @@ describe("changes of the graph (spec 010: add, edit and remove nodes and connect
     expect((await t.graph()).nodes[1]?.silentLimit).toBe(30)
     const added = await t.call("add_node", { kind: "text", name: "Send", prompt: "x" })
     expect(added.outcome.failed).toBe(false)
-    expect((await t.graph()).nodes[2]?.silentLimit).toBeNull()
+    expect((await t.graph()).nodes[2]?.silentLimit).toBe("follow")
   })
 
   test("a model that the account offers is set; a model that it does not offer is refused", async () => {

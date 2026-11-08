@@ -252,7 +252,7 @@ describe("the silent limit of a node (spec 010, Silent limit of a node)", () => 
     await t.w((x) => x.updateNode(node1?.id ?? "", { silentLimit: 30 }))
     const id = await t.ok(t.addNode())
     await t.p((x) => x.accept(id))
-    expect((await t.graph()).nodes.map((n) => n.silentLimit)).toEqual([30, null, null])
+    expect((await t.graph()).nodes.map((n) => n.silentLimit)).toEqual([30, "follow", "follow"])
   })
 
   test("the user changes the limit while a proposal waits: Accept finds the graph changed and applies nothing", async () => {

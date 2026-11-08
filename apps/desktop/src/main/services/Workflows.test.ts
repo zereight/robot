@@ -382,15 +382,15 @@ describe("the graph (spec 010)", () => {
     const t = await setup()
     const flow = await t.create("Report")
     const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Read" }))
-    expect(a.silentLimit).toBeNull()
+    expect(a.silentLimit).toBe("follow")
     await t.w((x) => x.updateNode(a.id, { silentLimit: 30 }))
     expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.silentLimit).toBe(30)
-    // A version from before the change holds no limit, and a restore brings that back.
+    // A version from before the change follows the setting, and a restore brings that back.
     const versions = await t.w((x) => x.versions(flow.id))
-    const before = versions.find((v) => v.graph.nodes[0]?.silentLimit == null)
+    const before = versions.find((v) => v.graph.nodes[0]?.silentLimit === "follow")
     expect(before).toBeDefined()
     await t.w((x) => x.restoreVersion(flow.id, (before as { id: string }).id))
-    expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.silentLimit).toBeNull()
+    expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.silentLimit).toBe("follow")
     // The restore kept the graph it replaced as a version, with the limit.
     const back = (await t.w((x) => x.versions(flow.id))).find(
       (v) => v.graph.nodes[0]?.silentLimit === 30,
@@ -398,6 +398,45 @@ describe("the graph (spec 010)", () => {
     expect(back).toBeDefined()
     await t.w((x) => x.restoreVersion(flow.id, (back as { id: string }).id))
     expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.silentLimit).toBe(30)
+  })
+
+  test("a version with no silent limit, and one with null, both read back as follow (spec 010)", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const node = {
+      id: "n1",
+      number: 1,
+      kind: "text",
+      name: "Read",
+      prompt: "",
+      accountId: null,
+      model: null,
+      effort: null,
+      backup: null,
+      permission: null,
+      continueOnFailure: false,
+      question: "",
+      threshold: 0.9,
+      options: [],
+      x: 0,
+      y: 0,
+    }
+    const insert = (id: string, graph: object, createdAt: number) =>
+      t.sql(
+        "INSERT INTO workflow_version (id, workflow_id, graph, source, device, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        id,
+        flow.id,
+        JSON.stringify(graph),
+        "editor",
+        null,
+        createdAt,
+      )
+    // A version from before the field has no `silentLimit`; a version saved while null meant
+    // follow has null.
+    await insert("v-old", { nodes: [node], connections: [] }, 1)
+    await insert("v-null", { nodes: [{ ...node, silentLimit: null }], connections: [] }, 2)
+    const versions = await t.w((x) => x.versions(flow.id))
+    expect(versions.map((v) => v.graph.nodes[0]?.silentLimit)).toEqual(["follow", "follow"])
   })
 
   test("the graph is read-only while a run works", async () => {
@@ -496,12 +535,12 @@ describe("folder, level and decision fields (spec 010)", () => {
     const d = await t.w((x) =>
       x.addNode(flow.id, { kind: "decision", name: "Ok?", options: ["Yes", "No"] }),
     )
-    expect(d.silentLimit).toBeNull()
+    expect(d.silentLimit).toBe("follow")
     expect(await t.code((x) => x.updateNode(d.id, { silentLimit: 30 }))).toBe(
       "decision_silent_limit",
     )
-    expect(await t.code((x) => x.updateNode(d.id, { silentLimit: null }))).toBe("ok")
-    expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.silentLimit).toBeNull()
+    expect(await t.code((x) => x.updateNode(d.id, { silentLimit: "follow" }))).toBe("ok")
+    expect((await t.w((x) => x.graph(flow.id))).nodes[0]?.silentLimit).toBe("follow")
   })
 })
 
