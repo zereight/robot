@@ -22,6 +22,7 @@ import { Rules } from "./services/Rules.ts"
 import { RunFacts } from "./services/RunFacts.ts"
 import { Runs } from "./services/Runs.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { SavedLogins } from "./services/SavedLogins.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
@@ -88,6 +89,7 @@ export const appLayer = (options: AppLayerOptions) => {
     FileClaims.layer,
     ModelHolds.layer,
     Rules.layer,
+    SavedLogins.layer,
     SavedSecrets.layer,
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),
   ).pipe(Layer.provideMerge(providers))
