@@ -171,7 +171,7 @@ export const startRecording = async (page: Page, name: string) => {
     if (!recording) return
     const file = join(framesDir, `${String(frames.length).padStart(5, "0")}.jpg`)
     writeFileSync(file, Buffer.from(frame.data, "base64"))
-    frames.push({ file, at: frame.metadata.timestamp ?? Date.now() / 1000 })
+    frames.push({ file, at: Date.now() / 1000 })
     void cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {})
   })
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, everyNthFrame: 1 })
