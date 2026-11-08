@@ -287,6 +287,8 @@ export const WorkflowView = (props: {
               onMode={showStrip}
               folded={ui.stripFolded()}
               onFold={ui.selectStripFolded}
+              height={ui.stripHeight()}
+              onHeight={ui.selectStripHeight}
               onSelectNode={(id) => {
                 setTab("graph")
                 setNodeSelected(id)

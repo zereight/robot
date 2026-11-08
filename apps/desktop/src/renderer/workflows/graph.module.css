@@ -14,10 +14,12 @@
   min-width: 0;
 }
 
+/* The canvas has no edge: it clips the view and does not scroll. The view moves by a transform. */
 .canvas {
   position: absolute;
   inset: 0;
-  overflow: auto;
+  overflow: hidden;
+  touch-action: none;
   background-color: var(--c-main);
   background-image: radial-gradient(var(--c-border) 1px, transparent 1px);
   background-size: 16px 16px;
@@ -51,6 +53,37 @@
   pointer-events: none;
 }
 
+/* The zoom card floats over the bottom right corner of the canvas (spec 001). */
+.zoom {
+  position: absolute;
+  z-index: 1;
+  right: var(--spacing-md);
+  bottom: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+}
+
+.zoomValue {
+  min-width: 52px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoomValue:hover {
+  background: var(--c-hover);
+}
+
 .float {
   position: absolute;
   z-index: 1;
@@ -61,7 +94,8 @@
   align-items: flex-start;
   gap: var(--spacing-sm);
   max-width: min(420px, calc(100% - 2 * var(--spacing-md)));
-  max-height: calc(100% - 2 * var(--spacing-md));
+  /* The row of the zoom card stays free. */
+  max-height: calc(100% - 3 * var(--spacing-md) - 40px);
   pointer-events: none;
 }
 
@@ -162,17 +196,20 @@
   width: auto;
 }
 
-/* The graph starts below the floating buttons, so they never hide a node. */
 .canvasInner {
-  position: relative;
-  margin-top: 64px;
-  min-width: 100%;
-  min-height: calc(100% - 64px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
 }
 
 .lines {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  overflow: visible;
   pointer-events: none;
   color: var(--c-text-muted);
 }

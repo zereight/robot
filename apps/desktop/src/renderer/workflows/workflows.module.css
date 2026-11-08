@@ -283,13 +283,39 @@
 
 /* The run strip below the open part: the runs, or the result of the check (spec 001). */
 .strip {
-  flex: 0 0 32%;
-  min-height: 180px;
+  position: relative;
+  flex: none;
+  max-height: calc(100% - 160px);
   border-top: 1px solid var(--c-border);
   display: flex;
   flex-direction: column;
   min-width: 0;
   user-select: text;
+}
+
+/* The top edge of the strip: a drag changes the height (spec 001). The hit area is wider than
+   the line. */
+.stripEdge {
+  position: absolute;
+  z-index: 3;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 9px;
+  margin: 0;
+  border: 0;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.stripEdge:hover,
+.stripEdge[data-dragging="true"] {
+  background: linear-gradient(
+    transparent 3px,
+    var(--c-accent) 3px,
+    var(--c-accent) 6px,
+    transparent 6px
+  );
 }
 
 .stripTabs {

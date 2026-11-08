@@ -26,6 +26,12 @@ export const WORKFLOW_SIDE_DEFAULT = 340
 export const PANEL_MIN = 320
 export const PANEL_MAX = 720
 export const PANEL_DEFAULT = 360
+/** The height of the run strip below the canvas, in px (spec 001). */
+export const STRIP_MIN = 120
+export const STRIP_MAX = 2000
+export const STRIP_DEFAULT = 320
+/** The canvas keeps at least this height above the run strip (spec 001). */
+export const STRIP_CANVAS_MIN = 160
 /** The canvas of the workflow editor keeps at least this width, so a wide column never hides it. */
 export const WORKFLOW_CANVAS_MIN = 240
 /** The width of the drag handle between the canvas and the side column. */
@@ -50,6 +56,8 @@ export const UiState = Schema.Struct({
   ),
   /** The run strip is folded to its tab row, so the canvas gets the height (spec 001). */
   stripFolded: Schema.Boolean,
+  /** The height of the run strip, in px (spec 001). */
+  stripHeight: Schema.Number.check(Schema.isBetween({ minimum: STRIP_MIN, maximum: STRIP_MAX })),
   /** The node panel is folded to its header, so the user sees the canvas below it (spec 001). */
   nodePanelFolded: Schema.Boolean,
   /** The width of the panel column of the studio, in px (spec 001). */
@@ -70,11 +78,16 @@ export const defaultUiState: UiState = {
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
   panelWidth: PANEL_DEFAULT,
   stripFolded: false,
+  stripHeight: STRIP_DEFAULT,
   nodePanelFolded: false,
 }
 
 export const clampPlaceListWidth = (width: number) =>
   Math.round(Math.min(PLACE_LIST_MAX, Math.max(PLACE_LIST_MIN, width)))
+
+/** A height of the run strip: between its limits, and the canvas keeps its lowest height. */
+export const clampStripHeight = (height: number, viewHeight = Number.POSITIVE_INFINITY) =>
+  Math.round(Math.max(STRIP_MIN, Math.min(STRIP_MAX, viewHeight - STRIP_CANVAS_MIN, height)))
 
 export const clampPanelWidth = (width: number) =>
   Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, width)))
