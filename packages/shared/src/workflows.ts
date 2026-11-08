@@ -22,6 +22,13 @@ export const THRESHOLD_DEFAULT = 0.9
 export const NODE_KINDS = ["text", "decision"] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
 
+/**
+ * The silent limit of a node: minutes of silence, 0 for Never, or "follow" for the setting
+ * (spec 010, "Silent limit of a node").
+ */
+export const NodeSilentLimit = Schema.Union([SilentLimit, Schema.Literal("follow")])
+export type NodeSilentLimit = typeof NodeSilentLimit.Type
+
 /** Where a change of the responsible document came from (spec 002, "Responsible document history"). */
 export const DOCUMENT_SOURCES = ["editor", "proposal", "undo", "restore"] as const
 export type DocumentSource = (typeof DOCUMENT_SOURCES)[number]
@@ -97,11 +104,12 @@ export interface WorkflowNode {
    */
   readonly backup: ModelPick | null
   /**
-   * The silent limit of a text node in minutes, or null to follow the setting (spec 010, "Silent
-   * limit of a node"). 0 is Never. A decision node has none. Only the user sets it, in the
-   * editor: a proposal and the chat keep it, and a node they add gets null.
+   * The silent limit of a text node: minutes, 0 for Never, or "follow" for the setting (spec 010,
+   * "Silent limit of a node"). A decision node always holds "follow" and never reads it. Only the
+   * user sets it, in the editor: a proposal and the chat keep it, and a node they add follows the
+   * setting.
    */
-  readonly silentLimit: SilentLimit | null
+  readonly silentLimit: NodeSilentLimit
   /** A stricter level than the workflow, or null for the level of the workflow. */
   readonly permission: PermissionLevel | null
   readonly continueOnFailure: boolean
@@ -194,8 +202,8 @@ export const NodePatch = Schema.Struct({
   effort: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The backup model (spec 006). Null clears it. Only the editor of this computer may set it. */
   backup: Schema.optionalKey(Schema.NullOr(BackupPick)),
-  /** The silent limit of a text node (spec 010). Null follows the setting. */
-  silentLimit: Schema.optionalKey(Schema.NullOr(SilentLimit)),
+  /** The silent limit of a text node (spec 010). "follow" follows the setting. */
+  silentLimit: Schema.optionalKey(NodeSilentLimit),
   permission: Schema.optionalKey(Schema.NullOr(Level)),
   continueOnFailure: Schema.optionalKey(Schema.Boolean),
   question: Schema.optionalKey(Schema.String),
