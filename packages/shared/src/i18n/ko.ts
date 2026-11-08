@@ -868,6 +868,7 @@ export const ko: Record<MessageKey, string> = {
   "error.decision_backup": "결정 노드는 결정 모델을 사용하므로 백업 모델이 없어요.",
   "error.backup_not_offered": "백업 모델을 계정이 제공하지 않거나 계정이 연결되지 않았어요.",
   "error.backup_change_refused": "백업 모델은 노드 편집기에서만 정할 수 있어요.",
+  "error.decision_silent_limit": "결정 노드에는 별도의 무응답 제한이 없어요.",
   "node.effort.none": "없음",
   "node.effort.minimal": "최소",
   "node.effort.low": "낮음",

@@ -214,6 +214,7 @@ export const graphFingerprint = (graph: WorkflowGraph): string =>
         n.backup?.accountId ?? null,
         n.backup?.model ?? null,
         n.backup?.effort ?? null,
+        n.silentLimit ?? null,
         n.permission,
         n.continueOnFailure,
         n.question,
@@ -363,6 +364,8 @@ export const compileGraph = (
             : (old?.effort ?? null),
       // A graph change keeps the backup of a node that stays and never sets one (spec 006).
       backup: spec.kind === "decision" ? null : (old?.backup ?? null),
+      // A graph change keeps the silent limit of a node that stays and never sets one (spec 010).
+      silentLimit: spec.kind === "decision" ? null : (old?.silentLimit ?? null),
       permission: old?.permission ?? null,
       continueOnFailure: spec.continueOnFailure ?? old?.continueOnFailure ?? false,
       question: spec.kind === "decision" ? (spec.question ?? old?.question ?? "") : "",

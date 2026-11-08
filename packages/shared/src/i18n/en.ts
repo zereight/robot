@@ -877,6 +877,7 @@ export const en = {
   "error.backup_not_offered":
     "The backup model is not offered by its account, or the account is not connected.",
   "error.backup_change_refused": "A backup model can be set only in the editor of the node.",
+  "error.decision_silent_limit": "A decision node has no silent limit of its own.",
   "node.effort.none": "None",
   "node.effort.minimal": "Minimal",
   "node.effort.low": "Low",

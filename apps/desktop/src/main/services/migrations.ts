@@ -643,4 +643,10 @@ export const migrations: readonly string[] = [
   -- them. The meter and the automatic compact read it from the last reply after the last compact.
   ALTER TABLE chat_message ADD COLUMN context_tokens INTEGER;
   `,
+  `
+  -- The silent limit of a text node in minutes (spec 010, "Silent limit of a node"). 0 is Never.
+  -- NULL is "Follow settings". A decision node has none. The choice is a field of the node, so it
+  -- belongs to the graph and to the versions of the graph.
+  ALTER TABLE workflow_node ADD COLUMN silent_limit INTEGER;
+  `,
 ]
