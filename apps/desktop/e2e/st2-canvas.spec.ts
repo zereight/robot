@@ -11,6 +11,32 @@ const newWorkflow = async (page: Page, name: string) => {
   await expect(page.getByTestId("chat")).toBeVisible()
 }
 
+// The dot grid of the canvas: the space on the screen between two dots that show, and the place
+// in the graph of one dot that shows. The dots that show are at that place plus each multiple of
+// the space divided by the zoom. A dot of the full grid is at 8 + 16n (the centre of a 16 px cell).
+const dotGrid = (page: Page) =>
+  page.getByTestId("graph-canvas").evaluate((canvas) => {
+    const view = canvas.querySelector('[data-testid="graph-view"]')
+    if (!view) throw new Error("no graph view")
+    const m = new DOMMatrix(getComputedStyle(view).transform)
+    const style = getComputedStyle(canvas)
+    const gap = Number.parseFloat(style.backgroundSize)
+    const [bx = Number.NaN, by = Number.NaN] = style.backgroundPosition
+      .split(" ")
+      .map(Number.parseFloat)
+    return {
+      gap,
+      viewX: m.e,
+      x: (bx + gap / 2 - m.e) / m.a,
+      y: (by + gap / 2 - m.f) / m.a,
+    }
+  })
+/** The distance from `value` to the nearest `base + step * n`. */
+const offGrid = (value: number, step: number, base: number) => {
+  const r = (((value - base) % step) + step) % step
+  return Math.min(r, step - r)
+}
+
 test("canvas: it fills the view, pans and zooms, the node panel folds, and the strip resizes and folds", async () => {
   const userData = freshUserData()
   const first = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
@@ -147,14 +173,70 @@ test("canvas: it fills the view, pans and zooms, the node panel folds, and the s
   await expect(page.getByTestId("graph-zoom-reset")).toHaveText("100%")
   expect(await node.boundingBox()).toEqual(home)
 
-  // At the smallest zoom, the dots of the grid stay at least 12 px apart: every fourth dot shows.
-  const canvasEl = page.getByTestId("graph-canvas")
-  await expect(canvasEl).toHaveCSS("background-size", "16px 16px")
-  for (let i = 0; i < 8; i++) await page.getByTestId("graph-zoom-out").click()
-  await expect(page.getByTestId("graph-zoom-reset")).toHaveText("25%")
-  await expect(canvasEl).toHaveCSS("background-size", "16px 16px")
-  await page.getByTestId("graph-zoom-reset").click()
-  await expect(page.getByTestId("graph-zoom-reset")).toHaveText("100%")
+  // Spec 001, dot grid: the space between two dots that show is 12 px or more, from centre to
+  // centre. Every dot shows from 75%, every second dot from 37.5%, every fourth dot below. Each
+  // dot that shows is a dot of the full grid. Zoom around a point off the corner, so the view
+  // moves too.
+  if (!box) throw new Error("no box for the canvas")
+  const zoomValue = page.getByTestId("graph-zoom-reset")
+  const ctrlZoom = async (factor: number) => {
+    await page.mouse.move(box.x + 301, box.y + 187)
+    let left = -100 * Math.log(factor)
+    await page.keyboard.down("Control")
+    while (Math.abs(left) > 1e-9) {
+      const step = Math.max(-50, Math.min(50, left))
+      await page.mouse.wheel(0, step)
+      left -= step
+    }
+    await page.keyboard.up("Control")
+  }
+  const spaces: [zoom: number, space: number][] = [
+    [2, 32],
+    [1, 16],
+    [0.75, 12],
+    [0.74, 23.68],
+    [0.5, 16],
+    [0.375, 12],
+    [0.37, 23.68],
+    [0.25, 16],
+  ]
+  for (const [zoom, space] of spaces) {
+    await zoomValue.click()
+    await expect(zoomValue).toHaveText("100%")
+    await ctrlZoom(zoom)
+    await expect(zoomValue).toHaveText(`${Math.round(zoom * 100)}%`)
+    const dots = await dotGrid(page)
+    expect(dots.gap, `space between dots at ${zoom * 100}%`).toBeCloseTo(space, 3)
+    expect(offGrid(dots.x, 16, 8), `dots on the full grid at ${zoom * 100}%`).toBeLessThan(0.05)
+    expect(offGrid(dots.y, 16, 8), `dots on the full grid at ${zoom * 100}%`).toBeLessThan(0.05)
+  }
+
+  // At 50%, a drag in each direction does not change which dots show. At 25%, each dot that
+  // shows is a dot that showed at 50%.
+  await zoomValue.click()
+  await ctrlZoom(0.5)
+  await expect(zoomValue).toHaveText("50%")
+  const half = await dotGrid(page)
+  const drag = async (x: number, y: number, dx: number, dy: number) => {
+    const before = await dotGrid(page)
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + dx, y + dy, { steps: 8 })
+    await page.mouse.up()
+    const after = await dotGrid(page)
+    expect(Math.round(after.viewX - before.viewX), "the drag moves the view").toBe(dx)
+    expect(offGrid(after.x, 32, half.x), "a drag keeps the same dots").toBeLessThan(0.05)
+    expect(offGrid(after.y, 32, half.y), "a drag keeps the same dots").toBeLessThan(0.05)
+  }
+  await drag(box.x + box.width / 2, box.y + box.height - 60, -333, -217)
+  await drag(box.x + 80, box.y + 200, 411, 251)
+  await ctrlZoom(0.5)
+  await expect(zoomValue).toHaveText("25%")
+  const quarter = await dotGrid(page)
+  expect(offGrid(quarter.x, 32, half.x), "25% dots are 50% dots").toBeLessThan(0.05)
+  expect(offGrid(quarter.y, 32, half.y), "25% dots are 50% dots").toBeLessThan(0.05)
+  await zoomValue.click()
+  await expect(zoomValue).toHaveText("100%")
 
   // A drag on the top edge of the strip changes its height, and the canvas gets the rest.
   const strip = await page.getByTestId("run-strip").boundingBox()
