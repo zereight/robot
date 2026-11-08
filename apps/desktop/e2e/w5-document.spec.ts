@@ -24,7 +24,9 @@ test("document: edit and save, the limits, the history, restore", async () => {
   await text.fill("Answer in Korean. Keep to the weekly report.")
   await expect(page.getByTestId("document-count")).toHaveText("44 of 20000 characters")
   await page.getByTestId("document-save").click()
-  await expect(page.getByTestId("document-saved")).toBeVisible()
+  await expect(page.getByTestId("toast-success").last()).toContainText(
+    "It counts from the next chat turn",
+  )
   await expect(page.getByTestId("document-version")).toHaveCount(1)
   await expect(page.getByTestId("document-history-count")).toHaveText("1 of 50 versions kept")
   await shot(page, "w5-10-document-saved")
@@ -38,7 +40,9 @@ test("document: edit and save, the limits, the history, restore", async () => {
   await page.getByTestId("document-version-restore").click()
   await expect(text).toHaveValue(original)
   await expect(page.getByTestId("document-version")).toHaveCount(2)
-  await expect(page.getByTestId("document-restored")).toBeVisible()
+  await expect(page.getByTestId("toast-success").last()).toContainText(
+    "The text before is a new version",
+  )
 
   // A text over 20000 characters is refused with the reason, and the typed text stays.
   const long = "x".repeat(20_001)
@@ -58,7 +62,9 @@ test("document: edit and save, the limits, the history, restore", async () => {
   // An empty document is valid. The page says what that means.
   await text.fill("")
   await page.getByTestId("document-save").click()
-  await expect(page.getByTestId("document-saved")).toBeVisible()
+  await expect(page.getByTestId("toast-success").last()).toContainText(
+    "It counts from the next chat turn",
+  )
   await expect(page.getByTestId("document-empty-note")).toBeVisible()
   await shot(page, "w5-13-document-empty")
   await text.fill("Last text.")

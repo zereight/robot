@@ -777,6 +777,7 @@ export const en = {
   "workflows.document.count": "{n} of 20000 characters",
   "workflows.document.save": "Save",
   "workflows.document.discard": "Discard changes",
+  "workflows.saved": "Saved.",
   "workflows.document.saved": "Saved. It counts from the next chat turn and the next run.",
   "workflows.document.readonly": "A run works. The document is read-only until the run ends.",
   "workflows.document.emptyNote":

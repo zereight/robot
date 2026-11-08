@@ -53,7 +53,9 @@ user can read, edit and check the whole workflow.
    connects outputs to inputs, and edits each node in a side panel. A node or a connection is
    deleted with a danger button that asks first (000).
 3. Every change passes the check before it saves. A change that fails the check shows the problem
-   and the nodes on its path. It does not save (see "Check").
+   and the nodes on its path. It does not save (see "Check"). Each change that the user makes in
+   the editor and that saves shows a short notice that says so. This includes a node that the user
+   moves on the canvas.
 4. Versions: a change keeps the earlier graph as a version. The user opens a version in the editor
    and can restore it. A restore also keeps the current graph as a version.
 5. Run: the user starts a run by hand, or a trigger starts it. The nodes show their state as they

@@ -11,15 +11,23 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
+import { showToast } from "../ui/toast.ts"
 import styles from "./graph.module.css"
 
 /** The folder and the permission level of the workflow. Only the user changes them (spec 010). */
 export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
   const { t } = useApp()
   const [problem, setProblem] = createSignal<ErrorText>()
-  const guard = (work: () => Promise<unknown>) => {
+  const guard = (work: () => Promise<{ readonly folder: string; readonly permission: string }>) => {
     setProblem(undefined)
-    work().catch((e) => setProblem(describeError(e)))
+    const before = props.workflow
+    work()
+      .then((after) => {
+        // A folder dialog that the user closes returns the workflow as it was.
+        if (after.folder !== before.folder || after.permission !== before.permission)
+          showToast("success", "workflows.saved")
+      })
+      .catch((e) => setProblem(describeError(e)))
   }
   return (
     <div class={styles.settings} data-testid="workflow-settings">

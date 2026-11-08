@@ -17,6 +17,7 @@ import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
+import { showToast } from "../ui/toast.ts"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
 import { NodePanel } from "./NodePanel.tsx"
@@ -42,7 +43,6 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
   )
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
   const [problem, setProblem] = createSignal<ErrorText>()
-  const [restored, setRestored] = createSignal(false)
   return (
     <section class={styles.versionsBox} aria-label={t("graph.versions")}>
       <h3>{t("graph.versions")}</h3>
@@ -74,7 +74,7 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
                       id: props.workflow.id,
                       versionId: version().id,
                     })
-                      .then(() => setRestored(true))
+                      .then(() => showToast("success", "graph.version.restored"))
                       .catch((e) => setProblem(describeError(e)))
                   }}
                 >
@@ -84,11 +84,6 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
             )}
           </Keyed>
         </ul>
-      </Show>
-      <Show when={restored()}>
-        <p class={styles.hintText} role="status" data-testid="graph-restored">
-          {t("graph.version.restored")}
-        </p>
       </Show>
       <Show when={problem()}>
         {(p) => (
@@ -166,6 +161,7 @@ export const GraphEditor = (props: {
             : {}),
         },
       })
+      showToast("success", "workflows.saved")
       props.onSelectNode(made.id)
     } catch (e) {
       setProblem(describeError(e))
@@ -176,7 +172,9 @@ export const GraphEditor = (props: {
       id: n.id,
       x: Math.max(0, Math.round(x)),
       y: Math.max(0, Math.round(y)),
-    }).catch((e) => setProblem(describeError(e)))
+    })
+      .then(() => showToast("success", "workflows.saved"))
+      .catch((e) => setProblem(describeError(e)))
 
   const onPointerDown = (n: WorkflowNode, e: PointerEvent) => {
     if (readOnly() || e.button !== 0) return

@@ -771,6 +771,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.document.count": "{n} / 20000자",
   "workflows.document.save": "저장",
   "workflows.document.discard": "변경 취소",
+  "workflows.saved": "저장했어요.",
   "workflows.document.saved": "저장했어요. 다음 채팅 응답과 다음 실행부터 적용돼요.",
   "workflows.document.readonly":
     "실행 중이에요. 실행이 끝날 때까지 담당 문서는 읽기만 할 수 있어요.",
