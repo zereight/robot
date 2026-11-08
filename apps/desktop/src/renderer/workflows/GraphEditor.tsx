@@ -7,7 +7,7 @@ import {
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { ChevronDown, ChevronUp, FileText, Split, TriangleAlert, X } from "lucide-solid"
+import { ChevronDown, ChevronUp, FileText, Split, Stamp, TriangleAlert, X } from "lucide-solid"
 import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
@@ -20,6 +20,7 @@ import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
+import { approvalOutputKey, nodeKindKey } from "./labels.ts"
 import { NodePanel } from "./NodePanel.tsx"
 
 const NODE_W = 176
@@ -151,7 +152,12 @@ export const GraphEditor = (props: {
         workflowId: props.workflow.id,
         node: {
           kind,
-          name: t(kind === "text" ? "graph.node.new.text" : "graph.node.new.decision"),
+          name:
+            kind === "text"
+              ? t("graph.node.new.text")
+              : kind === "decision"
+                ? t("graph.node.new.decision")
+                : t("graph.node.new.approval"),
           ...placeFor(graph().nodes.length),
           ...(kind === "decision"
             ? {
@@ -159,6 +165,7 @@ export const GraphEditor = (props: {
                 options: [t("graph.option.yes"), t("graph.option.no")],
               }
             : {}),
+          ...(kind === "approval" ? { question: t("graph.node.new.approval.question") } : {}),
         },
       })
       showToast("success", "workflows.saved")
@@ -334,7 +341,13 @@ export const GraphEditor = (props: {
                   {(c) => {
                     const from = () => graph().nodes.find((n) => n.id === c().from)
                     const to = () => graph().nodes.find((n) => n.id === c().to)
-                    const label = () => from()?.options.find((o) => o.id === c().optionId)?.label
+                    const label = () => {
+                      const f = from()
+                      const output = c().output
+                      if (output !== null) return t(approvalOutputKey(output))
+                      if (c().optionId === null || f?.kind !== "decision") return undefined
+                      return f.options.find((o) => o.id === c().optionId)?.label
+                    }
                     return (
                       <Show when={from() && to()}>
                         {(() => {
@@ -414,11 +427,18 @@ export const GraphEditor = (props: {
                     <span class={styles.nodeKind} data-testid="graph-node-kind">
                       <Show
                         when={node().kind === "decision"}
-                        fallback={<FileText size={12} aria-hidden="true" />}
+                        fallback={
+                          <Show
+                            when={node().kind === "approval"}
+                            fallback={<FileText size={12} aria-hidden="true" />}
+                          >
+                            <Stamp size={12} aria-hidden="true" />
+                          </Show>
+                        }
                       >
                         <Split size={12} aria-hidden="true" />
                       </Show>
-                      {t(node().kind === "text" ? "graph.kind.text" : "graph.kind.decision")}
+                      {t(nodeKindKey(node().kind))}
                     </span>
                   </button>
                 )}
@@ -441,6 +461,13 @@ export const GraphEditor = (props: {
               data-testid="graph-add-decision"
             >
               {t("graph.add.decision")}
+            </Button>
+            <Button
+              disabled={readOnly()}
+              onClick={() => void add("approval")}
+              data-testid="graph-add-approval"
+            >
+              {t("graph.add.approval")}
             </Button>
             <Button
               onClick={() => setShowVersions(!showVersions())}

@@ -200,6 +200,58 @@ const Pick = (props: { card: RunCard }) => {
   )
 }
 
+/** An approval node asks the user to approve or reject, with an optional comment (spec 010). */
+const Verdict = (props: { card: RunCard }) => {
+  const { t } = useApp()
+  const [comment, setComment] = createSignal("")
+  const send = (verdict: "approve" | "reject") =>
+    answerCard(props.card.id, { kind: "verdict", verdict, comment: comment() })
+  return (
+    <div
+      class={styles.card}
+      role="status"
+      aria-live="polite"
+      aria-label={t("cards.title.verdict")}
+      data-testid="card-verdict"
+      data-card-id={props.card.id}
+    >
+      <div class={styles.head}>
+        <strong>{t("cards.title.verdict")}</strong>
+        <Origin card={props.card} />
+      </div>
+      <p class={styles.summary} data-testid="card-summary">
+        {props.card.summary}
+      </p>
+      <Show when={props.card.input}>
+        {(input) => (
+          <pre class={styles.input} data-testid="card-verdict-input">
+            {input()}
+          </pre>
+        )}
+      </Show>
+      <div class={styles.buttons}>
+        <Button variant="primary" onClick={() => send("approve")} data-testid="card-approve">
+          {t("cards.approve")}
+        </Button>
+        <Button onClick={() => send("reject")} data-testid="card-reject">
+          {t("cards.reject")}
+        </Button>
+      </div>
+      <div class={styles.buttons}>
+        <input
+          type="text"
+          class={styles.input}
+          value={comment()}
+          placeholder={t("cards.comment.placeholder")}
+          aria-label={t("cards.comment.placeholder")}
+          onInput={(e) => setComment(e.currentTarget.value)}
+          data-testid="card-comment-input"
+        />
+      </div>
+    </div>
+  )
+}
+
 /** The node asks the user to take over the browser (spec 007). The page shows under the chat. */
 const Control = (props: { card: RunCard }) => {
   const { t } = useApp()
@@ -258,6 +310,8 @@ const Answered = (props: { card: RunCard }) => {
       return card.answeredInChat
         ? t("cards.answered.chat", { text: answer })
         : t("cards.answered.question", { text: answer })
+    if (card.kind === "verdict")
+      return t(answer === "approve" ? "cards.answered.approve" : "cards.answered.reject")
     return t("cards.answered.pick", {
       label: card.options.find((o) => o.id === answer)?.label ?? "",
     })
@@ -281,6 +335,8 @@ export const RunCards = (props: { cards: readonly RunCard[] }) => (
             <Question card={card} />
           ) : card.kind === "control" ? (
             <Control card={card} />
+          ) : card.kind === "verdict" ? (
+            <Verdict card={card} />
           ) : (
             <Pick card={card} />
           )}

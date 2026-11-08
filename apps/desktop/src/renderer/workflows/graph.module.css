@@ -209,8 +209,9 @@
   background: var(--c-selected);
 }
 
-/* The two node kinds differ in shape and icon, not in colour (DESIGN.md: one accent).
-   A text node is a card that writes. A decision node is a dashed pill that picks a path. */
+/* The three node kinds differ in shape and icon, not in colour (DESIGN.md: one accent).
+   A text node is a card that writes. A decision node is a dashed pill that picks a path. An
+   approval node is a solid card with a snipped corner, where the user stops and decides. */
 .node[data-kind="text"] {
   border-radius: var(--radius-s);
 }
@@ -227,6 +228,20 @@
 }
 
 .node[data-kind="decision"][aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-selected);
+}
+
+.node[data-kind="approval"] {
+  align-items: center;
+  text-align: center;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-width: 2px;
+  border-radius: var(--radius-s) var(--radius-s) var(--radius-s) 0;
+  background: var(--c-main);
+}
+
+.node[data-kind="approval"][aria-pressed="true"] {
   border-color: var(--c-accent);
   background: var(--c-selected);
 }
@@ -313,6 +328,22 @@ textarea.control {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: var(--spacing-xs);
   align-items: center;
+}
+
+/* An output of an approval node: its label is fixed, only the target changes. */
+.outputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.outputLabel {
+  padding: 5px 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row {

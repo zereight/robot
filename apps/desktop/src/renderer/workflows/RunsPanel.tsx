@@ -298,6 +298,27 @@ const NodeCard = (props: { node: RunNode; workflowId: string; hold?: NodeHold | 
                 </div>
               )}
             </Show>
+            <Show when={task().approval}>
+              {(approval) => (
+                <div class={styles.decision} data-testid={`run-node-approval-${props.node.number}`}>
+                  <span>
+                    {t("runs.approval.answer", {
+                      answer: t(
+                        approval().verdict === "approve"
+                          ? "runs.approval.approve"
+                          : "runs.approval.reject",
+                      ),
+                    })}
+                  </span>
+                  <Show when={approval().comment}>
+                    {(comment) => <span>{t("runs.approval.comment", { comment: comment() })}</span>}
+                  </Show>
+                  <span class={styles.muted}>
+                    {formatDateTime(locale(), approval().answeredAt)}
+                  </span>
+                </div>
+              )}
+            </Show>
             <Show when={props.node.kind === "text"}>
               <Show when={task().input !== ""}>
                 <details class={styles.io}>

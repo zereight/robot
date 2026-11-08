@@ -1,4 +1,11 @@
-import { type DocumentSource, type MessageKey, RUN_STATES, type Workflow } from "@robot/shared"
+import {
+  type ApprovalOutput,
+  type DocumentSource,
+  type MessageKey,
+  type NodeKind,
+  RUN_STATES,
+  type Workflow,
+} from "@robot/shared"
 
 const knownState = (state: string): state is (typeof RUN_STATES)[number] =>
   (RUN_STATES as readonly string[]).includes(state)
@@ -13,3 +20,10 @@ export const checkStateKey = (flow: Pick<Workflow, "check">): MessageKey =>
 
 export const documentSourceKey = (source: DocumentSource): MessageKey =>
   `workflows.document.source.${source}` as MessageKey
+
+/** The words of a node kind (spec 010). */
+export const nodeKindKey = (kind: NodeKind): MessageKey => `graph.kind.${kind}` as MessageKey
+
+/** The words of an approval output (spec 010). */
+export const approvalOutputKey = (output: ApprovalOutput): MessageKey =>
+  `graph.option.${output}` as MessageKey
