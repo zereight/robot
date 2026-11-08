@@ -888,6 +888,10 @@ export const en = {
   "node.permission": "Permission level",
   "node.permission.workflow": "Same as the workflow",
   "node.permission.hint": "A node can take a stricter level than its workflow, never a looser one.",
+  "node.silentLimit": "Silent limit",
+  "node.silentLimit.follow": "Follow settings",
+  "node.silentLimit.hint":
+    "How long a turn of this node may show no sign of life before the app stops it.",
   "node.continue": "Continue on failure",
   "node.continue.hint": "When this node fails, the run goes on with the nodes after it.",
   "node.question": "Question",

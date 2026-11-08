@@ -880,6 +880,10 @@ export const ko: Record<MessageKey, string> = {
   "node.permission.workflow": "워크플로우와 같게",
   "node.permission.hint":
     "노드는 워크플로우보다 엄격한 수준만 고를 수 있어요. 더 느슨한 수준은 안 돼요.",
+  "node.silentLimit": "무응답 제한",
+  "node.silentLimit.follow": "설정과 같게",
+  "node.silentLimit.hint":
+    "이 노드의 작업에서 아무 신호가 없을 때 앱이 작업을 멈추기까지 기다리는 시간이에요.",
   "node.continue": "실패해도 계속",
   "node.continue.hint": "이 노드가 실패해도 다음 노드로 실행을 이어가요.",
   "node.question": "질문",
