@@ -12,15 +12,10 @@ export interface EventBusService {
   /**
    * Sends an event to the windows only. The events of a linked server use this: they are not for
    * the devices that are linked to this computer. `server` names the linked server, so that a view
-   * of this computer does not take an event of the same agent or channel from a server that syncs
-   * with it (the ids are the same on both).
+   * of this computer does not take an event of the same workflow or chat from a server that syncs
+   * with it (the ids are the same on both, spec 019).
    */
   window(event: RpcEvent, payload: unknown, server?: string): void
-  /**
-   * Sends an event to the linked devices only: it goes to the taps and to no window. The org chart
-   * uses it for the ready model (spec 029, 012), which a window of this computer does not read.
-   */
-  emitLinked<E extends RpcEvent>(event: E, payload: RpcEvents[E]): void
 }
 
 const make = (send: WindowSend): EventBusService => {
@@ -34,9 +29,6 @@ const make = (send: WindowSend): EventBusService => {
       taps.push(listener)
     },
     window: (event, payload, server) => send(event, payload, server),
-    emitLinked: (event, payload) => {
-      for (const tap of taps) tap(event, payload)
-    },
   }
 }
 

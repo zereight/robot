@@ -5,8 +5,8 @@
 export type ViewServer = string | undefined
 
 /**
- * True when an event is for a view. Agents and channels that two computers sync have the same id
- * on both, so a view of this computer must not take the event of the other computer's copy, and
- * a view of the linked server must not take the event of the copy here (spec 012, 019).
+ * True when an event is for a view. A view shows one computer: this computer or one linked
+ * server (spec 012). Two computers that sync hold copies with the same ids (spec 019), so
+ * a view takes the events of its own computer only.
  */
 export const isForView = (view: ViewServer, from: ViewServer): boolean => view === from
