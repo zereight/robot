@@ -1155,6 +1155,15 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 001 | Where does the node panel dock when the window is narrow but at least 800 px wide: at the right edge of the canvas, or as an overlay? At which width does it change? | Open. 001 names the docked panel and the overlay under 800 px only. |
 | 001 | At which window width does the workflow list become an overlay? A docked list of 280 px with a panel of 320 px leaves no room for the centre under about 1000 px. | The spec states 1100 px: the list docks at 1100 px and wider, and opens as an overlay from 800 to 1100 px. To confirm. |
 
+## CG1: canvas dot grid (open points for 001)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 001 | How far apart are the dots on the screen at 100%? 001 names no distance. The examples of 001 (every dot at 75%, every second dot at 50%, every fourth dot at 25%) are true only for a distance of 16 px or more and less than 24 px. | 16 px, the distance that the canvas shows now. To confirm. |
+| 001 | What size and colour does a dot have on the screen? 001 says only that the size does not change with the zoom. | The size and colour that the canvas shows now: a round dot 2 px across, in the colour of the borders. To confirm. |
+| 001 | When the zoom passes the point where every second or every fourth dot shows, do the dots that go away go at once, or do they fade? 000 and 039 name no motion for the grid. | At once, with no motion. To confirm. |
+| 001 | Above 100% the dots get farther apart, to 32 px at 200%. Does the canvas add dots between them at a high zoom? | No. 001 names only fewer dots. The grid gets wider as the zoom goes up. To confirm. |
+
 ## CH1: what the chat may change
 
 | Spec | Question | Choice for now |
