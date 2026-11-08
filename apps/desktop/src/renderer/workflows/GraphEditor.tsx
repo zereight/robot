@@ -20,6 +20,7 @@ import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
+import { labelPlace } from "./labelPlace.ts"
 import { approvalOutputKey, nodeKindKey } from "./labels.ts"
 import { NodePanel } from "./NodePanel.tsx"
 
@@ -352,6 +353,15 @@ export const GraphEditor = (props: {
                       <Show when={from() && to()}>
                         {(() => {
                           const l = () => lineFor(from() as WorkflowNode, to() as WorkflowNode)
+                          const at = () => {
+                            const text = label()
+                            if (text === undefined) return undefined
+                            const p = (n: WorkflowNode) => {
+                              const q = positionOf(n)
+                              return { x: q.x, y: q.y, w: NODE_W, h: NODE_H }
+                            }
+                            return labelPlace(l(), text, graph().nodes.map(p))
+                          }
                           return (
                             <g data-testid="graph-line">
                               <path
@@ -361,15 +371,17 @@ export const GraphEditor = (props: {
                                 stroke-width="1.5"
                                 marker-end="url(#arrow)"
                               />
-                              <Show when={label()}>
-                                <text
-                                  class={styles.lineLabel}
-                                  x={(l().x1 + l().x2) / 2}
-                                  y={(l().y1 + l().y2) / 2 - 6}
-                                  text-anchor="middle"
-                                >
-                                  {label()}
-                                </text>
+                              <Show when={at()}>
+                                {(p) => (
+                                  <text
+                                    class={styles.lineLabel}
+                                    x={p().x}
+                                    y={p().y}
+                                    text-anchor="middle"
+                                  >
+                                    {label()}
+                                  </text>
+                                )}
                               </Show>
                             </g>
                           )
