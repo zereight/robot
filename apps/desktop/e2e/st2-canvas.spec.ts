@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "@playwright/test"
 import { freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 
-// Spec 001: the canvas is the main surface. It fills the workflow view, the node panel docks
-// beside it, and the run strip folds.
+// Spec 001: the canvas is the main surface. It fills the workflow view, the node panel floats
+// over it and folds, and the run strip folds.
 
 const newWorkflow = async (page: Page, name: string) => {
   await page.getByTestId("new-workflow-empty").click()
@@ -11,7 +11,7 @@ const newWorkflow = async (page: Page, name: string) => {
   await expect(page.getByTestId("chat")).toBeVisible()
 }
 
-test("canvas: it fills the view, the node panel docks beside it, and the strip folds", async () => {
+test("canvas: it fills the view, the node panel floats over it and folds, and the strip folds", async () => {
   const userData = freshUserData()
   const first = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   const page = first.page
@@ -29,18 +29,38 @@ test("canvas: it fills the view, the node panel docks beside it, and the strip f
   const canvas = await page.getByTestId("graph-canvas").boundingBox()
   expect(view && canvas ? Math.abs(view.width - canvas.width) < 2 : false).toBe(true)
 
-  // A selected node opens the panel beside the canvas: it hides no node and no button.
+  // A selected node opens the panel over the top right corner: the canvas keeps its full size,
+  // and the panel does not cover the floating buttons.
   await page.getByTestId("graph-node").first().click()
   await expect(page.getByTestId("node-panel")).toBeVisible()
   const withPanel = await page.getByTestId("graph-canvas").boundingBox()
   const side = await page.getByTestId("node-side").boundingBox()
-  expect(withPanel && side ? withPanel.x + withPanel.width <= side.x + 1 : false).toBe(true)
+  const tools = await page.getByTestId("graph-versions-toggle").boundingBox()
+  expect(withPanel?.width).toBe(canvas?.width)
   expect(withPanel?.height).toBe(canvas?.height)
+  expect(withPanel && side ? side.x + side.width <= withPanel.x + withPanel.width : false).toBe(
+    true,
+  )
+  expect(
+    side && tools ? tools.x + tools.width <= side.x || tools.y + tools.height <= side.y : false,
+  ).toBe(true)
+  await shot(page, "st2-01-panel-floats")
+
+  // The fold button folds the panel to its header; the next node opens folded too.
+  const unfolded = side?.height ?? 0
+  await page.getByTestId("node-panel-fold").click()
+  await expect(page.getByTestId("node-panel")).toBeHidden()
+  const foldedSide = await page.getByTestId("node-side").boundingBox()
+  expect(foldedSide ? foldedSide.height < unfolded / 2 : false).toBe(true)
   await page.getByTestId("graph-node").nth(1).click()
+  await expect(page.getByTestId("node-side-title")).toContainText("2.")
+  await expect(page.getByTestId("node-panel")).toBeHidden()
+  await shot(page, "st2-02-panel-folded")
+  await page.getByTestId("node-panel-fold").click()
+  await expect(page.getByTestId("node-panel")).toBeVisible()
   await page.getByTestId("graph-versions-toggle").click()
   await expect(page.getByTestId("graph-versions-toggle")).toHaveAttribute("aria-pressed", "true")
   await page.getByTestId("graph-versions-toggle").click()
-  await shot(page, "st2-01-panel-docked")
 
   // Escape closes the panel; a click on an empty part clears the selection too.
   await page.getByTestId("graph-canvas").press("Escape")
@@ -58,7 +78,7 @@ test("canvas: it fills the view, the node panel docks beside it, and the strip f
   await expect(page.getByTestId("runs-trigger")).toHaveCount(0)
   const folded = await page.getByTestId("graph-canvas").boundingBox()
   expect(folded && canvas ? folded.height > canvas.height + 100 : false).toBe(true)
-  await shot(page, "st2-02-strip-folded")
+  await shot(page, "st2-03-strip-folded")
   await first.app.close()
 
   // The fold stays after a restart; a press on a strip tab unfolds it.

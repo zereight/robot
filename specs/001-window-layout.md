@@ -35,12 +35,15 @@ stops and results without opening another page. The app opens on the studio.
   user drags nodes onto the canvas, connects outputs to inputs, and edits the selected node in
   the node panel. The user moves the view by dragging an empty part of the canvas, or with the
   scroll of the pointer. A click on an empty part clears the selection.
-- **Node panel**: a column that docks at the right edge of the workflow view, beside the canvas,
-  when a node is selected. It has the full height of the canvas and scrolls by itself, so it
-  never hides a node or a button of the canvas. In a narrow window it opens over the canvas,
-  below the floating buttons. It closes when the selection clears, with its close button, or
-  with Escape. With no selection, the canvas takes its place and shows one muted line: "Pick a
-  node to edit it."
+- **Node panel**: a card that floats over the top right corner of the canvas when a node is
+  selected. The canvas keeps its full width below it. The card is 320 px wide, is never taller
+  than the canvas, and scrolls by itself. Its header shows the number and the name of the node,
+  a fold button and a close button. The fold button folds the card to its header, so the user
+  sees the canvas below it, and unfolds it again. The app remembers the fold, and the next
+  selected node opens folded or unfolded the same way. In a narrow window the card opens over
+  the canvas, below the floating buttons. It closes when the selection clears, with its close
+  button, or with Escape. With no selection, the canvas shows one muted line: "Pick a node to
+  edit it."
 - **Run strip**: the lower part of the workflow view, below the part that is open. It shows the
   runs of the open workflow, newest first, and the tasks of the selected run: each node with
   its state, its reason when it is not done, and its result when it has one (005, 010). The run
@@ -112,8 +115,8 @@ stops and results without opening another page. The app opens on the studio.
   (010).
 - The list shows workflows in alphabetical order, ignoring case. It has no sections, no pins,
   no Back and no Forward.
-- Only the tab row, the run strip and an open node panel take room from the canvas. The canvas
-  has no frame and no margin.
+- Only the tab row and the run strip take room from the canvas. The node panel, the buttons and
+  the versions float over it. The canvas has no frame and no margin.
 - The run strip shows runs newest first. It selects the run that works now, or the newest run.
   A selection by the user stays until the user selects another run or a new run starts.
 - Keyboard: Cmd+F finds in the open chat (003); on a page that is not a chat it does nothing.
@@ -148,7 +151,7 @@ stops and results without opening another page. The app opens on the studio.
   header shows the check and whether a run works. The run strip shows each run, each task with
   its state and reason, and each result that a task kept. After a restart, the selection and the
   states of the runs stay (010).
-- **Data**: the selection, the widths, the open panels and the fold of the run strip stay on this computer. They do not sync
+- **Data**: the selection, the widths, the open panels, the fold of the run strip and the fold of the node panel stay on this computer. They do not sync
   (019), and no export holds them (014). The cache of a linked client holds what 012 says.
 - **Words**: "Studio" and "Run strip" go in docs/glossary.md, in English and Korean.
 
@@ -172,6 +175,9 @@ stops and results without opening another page. The app opens on the studio.
   the run strip shows its reason without opening another page.
 - Make a change that fails the check: the run strip shows "Problem found" with the path, and the
   canvas marks the nodes on the path. Press the close button: the runs show again.
+- Click a node: the node panel floats over the top right corner of the canvas, and the canvas
+  keeps its full width. Press the fold button: the panel shows only its header. Click another
+  node: its panel opens folded. Quit and open the app again: the panel still opens folded.
 - Press the Tasks button: the centre column shows the tasks page, and the list and the chat stay.
   Pick a card: the open workflow shows again.
 - Press "New workflow" in the header of the list and type "Weekly": the new workflow is selected,

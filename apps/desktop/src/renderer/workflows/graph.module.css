@@ -1,6 +1,6 @@
-/* The canvas fills the workflow view; the buttons float over it, the node panel docks beside it
-   (spec 001). */
+/* The canvas fills the workflow view; the buttons and the node panel float over it (spec 001). */
 .layout {
+  container: graph / inline-size;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -97,42 +97,69 @@
   background: var(--c-elevated);
 }
 
-/* The node panel docks beside the canvas and scrolls by itself. */
+/* The node panel floats over the top right corner of the canvas and scrolls by itself. The
+   fold button folds it to its header (spec 001). */
 .side {
-  flex: 0 0 340px;
-  min-height: 0;
-  overflow-y: auto;
-  border-left: 1px solid var(--c-border);
+  position: absolute;
+  z-index: 2;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100% - 2 * var(--spacing-md)));
+  max-height: calc(100% - 2 * var(--spacing-md));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
   background: var(--c-elevated);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+  overflow: hidden;
 }
 
-.side > section {
+.sideHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-md);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.side[data-folded="true"] .sideHead {
+  border-bottom: 0;
+}
+
+.sideTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sideBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sideBody > section {
   border: 0;
   border-radius: 0;
 }
 
-.sideClose {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: flex-end;
-  height: 0;
-  padding-right: var(--spacing-xs);
-  transform: translateY(var(--spacing-xs));
+/* On a narrow canvas the panel opens below the floating buttons, so it never hides them. */
+@container graph (width < 760px) {
+  .side {
+    top: 64px;
+    max-height: calc(100% - 64px - var(--spacing-md));
+  }
 }
 
-/* In a narrow window the panel opens over the canvas, below the floating buttons. */
+/* In a narrow window the panel takes the width of the canvas. */
 .layout[data-narrow="true"] .side {
-  position: absolute;
-  top: 64px;
-  right: var(--spacing-md);
-  bottom: var(--spacing-md);
   left: var(--spacing-md);
-  z-index: 2;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-m);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+  width: auto;
 }
 
 /* The graph starts below the floating buttons, so they never hide a node. */

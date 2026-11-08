@@ -946,6 +946,8 @@ export const ko: Record<MessageKey, string> = {
   "runs.strip.fold": "실행 접기",
   "runs.strip.unfold": "실행 펼치기",
   "graph.panel.close": "노드 패널 닫기",
+  "graph.panel.fold": "노드 패널 접기",
+  "graph.panel.unfold": "노드 패널 펼치기",
   "runs.none": "아직 실행이 없어요. 실행을 눌러 시작하세요.",
   "runs.source.hand": "직접 시작",
   "runs.source.chat": "채팅에서 시작",
