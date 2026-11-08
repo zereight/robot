@@ -1,5 +1,6 @@
 import {
   clampPanelWidth,
+  clampStripHeight,
   LIST_DOCK_MIN,
   NARROW_WIDTH,
   type Page,
@@ -87,6 +88,9 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** The run strip is folded to its tab row (spec 001). */
     stripFolded: () => ui.stripFolded,
     selectStripFolded: (stripFolded: boolean) => update({ stripFolded }),
+    /** The height of the run strip (spec 001). */
+    stripHeight: () => ui.stripHeight,
+    selectStripHeight: (height: number) => update({ stripHeight: clampStripHeight(height) }),
     /** The node panel is folded to its header (spec 001). */
     nodePanelFolded: () => ui.nodePanelFolded,
     selectNodePanelFolded: (nodePanelFolded: boolean) => update({ nodePanelFolded }),

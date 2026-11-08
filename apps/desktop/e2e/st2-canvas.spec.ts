@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "@playwright/test"
 import { freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 
-// Spec 001: the canvas is the main surface. It fills the workflow view, the node panel floats
-// over it and folds, and the run strip folds.
+// Spec 001: the canvas is the main surface. It fills the workflow view, has no edge, pans and
+// zooms; the node panel floats over it and folds; the run strip changes its height and folds.
 
 const newWorkflow = async (page: Page, name: string) => {
   await page.getByTestId("new-workflow-empty").click()
@@ -11,7 +11,7 @@ const newWorkflow = async (page: Page, name: string) => {
   await expect(page.getByTestId("chat")).toBeVisible()
 }
 
-test("canvas: it fills the view, the node panel floats over it and folds, and the strip folds", async () => {
+test("canvas: it fills the view, pans and zooms, the node panel folds, and the strip resizes and folds", async () => {
   const userData = freshUserData()
   const first = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   const page = first.page
@@ -73,12 +73,64 @@ test("canvas: it fills the view, the node panel floats over it and folds, and th
   if (box) await page.mouse.click(box.x + 40, box.y + box.height - 40)
   await expect(page.getByTestId("node-panel")).toHaveCount(0)
 
+  // The canvas has no edge: a drag on an empty part moves the view past the graph, and so does a
+  // two finger scroll. The selection stays clear.
+  const node = page.getByTestId("graph-node").first()
+  const home = await node.boundingBox()
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 60)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 - 400, box.y + box.height - 260, { steps: 8 })
+    await page.mouse.up()
+  }
+  const panned = await node.boundingBox()
+  expect(home && panned ? Math.round(home.x - panned.x) : 0).toBe(400)
+  expect(home && panned ? Math.round(home.y - panned.y) : 0).toBe(200)
+  await expect(page.getByTestId("node-panel")).toHaveCount(0)
+  if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(-150, 0)
+  await expect
+    .poll(async () => Math.round((await node.boundingBox())?.x ?? 0))
+    .toBe(Math.round((panned?.x ?? 0) + 150))
+
+  // Ctrl with the wheel (a trackpad pinch) zooms; the zoom value goes back to 100% and home.
+  await page.keyboard.down("Control")
+  await page.mouse.wheel(0, -50)
+  await page.keyboard.up("Control")
+  await expect(page.getByTestId("graph-zoom-reset")).not.toHaveText("100%")
+  expect(((await node.boundingBox())?.width ?? 0) > (home?.width ?? 0)).toBe(true)
+  await shot(page, "st2-03-canvas-zoomed")
+  await page.getByTestId("graph-zoom-out").click()
+  await page.getByTestId("graph-zoom-reset").click()
+  await expect(page.getByTestId("graph-zoom-reset")).toHaveText("100%")
+  expect(await node.boundingBox()).toEqual(home)
+
+  // A drag on the top edge of the strip changes its height, and the canvas gets the rest.
+  const strip = await page.getByTestId("run-strip").boundingBox()
+  const edge = await page.getByTestId("strip-resize").boundingBox()
+  if (edge) {
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 - 150, { steps: 5 })
+    await page.mouse.up()
+  }
+  const taller = await page.getByTestId("run-strip").boundingBox()
+  const lower = await page.getByTestId("graph-canvas").boundingBox()
+  expect(strip && taller ? Math.round(taller.height - strip.height) : 0).toBe(150)
+  expect(lower && canvas ? Math.round(canvas.height - lower.height) : 0).toBe(150)
+  await page.getByTestId("strip-resize").press("ArrowDown")
+  await expect
+    .poll(async () => Math.round((await page.getByTestId("run-strip").boundingBox())?.height ?? 0))
+    .toBe(Math.round((taller?.height ?? 0) - 16))
+  const saved = (taller?.height ?? 0) - 16
+  await shot(page, "st2-04-strip-taller")
+
   // The strip folds to its tab row, and the canvas gets the height.
   await page.getByTestId("strip-fold").click()
   await expect(page.getByTestId("runs-trigger")).toHaveCount(0)
   const folded = await page.getByTestId("graph-canvas").boundingBox()
   expect(folded && canvas ? folded.height > canvas.height + 100 : false).toBe(true)
-  await shot(page, "st2-03-strip-folded")
+  await shot(page, "st2-05-strip-folded")
   await first.app.close()
 
   // The fold stays after a restart; a press on a strip tab unfolds it.
@@ -86,5 +138,8 @@ test("canvas: it fills the view, the node panel floats over it and folds, and th
   await expect(again.page.getByTestId("run-strip")).toHaveAttribute("data-folded", "true")
   await again.page.getByTestId("strip-tab-runs").click()
   await expect(again.page.getByTestId("runs-trigger")).toBeVisible()
+  // The height stays after a restart too.
+  const kept = await again.page.getByTestId("run-strip").boundingBox()
+  expect(Math.round(kept?.height ?? 0)).toBe(Math.round(saved))
   await again.app.close()
 })
