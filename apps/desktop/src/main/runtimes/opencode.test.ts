@@ -64,19 +64,18 @@ describe("opencode models", () => {
 
 describe("opencode permission level", () => {
   test("the level becomes rules that take the tools away", () => {
-    expect(opencodePermission("ask_all", true)).toEqual({
+    const limited = {
       bash: "deny",
-      edit: "deny",
       task: "deny",
       question: "deny",
-    })
+      skill: "deny",
+      execute: "deny",
+      "opencode_*": "deny",
+    }
+    expect(opencodePermission("ask_all", true)).toEqual({ ...limited, edit: "deny" })
     expect(opencodePermission("read_only", true)).toEqual(opencodePermission("ask_all", true))
-    expect(opencodePermission("ask_risky", true)).toEqual({
-      bash: "deny",
-      task: "deny",
-      question: "deny",
-    })
-    expect(opencodePermission("full", true)).toEqual({ question: "deny" })
+    expect(opencodePermission("ask_risky", true)).toEqual(limited)
+    expect(opencodePermission("full", true)).toEqual({ question: "deny", skill: "deny" })
   })
   test("a run that may only answer has no tool", () => {
     for (const level of ["read_only", "ask_all", "ask_risky", "full"] as const)
