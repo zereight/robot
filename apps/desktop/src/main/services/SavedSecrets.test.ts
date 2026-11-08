@@ -3,6 +3,7 @@ import { SECRETS_PER_AGENT, type SecretAuth } from "@robot/shared"
 import { Effect } from "effect"
 import { Database } from "./Database.ts"
 import { Rules } from "./Rules.ts"
+import { SavedLogins } from "./SavedLogins.ts"
 import { SavedSecrets, savedSecretKey } from "./SavedSecrets.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -142,7 +143,7 @@ describe("saved secrets of a workflow (spec 020)", () => {
     await add("Local", "http://127.0.0.1:4001", VALUE, true)
     // A value of more than 16384 characters is refused with the reason.
     await expect(add("Long", "https://api.example.com", "x".repeat(16385))).rejects.toMatchObject({
-      code: "secret_value_invalid",
+      code: "secret_value_long",
     })
   })
 
@@ -195,6 +196,56 @@ describe("saved secrets of a workflow (spec 020)", () => {
     await expect(
       t.run(SavedSecrets.use((s) => Effect.sync(() => s.rename("nope", "Fresh")))),
     ).rejects.toMatchObject({ code: "secret_not_found" })
+  })
+
+  test("a name that a login of the vault holds is refused, ignoring case", async () => {
+    const t = await setup()
+    await t.save("Github")
+    await t.run(
+      SavedLogins.use((s) =>
+        Effect.sync(() =>
+          s.add(
+            t.workflow.id,
+            { name: "Other", origin: "https://id.example.com", user: "ada" },
+            VALUE,
+          ),
+        ),
+      ),
+    )
+    // Adding a login with the name of a secret is refused, and the reverse.
+    await expect(
+      t.run(
+        SavedLogins.use((s) =>
+          Effect.sync(() =>
+            s.add(
+              t.workflow.id,
+              { name: "GITHUB", origin: "https://id.example.com", user: "ada" },
+              VALUE,
+            ),
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "login_name_taken" })
+    await expect(
+      t.run(
+        SavedSecrets.use((s) =>
+          Effect.sync(() =>
+            s.add(
+              t.workflow.id,
+              { name: "other", origin: "https://api.example.com", auth: bearer },
+              VALUE,
+            ),
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "secret_name_taken" })
+    // Renaming onto the name of the other list is refused, so no rule moves to another row.
+    const login = await t.run(
+      SavedLogins.use((s) => Effect.sync(() => s.find(t.workflow.id, "Other"))),
+    )
+    await expect(
+      t.run(SavedLogins.use((s) => Effect.sync(() => s.rename(login?.id ?? "", "github")))),
+    ).rejects.toMatchObject({ code: "login_name_taken" })
   })
 
   test("test shows the reason when the value is missing or the switch is off", async () => {

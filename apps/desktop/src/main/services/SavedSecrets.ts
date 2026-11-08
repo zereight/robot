@@ -4,6 +4,7 @@ import {
   isSecretValue,
   parseOrigin,
   type SavedSecret,
+  SECRET_VALUE_MAX,
   SECRETS_PER_AGENT,
   type SecretAuth,
   type SecretTestResult,
@@ -183,6 +184,7 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
 
       /** Puts a value in the keychain under a new name. */
       const store = (value: string) => {
+        if (value.length > SECRET_VALUE_MAX) throw new AppError({ code: "secret_value_long" })
         if (!isSecretValue(value)) throw new AppError({ code: "secret_value_invalid" })
         const ref = randomUUID()
         try {
@@ -204,6 +206,17 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
         if (!isSecretName(secret.name)) throw new AppError({ code: "secret_name_invalid" })
         return checkOrigin(secret.origin, allowLocal)
       }
+
+      /**
+       * The vault holds both lists: a name that a login of the same workflow holds is refused,
+       * ignoring case, so a rename never moves the rules of another row (spec 020, "Rename").
+       */
+      const loginNameTaken = (workflowId: string, name: string) =>
+        db.get(
+          "SELECT 1 AS x FROM saved_login WHERE workflow_id = ? AND name_key = ?",
+          workflowId,
+          secretNameKey(name),
+        )
 
       /** Inserts the row of a secret that the vault does not hold yet. */
       const insertNew = (
@@ -279,6 +292,8 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
           const origin = validated(secret, allowLocal)
           const now = Date.now()
           const row = byName(workflowId, secret.name)
+          if (!row && loginNameTaken(workflowId, secret.name))
+            throw new AppError({ code: "secret_name_taken" })
           if (row) {
             if (row.origin !== origin || !sameAuth(parseAuth(row.auth), secret.auth))
               throw new AppError({ code: "secret_conflict" })
@@ -290,7 +305,8 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
         },
         add: (workflowId, secret, value, allowLocal = false) => {
           const origin = validated(secret, allowLocal)
-          if (byName(workflowId, secret.name)) throw new AppError({ code: "secret_name_taken" })
+          if (byName(workflowId, secret.name) || loginNameTaken(workflowId, secret.name))
+            throw new AppError({ code: "secret_name_taken" })
           return insertNew(workflowId, secret, origin, value, Date.now())
         },
         rename: (id, name) => {
@@ -298,7 +314,8 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
           if (!row) throw new AppError({ code: "secret_not_found" })
           if (!isSecretName(name)) throw new AppError({ code: "secret_name_invalid" })
           const taken = byName(row.workflow_id, name)
-          if (taken && taken.id !== id) throw new AppError({ code: "secret_name_taken" })
+          if ((taken && taken.id !== id) || loginNameTaken(row.workflow_id, name))
+            throw new AppError({ code: "secret_name_taken" })
           db.run(
             "UPDATE saved_secret SET name = ?, name_key = ? WHERE id = ?",
             name,

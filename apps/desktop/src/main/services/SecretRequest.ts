@@ -53,6 +53,10 @@ export const testSecretRequest = async (
   }
   if (resolved.some((r) => classifyIp(r.address) === "blocked"))
     return { ok: false, reason: "blocked" }
+  // A name can lead to this computer or the local network: without the switch the request is
+  // refused after the lookup, before any connection (spec 020, "Rules").
+  if (!options.allowLocal && resolved.some((r) => classifyIp(r.address) === "local"))
+    return { ok: false, reason: "local_off" }
   const timeoutMs = options.timeoutMs ?? SECRET_REQUEST_TIMEOUT_MS
   const controller = new AbortController()
   let timedOut = false

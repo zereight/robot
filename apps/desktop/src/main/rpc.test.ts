@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import type { Workflow } from "@robot/shared"
 import { CLIENT_METHODS } from "@robot/shared"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { handlers, runRequest } from "./rpc.ts"
 import { Database } from "./services/Database.ts"
+import { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { testRuntime } from "./services/testing.ts"
 
@@ -158,5 +159,34 @@ describe("the requests of a linked device (spec 012)", () => {
         "may-not",
       ),
     ).toMatchObject({ ok: false, error: { code: "card_gone" } })
+  })
+})
+
+describe("a keychain that cannot be read (spec 020)", () => {
+  test("both vault lists fail with the keychain reason on the RPC path", async () => {
+    // The identity of the device link loads at boot, so the store keeps values in memory and
+    // only the readability probe fails: the vault reads fail while the app runs.
+    const store = new Map<string, string>()
+    const broken = Layer.sync(Secrets, () =>
+      Secrets.of({
+        get: (key) => store.get(key) ?? null,
+        set: (key, value) => void store.set(key, value),
+        remove: (key) => void store.delete(key),
+        check: () => {
+          throw new Error("The keychain could not be read")
+        },
+      }),
+    )
+    const t = testRuntime({ secrets: broken })
+    const ask = (method: string, input: unknown) => runRequest(t.runtime, method, input, null)
+    // The window gets the reason, not error.unknown and no stack in the main log.
+    expect(await ask("secrets.list", {})).toMatchObject({
+      ok: false,
+      error: { code: "secret_keychain_read" },
+    })
+    expect(await ask("logins.list", {})).toMatchObject({
+      ok: false,
+      error: { code: "secret_keychain_read" },
+    })
   })
 })

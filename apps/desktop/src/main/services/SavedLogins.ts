@@ -6,6 +6,7 @@ import {
   LOGINS_PER_WORKFLOW,
   parseOrigin,
   type SavedLogin,
+  SECRET_VALUE_MAX,
   secretNameKey,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -105,6 +106,17 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
         return parsed.origin
       }
 
+      /**
+       * The vault holds both lists: a name that a secret of the same workflow holds is refused,
+       * ignoring case, so a rename never moves the rules of another row (spec 020, "Rename").
+       */
+      const secretNameTaken = (workflowId: string, name: string) =>
+        db.get(
+          "SELECT 1 AS x FROM saved_secret WHERE workflow_id = ? AND name_key = ?",
+          workflowId,
+          secretNameKey(name),
+        )
+
       const read = (key: string | null): string | null => {
         if (!key) return null
         try {
@@ -172,6 +184,7 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
 
       /** Puts both values in the keychain under a new name. */
       const store = (user: string, password: string) => {
+        if (password.length > SECRET_VALUE_MAX) throw new AppError({ code: "secret_value_long" })
         if (!isLoginUser(user) || !isSecretValue(password))
           throw new AppError({ code: "login_value_invalid" })
         const ref = randomUUID()
@@ -229,6 +242,8 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
           const origin = checkOrigin(login.origin, allowLocal)
           const now = Date.now()
           const row = byName(workflowId, login.name)
+          if (!row && secretNameTaken(workflowId, login.name))
+            throw new AppError({ code: "login_name_taken" })
           if (row) {
             if (row.origin !== origin) throw new AppError({ code: "login_conflict" })
             replaceRow(row, login.user, password, now)
@@ -262,7 +277,8 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
         add: (workflowId, login, password, allowLocal = false) => {
           if (!isSecretName(login.name)) throw new AppError({ code: "login_name_invalid" })
           const origin = checkOrigin(login.origin, allowLocal)
-          if (byName(workflowId, login.name)) throw new AppError({ code: "login_name_taken" })
+          if (byName(workflowId, login.name) || secretNameTaken(workflowId, login.name))
+            throw new AppError({ code: "login_name_taken" })
           if (!db.get("SELECT 1 AS x FROM workflow WHERE id = ?", workflowId))
             throw new AppError({ code: "workflow_not_found" })
           const count =
@@ -292,7 +308,8 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
           if (!row) throw new AppError({ code: "login_not_found" })
           if (!isSecretName(name)) throw new AppError({ code: "login_name_invalid" })
           const taken = byName(row.workflow_id, name)
-          if (taken && taken.id !== id) throw new AppError({ code: "login_name_taken" })
+          if ((taken && taken.id !== id) || secretNameTaken(row.workflow_id, name))
+            throw new AppError({ code: "login_name_taken" })
           db.run(
             "UPDATE saved_login SET name = ?, name_key = ? WHERE id = ?",
             name,

@@ -113,6 +113,23 @@ describe("Test of a saved secret (spec 020, flow 4)", () => {
     expect(seen).toEqual([])
   })
 
+  test("a public name that leads to this computer is refused without the switch", async () => {
+    seen.length = 0
+    expect(
+      await testSecretRequest(
+        "https://api.example.com/",
+        "https://api.example.com",
+        bearer,
+        VALUE,
+        {
+          allowLocal: false,
+          lookup: async () => [{ address: "127.0.0.1" }],
+        },
+      ),
+    ).toEqual({ ok: false, reason: "local_off" })
+    expect(seen).toEqual([])
+  })
+
   test("a link-local address and a cloud metadata address are refused", async () => {
     seen.length = 0
     expect(

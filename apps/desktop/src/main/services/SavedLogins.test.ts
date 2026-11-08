@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import { Database } from "./Database.ts"
 import { Rules } from "./Rules.ts"
 import { SavedLogins, savedLoginPasswordKey, savedLoginUserKey } from "./SavedLogins.ts"
+import { SavedSecrets } from "./SavedSecrets.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
@@ -113,6 +114,10 @@ describe("saved logins of a workflow (spec 020)", () => {
     await expect(t.save("Ok", "https://id.example.com", "", PASSWORD)).rejects.toMatchObject({
       code: "login_value_invalid",
     })
+    // A password of more than 16384 characters is refused with the reason.
+    await expect(
+      t.save("Ok", "https://id.example.com", USER, "x".repeat(16385)),
+    ).rejects.toMatchObject({ code: "secret_value_long" })
   })
 
   test("a vault shows only the logins of the open workflow", async () => {
@@ -190,6 +195,24 @@ describe("saved logins of a workflow (spec 020)", () => {
     const local = await add("Local", "https://127.0.0.1:4001", true)
     // No way to send: the row holds no auth kind.
     expect(local).not.toHaveProperty("auth")
+  })
+
+  test("a name that a secret of the vault holds is refused, ignoring case", async () => {
+    const t = await setup()
+    await t.run(
+      SavedSecrets.use((s) =>
+        Effect.sync(() =>
+          s.add(
+            t.workflow.id,
+            { name: "Github", origin: "https://api.example.com", auth: { kind: "bearer" } },
+            PASSWORD,
+          ),
+        ),
+      ),
+    )
+    await expect(t.save("GITHUB", "https://id.example.com", USER, PASSWORD)).rejects.toMatchObject({
+      code: "login_name_taken",
+    })
   })
 
   test("rename moves the rules to the new name", async () => {
