@@ -19,6 +19,7 @@ import {
   NODES_MAX,
   type NodeInput,
   type NodePatch,
+  type NodeSilentLimit,
   nameKey,
   OPTIONS_MIN,
   type PermissionLevel,
@@ -252,7 +253,8 @@ const versionGraph = (json: string): WorkflowGraph => {
     nodes: graph.nodes.map((n) => ({
       ...n,
       backup: n.backup ?? null,
-      silentLimit: n.silentLimit ?? null,
+      // A missing field and a null from versions saved while null meant follow both read as follow.
+      silentLimit: (n.silentLimit as NodeSilentLimit | null | undefined) ?? "follow",
     })),
   }
 }
@@ -280,7 +282,7 @@ export const readGraph = (db: DatabaseService, workflowId: string): WorkflowGrap
           r.backup_account_id !== null && r.backup_model !== null
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
-        silentLimit: r.silent_limit as SilentLimit | null,
+        silentLimit: (r.silent_limit as SilentLimit | null) ?? "follow",
         permission: r.permission,
         continueOnFailure: r.continue_on_failure === 1,
         question: r.question,
@@ -429,7 +431,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         model?: string | null
         effort?: string | null
         backup?: ModelPick | null
-        silentLimit?: SilentLimit | null
+        silentLimit?: NodeSilentLimit
         permission?: PermissionLevel | null
       }) => {
         if (patch.effort !== undefined && patch.effort !== null)
@@ -437,8 +439,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         // A decision node names the decision model, so it keeps it and gets no backup (spec 006).
         if (patch.backup !== undefined && patch.backup !== null)
           return new AppError({ code: "decision_backup", detail: "backup" })
-        // A decision node has no silent limit of its own (spec 010).
-        if (patch.silentLimit !== undefined && patch.silentLimit !== null)
+        // A decision node has no silent limit of its own: it always holds "follow" (spec 010).
+        if (patch.silentLimit !== undefined && patch.silentLimit !== "follow")
           return new AppError({ code: "decision_silent_limit", detail: "silentLimit" })
         if (
           (patch.accountId !== undefined && patch.accountId !== null) ||
@@ -591,8 +593,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               n.kind === "text" ? (n.backup?.accountId ?? null) : null,
               n.kind === "text" ? (n.backup?.model ?? null) : null,
               n.kind === "text" ? (n.backup?.effort ?? null) : null,
-              // A decision node has no silent limit of its own (spec 010).
-              n.kind === "text" ? (n.silentLimit ?? null) : null,
+              // A decision node has no silent limit of its own (spec 010). "follow" writes as NULL.
+              n.kind === "text" ? (n.silentLimit === "follow" ? null : n.silentLimit) : null,
               n.permission,
               n.continueOnFailure ? 1 : 0,
               n.question,
@@ -862,6 +864,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                   }
                 : null
             const backupNext = pick(patch.backup, backupNow)
+            // The column stays nullable: NULL reads as "follow" and "follow" writes as NULL.
+            const silentNext = pick(
+              patch.silentLimit,
+              (node.silent_limit as SilentLimit | null) ?? "follow",
+            )
             if (backupNext !== null) {
               const mainAccount = pick(patch.accountId, node.account_id)
               const mainModel = pick(patch.model, node.model)
@@ -895,7 +902,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 backupNext?.accountId ?? null,
                 backupNext?.model ?? null,
                 backupNext?.effort ?? null,
-                pick(patch.silentLimit, node.silent_limit),
+                silentNext === "follow" ? null : silentNext,
                 pick(patch.permission, node.permission),
                 patch.continueOnFailure === undefined
                   ? node.continue_on_failure

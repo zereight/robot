@@ -22,7 +22,7 @@ const node = (n: number, extra: Partial<WorkflowNode> = {}): WorkflowNode => ({
   model: "mock-fast",
   effort: null,
   backup: null,
-  silentLimit: null,
+  silentLimit: "follow",
   permission: "read_only",
   continueOnFailure: false,
   question: "",
@@ -133,7 +133,7 @@ describe("the silent limit of a node in a graph change (spec 010, Silent limit o
     )
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.graph.nodes.map((n) => n.silentLimit)).toEqual([30, null, null, null])
+    expect(r.graph.nodes.map((n) => n.silentLimit)).toEqual([30, "follow", "follow", "follow"])
   })
 
   test("the fingerprint changes with the limit, so a proposal is stale after the user changes it", () => {

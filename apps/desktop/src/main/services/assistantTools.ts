@@ -498,7 +498,7 @@ const addNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
     effort: kind === "text" ? (text(a.effort) ?? null) : null,
     backup: null,
     // A node that the chat adds follows the setting (spec 010, "Silent limit of a node").
-    silentLimit: null,
+    silentLimit: "follow",
     permission: null,
     continueOnFailure: a.continueOnFailure === true,
     question: kind === "decision" ? (text(a.question) ?? "") : "",
