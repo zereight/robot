@@ -67,8 +67,10 @@ manages the API keys and passwords of that workflow.
      starts. The next request or fill uses the new value.
    - Test: each secret has a Test button. It sends a GET request to the origin with the secret
      and shows the status code, or the reason when the request fails (for example refused or
-     timeout). It never shows the value. Logins have no Test button: the fill at run time is the
-     test.
+     timeout). Test follows the address rules of a request with a secret: https, the switch for
+     this computer and the local network, no redirect, the refusal of link-local and cloud
+     metadata addresses, and the time limit of 30 seconds. It never shows the value. Logins have
+     no Test button: the fill at run time is the test.
    - Delete: the user deletes a secret or a login after a confirm (000). The value leaves the
      keychain at once. A request that has already started can end.
    - Settings → Permissions holds an overview, "Saved secrets". It lists each workflow that holds
@@ -262,7 +264,8 @@ All checks use a small test web service, written for the test.
 - Add a secret `hand_api` by hand in the vault: the next request with that name runs with no card.
   Rename it to the name of a secret that the vault holds: the app refuses it. Replace its value:
   the next request uses the new value. Press Test: the vault shows the status code, and the logs
-  hold no clear text of the value.
+  hold no clear text of the value. With the switch for this computer off, press Test on a secret
+  for `https://127.0.0.1:PORT`: the vault shows the reason, and the test service gets no request.
 - Rename a workflow that holds a secret: the vault shows the same rows under the new name.
   Settings → Permissions shows the counts of each workflow with "Open vault", and no value.
 - A decision node and the responsible document have no tool of this spec.
