@@ -12,8 +12,8 @@ export interface EventBusService {
   /**
    * Sends an event to the windows only. The events of a linked server use this: they are not for
    * the devices that are linked to this computer. `server` names the linked server, so that a view
-   * of this computer does not take an event of the same agent or channel from a server that syncs
-   * with it (the ids are the same on both).
+   * of this computer does not take an event of the same workflow or chat from a server that syncs
+   * with it (the ids are the same on both, spec 019).
    */
   window(event: RpcEvent, payload: unknown, server?: string): void
 }

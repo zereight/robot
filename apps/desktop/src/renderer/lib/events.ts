@@ -6,7 +6,7 @@ export type ViewServer = string | undefined
 
 /**
  * True when an event is for a view. A view shows one computer: this computer or one linked
- * server (spec 012). An event belongs to the computer that made it, so a view takes the events
- * of its own computer only (spec 038).
+ * server (spec 012). Two computers that sync hold copies with the same ids (spec 019), so
+ * a view takes the events of its own computer only.
  */
 export const isForView = (view: ViewServer, from: ViewServer): boolean => view === from
