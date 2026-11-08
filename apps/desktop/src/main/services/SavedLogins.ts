@@ -191,14 +191,22 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
       }
 
       return SavedLogins.of({
-        list: (workflowId) =>
-          (workflowId
-            ? db.all<Row>(
-                "SELECT * FROM saved_login WHERE workflow_id = ? ORDER BY name_key",
-                workflowId,
-              )
-            : db.all<Row>("SELECT * FROM saved_login ORDER BY workflow_id, name_key")
-          ).map(toView),
+        list: (workflowId) => {
+          try {
+            // When the keychain cannot be read, the vault shows "Cannot read the vault."
+            keychain.check()
+          } catch {
+            throw new AppError({ code: "secret_keychain_read" })
+          }
+          return (
+            workflowId
+              ? db.all<Row>(
+                  "SELECT * FROM saved_login WHERE workflow_id = ? ORDER BY name_key",
+                  workflowId,
+                )
+              : db.all<Row>("SELECT * FROM saved_login ORDER BY workflow_id, name_key")
+          ).map(toView)
+        },
         find: (workflowId, name) => {
           const row = byName(workflowId, name)
           return row ? toStored(row) : undefined

@@ -332,7 +332,8 @@ export const en = {
     "Lets agents send saved secrets to addresses such as 127.0.0.1, localhost and the local network. Such a request can use http, and then it travels without encryption on the network.",
   "error.secret_value_invalid": "Type a value of 1 to 16384 characters, with no line breaks.",
   "error.secret_keychain": "ROBot could not write to the system keychain.",
-  "error.secret_conflict": "A secret with this name exists for another origin. Delete it first.",
+  "error.secret_keychain_read":
+    "The vault cannot be read. A request with a secret fails until the keychain can be read again.",
   "error.secret_full": "This workflow holds 100 secrets.",
   "error.secret_not_found": "This secret does not exist any more.",
   "error.secret_name_invalid": "Type a name of 1 to 40 letters, digits, - and _.",

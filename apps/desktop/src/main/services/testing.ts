@@ -478,6 +478,8 @@ export const testRuntime = (
     connections?: ConnectionsOptions
     /** The check of workflows (spec 010). A test turns the check in the background off. */
     check?: WorkflowCheckOptions
+    /** The keychain. A test of a keychain error gives a store that cannot be read. */
+    secrets?: Layer.Layer<Secrets>
     /** The clock and the idle timer of the browser work (spec 007). A test calls the sweep. */
     browser?: { now?: () => number; sweepMs?: number }
   } = {},
@@ -507,7 +509,7 @@ export const testRuntime = (
       localServerName: options.name ?? "Test computer",
       emit: (event, payload, server) =>
         events.push(server === undefined ? { event, payload } : { event, payload, server }),
-      secrets: Secrets.memory,
+      secrets: options.secrets ?? Secrets.memory,
       ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
       ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
       ...(options.connections ? { connections: options.connections } : {}),

@@ -332,7 +332,8 @@ export const ko: Record<MessageKey, string> = {
     "에이전트가 127.0.0.1, localhost, 로컬 네트워크 같은 주소로 저장된 비밀 값을 보낼 수 있어요. 이런 요청은 http를 쓸 수 있고, 그러면 네트워크에서 암호화 없이 전달돼요.",
   "error.secret_value_invalid": "줄바꿈 없이 1~16384자의 값을 입력해 주세요.",
   "error.secret_keychain": "ROBot이 시스템 키체인에 쓰지 못했어요.",
-  "error.secret_conflict": "이 이름의 비밀 값이 다른 주소로 있어요. 먼저 삭제해 주세요.",
+  "error.secret_keychain_read":
+    "보관함을 읽을 수 없어요. 키체인을 다시 읽을 수 있을 때까지 비밀 값을 쓰는 요청이 실패해요.",
   "error.secret_full": "이 워크플로에 비밀 값이 100개 있어요.",
   "error.secret_not_found": "이 비밀 값은 더 이상 없어요.",
   "error.secret_name_invalid": "40자 이내의 영문, 숫자, -, _로 이름을 입력해 주세요.",
