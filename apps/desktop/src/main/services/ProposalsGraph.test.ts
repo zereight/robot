@@ -328,6 +328,30 @@ describe("Accept runs the check again on the server (spec 010)", () => {
   })
 })
 
+describe("a proposal that an older app stored (spec 010)", () => {
+  test("connections with no `source` are accepted through the single field", async () => {
+    const t = await setup()
+    const id = await t.ok(t.addNode())
+    const g = JSON.parse(
+      (await t.rows<{ graph: string }>("SELECT graph FROM proposal WHERE id = ?", id))[0]
+        ?.graph as string,
+    ) as {
+      nodes: unknown[]
+      connections: { id: string; from: string; to: string; source: { kind: string } }[]
+    }
+    const old = {
+      nodes: g.nodes,
+      connections: g.connections.map((c) => ({ id: c.id, from: c.from, to: c.to, optionId: null })),
+    }
+    await t.sql("UPDATE proposal SET graph = ? WHERE id = ?", JSON.stringify(old), id)
+    await t.p((x) => x.accept(id))
+    const graph = await t.graph()
+    expect(graph.nodes.map((n) => n.name)).toEqual(["Fetch", "Write", "Send"])
+    expect(graph.connections.map((c) => c.source)).toEqual([{ kind: "text" }, { kind: "text" }])
+    expect((await t.view()).log[0]).toMatchObject({ id, state: "applied" })
+  })
+})
+
 describe("two answers at the same time (spec 002)", () => {
   test("two Accepts of one graph change apply it once", async () => {
     const t = await setup()

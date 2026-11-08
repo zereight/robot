@@ -7,6 +7,7 @@ import {
   type ConnectionSource,
   chatText,
   checkGraphKey,
+  QUEUE_SLOT,
   type RunDetail,
   type WorkflowNode,
 } from "@robot/shared"
@@ -28,6 +29,7 @@ import { RunFacts } from "./RunFacts.ts"
 import { Runs, runClock } from "./Runs.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { TaskQueue } from "./TaskQueue.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -475,6 +477,44 @@ describe("the approval node (spec 010)", () => {
     expect(approval?.verdict).toBe("approve")
     expect(approval?.comment).toBe("Shorter")
     expect(approval?.answeredAt).toBeGreaterThan(0)
+  })
+
+  test("all slots busy when the user answers: the stored answer time is the arrival time, not the slot time", async () => {
+    const { t } = await gate()
+    await t.run(SettingsStore.use((s) => s.update({ tasksAtOnce: 1 })))
+    const run = await t.start()
+    const card = await t.waitCard()
+    const scheduler = await t.run(TaskQueue.use((q) => Effect.sync(() => q.scheduler)))
+    const held = scheduler.enter({
+      taskId: "test-slot-holder",
+      workflowId: "test-slot-holder",
+      runId: "test-slot-holder",
+      source: "hand",
+      runSeq: 0,
+      nodeNumber: 0,
+      nodeName: "holder",
+      runStartedAt: Date.now(),
+    })
+    expect(held.granted).toBe(true)
+    const before = Date.now()
+    await t.answer(card.id, { kind: "verdict", verdict: "approve", comment: "Shorter" })
+    const answered = Date.now()
+    await until(async () => {
+      const row = (
+        await t.rows<{ state: string; error_code: string | null }>(
+          "SELECT state, error_code FROM task WHERE run_id = ? AND node_number = 2",
+          run.id,
+        )
+      )[0]
+      return row?.state === "queued" && row?.error_code === QUEUE_SLOT
+    })
+    await until(() => Date.now() > answered, 1000)
+    scheduler.release("test-slot-holder")
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    const approval = d.nodes[1]?.task?.approval
+    expect(approval?.answeredAt).toBeGreaterThanOrEqual(before)
+    expect(approval?.answeredAt).toBeLessThanOrEqual(answered)
   })
 
   test("reject with only Approve connected: the next node is skipped and the run ends", async () => {
