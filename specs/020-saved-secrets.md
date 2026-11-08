@@ -56,20 +56,31 @@ manages the API keys and passwords of that workflow.
    lists: "Saved secrets" and "Saved logins". Each row shows the name, the origin, the way to send
    it (or the user name for a login), the date it was saved, and the date it was last used. No row
    shows a value. The vault is the only place where the user manages secrets and logins.
-   - Add: the user adds a secret or a login by hand. The form asks for the name, the origin, the
-     way to send it (and the user name for a login), and the hidden value. The rules of the name
-     hold. A name that the vault already holds is refused, ignoring case. Cancel closes the form
-     and saves nothing.
+   - Add: the user adds a secret or a login by hand.
+     - The form for a secret asks for the name, the origin, the way to send it, and the hidden
+       value. The form for a login asks for the name, the origin, the user name, and the hidden
+       password.
+     - The rules of the name hold. A name that the vault already holds is refused, ignoring case.
+       The origin rules hold: https, and an address on this computer or the local network only
+       when the switch is on. The limits hold: at most 100 secrets and 50 logins for a workflow,
+       and a value of at most 16384 characters.
+     - When a limit is reached, the form is refused with the reason: "This workflow holds 100
+       secrets.", "This workflow holds 50 logins.", or "The value is too long." Cancel closes the
+       form and saves nothing.
    - Rename: the user renames a secret or a login. The rules of the name hold. A name that the
-     vault already holds is refused, ignoring case. Runs that use the old name fail as unknown
-     until the node uses the new name.
+     vault already holds is refused, ignoring case. The permission rules of 007 that name the old
+     name move to the new name: a Deny rule still stops the renamed row, and the old name keeps
+     no rule. A node that calls "request with a secret" or "sign in with a login" with the old
+     name fails as unknown. A node that calls "ask for a secret" or "ask for a login" with the old
+     name gets a new protected card, because no row holds that name.
    - Replace: the user types a new value in a hidden field. The field is cleared when the save
      starts. The next request or fill uses the new value.
-   - Test: each secret has a Test button. It sends a GET request to the origin with the secret
-     and shows the status code, or the reason when the request fails (for example refused or
-     timeout). Test follows the address rules of a request with a secret: https, the switch for
+   - Test: each secret has a Test button. It sends a GET request to the origin with the secret and
+     shows the status code on the row, or the reason when the request fails (for example refused
+     or timeout). Test follows the address rules of a request with a secret: https, the switch for
      this computer and the local network, no redirect, the refusal of link-local and cloud
-     metadata addresses, and the time limit of 30 seconds. It never shows the value. Logins have
+     metadata addresses, and the time limit of 30 seconds. It never shows the value. Test does
+     not change the date last used. The result stays on the row until the next Test. Logins have
      no Test button: the fill at run time is the test.
    - Delete: the user deletes a secret or a login after a confirm (000). The value leaves the
      keychain at once. A request that has already started can end.
@@ -139,7 +150,7 @@ the user name or the password.
   what a saved login is.
 - Loading: while the vault reads the keychain, it shows "Loading…".
 - Keychain error: when the keychain cannot be read, the vault shows "Cannot read the vault." with
-  Retry. A request with a secret then fails with that reason until the vault reads again.
+  Retry. A request with a secret then fails with that reason until the keychain can be read again.
 - A secret whose value is missing (for example after an import, see 014) shows "Value missing".
   A request with it fails with that reason until the user replaces the value.
 - A protected card that waits counts as a question for the island and the notifications (see
@@ -266,6 +277,8 @@ All checks use a small test web service, written for the test.
   the next request uses the new value. Press Test: the vault shows the status code, and the logs
   hold no clear text of the value. With the switch for this computer off, press Test on a secret
   for `https://127.0.0.1:PORT`: the vault shows the reason, and the test service gets no request.
+- Rename a secret with a Deny rule for its name: the next POST is still refused, and asking with
+  the old name shows a new card.
 - Rename a workflow that holds a secret: the vault shows the same rows under the new name.
   Settings → Permissions shows the counts of each workflow with "Open vault", and no value.
 - A decision node and the responsible document have no tool of this spec.

@@ -1183,3 +1183,4 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 020, 010 | Does a renamed workflow keep its vault, and does a duplicate copy it? | A rename keeps the vault with the same rows. A duplicate starts with an empty vault. To confirm. |
 | 020, 012, 011 | What does a linked device or the phone show for the vault? | One muted line. Only the computer shows and manages the vault. To confirm. |
 | 020, glossary | What is the Korean word for Vault? | 보관함 (proposed). To confirm. |
+| 020, 007 | When the user renames a secret or a login, do the permission rules that name it move to the new name, or stay on the old name? | They move to the new name, so a Deny rule still stops the renamed row and the old name keeps no rule. To confirm. |
