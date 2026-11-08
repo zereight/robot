@@ -349,7 +349,6 @@ describe("the graph (spec 010)", () => {
     const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
     const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "B" }))
     await t.w((x) => x.connect(flow.id, a.id, b.id))
-    // A version that an older app kept names the two columns, with no `source`.
     await t.sql(
       "UPDATE workflow_version SET graph = ? WHERE workflow_id = ?",
       JSON.stringify({

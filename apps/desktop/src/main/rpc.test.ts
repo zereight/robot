@@ -141,7 +141,6 @@ describe("the requests of a linked device (spec 012)", () => {
 describe("the verdict answer at the boundary (spec 010)", () => {
   test("a comment over 2,000 characters is refused; trailing space does not count", async () => {
     const t = await setup()
-    // No card waits: the decode runs first, so a refusal names the input, not the card.
     expect(
       await t.ask("cards.answer", {
         cardId: "none",

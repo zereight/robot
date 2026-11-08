@@ -41,11 +41,6 @@ const Field = (props: { label: string; hint?: string; children: JSX.Element }) =
   </div>
 )
 
-/**
- * The side panel of one node (spec 010, flow 2): name, prompt, provider, model, reasoning level,
- * permission level and the connections of a text node; question, threshold, options and the target
- * of each option of a decision node. A change saves when the field loses focus.
- */
 export const NodePanel = (props: {
   workflow: WorkflowDetail
   node: WorkflowNode

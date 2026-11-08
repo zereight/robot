@@ -539,7 +539,6 @@ describe("the approval node (spec 010)", () => {
     await t.connect(first, g)
     const run = await t.start()
     await t.waitCard()
-    // The app starts again on the same data.
     const again = testRuntime({ databaseFile: file })
     const r = await again.runtime.runPromise(Runs.use((x) => x.get(run.id)))
     expect(r.state).toBe("failed")

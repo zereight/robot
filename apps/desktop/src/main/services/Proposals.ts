@@ -175,7 +175,6 @@ const parse = <T>(text: string | null): T | null => {
   }
 }
 
-/** A graph that a proposal kept, read through the single `source` field of its connections. */
 const graphParse = (text: string | null): WorkflowGraph | null => {
   const graph = parse<WorkflowGraph>(text)
   if (!graph) return null

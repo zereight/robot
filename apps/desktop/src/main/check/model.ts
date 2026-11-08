@@ -19,11 +19,6 @@ import {
 // rules that the app writes. The prompts are not in it: the check does not read what a node writes.
 //
 // How the form sees a run (spec 010, "Node input and output"):
-// - A node waits until each of its inputs has ended. An input passes on when its node ran. It also
-//   passes on from a decision node, when that node took the option of this connection.
-// - A node with no input runs at the start. A node with inputs, where no input passes on, is
-//   skipped. Otherwise it runs. A decision node takes one of its options. The check does not read
-//   the input, so it tries every option.
 // - The engine starts the ready node with the lowest number. The form does the same. Which node
 //   starts first does not change which nodes run, so the check does not try every order.
 // - A node that fails ends no connection that the check can use: a failure stops the run, or the

@@ -13,10 +13,6 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 
 /**
- * The cards in the chat that wait for the user (spec 003, flow 6; spec 007): an approval card, a
- * question card and the pick of a decision node. A card of a node belongs to a task. A card of the
- * chat (the guarded feedback) has no task.
- *
  * A card waits for one answer. Stop, and the end of the turn or of the task, close it and it goes
  * away. After an app restart no card is left that nobody answered: it is deleted, and so are the
  * tasks that waited for it (spec 005, 007).

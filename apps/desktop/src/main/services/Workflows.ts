@@ -247,11 +247,6 @@ export const readStoredCheck = (
   }
 }
 
-/**
- * A graph that a version kept, read again. A version from before the backup model has no `backup`
- * on its nodes: they have none (spec 006). A version from before the single `source` field names
- * the two columns: they read through it.
- */
 const versionGraph = (json: string): WorkflowGraph => {
   const graph = JSON.parse(json) as WorkflowGraph
   return {
