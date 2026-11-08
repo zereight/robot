@@ -6,10 +6,13 @@ import type { CheckOutcome } from "./workflowCheck.ts"
 import {
   APPROVAL_OUTPUTS,
   type ApprovalOutput,
-  connectionOutputKey,
+  type ConnectionSource,
+  connectionKey,
   NODES_MAX,
   type NodeKind,
   OPTIONS_MIN,
+  sameSource,
+  sourceKey,
   type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
@@ -225,7 +228,7 @@ export const graphFingerprint = (graph: WorkflowGraph): string =>
         n.threshold,
         n.options.map((o) => [o.id, o.label]),
       ]),
-    graph.connections.map((c) => `${c.from}|${c.to}|${connectionOutputKey(c) ?? ""}`).sort(),
+    graph.connections.map((c) => `${c.from}|${c.to}|${sourceKey(c.source) ?? ""}`).sort(),
   ])
 
 // ---------------------------------------------------------------------------------------------
@@ -350,8 +353,6 @@ export const compileGraph = (
     } else if ((spec.options ?? []).length > 0) return fail("text_options", String(place))
     const isNew = old === undefined
     if (isNew) fresh++
-    // A text node keeps its model fields. A decision or approval node keeps none: it uses no
-    // model. A decision or approval node keeps its question; a text node keeps none.
     const modelFields =
       spec.kind === "text"
         ? {
@@ -384,12 +385,11 @@ export const compileGraph = (
     const to = nodes[spec.to - 1]
     if (!from || !to) return fail("connection_node", `${spec.from}->${spec.to}`)
     if (from.id === to.id) return fail("connection_self", String(spec.from))
-    let optionId: string | null = null
-    let output: ApprovalOutput | null = null
+    let source: ConnectionSource = { kind: "text" }
     if (from.kind === "decision") {
       const option = from.options.find((o) => o.label === spec.option?.trim())
       if (!option) return fail("connection_option", `${spec.from}: ${spec.option ?? ""}`)
-      optionId = option.id
+      source = { kind: "option", optionId: option.id }
       if (spec.output !== undefined && spec.output !== "")
         return fail("connection_output_unexpected", String(spec.from))
     } else if (from.kind === "approval") {
@@ -397,21 +397,21 @@ export const compileGraph = (
         return fail("connection_option_unexpected", String(spec.from))
       const hit = APPROVAL_OUTPUTS.find((o) => o === spec.output?.trim().toLowerCase())
       if (!hit) return fail("connection_output", `${spec.from}: ${spec.output ?? ""}`)
-      output = hit
+      source = { kind: "verdict", verdict: hit }
     } else {
       if (spec.option !== undefined && spec.option !== "")
         return fail("connection_option_unexpected", String(spec.from))
       if (spec.output !== undefined && spec.output !== "")
         return fail("connection_output_unexpected", String(spec.from))
     }
-    const key = optionId ?? output ?? `${from.id}|${to.id}`
+    const key = connectionKey({ from: from.id, to: to.id, source })
     if (seen.has(key)) return fail("connection_twice", `${spec.from}->${spec.to}`)
     seen.add(key)
     // A connection that is kept keeps its id, so a restore of a version still finds it.
     const old = current.connections.find(
-      (c) => c.from === from.id && c.to === to.id && c.optionId === optionId && c.output === output,
+      (c) => c.from === from.id && c.to === to.id && sameSource(c.source, source),
     )
-    connections.push({ id: old?.id ?? newId(), from: from.id, to: to.id, optionId, output })
+    connections.push({ id: old?.id ?? newId(), from: from.id, to: to.id, source })
   }
   const graph: WorkflowGraph = { nodes, connections }
   if (graphFingerprint(graph) === graphFingerprint(current)) return fail("no_change", "")
@@ -506,17 +506,21 @@ export const graphChange = (
     if (was.number !== n.number) fields.push("number")
     if (fields.length > 0) changedNodes.push(change(n, fields, was))
   }
-  const key = (c: WorkflowConnection) => `${c.from}|${c.to}|${connectionOutputKey(c) ?? ""}`
+  const key = (c: WorkflowConnection) => `${c.from}|${c.to}|${sourceKey(c.source) ?? ""}`
   const oldKeys = new Set(before.connections.map(key))
   const newKeys = new Set(after.connections.map(key))
   const view = (c: WorkflowConnection, within: WorkflowGraph): GraphConnectionChange => {
     const from = within.nodes.find((n) => n.id === c.from)
     const to = within.nodes.find((n) => n.id === c.to)
+    const s = c.source
     return {
       from: { number: from?.number ?? 0, name: from?.name ?? "" },
       to: { number: to?.number ?? 0, name: to?.name ?? "" },
-      option: from?.options.find((o) => o.id === c.optionId)?.label ?? null,
-      output: c.output,
+      option:
+        s.kind === "option"
+          ? (from?.options.find((o) => o.id === s.optionId)?.label ?? null)
+          : null,
+      output: s.kind === "verdict" ? s.verdict : null,
     }
   }
   return {

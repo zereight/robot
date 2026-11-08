@@ -236,13 +236,17 @@ export interface NodeSpec {
   readonly question?: string
 }
 
+export type EdgeSpec =
+  | readonly [number, number]
+  | readonly [number, number, { readonly option: number }]
+  | readonly [number, number, { readonly output: "approve" | "reject" }]
+
 export interface FlowSpec {
   readonly provider: { openaiUrl: string; key: string }
   /** The permission level of the workflow. The app starts at "Ask for risky steps". */
   readonly level?: string
   readonly nodes: readonly NodeSpec[]
-  /** `[from, to, option]`: indexes into `nodes`; `option` is the index of the option of a decision node, or of the output (Approve, Reject) of an approval node. */
-  readonly edges?: readonly (readonly [number, number, number?])[]
+  readonly edges?: readonly EdgeSpec[]
 }
 
 /**
@@ -298,20 +302,18 @@ export const buildFlow = async (page: Page, spec: FlowSpec) =>
       })) as Made
       made.push(node)
     }
-    const outputs = ["approve", "reject"] as const
-    for (const [from, to, option] of spec.edges ?? []) {
-      const kind = spec.nodes[from]?.kind ?? "text"
-      const optionId =
-        kind === "decision" && option !== undefined
-          ? (made[from]?.options[option]?.id ?? null)
-          : null
-      const output = kind === "approval" && option !== undefined ? (outputs[option] ?? null) : null
+    for (const [from, to, key] of spec.edges ?? []) {
+      const source =
+        key === undefined
+          ? { kind: "text" }
+          : "option" in key
+            ? { kind: "option", optionId: made[from]?.options[key.option]?.id ?? "" }
+            : { kind: "verdict", verdict: key.output }
       await call("workflows.connect", {
         workflowId: flow?.id,
         from: made[from]?.id,
         to: made[to]?.id,
-        optionId,
-        output,
+        source,
       })
     }
     return flow?.id ?? ""

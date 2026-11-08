@@ -343,10 +343,10 @@ export const GraphEditor = (props: {
                     const to = () => graph().nodes.find((n) => n.id === c().to)
                     const label = () => {
                       const f = from()
-                      const output = c().output
-                      if (output !== null) return t(approvalOutputKey(output))
-                      if (c().optionId === null || f?.kind !== "decision") return undefined
-                      return f.options.find((o) => o.id === c().optionId)?.label
+                      const s = c().source
+                      if (s.kind === "verdict") return t(approvalOutputKey(s.verdict))
+                      if (s.kind !== "option" || f?.kind !== "decision") return undefined
+                      return f.options.find((o) => o.id === s.optionId)?.label
                     }
                     return (
                       <Show when={from() && to()}>

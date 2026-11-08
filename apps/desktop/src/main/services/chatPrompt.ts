@@ -99,11 +99,8 @@ export const runFactsText = (runs: readonly RunFact[]): string => {
   return out.join("\n")
 }
 
-/** The nodes and the connections, for a turn that may propose a change (spec 010, "Assistant"). */
-/** The words of an approval output, as the chat names it. */
 const OUTPUT_WORDS: Record<"approve" | "reject", string> = { approve: "Approve", reject: "Reject" }
 
-/** One node, as the chat sees it: the fields that the kind owns. */
 const nodeText = (n: WorkflowNode): string => {
   if (n.kind === "text")
     return `Node ${n.number} "${escapeOutside(n.name)}" (text node)${
@@ -123,8 +120,9 @@ export const graphText = (graph: WorkflowGraph): string => {
   const connections = graph.connections.map((c) => {
     const from = byId.get(c.from)
     const to = byId.get(c.to)
-    const option = from?.options.find((o) => o.id === c.optionId)
-    const output = c.output === null ? null : OUTPUT_WORDS[c.output]
+    const s = c.source
+    const option = s.kind === "option" ? from?.options.find((o) => o.id === s.optionId) : undefined
+    const output = s.kind === "verdict" ? OUTPUT_WORDS[s.verdict] : null
     const branch = option
       ? ` (option "${escapeOutside(option.label)}")`
       : output

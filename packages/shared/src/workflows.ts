@@ -28,9 +28,6 @@ export type ApprovalOutput = (typeof APPROVAL_OUTPUTS)[number]
 /** The comment of the user on an approval card has at most 2,000 characters (spec 010). */
 export const APPROVAL_COMMENT_MAX = 2000
 
-/** Which output of a node a connection leaves. Null is the single implicit output of a text node. */
-export type OutputKey = string | null
-
 /** Where a change of the responsible document came from (spec 002, "Responsible document history"). */
 export const DOCUMENT_SOURCES = ["editor", "proposal", "undo", "restore"] as const
 export type DocumentSource = (typeof DOCUMENT_SOURCES)[number]
@@ -116,32 +113,93 @@ export interface WorkflowNode {
   readonly y: number
 }
 
+/**
+ * Which output of its source node a connection leaves: the single output of a text node, one
+ * option of a decision node, or the answer of an approval node (spec 010).
+ */
+export const ConnectionSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("text") }),
+  Schema.Struct({ kind: Schema.Literal("option"), optionId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("verdict"), verdict: Schema.Literals(APPROVAL_OUTPUTS) }),
+])
+export type ConnectionSource = typeof ConnectionSource.Type
+
 export interface WorkflowConnection {
   readonly id: string
   readonly from: string
   readonly to: string
-  /** A decision node: the option that this connection leaves. Null for a text or approval node. */
-  readonly optionId: string | null
-  /** An approval node: the output that this connection leaves. Null for a text or decision node. */
-  readonly output: ApprovalOutput | null
+  /** Which output of the source node this connection leaves. */
+  readonly source: ConnectionSource
 }
 
-/** The outputs a node offers, derived from its kind. An approval node owns no option rows. */
-export const nodeOutputs = (node: WorkflowNode): readonly OutputKey[] => {
-  if (node.kind === "approval") return [...APPROVAL_OUTPUTS]
-  if (node.kind === "decision") return node.options.map((o) => o.id)
-  return [null]
+/** The source that the two columns of a connection row name: an option wins, then a verdict. */
+export const sourceOfColumns = (
+  optionId: string | null,
+  output: ApprovalOutput | null,
+): ConnectionSource =>
+  optionId !== null
+    ? { kind: "option", optionId }
+    : output !== null
+      ? { kind: "verdict", verdict: output }
+      : { kind: "text" }
+
+/** The two columns of a connection row that a source fills. */
+export const columnsOfSource = (
+  source: ConnectionSource,
+): { optionId: string | null; output: ApprovalOutput | null } =>
+  source.kind === "option"
+    ? { optionId: source.optionId, output: null }
+    : source.kind === "verdict"
+      ? { optionId: null, output: source.verdict }
+      : { optionId: null, output: null }
+
+/**
+ * The word of a source in a stored key: the option id, the verdict, or null for the single
+ * output of a text node. The fingerprint of a graph and the key of the check keep this form.
+ */
+export const sourceKey = (source: ConnectionSource): string | null =>
+  source.kind === "option" ? source.optionId : source.kind === "verdict" ? source.verdict : null
+
+/**
+ * Which output of which node a connection leaves, as text. Two connections share it when they
+ * leave the same output of the same node; two lines between the same text nodes share it too.
+ */
+export const connectionKey = (c: Pick<WorkflowConnection, "from" | "to" | "source">): string => {
+  const key = sourceKey(c.source)
+  return key === null ? `${c.from}|${c.to}` : `${c.from}|${key}`
+}
+
+/** True when two sources leave the same output. */
+export const sameSource = (a: ConnectionSource, b: ConnectionSource): boolean =>
+  a.kind === "text"
+    ? b.kind === "text"
+    : a.kind === "option"
+      ? b.kind === "option" && b.optionId === a.optionId
+      : b.kind === "verdict" && b.verdict === a.verdict
+
+/** A connection read from storage: the single field, or the two fields of a graph stored before it. */
+export interface StoredConnection {
+  readonly id: string
+  readonly from: string
+  readonly to: string
+  readonly source?: ConnectionSource | undefined
+  readonly optionId?: string | null | undefined
+  readonly output?: ApprovalOutput | null | undefined
 }
 
 /**
- * Which output a connection leaves. `connect` is the single writer and never sets both fields;
- * a reader that needs the output uses this and never reads one field alone.
+ * A connection of a stored graph, read through the single field. A graph from before the field
+ * names an option id, a verdict, or neither: neither leaves the single output (spec 010).
  */
-export const connectionOutputKey = (c: WorkflowConnection): OutputKey => {
-  if (c.optionId !== null && c.output !== null)
-    throw new Error("A connection has an option and an output.")
-  return c.optionId ?? c.output
-}
+export const connectionFromJson = (c: StoredConnection): WorkflowConnection => ({
+  id: c.id,
+  from: c.from,
+  to: c.to,
+  source:
+    c.source !== undefined && c.source !== null
+      ? c.source
+      : sourceOfColumns(c.optionId ?? null, c.output ?? null),
+})
 
 export interface WorkflowGraph {
   readonly nodes: readonly WorkflowNode[]
@@ -252,7 +310,9 @@ export type GraphProblem =
 export const graphProblems = (graph: WorkflowGraph): readonly GraphProblem[] => {
   const problems: GraphProblem[] = []
   if (graph.nodes.length > NODES_MAX) problems.push({ code: "nodes_full" })
-  const wired = new Set(graph.connections.map((c) => c.optionId).filter((id) => id !== null))
+  const wired = new Set(
+    graph.connections.flatMap((c) => (c.source.kind === "option" ? [c.source.optionId] : [])),
+  )
   for (const node of graph.nodes) {
     if (node.kind === "decision") {
       if (node.options.length < OPTIONS_MIN)

@@ -34,7 +34,7 @@ const node = (n: number, extra: Partial<WorkflowNode> = {}): WorkflowNode => ({
 
 const current: WorkflowGraph = {
   nodes: [node(1), node(2)],
-  connections: [{ id: "c1", from: "n1", to: "n2", optionId: null, output: null }],
+  connections: [{ id: "c1", from: "n1", to: "n2", source: { kind: "text" } }],
 }
 
 let counter = 0
@@ -242,9 +242,48 @@ describe("compileGraph (spec 002, a graph change)", () => {
       effort: null,
       options: [],
     })
-    expect(r.graph.connections[1]).toMatchObject({ optionId: null, output: "approve" })
+    expect(r.graph.connections[1]).toMatchObject({
+      source: { kind: "verdict", verdict: "approve" },
+    })
     const change = graphChange(current, r.graph)
     expect(change.addedConnections[1]).toMatchObject({ option: null, output: "approve" })
+  })
+
+  test("two approval nodes take the same output; one node takes it once", () => {
+    const gate = (name: string) => ({ kind: "approval" as const, name, question: "Ship it?" })
+    const r = compile({
+      nodes: [
+        { keep: 1, kind: "text", name: "Node 1" },
+        gate("First"),
+        gate("Second"),
+        { keep: 2, kind: "text", name: "Node 2" },
+      ],
+      connections: [
+        { from: 1, to: 2 },
+        { from: 2, to: 4, output: "Approve" },
+        { from: 3, to: 4, output: "Approve" },
+      ],
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.graph.connections.map((c) => c.source)).toContainEqual({
+      kind: "verdict",
+      verdict: "approve",
+    })
+    expect(
+      compile({
+        nodes: [
+          { keep: 1, kind: "text", name: "Node 1" },
+          gate("First"),
+          { keep: 2, kind: "text", name: "Node 2" },
+        ],
+        connections: [
+          { from: 1, to: 2 },
+          { from: 2, to: 3, output: "Approve" },
+          { from: 2, to: 1, output: "Approve" },
+        ],
+      }),
+    ).toMatchObject({ ok: false, error: "connection_twice" })
   })
 
   test("an approval node refuses options and model fields, and a connection without its output", () => {

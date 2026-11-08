@@ -27,7 +27,7 @@ const setup = async () => {
   const b = await w((x) =>
     x.addNode(flow.id, { kind: "text", name: "Write", prompt: "Write the report." }),
   )
-  await w((x) => x.connect(flow.id, a.id, b.id, null))
+  await w((x) => x.connect(flow.id, a.id, b.id))
   let turn = 0
   /** A proposal of the chat; every call is a turn of its own unless `id` is given. */
   const propose = (

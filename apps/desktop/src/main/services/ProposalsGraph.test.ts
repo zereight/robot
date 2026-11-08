@@ -53,7 +53,7 @@ const setup = async () => {
   const b = await w((x) =>
     x.addNode(flow.id, { kind: "text", name: "Write", prompt: "Write the report." }),
   )
-  await w((x) => x.connect(flow.id, a.id, b.id, null))
+  await w((x) => x.connect(flow.id, a.id, b.id))
   let turn = 0
   const propose = (change: Change, id = `turn-${++turn}`) =>
     run(
@@ -304,12 +304,22 @@ describe("Accept runs the check again on the server (spec 010)", () => {
         ?.graph as string,
     ) as {
       nodes: { id: string }[]
-      connections: { id: string; from: string; to: string; optionId: null }[]
+      connections: { id: string; from: string; to: string; source: { kind: "text" } }[]
     }
     const [n1, n2] = g.nodes
     g.connections = [
-      { id: "c1", from: (n1 as { id: string }).id, to: (n2 as { id: string }).id, optionId: null },
-      { id: "c2", from: (n2 as { id: string }).id, to: (n1 as { id: string }).id, optionId: null },
+      {
+        id: "c1",
+        from: (n1 as { id: string }).id,
+        to: (n2 as { id: string }).id,
+        source: { kind: "text" },
+      },
+      {
+        id: "c2",
+        from: (n2 as { id: string }).id,
+        to: (n1 as { id: string }).id,
+        source: { kind: "text" },
+      },
     ]
     await t.sql("UPDATE proposal SET graph = ? WHERE id = ?", JSON.stringify(g), id)
     expect(await t.exit((x) => x.accept(id))).toBe("proposal_check_problem")

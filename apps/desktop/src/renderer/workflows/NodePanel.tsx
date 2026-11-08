@@ -1,15 +1,14 @@
 import {
   APPROVAL_OUTPUTS,
-  type ApprovalOutput,
-  connectionOutputKey,
+  type ConnectionSource,
   isLooser,
   type MessageKey,
   type ModelChoice,
   type NodePatch,
   OPTIONS_MIN,
-  type OutputKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
+  sameSource,
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
@@ -45,8 +44,7 @@ const Field = (props: { label: string; hint?: string; children: JSX.Element }) =
 /**
  * The side panel of one node (spec 010, flow 2): name, prompt, provider, model, reasoning level,
  * permission level and the connections of a text node; question, threshold, options and the target
- * of each option of a decision node; question and the target of each output of an approval node.
- * A change saves when the field loses focus.
+ * of each option of a decision node. A change saves when the field loses focus.
  */
 export const NodePanel = (props: {
   workflow: WorkflowDetail
@@ -90,14 +88,14 @@ export const NodePanel = (props: {
     PERMISSION_LEVELS.filter((l) => !isLooser(l, props.workflow.permission))
   const others = () => graph().nodes.filter((n) => n.id !== props.node.id)
   const outgoing = () =>
-    graph().connections.filter((c) => c.from === props.node.id && connectionOutputKey(c) === null)
+    graph().connections.filter((c) => c.from === props.node.id && c.source.kind === "text")
   const nodeOf = (id: string) => graph().nodes.find((n) => n.id === id)
-  const targetOf = (key: OutputKey) =>
-    graph().connections.find((c) => c.from === props.node.id && connectionOutputKey(c) === key)
+  const targetOf = (key: ConnectionSource) =>
+    graph().connections.find((c) => c.from === props.node.id && sameSource(c.source, key))
 
-  const setTarget = (key: { optionId: string | null; output: ApprovalOutput | null }, to: string) =>
+  const setTarget = (key: ConnectionSource, to: string) =>
     guard(async () => {
-      const existing = targetOf(key.optionId ?? key.output)
+      const existing = targetOf(key)
       if (existing) {
         if (existing.to === to) return
         await call("workflows.disconnect", { id: existing.id })
@@ -107,8 +105,7 @@ export const NodePanel = (props: {
           workflowId: props.workflow.id,
           from: props.node.id,
           to,
-          optionId: key.optionId,
-          output: key.output,
+          source: key,
         })
     })
 
@@ -169,15 +166,23 @@ export const NodePanel = (props: {
                               output: t(approvalOutputKey(output)),
                             })}
                             data-testid="node-option-target"
-                            value={targetOf(output)?.to ?? ""}
+                            value={targetOf({ kind: "verdict", verdict: output })?.to ?? ""}
                             onChange={(e) =>
-                              void setTarget({ optionId: null, output }, e.currentTarget.value)
+                              void setTarget(
+                                { kind: "verdict", verdict: output },
+                                e.currentTarget.value,
+                              )
                             }
                           >
                             <option value="">{t("node.target.none")}</option>
                             <Keyed each={others()} by={(n) => n.id}>
                               {(n) => (
-                                <option value={n().id} selected={targetOf(output)?.to === n().id}>
+                                <option
+                                  value={n().id}
+                                  selected={
+                                    targetOf({ kind: "verdict", verdict: output })?.to === n().id
+                                  }
+                                >
                                   {n().number}. {n().name}
                                 </option>
                               )}
@@ -238,10 +243,10 @@ export const NodePanel = (props: {
                           class={styles.control}
                           aria-label={t("node.option.target", { n: i() + 1 })}
                           data-testid="node-option-target"
-                          value={targetOf(option().id)?.to ?? ""}
+                          value={targetOf({ kind: "option", optionId: option().id })?.to ?? ""}
                           onChange={(e) =>
                             void setTarget(
-                              { optionId: option().id, output: null },
+                              { kind: "option", optionId: option().id },
                               e.currentTarget.value,
                             )
                           }
@@ -251,7 +256,9 @@ export const NodePanel = (props: {
                             {(n) => (
                               <option
                                 value={n().id}
-                                selected={targetOf(option().id)?.to === n().id}
+                                selected={
+                                  targetOf({ kind: "option", optionId: option().id })?.to === n().id
+                                }
                               >
                                 {n().number}. {n().name}
                               </option>

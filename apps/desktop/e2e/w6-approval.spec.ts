@@ -2,9 +2,6 @@ import { expect, type Page, test } from "@playwright/test"
 import { buildFlow, launch, shot, startRunCall } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
-// Spec 010: an approval node stops the run and asks the user to approve or reject, with an
-// optional comment. The window shows the answer, the comment and the time.
-
 const env = {
   ROBOT_TEST_OPENAI_URL: "",
   ROBOT_TEST_OPENAI_KEY: "",
@@ -33,11 +30,10 @@ test("run: an approval node waits for the user; approve with a comment goes on",
     ],
     edges: [
       [0, 1],
-      [1, 2, 0],
+      [1, 2, { output: "approve" }],
     ],
   })
   await page.getByTestId("workflow-run").click()
-  // The card shows the question and the result of node 1; the run waits.
   await expect(gate(page)).toBeVisible()
   await expect(gate(page).getByTestId("card-summary")).toHaveText("Ship it?")
   await expect(gate(page).getByTestId("card-verdict-input")).toHaveText("You said: Draft")
@@ -48,12 +44,10 @@ test("run: an approval node waits for the user; approve with a comment goes on",
   await gate(page).getByTestId("card-approve").click()
   await expect(page.getByTestId("card-verdict")).toHaveCount(0)
   await expect(page.getByTestId("card-answered")).toContainText("Approved")
-  // Node 3 runs and its input ends with the comment after its line.
   await expect(page.getByTestId("run-state")).toHaveText("Done")
   await expect(page.getByTestId("run-node-input-3")).toContainText("Comment from the user:")
   const input = await page.getByTestId("run-node-input-3").textContent()
   expect(input?.endsWith("Comment from the user:\nShorter")).toBe(true)
-  // The run view shows the answer, the comment and the time.
   await expect(page.getByTestId("run-node-approval-2")).toContainText("Answer: Approved")
   await expect(page.getByTestId("run-node-approval-2")).toContainText("Comment: Shorter")
   await expect(page.getByTestId("run-node-approval-2").locator("span").nth(2)).not.toBeEmpty()
@@ -76,8 +70,8 @@ test("run: reject follows the reject output; an output with no connection skips 
     ],
     edges: [
       [0, 1],
-      [1, 2, 0],
-      [1, 3, 1],
+      [1, 2, { output: "approve" }],
+      [1, 3, { output: "reject" }],
     ],
   })
   await startRunCall(page, workflowId)
@@ -102,12 +96,9 @@ test("graph: an approval node is added on the canvas with its own shape; the pan
   await expect(node).toHaveCount(1)
   await expect(node).toHaveAttribute("data-kind", "approval")
   await expect(page.getByTestId("graph-node-kind")).toContainText("Approval node")
-  // Its own shape: a solid card with a snipped corner, not the card of a text node and not the
-  // dashed pill of a decision node.
   await expect(node).toHaveCSS("border-style", "solid")
   await expect(node).toHaveCSS("border-bottom-left-radius", "0px")
   await expect(node).not.toHaveCSS("border-radius", "999px")
-  // The panel edits the question and shows the two outputs with their targets.
   await expect(page.getByTestId("node-question")).toHaveValue("Approve this run?")
   await page.getByTestId("node-question").fill("Ship it?")
   await page.getByTestId("node-question").press("Tab")

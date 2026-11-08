@@ -77,7 +77,7 @@ const setup = async (level: PermissionLevel = "ask_risky") => {
       }),
     ),
   )
-  await run(Workflows.use((w) => w.connect(flow.id, a.id, b.id, null)))
+  await run(Workflows.use((w) => w.connect(flow.id, a.id, b.id)))
   const tools = await run(
     Effect.gen(function* () {
       return makeAssistantTools({
@@ -109,7 +109,7 @@ const setup = async (level: PermissionLevel = "ask_risky") => {
     ask: async (step, summary) => {
       asked.push({ step, summary })
       if (reply === "throw") throw new Error("stopped")
-      return { answer: reply, inChat: true }
+      return { answer: reply, answeredAt: Date.now(), inChat: true }
     },
     ...extra,
   })
@@ -577,6 +577,26 @@ describe("changes of the graph (spec 010: add, edit and remove nodes and connect
     expect((await t.graph()).connections).toHaveLength(1)
   })
 
+  test("two approval nodes take the same output, and later changes still save", async () => {
+    const t = await setup()
+    expect(
+      (await t.call("add_node", { kind: "approval", name: "First", question: "Ship it?" })).outcome
+        .failed,
+    ).toBe(false)
+    expect(
+      (await t.call("add_connection", { from: 3, to: 2, output: "Approve" })).outcome.failed,
+    ).toBe(false)
+    expect(
+      (await t.call("add_node", { kind: "approval", name: "Second", question: "Sure?" })).outcome
+        .failed,
+    ).toBe(false)
+    expect(
+      (await t.call("add_connection", { from: 4, to: 1, output: "Approve" })).outcome.failed,
+    ).toBe(false)
+    expect((await t.call("edit_node", { node: 1, name: "Fetched" })).outcome.failed).toBe(false)
+    expect((await t.graph()).nodes[0]?.name).toBe("Fetched")
+  })
+
   test("a connection leaves the graph with its option", async () => {
     const t = await setup()
     await decide(t, ["A", "B"])
@@ -649,7 +669,7 @@ describe("a stale change is refused (spec 010: the user changes the workflow whi
     const t = await setup()
     const ask = async () => {
       await t.run(Workflows.use((w) => w.updateNode(t.a.id, { prompt: "Changed by the user" })))
-      return { answer: "allow", inChat: true }
+      return { answer: "allow", answeredAt: Date.now(), inChat: true }
     }
     const r = await t.call(
       "add_node",
@@ -1070,7 +1090,7 @@ describe("the approval card, the account, and the switch (spec 002, 007, 012)", 
         outside,
         ask: async () => {
           await t.run(Runs.use((x) => x.start({ workflowId: t.flow.id })))
-          return { answer: "allow", inChat: true }
+          return { answer: "allow", answeredAt: Date.now(), inChat: true }
         },
       },
     )
@@ -1092,7 +1112,7 @@ describe("the approval card, the account, and the switch (spec 002, 007, 012)", 
         ask: async () => {
           await t.run(Workflows.use((w) => w.rename(t.flow.id, "Other")))
           await t.run(Workflows.use((w) => w.updateNode(t.a.id, { prompt: "Changed by hand." })))
-          return { answer: "allow", inChat: true }
+          return { answer: "allow", answeredAt: Date.now(), inChat: true }
         },
       },
     )
@@ -1204,7 +1224,7 @@ describe("the approval card, the account, and the switch (spec 002, 007, 012)", 
         outside,
         ask: async () => {
           t.actAs({ mayChange: false, device: "Phone", server: "MacBook 2" })
-          return { answer: "allow", inChat: true }
+          return { answer: "allow", answeredAt: Date.now(), inChat: true }
         },
       },
     )
@@ -1223,7 +1243,7 @@ describe("the approval card, the account, and the switch (spec 002, 007, 012)", 
         outside,
         ask: async () => {
           await t.run(Workflows.use((w) => w.setPermission(t.flow.id, "read_only")))
-          return { answer: "allow", inChat: true }
+          return { answer: "allow", answeredAt: Date.now(), inChat: true }
         },
       },
     )

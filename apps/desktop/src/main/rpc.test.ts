@@ -137,3 +137,28 @@ describe("the requests of a linked device (spec 012)", () => {
     ).toMatchObject({ ok: false, error: { code: "card_gone" } })
   })
 })
+
+describe("the verdict answer at the boundary (spec 010)", () => {
+  test("a comment over 2,000 characters is refused; trailing space does not count", async () => {
+    const t = await setup()
+    // No card waits: the decode runs first, so a refusal names the input, not the card.
+    expect(
+      await t.ask("cards.answer", {
+        cardId: "none",
+        answer: { kind: "verdict", verdict: "approve", comment: "x".repeat(2001) },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid_input" } })
+    expect(
+      await t.ask("cards.answer", {
+        cardId: "none",
+        answer: { kind: "verdict", verdict: "approve", comment: `${"x".repeat(1999)}  ` },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "card_gone" } })
+    expect(
+      await t.ask("cards.answer", {
+        cardId: "none",
+        answer: { kind: "verdict", verdict: "approve", comment: "x".repeat(2000) },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "card_gone" } })
+  })
+})

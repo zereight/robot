@@ -6,6 +6,7 @@ import {
   type NodeKind,
   problemNodeIds,
   problemPath,
+  type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
 } from "@robot/shared"
@@ -71,10 +72,10 @@ const graphWith = (
     node("j", 4, "text", text(3)),
   ],
   connections: [
-    { id: "c1", from: "d", to: "a", optionId: "d-o1", output: null },
-    { id: "c2", from: "d", to: "b", optionId: "d-o2", output: null },
-    { id: "c3", from: "a", to: "j", optionId: null, output: null },
-    { id: "c4", from: "b", to: "j", optionId: null, output: null },
+    { id: "c1", from: "d", to: "a", source: { kind: "option", optionId: "d-o1" } },
+    { id: "c2", from: "d", to: "b", source: { kind: "option", optionId: "d-o2" } },
+    { id: "c3", from: "a", to: "j", source: { kind: "text" } },
+    { id: "c4", from: "b", to: "j", source: { kind: "text" } },
   ],
 })
 
@@ -128,8 +129,8 @@ describe("no text of the user reaches the checker", () => {
     const loop: WorkflowGraph = {
       nodes: [node("a", 1, "text", bad), node("b", 2, "text", bad)],
       connections: [
-        { id: "c1", from: "a", to: "b", optionId: null, output: null },
-        { id: "c2", from: "b", to: "a", optionId: null, output: null },
+        { id: "c1", from: "a", to: "b", source: { kind: "text" } },
+        { id: "c2", from: "b", to: "a", source: { kind: "text" } },
       ],
     }
     const [one] = await checkSeen(loop)
@@ -176,13 +177,19 @@ const graphOf = (spec: Spec): WorkflowGraph => {
       question: gate.has(id) ? `Question ${id}` : "",
       options: gate.has(id) ? [] : options.map((label) => ({ id: `${id}:${label}`, label })),
     })),
-    connections: spec.edges.map(([from, to, option], i) => ({
-      id: `c${i}`,
-      from,
-      to,
-      optionId: gate.has(from) || option === undefined ? null : `${from}:${option}`,
-      output: gate.has(from) && (option === "approve" || option === "reject") ? option : null,
-    })),
+    connections: spec.edges.map(
+      ([from, to, option], i): WorkflowConnection => ({
+        id: `c${i}`,
+        from,
+        to,
+        source:
+          !gate.has(from) && option !== undefined
+            ? { kind: "option", optionId: `${from}:${option}` }
+            : gate.has(from) && (option === "approve" || option === "reject")
+              ? { kind: "verdict", verdict: option }
+              : { kind: "text" },
+      }),
+    ),
   }
 }
 

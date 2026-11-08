@@ -621,8 +621,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           return passesOption(c, from)
         }
         const passesOption = (c: (typeof graph.connections)[number], from: Done): Done | null => {
-          if (from.node.kind === "decision") return c.optionId === from.optionId ? from : null
-          if (from.node.kind === "approval") return c.output === from.output ? from : null
+          const s = c.source
+          if (s.kind === "option") return s.optionId === from.optionId ? from : null
+          if (s.kind === "verdict") return s.verdict === from.output ? from : null
           return from
         }
 
@@ -1032,16 +1033,12 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         return { state: "done", code: null, text: null, result: "", optionId: pickedId }
       }
 
-      // --- an approval node -----------------------------------------------------------------
-
       const runApproval = async (
         n: NodeRun,
         taskId: string,
         input: string,
         marks: TaskMarks,
       ): Promise<End> => {
-        // The node shows a card with the question and its input and waits for the user (spec 010,
-        // "Flows", item 7). Stop ends the wait, as it ends any card that waits.
         const reply = await askCard(
           n,
           taskId,
@@ -1073,7 +1070,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           code: null,
           text: null,
           result: approvalResultOf(input, comment),
-          verdict: { verdict, comment: comment === "" ? null : comment, answeredAt: Date.now() },
+          verdict: {
+            verdict,
+            comment: comment === "" ? null : comment,
+            answeredAt: reply.answeredAt,
+          },
         }
       }
 

@@ -209,9 +209,6 @@
   background: var(--c-selected);
 }
 
-/* The three node kinds differ in shape and icon, not in colour (DESIGN.md: one accent).
-   A text node is a card that writes. A decision node is a dashed pill that picks a path. An
-   approval node is a solid card with a snipped corner, where the user stops and decides. */
 .node[data-kind="text"] {
   border-radius: var(--radius-s);
 }
@@ -330,7 +327,6 @@ textarea.control {
   align-items: center;
 }
 
-/* An output of an approval node: its label is fixed, only the target changes. */
 .outputRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

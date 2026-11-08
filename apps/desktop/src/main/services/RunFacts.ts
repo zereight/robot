@@ -23,14 +23,13 @@ import { AppError } from "./errors.ts"
  * - `task.state`: one of queued, running, waiting, done, failed, blocked, cancelled.
  * - `task.error_code` and `task.error_detail`: the reason of the state.
  *   queued: `slot` (waits for a free slot) or `behind` (detail: the node that it waits behind).
- *   waiting: `approval` (detail: the step), `question`, `pick` (detail: `threshold`, `timeout`
- *   or `off`), or `verdict`. failed and blocked: the text of the reason in `error_detail`.
- *   cancelled: `user` or `run`.
- * - `task.result`, `task.decision` (JSON `{ "<option label>": probability }`), `task.option_id`
- *   and `task.verdict` (JSON with the answer, the comment and the time of an approval node).
+ *   waiting: `approval` (detail: the step), `question`, or `pick` (detail: `threshold`, `timeout`
+ *   or `off`). failed and blocked: the text of the reason in `error_detail`. cancelled: `user`
+ *   or `run`.
+ * - `task.result`, `task.decision` (JSON `{ "<option label>": probability }`) and `task.option_id`.
  *
  * The engine reads the feedback for a node with {@link RunFactsService.feedbackFor} when the node
- * starts, and adds it to the input of a text node. A decision or approval node does not read it.
+ * starts, and adds it to the input of a text node. A decision node does not read it.
  *
  * An engine that keeps its state elsewhere can replace this layer.
  */
@@ -272,8 +271,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
           if (!task) return live(from.id, trail)
           if (["running", "waiting", "queued"].includes(task.state)) return true
           if (task.state !== "done" && from.continue_on_failure === 0) return false
-          // A decision node passes only the connection of the option that it took. An approval
-          // node passes only the connection of the output that the user picked.
+          // A decision node passes only the connection of the option that it took.
           if (from.kind === "approval")
             return c.output !== null && c.output === verdictAnswerOf(task.verdict)?.verdict
           return c.option_id === null || c.option_id === task.option_id

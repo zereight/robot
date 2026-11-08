@@ -13,9 +13,9 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 
 /**
- * The cards in the chat that wait for the user (spec 003, flow 6; spec 007; spec 010): an approval
- * card, a question card, the pick of a decision node and the verdict of an approval node. A card
- * of a node belongs to a task. A card of the chat (the guarded feedback) has no task.
+ * The cards in the chat that wait for the user (spec 003, flow 6; spec 007): an approval card, a
+ * question card and the pick of a decision node. A card of a node belongs to a task. A card of the
+ * chat (the guarded feedback) has no task.
  *
  * A card waits for one answer. Stop, and the end of the turn or of the task, close it and it goes
  * away. After an app restart no card is left that nobody answered: it is deleted, and so are the
@@ -31,7 +31,6 @@ export interface CardAsk {
   readonly nodeName: string | null
   readonly kind: RunCard["kind"]
   readonly summary: string
-  /** A verdict card: the input of the approval node. */
   readonly input?: string | null
   readonly step: RunCard["step"]
   readonly once: boolean
@@ -54,10 +53,10 @@ export interface CardAsk {
 /** What the answer to a card is. A card of a text answer gives the text. */
 export interface CardReply {
   readonly answer: string
+  readonly answeredAt: number
   readonly inChat: boolean
   /** The name of the linked device that answered, or null for this computer (spec 012). */
   readonly device?: string | null
-  /** A verdict card: the comment of the user, without the space around it. */
   readonly comment?: string
 }
 
@@ -226,14 +225,21 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
         const waiter = waiters.get(id)
         if (!row || !waiter || row.answered_at !== null) return false
         waiters.delete(id)
+        const answeredAt = Date.now()
         db.run(
           "UPDATE task_card SET answer = ?, answered_in_chat = ?, answered_at = ? WHERE id = ?",
           answer,
           inChat ? 1 : 0,
-          Date.now(),
+          answeredAt,
           id,
         )
-        waiter.resolve({ answer, inChat, device, ...(comment === undefined ? {} : { comment }) })
+        waiter.resolve({
+          answer,
+          answeredAt,
+          inChat,
+          device,
+          ...(comment === undefined ? {} : { comment }),
+        })
         changed(row.workflow_id, row.run_id)
         return true
       }
@@ -263,8 +269,6 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
               if (actor) return yield* new AppError({ code: "not_allowed" })
               close(cardId, "given_back", false)
             } else if (answer.kind === "verdict") {
-              // Only the user answers, as other cards: a linked device answers with its name
-              // (spec 012). The comment is trimmed and holds at most 2,000 characters (spec 010).
               const comment = answer.comment.trim()
               if (charLength(comment) > APPROVAL_COMMENT_MAX)
                 return yield* new AppError({ code: "invalid_input" })

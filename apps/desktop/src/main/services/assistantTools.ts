@@ -5,8 +5,9 @@ import {
   assistantStepText,
   BACKUP_REFUSED_TEXT,
   type CheckProblem,
+  type ConnectionSource,
   carriesProgramMark,
-  connectionOutputKey,
+  connectionKey,
   GRAPH_PROPOSAL_TEXT_MAX,
   graphChange,
   graphChangeCardText,
@@ -22,6 +23,7 @@ import {
   type OutsideSource,
   type PermissionLevel,
   redactSecrets,
+  sameSource,
   THRESHOLD_DEFAULT,
   type WorkflowConnection,
   type WorkflowGraph,
@@ -436,7 +438,6 @@ const replaceNode = (graph: WorkflowGraph, next: WorkflowNode): WorkflowGraph =>
   nodes: graph.nodes.map((n) => (n.id === next.id ? next : n)),
 })
 
-/** The rules of the form of a graph that every change must keep (spec 010, "Decision node rules", "Approval node rules"). */
 export const shapeFault = (graph: WorkflowGraph): string | null => {
   if (graph.nodes.length > NODES_MAX) return `A workflow has at most ${NODES_MAX} nodes.`
   const ids = new Map(graph.nodes.map((n) => [n.id, n]))
@@ -467,18 +468,17 @@ export const shapeFault = (graph: WorkflowGraph): string | null => {
     const to = ids.get(c.to)
     if (!from || !to) return "A connection names a node that does not exist."
     if (from.id === to.id) return `A connection joins node ${from.number} to itself.`
-    if (c.optionId !== null && c.output !== null)
-      return `A connection of node ${from.number} cannot name an option and an output.`
+    const s = c.source
     if (from.kind === "decision") {
-      if (c.output !== null || !from.options.some((o) => o.id === c.optionId))
+      if (s.kind !== "option" || !from.options.some((o) => o.id === s.optionId))
         return `A connection of the decision node ${from.number} must name one of its options.`
     } else if (from.kind === "approval") {
-      if (c.optionId !== null || c.output === null || !APPROVAL_OUTPUTS.includes(c.output))
+      if (s.kind !== "verdict")
         return `A connection of the approval node ${from.number} must name Approve or Reject.`
-    } else if (c.optionId !== null || c.output !== null) {
+    } else if (s.kind !== "text") {
       return `Node ${from.number} is a text node and has no options.`
     }
-    const key = connectionOutputKey(c) ?? `${c.from}|${c.to}`
+    const key = connectionKey(c)
     if (seen.has(key)) return `Node ${from.number} has this connection already.`
     seen.add(key)
   }
@@ -497,7 +497,6 @@ const optionOf = (n: WorkflowNode, label: unknown) => {
   return n.options.find((o) => o.label === want)
 }
 
-/** The output of an approval node that a name means, or null for any other name. */
 const outputOf = (name: unknown): ApprovalOutput | null => {
   if (typeof name !== "string") return null
   return APPROVAL_OUTPUTS.find((o) => o === name.trim().toLowerCase()) ?? null
@@ -557,29 +556,30 @@ const addNode = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
     if (o.to === null) continue
     const target = graph.nodes.find((x) => x.number === o.to)
     if (!target) return fail(`The option "${o.label}" leads to node ${o.to}, which does not exist.`)
+    const option = next.options[i]
+    if (!option) return fail(`The option "${o.label}" of the new node does not exist.`)
     links.push({
       id: randomUUID(),
       from: next.id,
       to: target.id,
-      optionId: next.options[i]?.id ?? null,
-      output: null,
+      source: { kind: "option", optionId: option.id },
     })
   }
   if (a.after !== undefined && a.after !== null) {
     const before = find(graph, a.after)
     if (typeof before === "string") return fail(before)
-    let optionId: string | null = null
-    let output: ApprovalOutput | null = null
+    let source: ConnectionSource = { kind: "text" }
     if (before.kind === "decision") {
       const option = optionOf(before, a.afterOption)
       if (!option) return fail(`Name one option of node ${before.number} in "afterOption".`)
-      optionId = option.id
+      source = { kind: "option", optionId: option.id }
     } else if (before.kind === "approval") {
-      output = outputOf(a.afterOutput)
+      const output = outputOf(a.afterOutput)
       if (!output)
         return fail(`Name "Approve" or "Reject" of node ${before.number} in "afterOutput".`)
+      source = { kind: "verdict", verdict: output }
     }
-    links.push({ id: randomUUID(), from: before.id, to: next.id, optionId, output })
+    links.push({ id: randomUUID(), from: before.id, to: next.id, source })
   }
   return {
     ok: true,
@@ -701,22 +701,22 @@ const endsOf = (graph: WorkflowGraph, a: Record<string, unknown>) => {
 const addConnection = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
   const ends = endsOf(graph, a)
   if (typeof ends === "string") return fail(ends)
-  let optionId: string | null = null
-  let output: ApprovalOutput | null = null
+  let source: ConnectionSource = { kind: "text" }
   if (ends.from.kind === "decision") {
     const option = optionOf(ends.from, a.option)
     if (!option)
       return fail(
         `Name one option of node ${ends.from.number}: ${ends.from.options.map((o) => `"${o.label}"`).join(", ")}.`,
       )
-    optionId = option.id
+    source = { kind: "option", optionId: option.id }
     if (a.output !== undefined && a.output !== "")
       return fail(`Node ${ends.from.number} is a decision node and has no outputs.`)
   } else if (ends.from.kind === "approval") {
     if (a.option !== undefined && a.option !== "")
       return fail(`Node ${ends.from.number} is an approval node and has no options.`)
-    output = outputOf(a.output)
+    const output = outputOf(a.output)
     if (!output) return fail(`Name one output of node ${ends.from.number}: "Approve" or "Reject".`)
+    source = { kind: "verdict", verdict: output }
   } else {
     if (a.option !== undefined && a.option !== "")
       return fail(`Node ${ends.from.number} is a text node and has no options.`)
@@ -729,7 +729,7 @@ const addConnection = (graph: WorkflowGraph, a: Record<string, unknown>): Build 
       ...graph,
       connections: [
         ...graph.connections,
-        { id: randomUUID(), from: ends.from.id, to: ends.to.id, optionId, output },
+        { id: randomUUID(), from: ends.from.id, to: ends.to.id, source },
       ],
     },
     done: `Node ${ends.from.number} is connected to node ${ends.to.number}.`,
@@ -739,24 +739,20 @@ const addConnection = (graph: WorkflowGraph, a: Record<string, unknown>): Build 
 const removeConnection = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
   const ends = endsOf(graph, a)
   if (typeof ends === "string") return fail(ends)
-  let optionId: string | null = null
-  let output: ApprovalOutput | null = null
+  let source: ConnectionSource = { kind: "text" }
   if (ends.from.kind === "decision") {
     const option = optionOf(ends.from, a.option)
     if (!option)
       return fail(`Name the option of node ${ends.from.number} that the connection leaves.`)
-    optionId = option.id
+    source = { kind: "option", optionId: option.id }
   } else if (ends.from.kind === "approval") {
-    output = outputOf(a.output)
+    const output = outputOf(a.output)
     if (!output)
       return fail(`Name the output of node ${ends.from.number} that the connection leaves.`)
+    source = { kind: "verdict", verdict: output }
   }
   const hit = graph.connections.find(
-    (c) =>
-      c.from === ends.from.id &&
-      c.to === ends.to.id &&
-      c.optionId === optionId &&
-      c.output === output,
+    (c) => c.from === ends.from.id && c.to === ends.to.id && sameSource(c.source, source),
   )
   if (!hit)
     return fail(`Node ${ends.from.number} has no connection to node ${ends.to.number} like this.`)
@@ -792,7 +788,12 @@ const addOption = (graph: WorkflowGraph, a: Record<string, unknown>): Build => {
       ),
       connections: [
         ...graph.connections,
-        { id: randomUUID(), from: found.id, to: target.id, optionId: option.id, output: null },
+        {
+          id: randomUUID(),
+          from: found.id,
+          to: target.id,
+          source: { kind: "option", optionId: option.id },
+        },
       ],
     },
     done: `The option "${label}" was added to node ${found.number}, with a connection to node ${target.number}.`,
@@ -827,7 +828,9 @@ const removeOption = (graph: WorkflowGraph, a: Record<string, unknown>): Build =
       nodes: graph.nodes.map((n) =>
         n.id === found.id ? { ...n, options: n.options.filter((o) => o.id !== option.id) } : n,
       ),
-      connections: graph.connections.filter((c) => c.optionId !== option.id),
+      connections: graph.connections.filter(
+        (c) => c.source.kind !== "option" || c.source.optionId !== option.id,
+      ),
     },
     done: `The option "${option.label}" was removed from node ${found.number} with its connection.`,
   }

@@ -91,8 +91,8 @@ test("run: a decision node takes the branch; with no winner the chat asks for a 
       { name: "No path", prompt: "no path" },
     ],
     edges: [
-      [0, 1, 0],
-      [0, 2, 1],
+      [0, 1, { option: 0 }],
+      [0, 2, { option: 1 }],
     ],
   })
 

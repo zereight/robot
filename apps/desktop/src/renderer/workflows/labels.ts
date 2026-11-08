@@ -21,9 +21,7 @@ export const checkStateKey = (flow: Pick<Workflow, "check">): MessageKey =>
 export const documentSourceKey = (source: DocumentSource): MessageKey =>
   `workflows.document.source.${source}` as MessageKey
 
-/** The words of a node kind (spec 010). */
 export const nodeKindKey = (kind: NodeKind): MessageKey => `graph.kind.${kind}` as MessageKey
 
-/** The words of an approval output (spec 010). */
 export const approvalOutputKey = (output: ApprovalOutput): MessageKey =>
   `graph.option.${output}` as MessageKey

@@ -198,8 +198,8 @@ test("README pictures", async () => {
     edges: [
       [0, 1],
       [1, 2],
-      [2, 3, 0],
-      [2, 4, 1],
+      [2, 3, { option: 0 }],
+      [2, 4, { option: 1 }],
     ],
   })
   // One row of nodes, with the two branches of the decision one above the other.

@@ -5,6 +5,7 @@ import {
   CHAT_MESSAGE_MAX,
   CONNECTION_SCOPE_MAX,
   CONNECTION_TOOLS_MAX,
+  ConnectionSource,
   DEVICE_NAME_MAX,
   DecisionKeys,
   isChangeMethod,
@@ -722,12 +723,11 @@ export const handlers: Handlers = {
         workflowId: Schema.String,
         from: Schema.String,
         to: Schema.String,
-        optionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
-        output: Schema.optionalKey(Schema.NullOr(Schema.Literals(["approve", "reject"]))),
+        source: Schema.optionalKey(ConnectionSource),
       }),
     )(input).pipe(
-      Effect.flatMap(({ workflowId, from, to, optionId, output }) =>
-        Workflows.use((w) => w.connect(workflowId, from, to, optionId ?? null, output ?? null)),
+      Effect.flatMap(({ workflowId, from, to, source }) =>
+        Workflows.use((w) => w.connect(workflowId, from, to, source)),
       ),
     ),
   "workflows.disconnect": (input) =>
@@ -892,7 +892,7 @@ export const handlers: Handlers = {
           Schema.Struct({
             kind: Schema.Literal("verdict"),
             verdict: Schema.Literals(["approve", "reject"]),
-            comment: Schema.String.pipe(Schema.check(Schema.isMaxCodePoints(APPROVAL_COMMENT_MAX))),
+            comment: Schema.Trim.pipe(Schema.check(Schema.isMaxCodePoints(APPROVAL_COMMENT_MAX))),
           }),
           Schema.Struct({ kind: Schema.Literal("control") }),
         ]),

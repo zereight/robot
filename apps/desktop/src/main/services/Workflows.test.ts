@@ -243,12 +243,16 @@ describe("the graph (spec 010)", () => {
     const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
     // A decision node connects through one of its options only.
     expect(await t.code((x) => x.connect(flow.id, d.id, next.id))).toBe("connection_option_missing")
-    const link = await t.w((x) => x.connect(flow.id, d.id, next.id, d.options[0]?.id ?? null))
-    expect(link.optionId).toBe(d.options[0]?.id ?? null)
-    expect(await t.code((x) => x.connect(flow.id, next.id, next.id))).toBe("connection_to_self")
-    expect(await t.code((x) => x.connect(flow.id, next.id, d.id, d.options[0]?.id ?? null))).toBe(
-      "connection_option_unexpected",
+    const link = await t.w((x) =>
+      x.connect(flow.id, d.id, next.id, { kind: "option", optionId: d.options[0]?.id ?? "" }),
     )
+    expect(link.source).toEqual({ kind: "option", optionId: d.options[0]?.id ?? "" })
+    expect(await t.code((x) => x.connect(flow.id, next.id, next.id))).toBe("connection_to_self")
+    expect(
+      await t.code((x) =>
+        x.connect(flow.id, next.id, d.id, { kind: "option", optionId: d.options[0]?.id ?? "" }),
+      ),
+    ).toBe("connection_option_unexpected")
   })
 
   test("a line is not made twice, and an option has one outgoing connection", async () => {
@@ -267,12 +271,16 @@ describe("the graph (spec 010)", () => {
         options: ["Yes", "No"],
       }),
     )
-    const yes = d.options[0]?.id ?? null
-    const no = d.options[1]?.id ?? null
-    await t.w((x) => x.connect(flow.id, d.id, b.id, yes))
+    const yes = d.options[0]?.id ?? ""
+    const no = d.options[1]?.id ?? ""
+    await t.w((x) => x.connect(flow.id, d.id, b.id, { kind: "option", optionId: yes }))
     // The same option cannot lead to a second node, and the other option stays free.
-    expect(await t.code((x) => x.connect(flow.id, d.id, c.id, yes))).toBe("connection_exists")
-    expect(await t.code((x) => x.connect(flow.id, d.id, c.id, no))).toBe("ok")
+    expect(
+      await t.code((x) => x.connect(flow.id, d.id, c.id, { kind: "option", optionId: yes })),
+    ).toBe("connection_exists")
+    expect(
+      await t.code((x) => x.connect(flow.id, d.id, c.id, { kind: "option", optionId: no })),
+    ).toBe("ok")
     expect((await t.w((x) => x.graph(flow.id))).connections).toHaveLength(3)
   })
 
@@ -305,45 +313,60 @@ describe("the graph (spec 010)", () => {
     const other = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Back" }))
     // An approval node connects through one of its outputs only, never through an option.
     expect(await t.code((x) => x.connect(flow.id, g.id, next.id))).toBe("connection_output_missing")
-    expect(await t.code((x) => x.connect(flow.id, g.id, next.id, "o1", "approve"))).toBe(
-      "connection_option_unexpected",
+    expect(
+      await t.code((x) => x.connect(flow.id, g.id, next.id, { kind: "option", optionId: "o1" })),
+    ).toBe("connection_option_unexpected")
+    const link = await t.w((x) =>
+      x.connect(flow.id, g.id, next.id, { kind: "verdict", verdict: "approve" }),
     )
-    const link = await t.w((x) => x.connect(flow.id, g.id, next.id, null, "approve"))
-    expect(link.optionId).toBeNull()
-    expect(link.output).toBe("approve")
+    expect(link.source).toEqual({ kind: "verdict", verdict: "approve" })
     // The same output cannot lead to a second node, and the other output stays free.
-    expect(await t.code((x) => x.connect(flow.id, other.id, next.id, null, "approve"))).toBe(
-      "connection_output_unexpected",
-    )
-    expect(await t.code((x) => x.connect(flow.id, g.id, other.id, null, "approve"))).toBe(
-      "connection_exists",
-    )
-    expect(await t.code((x) => x.connect(flow.id, g.id, other.id, null, "reject"))).toBe("ok")
+    expect(
+      await t.code((x) =>
+        x.connect(flow.id, other.id, next.id, { kind: "verdict", verdict: "approve" }),
+      ),
+    ).toBe("connection_output_unexpected")
+    expect(
+      await t.code((x) =>
+        x.connect(flow.id, g.id, other.id, { kind: "verdict", verdict: "approve" }),
+      ),
+    ).toBe("connection_exists")
+    expect(
+      await t.code((x) =>
+        x.connect(flow.id, g.id, other.id, { kind: "verdict", verdict: "reject" }),
+      ),
+    ).toBe("ok")
     const graph = await t.w((x) => x.graph(flow.id))
-    expect(graph.connections.map((c) => [c.optionId, c.output])).toEqual([
-      [null, "approve"],
-      [null, "reject"],
+    expect(graph.connections.map((c) => c.source)).toEqual([
+      { kind: "verdict", verdict: "approve" },
+      { kind: "verdict", verdict: "reject" },
     ])
   })
 
-  test("a version from before the approval node reads its connections with no output", async () => {
+  test("a version from before the single source reads its connections through it", async () => {
     const t = await setup()
     const flow = await t.create("Report")
     const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
     const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "B" }))
     await t.w((x) => x.connect(flow.id, a.id, b.id))
-    // A version that an older app kept has no `output` on its connections.
+    // A version that an older app kept names the two columns, with no `source`.
     await t.sql(
       "UPDATE workflow_version SET graph = ? WHERE workflow_id = ?",
       JSON.stringify({
         nodes: [],
-        connections: [{ id: "c", from: a.id, to: b.id, optionId: null }],
+        connections: [
+          { id: "c", from: a.id, to: b.id, optionId: null },
+          { id: "o", from: a.id, to: b.id, optionId: "o1" },
+          { id: "v", from: a.id, to: b.id, optionId: null, output: "approve" },
+        ],
       }),
       flow.id,
     )
     const versions = await t.w((x) => x.versions(flow.id))
     expect(versions[0]?.graph.connections).toEqual([
-      { id: "c", from: a.id, to: b.id, optionId: null, output: null },
+      { id: "c", from: a.id, to: b.id, source: { kind: "text" } },
+      { id: "o", from: a.id, to: b.id, source: { kind: "option", optionId: "o1" } },
+      { id: "v", from: a.id, to: b.id, source: { kind: "verdict", verdict: "approve" } },
     ])
   })
 
@@ -574,7 +597,7 @@ describe("the graph editor (spec 010, flow 2)", () => {
     const three = await t.w((x) => x.addOption(d.id, "Maybe"))
     expect(three.options.map((o) => o.label)).toEqual(["Yes", "No", "Maybe"])
     const maybe = three.options[2]?.id ?? ""
-    await t.w((x) => x.connect(flow.id, d.id, next.id, maybe))
+    await t.w((x) => x.connect(flow.id, d.id, next.id, { kind: "option", optionId: maybe }))
     const renamed = await t.w((x) => x.renameOption(maybe, " Perhaps "))
     expect(renamed.options[2]?.label).toBe("Perhaps")
     expect(await t.code((x) => x.renameOption(maybe, "  "))).toBe("option_label_empty")

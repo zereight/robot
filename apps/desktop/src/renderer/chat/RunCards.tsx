@@ -1,4 +1,4 @@
-import type { CardAnswer, MessageKey, RunCard } from "@robot/shared"
+import { APPROVAL_COMMENT_MAX, type CardAnswer, type MessageKey, type RunCard } from "@robot/shared"
 import { createSignal, For, Show } from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -200,7 +200,6 @@ const Pick = (props: { card: RunCard }) => {
   )
 }
 
-/** An approval node asks the user to approve or reject, with an optional comment (spec 010). */
 const Verdict = (props: { card: RunCard }) => {
   const { t } = useApp()
   const [comment, setComment] = createSignal("")
@@ -244,6 +243,7 @@ const Verdict = (props: { card: RunCard }) => {
           value={comment()}
           placeholder={t("cards.comment.placeholder")}
           aria-label={t("cards.comment.placeholder")}
+          maxLength={APPROVAL_COMMENT_MAX}
           onInput={(e) => setComment(e.currentTarget.value)}
           data-testid="card-comment-input"
         />

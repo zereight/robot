@@ -20,11 +20,10 @@ import {
 //
 // How the form sees a run (spec 010, "Node input and output"):
 // - A node waits until each of its inputs has ended. An input passes on when its node ran. It also
-//   passes on from a decision node, when that node took the option of this connection, and from an
-//   approval node, when the user took the output of this connection.
+//   passes on from a decision node, when that node took the option of this connection.
 // - A node with no input runs at the start. A node with inputs, where no input passes on, is
-//   skipped. Otherwise it runs. A decision node takes one of its options, an approval node one of
-//   its two outputs. The check does not read the input or the answer, so it tries every branch.
+//   skipped. Otherwise it runs. A decision node takes one of its options. The check does not read
+//   the input, so it tries every option.
 // - The engine starts the ready node with the lowest number. The form does the same. Which node
 //   starts first does not change which nodes run, so the check does not try every order.
 // - A node that fails ends no connection that the check can use: a failure stops the run, or the
@@ -54,19 +53,19 @@ export type RunModel = (source: string, config: string) => Promise<ModelRun>
 /** The standard rule "no deadlock" is the deadlock check of the checker. */
 const CONFIG = "INIT Init NEXT Next"
 
-/** How many branches each kind of node has: two fixed outputs for an approval node. */
 const OPTION_COUNTS: Record<NodeKind, (n: WorkflowNode) => number> = {
   text: () => 0,
   decision: (n) => n.options.length,
   approval: () => APPROVAL_OUTPUTS.length,
 }
 
-/** The branch that a connection leaves, from 1, or 0 for the single output of a text node. */
+const SINGLE_OUTPUT = 0
+
 const optOf = (source: WorkflowNode, c: WorkflowConnection): number => {
-  if (source.kind === "decision") return source.options.findIndex((o) => o.id === c.optionId) + 1
-  if (source.kind === "approval")
-    return c.output === null ? 0 : APPROVAL_OUTPUTS.indexOf(c.output) + 1
-  return 0
+  const s = c.source
+  if (s.kind === "option") return source.options.findIndex((o) => o.id === s.optionId) + 1
+  if (s.kind === "verdict") return APPROVAL_OUTPUTS.indexOf(s.verdict) + 1
+  return SINGLE_OUTPUT
 }
 
 /** `invariant` is a TLA expression over the state, or null for no invariant. */

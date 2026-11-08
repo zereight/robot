@@ -64,7 +64,7 @@ const setup = async (level?: "read_only" | "full", connections?: ConnectionsOpti
   const b = await run(
     Workflows.use((w) => w.addNode(flow.id, { kind: "text", name: "Write", prompt: "Write." })),
   )
-  await run(Workflows.use((w) => w.connect(flow.id, a.id, b.id, null)))
+  await run(Workflows.use((w) => w.connect(flow.id, a.id, b.id)))
   if (level) await run(Workflows.use((w) => w.setPermission(flow.id, level)))
   const send = (text: string) => run(Chat.use((c) => c.send({ workflowId: flow.id, text })))
   const history = () => run(Chat.use((c) => c.history(flow.id)))

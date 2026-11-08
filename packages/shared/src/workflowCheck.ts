@@ -1,4 +1,4 @@
-import { connectionOutputKey, type GraphProblem, type WorkflowGraph } from "./workflows.ts"
+import { type GraphProblem, sourceKey, type WorkflowGraph } from "./workflows.ts"
 
 // The check of a workflow (spec 010, "Check"): the result as data, with the place of each fault.
 // The window turns a problem into a text with its translation keys. Points that the specs call
@@ -77,5 +77,5 @@ export const problemPath = (problem: CheckProblem): readonly CheckStep[] =>
 export const checkGraphKey = (graph: WorkflowGraph): string =>
   JSON.stringify([
     graph.nodes.map((n) => [n.id, n.kind, n.options.map((o) => o.id)]),
-    graph.connections.map((c) => [c.from, c.to, connectionOutputKey(c)]),
+    graph.connections.map((c) => [c.from, c.to, sourceKey(c.source)]),
   ])

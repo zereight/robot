@@ -644,10 +644,6 @@ export const migrations: readonly string[] = [
   ALTER TABLE chat_message ADD COLUMN context_tokens INTEGER;
   `,
   `
-  -- An approval node (spec 010): the kind of a node holds 'text', 'decision' or 'approval'.
-  -- SQLite has no way to change a CHECK, so the table is made again with the same rows and the new
-  -- CHECK. The foreign keys stay off while a migration runs (see \`migrate\`), so the drop of the
-  -- old table deletes no row that refers to it, and \`foreign_key_check\` runs before the commit.
   CREATE TABLE workflow_node_new (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
@@ -677,8 +673,6 @@ export const migrations: readonly string[] = [
   DROP TABLE workflow_node;
   ALTER TABLE workflow_node_new RENAME TO workflow_node;
   CREATE INDEX workflow_node_workflow ON workflow_node (workflow_id, number);
-  -- The output of an approval node that a connection leaves: 'approve' or 'reject' (spec 010).
-  -- NULL for a connection of a text or decision node. Each output has one outgoing connection.
   ALTER TABLE workflow_connection ADD COLUMN output TEXT
     CHECK (output IS NULL OR output IN ('approve', 'reject'));
   CREATE UNIQUE INDEX workflow_connection_output ON workflow_connection (from_node_id, output)

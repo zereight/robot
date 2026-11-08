@@ -57,7 +57,7 @@ const setup = async () => {
       w.addNode(flow.id, { kind: "text", name: "Write", prompt: "Write the report." }),
     ),
   )
-  await run(Workflows.use((w) => w.connect(flow.id, a.id, b.id, null)))
+  await run(Workflows.use((w) => w.connect(flow.id, a.id, b.id)))
   const send = (text: string) => run(Chat.use((c) => c.send({ workflowId: flow.id, text })))
   const history = () => run(Chat.use((c) => c.history(flow.id)))
   const idle = () => until(async () => !(await history()).working)
