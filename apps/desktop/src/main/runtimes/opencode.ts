@@ -71,18 +71,21 @@ export const opencodeLogin = async (bin: string): Promise<Login> => {
  * model. "Ask for everything" can look but not change. "Ask for risky steps" can also edit and
  * write files, but has no shell, which is where the risk is. "Full access" has every tool, and
  * the program is told to approve what its rules would ask about. No level lets the model start a
- * helper agent below its own level, or ask the user a question that nobody can answer.
- * `useTools` false means that the program may only answer.
+ * helper agent below its own level, or ask the user a question that nobody can answer, or load
+ * the skills of the user. `useTools` false means that the program may only answer.
+ *
+ * Since opencode 2, `execute` runs code that can create git worktrees outside the folder. With
+ * `execute` denied, the same tools come back as `opencode_<name>`, so both are denied.
  */
 export const opencodePermission = (
   level: PermissionLevel,
   useTools: boolean,
 ): Record<string, string> => {
   if (!useTools) return { "*": "deny" }
-  if (level === "read_only" || level === "ask_all")
-    return { bash: "deny", edit: "deny", task: "deny", question: "deny" }
-  if (level === "ask_risky") return { bash: "deny", task: "deny", question: "deny" }
-  return { question: "deny" }
+  const always = { question: "deny", skill: "deny" }
+  if (level === "full") return always
+  const limited = { ...always, bash: "deny", task: "deny", execute: "deny", "opencode_*": "deny" }
+  return level === "ask_risky" ? limited : { ...limited, edit: "deny" }
 }
 
 /**
