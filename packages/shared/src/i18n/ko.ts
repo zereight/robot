@@ -333,8 +333,21 @@ export const ko: Record<MessageKey, string> = {
   "error.secret_value_invalid": "줄바꿈 없이 1~16384자의 값을 입력해 주세요.",
   "error.secret_keychain": "ROBot이 시스템 키체인에 쓰지 못했어요.",
   "error.secret_conflict": "이 이름의 비밀 값이 다른 주소로 있어요. 먼저 삭제해 주세요.",
-  "error.secret_full": "에이전트 하나는 저장된 비밀 값을 최대 100개 가질 수 있어요.",
+  "error.secret_full": "이 워크플로에 비밀 값이 100개 있어요.",
   "error.secret_not_found": "이 비밀 값은 더 이상 없어요.",
+  "error.secret_name_invalid": "40자 이내의 영문, 숫자, -, _로 이름을 입력해 주세요.",
+  "error.secret_name_taken": "이 워크플로에 이미 같은 이름의 비밀 값이 있어요.",
+  "error.secret_origin_invalid":
+    "https://api.example.com처럼 경로와 로그인 정보가 없는 출처를 입력해 주세요.",
+  "error.secret_origin_local":
+    "이 컴퓨터나 로컬 네트워크의 주소는 설정, 권한의 “이 컴퓨터와 로컬 네트워크에서 저장된 비밀 값 허용” 스위치가 필요해요.",
+  "error.login_name_invalid": "40자 이내의 영문, 숫자, -, _로 이름을 입력해 주세요.",
+  "error.login_name_taken": "이 워크플로에 이미 같은 이름의 로그인이 있어요.",
+  "error.login_value_invalid":
+    "줄바꿈 없이 사용자 이름 1~200자, 비밀번호 1~16384자를 입력해 주세요.",
+  "error.login_conflict": "이 이름의 로그인이 다른 출처로 있어요. 먼저 삭제해 주세요.",
+  "error.login_full": "이 워크플로에 로그인이 50개 있어요.",
+  "error.login_not_found": "이 로그인은 더 이상 없어요.",
   // 핸드북(002)과 채널 지침(004)
   "settings.section.handbook": "핸드북",
   "settings.section.browser": "브라우저",

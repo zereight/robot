@@ -89,12 +89,14 @@ export const appLayer = (options: AppLayerOptions) => {
     FileClaims.layer,
     ModelHolds.layer,
     Rules.layer,
-    SavedLogins.layer,
-    SavedSecrets.layer,
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),
   ).pipe(Layer.provideMerge(providers))
+  // The vault (spec 020) renames the permission rules of a secret or a login with it.
+  const vault = Layer.mergeAll(SavedLogins.layer, SavedSecrets.layer).pipe(
+    Layer.provideMerge(rules),
+  )
   // The connections use the rules, to remove the rules of a connection that is removed (spec 018).
-  const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(rules))
+  const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(vault))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(connections))
   const workflowCheck = WorkflowCheck.layer({ auto: true, ...options.check }).pipe(
     Layer.provideMerge(workflows),

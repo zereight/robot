@@ -333,8 +333,21 @@ export const en = {
   "error.secret_value_invalid": "Type a value of 1 to 16384 characters, with no line breaks.",
   "error.secret_keychain": "ROBot could not write to the system keychain.",
   "error.secret_conflict": "A secret with this name exists for another origin. Delete it first.",
-  "error.secret_full": "An agent holds at most 100 saved secrets.",
+  "error.secret_full": "This workflow holds 100 secrets.",
   "error.secret_not_found": "This secret does not exist any more.",
+  "error.secret_name_invalid": "Type a name of 1 to 40 letters, digits, - and _.",
+  "error.secret_name_taken": "This workflow already holds a secret with this name.",
+  "error.secret_origin_invalid":
+    "Type an origin like https://api.example.com, with no path or sign-in part.",
+  "error.secret_origin_local":
+    "An address on this computer or the local network needs the switch “Allow saved secrets on this computer and the local network” in Settings, Permissions.",
+  "error.login_name_invalid": "Type a name of 1 to 40 letters, digits, - and _.",
+  "error.login_name_taken": "This workflow already holds a login with this name.",
+  "error.login_value_invalid":
+    "Type a user name of 1 to 200 characters and a password of 1 to 16384 characters, with no line breaks.",
+  "error.login_conflict": "A login with this name exists for another origin. Delete it first.",
+  "error.login_full": "This workflow holds 50 logins.",
+  "error.login_not_found": "This login does not exist any more.",
   // The handbook (spec 002) and the instructions of a channel (spec 004).
   "settings.section.handbook": "Handbook",
   "settings.section.browser": "Browser",

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto"
 import {
+  isSecretName,
   isSecretValue,
+  parseOrigin,
   type SavedSecret,
   SECRETS_PER_AGENT,
   type SecretAuth,
@@ -11,6 +13,7 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
 
 interface Row {
@@ -43,13 +46,31 @@ export interface SavedSecretsService {
   match(workflowId: string, name: string, origin: string, auth: SecretAuth): SecretMatch
   /**
    * Puts the value in the keychain and saves or updates the secret. A secret with the same name
-   * keeps its id. Throws `AppError` when the value or the keychain fails.
+   * keeps its id. Throws `AppError` when the name, the origin, the value or the keychain fails.
+   * A local origin needs `allowLocal`: the switch "Allow saved secrets on this computer and the
+   * local network" (spec 020).
    */
   save(
     workflowId: string,
     secret: { name: string; origin: string; auth: SecretAuth },
     value: string,
+    allowLocal?: boolean,
   ): SavedSecret
+  /**
+   * Adds a secret by hand in the vault (spec 020, flow 4, "Add"). A name that the vault already
+   * holds is refused. Otherwise it saves like `save`.
+   */
+  add(
+    workflowId: string,
+    secret: { name: string; origin: string; auth: SecretAuth },
+    value: string,
+    allowLocal?: boolean,
+  ): SavedSecret
+  /**
+   * Renames a secret (spec 020, flow 4, "Rename"). The permission rules of 007 that name the old
+   * name move to the new name. A name that the vault already holds is refused.
+   */
+  rename(id: string, name: string): SavedSecret
   /** A new value for a saved secret, from settings. */
   replace(id: string, value: string): SavedSecret
   /** Deletes a secret and its value. False when it does not exist. */
@@ -80,7 +101,19 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
     Effect.gen(function* () {
       const db = yield* Database
       const keychain = yield* Secrets
+      const rules = yield* Rules
       const bus = yield* EventBus
+
+      /**
+       * The origin in canonical form. A public origin must use https; an address on this
+       * computer or the local network needs the switch (spec 020, "Rules" and flow 4, "Add").
+       */
+      const checkOrigin = (origin: string, allowLocal: boolean) => {
+        const parsed = parseOrigin(origin)
+        if (!parsed.ok) throw new AppError({ code: "secret_origin_invalid" })
+        if (parsed.local && !allowLocal) throw new AppError({ code: "secret_origin_local" })
+        return parsed.origin
+      }
 
       const read = (ref: string | null): string | null => {
         if (!ref) return null
@@ -154,6 +187,46 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
         if (row.value_ref) drop(row.value_ref)
       }
 
+      /** The name and the origin of a new or replaced secret, or the reason they are refused. */
+      const validated = (secret: { name: string; origin: string }, allowLocal: boolean) => {
+        if (!isSecretName(secret.name)) throw new AppError({ code: "secret_name_invalid" })
+        return checkOrigin(secret.origin, allowLocal)
+      }
+
+      /** Inserts the row of a secret that the vault does not hold yet. */
+      const insertNew = (
+        workflowId: string,
+        secret: { name: string; auth: SecretAuth },
+        origin: string,
+        value: string,
+        now: number,
+      ) => {
+        if (!db.get("SELECT 1 AS x FROM workflow WHERE id = ?", workflowId))
+          throw new AppError({ code: "workflow_not_found" })
+        const count =
+          db.get<{ n: number }>(
+            "SELECT COUNT(*) AS n FROM saved_secret WHERE workflow_id = ?",
+            workflowId,
+          )?.n ?? 0
+        if (count >= SECRETS_PER_AGENT) throw new AppError({ code: "secret_full" })
+        const ref = store(value)
+        const id = randomUUID()
+        db.run(
+          `INSERT INTO saved_secret (id, workflow_id, name, name_key, origin, auth, value_ref, saved_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          id,
+          workflowId,
+          secret.name,
+          secretNameKey(secret.name),
+          origin,
+          JSON.stringify(secret.auth),
+          ref,
+          now,
+        )
+        changed()
+        return toView(byId(id) as Row)
+      }
+
       return SavedSecrets.of({
         list: (workflowId) =>
           (workflowId
@@ -182,38 +255,37 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
             )?.n ?? 0
           return count >= SECRETS_PER_AGENT ? { kind: "full" } : { kind: "new" }
         },
-        save: (workflowId, secret, value) => {
+        save: (workflowId, secret, value, allowLocal = false) => {
+          const origin = validated(secret, allowLocal)
           const now = Date.now()
           const row = byName(workflowId, secret.name)
           if (row) {
-            if (row.origin !== secret.origin || !sameAuth(parseAuth(row.auth), secret.auth))
+            if (row.origin !== origin || !sameAuth(parseAuth(row.auth), secret.auth))
               throw new AppError({ code: "secret_conflict" })
             replaceRow(row, value, now)
             changed()
             return toView(byId(row.id) as Row)
           }
-          if (!db.get("SELECT 1 AS x FROM workflow WHERE id = ?", workflowId))
-            throw new AppError({ code: "workflow_not_found" })
-          const count =
-            db.get<{ n: number }>(
-              "SELECT COUNT(*) AS n FROM saved_secret WHERE workflow_id = ?",
-              workflowId,
-            )?.n ?? 0
-          if (count >= SECRETS_PER_AGENT) throw new AppError({ code: "secret_full" })
-          const ref = store(value)
-          const id = randomUUID()
+          return insertNew(workflowId, secret, origin, value, now)
+        },
+        add: (workflowId, secret, value, allowLocal = false) => {
+          const origin = validated(secret, allowLocal)
+          if (byName(workflowId, secret.name)) throw new AppError({ code: "secret_name_taken" })
+          return insertNew(workflowId, secret, origin, value, Date.now())
+        },
+        rename: (id, name) => {
+          const row = byId(id)
+          if (!row) throw new AppError({ code: "secret_not_found" })
+          if (!isSecretName(name)) throw new AppError({ code: "secret_name_invalid" })
+          const taken = byName(row.workflow_id, name)
+          if (taken && taken.id !== id) throw new AppError({ code: "secret_name_taken" })
           db.run(
-            `INSERT INTO saved_secret (id, workflow_id, name, name_key, origin, auth, value_ref, saved_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            "UPDATE saved_secret SET name = ?, name_key = ? WHERE id = ?",
+            name,
+            secretNameKey(name),
             id,
-            workflowId,
-            secret.name,
-            secretNameKey(secret.name),
-            secret.origin,
-            JSON.stringify(secret.auth),
-            ref,
-            now,
           )
+          rules.renameSecret(row.workflow_id, row.name, name)
           changed()
           return toView(byId(id) as Row)
         },

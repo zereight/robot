@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { LOGINS_PER_WORKFLOW } from "@robot/shared"
 import { Effect } from "effect"
 import { Database } from "./Database.ts"
+import { Rules } from "./Rules.ts"
 import { SavedLogins, savedLoginPasswordKey, savedLoginUserKey } from "./SavedLogins.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -167,5 +168,53 @@ describe("saved logins of a workflow (spec 020)", () => {
     expect(secrets.get(savedLoginPasswordKey(key as string))).toBeNull()
     const left = await t.run(SavedLogins.use((s) => Effect.sync(() => s.list())))
     expect(left.map((s) => s.name)).toEqual(["TestUser"])
+  })
+
+  test("add refuses a taken name and a local origin without the switch; logins have no way to send", async () => {
+    const t = await setup()
+    const add = (name: string, origin: string, allowLocal = false) =>
+      t.run(
+        SavedLogins.use((s) =>
+          Effect.sync(() =>
+            s.add(t.workflow.id, { name, origin, user: USER }, PASSWORD, allowLocal),
+          ),
+        ),
+      )
+    await add("TestUser", "https://id.example.com")
+    await expect(add("testuser", "https://id.example.com")).rejects.toMatchObject({
+      code: "login_name_taken",
+    })
+    await expect(add("Local", "https://127.0.0.1:4001")).rejects.toMatchObject({
+      code: "secret_origin_local",
+    })
+    const local = await add("Local", "https://127.0.0.1:4001", true)
+    // No way to send: the row holds no auth kind.
+    expect(local).not.toHaveProperty("auth")
+  })
+
+  test("rename moves the rules to the new name", async () => {
+    const t = await setup()
+    const saved = await t.save("TestUser")
+    await t.save("Other")
+    await t.run(
+      Rules.use((r) =>
+        r.add({ workflowId: t.workflow.id, kind: "secret", text: "TestUser", decision: "deny" }),
+      ),
+    )
+    const verdict = (name: string) =>
+      t.run(
+        Rules.use((r) =>
+          Effect.sync(() => r.verdict(t.workflow.id, { kind: "secret", name, method: "GET" }).kind),
+        ),
+      )
+    const renamed = await t.run(
+      SavedLogins.use((s) => Effect.sync(() => s.rename(saved.id, "Renamed"))),
+    )
+    expect(renamed.name).toBe("Renamed")
+    expect(await verdict("Renamed")).toBe("deny")
+    expect(await verdict("TestUser")).toBe("none")
+    await expect(
+      t.run(SavedLogins.use((s) => Effect.sync(() => s.rename(saved.id, "Other")))),
+    ).rejects.toMatchObject({ code: "login_name_taken" })
   })
 })

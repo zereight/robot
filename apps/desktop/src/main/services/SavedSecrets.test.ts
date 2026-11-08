@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { SECRETS_PER_AGENT, type SecretAuth } from "@robot/shared"
 import { Effect } from "effect"
 import { Database } from "./Database.ts"
+import { Rules } from "./Rules.ts"
 import { SavedSecrets, savedSecretKey } from "./SavedSecrets.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -97,5 +98,102 @@ describe("saved secrets of a workflow (spec 020)", () => {
     expect(secrets.get(savedSecretKey(key as string))).toBeNull()
     const left = await t.run(SavedSecrets.use((s) => Effect.sync(() => s.list())))
     expect(left.map((s) => s.name)).toEqual(["Other"])
+  })
+
+  test("a vault shows only the secrets of the open workflow", async () => {
+    const t = await setup()
+    const other = await t.run(Workflows.use((w) => w.create({ serverId: t.server.id, name: "Bo" })))
+    await t.save("Stripe")
+    await t.save("Stripe", VALUE, other.id)
+    const mine = await t.run(SavedSecrets.use((s) => Effect.sync(() => s.list(t.workflow.id))))
+    expect(mine.map((s) => s.name)).toEqual(["Stripe"])
+    expect(
+      await t.run(SavedSecrets.use((s) => Effect.sync(() => s.find(t.workflow.id, "Missing")))),
+    ).toBeUndefined()
+  })
+
+  test("add refuses a taken name, a bad origin, and a local origin without the switch", async () => {
+    const t = await setup()
+    const add = (name: string, origin: string, value = VALUE, allowLocal = false) =>
+      t.run(
+        SavedSecrets.use((s) =>
+          Effect.sync(() =>
+            s.add(t.workflow.id, { name, origin, auth: bearer }, value, allowLocal),
+          ),
+        ),
+      )
+    await add("HandApi", "https://api.example.com")
+    await expect(add("handapi", "https://api.example.com")).rejects.toMatchObject({
+      code: "secret_name_taken",
+    })
+    await expect(add("Bad name", "https://api.example.com")).rejects.toMatchObject({
+      code: "secret_name_invalid",
+    })
+    await expect(add("Plain", "http://api.example.com")).rejects.toMatchObject({
+      code: "secret_origin_invalid",
+    })
+    await expect(add("Path", "https://api.example.com/v1")).rejects.toMatchObject({
+      code: "secret_origin_invalid",
+    })
+    await expect(add("Local", "https://127.0.0.1:4001")).rejects.toMatchObject({
+      code: "secret_origin_local",
+    })
+    // A local origin may use http when the switch is on.
+    await add("Local", "http://127.0.0.1:4001", VALUE, true)
+    // A value of more than 16384 characters is refused with the reason.
+    await expect(add("Long", "https://api.example.com", "x".repeat(16385))).rejects.toMatchObject({
+      code: "secret_value_invalid",
+    })
+  })
+
+  test("rename moves the rules to the new name and keeps none on the old name", async () => {
+    const t = await setup()
+    const saved = await t.save("Api")
+    await t.save("Other")
+    await t.run(
+      Rules.use((r) =>
+        r.add({
+          workflowId: t.workflow.id,
+          kind: "secret",
+          text: "Api",
+          detail: "POST",
+          decision: "deny",
+        }),
+      ),
+    )
+    await t.run(
+      Rules.use((r) =>
+        r.add({ workflowId: t.workflow.id, kind: "secret", text: "Other", decision: "allow" }),
+      ),
+    )
+    const verdict = (name: string, method: string) =>
+      t.run(
+        Rules.use((r) =>
+          Effect.sync(() => r.verdict(t.workflow.id, { kind: "secret", name, method }).kind),
+        ),
+      )
+    const renamed = await t.run(
+      SavedSecrets.use((s) => Effect.sync(() => s.rename(saved.id, "Renamed"))),
+    )
+    expect(renamed.name).toBe("Renamed")
+    // The Deny rule still stops the renamed row, under the new name.
+    expect(await verdict("Renamed", "POST")).toBe("deny")
+    expect(await verdict("renamed", "POST")).toBe("deny")
+    // The old name keeps no rule, so a new secret with the old name runs with no question.
+    expect(await verdict("Api", "POST")).toBe("none")
+    await t.save("Api", "tok-new-value-0123456789")
+    expect(await verdict("Api", "POST")).toBe("none")
+    // The rules of another secret stay where they are.
+    expect(await verdict("Other", "POST")).toBe("allow")
+    // A taken or bad name is refused, and a missing secret is not found.
+    await expect(
+      t.run(SavedSecrets.use((s) => Effect.sync(() => s.rename(saved.id, "Other")))),
+    ).rejects.toMatchObject({ code: "secret_name_taken" })
+    await expect(
+      t.run(SavedSecrets.use((s) => Effect.sync(() => s.rename(saved.id, "has space")))),
+    ).rejects.toMatchObject({ code: "secret_name_invalid" })
+    await expect(
+      t.run(SavedSecrets.use((s) => Effect.sync(() => s.rename("nope", "Fresh")))),
+    ).rejects.toMatchObject({ code: "secret_not_found" })
   })
 })

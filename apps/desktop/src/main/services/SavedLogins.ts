@@ -4,6 +4,7 @@ import {
   isSecretName,
   isSecretValue,
   LOGINS_PER_WORKFLOW,
+  parseOrigin,
   type SavedLogin,
   secretNameKey,
 } from "@robot/shared"
@@ -11,6 +12,7 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
 
 interface Row {
@@ -44,13 +46,30 @@ export interface SavedLoginsService {
   match(workflowId: string, name: string, origin: string): LoginMatch
   /**
    * Puts both values in the keychain and saves or updates the login. A login with the same name
-   * keeps its id. Throws `AppError` when a value or the keychain fails.
+   * keeps its id. Throws `AppError` when a value or the keychain fails. A local origin needs
+   * `allowLocal`: the switch "Allow saved secrets on this computer and the local network".
    */
   save(
     workflowId: string,
     login: { name: string; origin: string; user: string },
     password: string,
+    allowLocal?: boolean,
   ): SavedLogin
+  /**
+   * Adds a login by hand in the vault (spec 020, "Manage"). A name that the vault already holds
+   * is refused. Otherwise it saves like `save`.
+   */
+  add(
+    workflowId: string,
+    login: { name: string; origin: string; user: string },
+    password: string,
+    allowLocal?: boolean,
+  ): SavedLogin
+  /**
+   * Renames a login (spec 020, "Manage"). The permission rules of 007 that name the old name move
+   * to the new name. A name that the vault already holds is refused.
+   */
+  rename(id: string, name: string): SavedLogin
   /** New values for a saved login: the user name and the password together. */
   replace(id: string, user: string, password: string): SavedLogin
   /** Deletes a login and its values. False when it does not exist. */
@@ -72,7 +91,19 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
     Effect.gen(function* () {
       const db = yield* Database
       const keychain = yield* Secrets
+      const rules = yield* Rules
       const bus = yield* EventBus
+
+      /**
+       * The origin in canonical form. A public origin must use https; an address on this
+       * computer or the local network needs the switch (spec 020).
+       */
+      const checkOrigin = (origin: string, allowLocal: boolean) => {
+        const parsed = parseOrigin(origin)
+        if (!parsed.ok) throw new AppError({ code: "secret_origin_invalid" })
+        if (parsed.local && !allowLocal) throw new AppError({ code: "secret_origin_local" })
+        return parsed.origin
+      }
 
       const read = (key: string | null): string | null => {
         if (!key) return null
@@ -185,12 +216,13 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
             )?.n ?? 0
           return count >= LOGINS_PER_WORKFLOW ? { kind: "full" } : { kind: "new" }
         },
-        save: (workflowId, login, password) => {
+        save: (workflowId, login, password, allowLocal = false) => {
           if (!isSecretName(login.name)) throw new AppError({ code: "login_name_invalid" })
+          const origin = checkOrigin(login.origin, allowLocal)
           const now = Date.now()
           const row = byName(workflowId, login.name)
           if (row) {
-            if (row.origin !== login.origin) throw new AppError({ code: "login_conflict" })
+            if (row.origin !== origin) throw new AppError({ code: "login_conflict" })
             replaceRow(row, login.user, password, now)
             changed()
             return toView(byId(row.id) as Row)
@@ -212,10 +244,54 @@ export class SavedLogins extends Context.Service<SavedLogins, SavedLoginsService
             workflowId,
             login.name,
             secretNameKey(login.name),
-            login.origin,
+            origin,
             ref,
             now,
           )
+          changed()
+          return toView(byId(id) as Row)
+        },
+        add: (workflowId, login, password, allowLocal = false) => {
+          if (!isSecretName(login.name)) throw new AppError({ code: "login_name_invalid" })
+          const origin = checkOrigin(login.origin, allowLocal)
+          if (byName(workflowId, login.name)) throw new AppError({ code: "login_name_taken" })
+          if (!db.get("SELECT 1 AS x FROM workflow WHERE id = ?", workflowId))
+            throw new AppError({ code: "workflow_not_found" })
+          const count =
+            db.get<{ n: number }>(
+              "SELECT COUNT(*) AS n FROM saved_login WHERE workflow_id = ?",
+              workflowId,
+            )?.n ?? 0
+          if (count >= LOGINS_PER_WORKFLOW) throw new AppError({ code: "login_full" })
+          const ref = store(login.user, password)
+          const id = randomUUID()
+          db.run(
+            `INSERT INTO saved_login (id, workflow_id, name, name_key, origin, value_ref, saved_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            id,
+            workflowId,
+            login.name,
+            secretNameKey(login.name),
+            origin,
+            ref,
+            Date.now(),
+          )
+          changed()
+          return toView(byId(id) as Row)
+        },
+        rename: (id, name) => {
+          const row = byId(id)
+          if (!row) throw new AppError({ code: "login_not_found" })
+          if (!isSecretName(name)) throw new AppError({ code: "login_name_invalid" })
+          const taken = byName(row.workflow_id, name)
+          if (taken && taken.id !== id) throw new AppError({ code: "login_name_taken" })
+          db.run(
+            "UPDATE saved_login SET name = ?, name_key = ? WHERE id = ?",
+            name,
+            secretNameKey(name),
+            id,
+          )
+          rules.renameSecret(row.workflow_id, row.name, name)
           changed()
           return toView(byId(id) as Row)
         },
