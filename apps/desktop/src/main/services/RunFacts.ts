@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto"
 import {
+  type NodeKind,
   parseOutsideSource,
   type RunFact,
   type RunNodeFact,
   type RunNodeState,
+  verdictAnswerOf,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
@@ -21,13 +23,14 @@ import { AppError } from "./errors.ts"
  * - `task.state`: one of queued, running, waiting, done, failed, blocked, cancelled.
  * - `task.error_code` and `task.error_detail`: the reason of the state.
  *   queued: `slot` (waits for a free slot) or `behind` (detail: the node that it waits behind).
- *   waiting: `approval` (detail: the step), `question`, or `pick` (detail: `threshold`, `timeout`
- *   or `off`). failed and blocked: the text of the reason in `error_detail`. cancelled: `user`
- *   or `run`.
- * - `task.result`, `task.decision` (JSON `{ "<option label>": probability }`) and `task.option_id`.
+ *   waiting: `approval` (detail: the step), `question`, `pick` (detail: `threshold`, `timeout`
+ *   or `off`), or `verdict`. failed and blocked: the text of the reason in `error_detail`.
+ *   cancelled: `user` or `run`.
+ * - `task.result`, `task.decision` (JSON `{ "<option label>": probability }`), `task.option_id`
+ *   and `task.verdict` (JSON with the answer, the comment and the time of an approval node).
  *
  * The engine reads the feedback for a node with {@link RunFactsService.feedbackFor} when the node
- * starts, and adds it to the input of a text node. A decision node does not read it.
+ * starts, and adds it to the input of a text node. A decision or approval node does not read it.
  *
  * An engine that keeps its state elsewhere can replace this layer.
  */
@@ -79,7 +82,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
         id: string
         number: number
         name: string
-        kind: "text" | "decision"
+        kind: NodeKind
       }
 
       const reasonOf = (t: TaskRow): string | null => {
@@ -99,6 +102,8 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
                     ? "The choice by the model is off or has no key."
                     : "No option reached the threshold."
               }`
+            if (t.error_code === "verdict")
+              return "Waits for your approval or rejection. The card is in the chat."
             return "Waits for the user."
           case "failed":
           case "blocked":
@@ -129,7 +134,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
         const ended = run.finished_at !== null
         const facts: RunNodeFact[] = []
         const seen = new Set<number>()
-        const nodeFact = (number: number, name: string, kind: "text" | "decision"): RunNodeFact => {
+        const nodeFact = (number: number, name: string, kind: NodeKind): RunNodeFact => {
           const task = byNumber.get(number)
           if (!task) {
             // A node with no task of a run that ended with success was not on the path: skipped.
@@ -206,24 +211,39 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
        * The numbers of the nodes that have no task yet and can still start in the run: a node
        * with no input, or a node that gets an input from a node that has ended and passes it on,
        * or from a node that has not ended yet. A connection from a decision node that took
-       * another option, and one from a node that failed, do not pass (spec 010).
+       * another option, one from an approval node that took another output, and one from a node
+       * that failed, do not pass (spec 010).
        */
       const startableNodes = (workflowId: string, runId: string): Set<number> => {
-        const nodes = db.all<{ id: string; number: number; continue_on_failure: number }>(
-          "SELECT id, number, continue_on_failure FROM workflow_node WHERE workflow_id = ?",
+        const nodes = db.all<{
+          id: string
+          number: number
+          kind: NodeKind
+          continue_on_failure: number
+        }>(
+          "SELECT id, number, kind, continue_on_failure FROM workflow_node WHERE workflow_id = ?",
           workflowId,
         )
         const connections = db.all<{
           from_node_id: string
           to_node_id: string
           option_id: string | null
+          output: string | null
         }>(
-          "SELECT from_node_id, to_node_id, option_id FROM workflow_connection WHERE workflow_id = ?",
+          "SELECT from_node_id, to_node_id, option_id, output FROM workflow_connection WHERE workflow_id = ?",
           workflowId,
         )
-        const tasks = new Map<number, { state: string; option_id: string | null }>()
-        for (const t of db.all<{ node_number: number; state: string; option_id: string | null }>(
-          "SELECT node_number, state, option_id FROM task WHERE run_id = ? ORDER BY created_at, rowid",
+        const tasks = new Map<
+          number,
+          { state: string; option_id: string | null; verdict: string | null }
+        >()
+        for (const t of db.all<{
+          node_number: number
+          state: string
+          option_id: string | null
+          verdict: string | null
+        }>(
+          "SELECT node_number, state, option_id, verdict FROM task WHERE run_id = ? ORDER BY created_at, rowid",
           runId,
         ))
           tasks.set(t.node_number, t)
@@ -243,7 +263,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
           return ok
         }
         const passes = (
-          c: { from_node_id: string; option_id: string | null },
+          c: { from_node_id: string; option_id: string | null; output: string | null },
           trail: Set<string>,
         ): boolean => {
           const from = byId.get(c.from_node_id)
@@ -252,7 +272,10 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
           if (!task) return live(from.id, trail)
           if (["running", "waiting", "queued"].includes(task.state)) return true
           if (task.state !== "done" && from.continue_on_failure === 0) return false
-          // A decision node passes only the connection of the option that it took.
+          // A decision node passes only the connection of the option that it took. An approval
+          // node passes only the connection of the output that the user picked.
+          if (from.kind === "approval")
+            return c.output !== null && c.output === verdictAnswerOf(task.verdict)?.verdict
           return c.option_id === null || c.option_id === task.option_id
         }
         const out = new Set<number>()

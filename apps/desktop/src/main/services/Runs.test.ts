@@ -9,7 +9,7 @@ import {
   type RunDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
 import { McpCallStopped } from "../connections/mcp.ts"
@@ -133,8 +133,14 @@ const setup = async (
         w.addNode(flow.id, { kind: "decision", name, question: "Which?", threshold, options }),
       ),
     )
-  const connect = (from: WorkflowNode, to: WorkflowNode, optionId: string | null = null) =>
-    run(Workflows.use((w) => w.connect(flow.id, from.id, to.id, optionId)))
+  const approvalNode = (name: string, question = "Ship it?") =>
+    run(Workflows.use((w) => w.addNode(flow.id, { kind: "approval", name, question })))
+  const connect = (
+    from: WorkflowNode,
+    to: WorkflowNode,
+    optionId: string | null = null,
+    output: "approve" | "reject" | null = null,
+  ) => run(Workflows.use((w) => w.connect(flow.id, from.id, to.id, optionId, output)))
   const start = (trigger?: string) =>
     run(Runs.use((r) => r.start({ workflowId: flow.id, ...(trigger ? { trigger } : {}) })))
   const get = (id: string) => run(Runs.use((r) => r.get(id)))
@@ -180,6 +186,7 @@ const setup = async (
     account,
     node,
     decisionNode,
+    approvalNode,
     connect,
     start,
     get,
@@ -434,6 +441,91 @@ describe("the decision node (spec 010, 013)", () => {
     expect(card.pickReason).toBe("off")
     await t.answer(card.id, { kind: "pick", optionId: o[0]?.id ?? "" })
     expect((await t.ended(run.id)).state).toBe("done")
+  })
+})
+
+describe("the approval node (spec 010)", () => {
+  const gate = async () => {
+    const t = await setup()
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const g = await t.approvalNode("Gate")
+    const ship = await t.node({ name: "Ship", prompt: "Ship {{input}}" })
+    await t.connect(first, g)
+    await t.connect(g, ship, null, "approve")
+    return { t, first, g, ship }
+  }
+
+  test("approve with a comment: the card shows the question and the input, the next node gets the comment", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    const card = await t.waitCard()
+    expect(card.kind).toBe("verdict")
+    expect(card.summary).toBe("Ship it?")
+    expect(card.input).toBe("You said: Draft")
+    expect((await t.get(run.id)).state).toBe("waiting")
+    await t.answer(card.id, { kind: "verdict", verdict: "approve", comment: "Shorter" })
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    expect(stateOf(d)).toEqual(["1:done", "2:done", "3:done"])
+    expect(d.nodes[2]?.task?.input.endsWith("Comment from the user:\nShorter")).toBe(true)
+    const approval = d.nodes[1]?.task?.approval
+    expect(approval?.verdict).toBe("approve")
+    expect(approval?.comment).toBe("Shorter")
+    expect(approval?.answeredAt).toBeGreaterThan(0)
+  })
+
+  test("reject with only Approve connected: the next node is skipped and the run ends", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    const card = await t.waitCard()
+    await t.answer(card.id, { kind: "verdict", verdict: "reject", comment: "" })
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    expect(stateOf(d)).toEqual(["1:done", "2:done", "3:skipped"])
+    expect(d.nodes[1]?.task?.approval).toMatchObject({ verdict: "reject", comment: null })
+  })
+
+  test("reject with both outputs connected: the approve branch is skipped, the reject branch runs", async () => {
+    const t = await setup()
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const g = await t.approvalNode("Gate")
+    const ship = await t.node({ name: "Ship", prompt: "Ship {{input}}" })
+    const rework = await t.node({ name: "Rework", prompt: "Rework {{input}}" })
+    await t.connect(first, g)
+    await t.connect(g, ship, null, "approve")
+    await t.connect(g, rework, null, "reject")
+    const run = await t.start()
+    const card = await t.waitCard()
+    await t.answer(card.id, { kind: "verdict", verdict: "reject", comment: "Too long" })
+    const d = await t.ended(run.id)
+    expect(stateOf(d)).toEqual(["1:done", "2:done", "3:skipped", "4:done"])
+    expect(d.nodes[3]?.task?.input).toContain("Too long")
+  })
+
+  test("a comment over 2,000 characters is refused and the card still waits", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    const card = await t.waitCard()
+    const exit = await t.runtime.runPromiseExit(
+      Cards.use((c) =>
+        c.answer(card.id, { kind: "verdict", verdict: "approve", comment: "x".repeat(2001) }),
+      ),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect((await t.cards()).length).toBe(1)
+    expect((await t.get(run.id)).state).toBe("waiting")
+    await t.answer(card.id, { kind: "verdict", verdict: "approve", comment: "x".repeat(2000) })
+    expect((await t.ended(run.id)).state).toBe("done")
+  })
+
+  test("stop while the run waits: the card goes away and the run ends as stopped", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    await t.waitCard()
+    await t.run(Runs.use((r) => r.stop(run.id)))
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("cancelled")
+    expect((await t.cards()).length).toBe(0)
   })
 })
 

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto"
 import {
+  type ApprovalOutput,
   addSpent,
+  approvalResultOf,
   BLOCKED_REASON_MAX,
   blockedReason,
   type CardAnswer,
@@ -14,6 +16,7 @@ import {
   NO_TASK_CONNECTIONS,
   NO_USAGE,
   NOTE_NAME_CHARS,
+  type NodeKind,
   nextKeepGoing,
   type OutsideSource,
   type PermissionLevel,
@@ -36,6 +39,8 @@ import {
   type TaskConnectionStep,
   type TaskConnections,
   type TaskState,
+  verdictAnswerOf,
+  verdictJsonOf,
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
@@ -170,6 +175,8 @@ interface TaskRow {
   progress: "not_sent" | "sent" | "started"
   decision: string | null
   option_id: string | null
+  /** An approval node: the stored answer as JSON (the answer, the comment and the time). */
+  verdict: string | null
   kept_going: number
   created_at: number
   started_at: number | null
@@ -198,6 +205,12 @@ interface End {
   readonly result: string
   /** For a decision node: the option taken. */
   readonly optionId?: string | null
+  /** For an approval node that the user answered: the answer, the comment and the time. */
+  readonly verdict?: {
+    readonly verdict: ApprovalOutput
+    readonly comment: string | null
+    readonly answeredAt: number
+  }
 }
 
 const TASK_FINAL = ["done", "failed", "blocked", "cancelled"]
@@ -353,6 +366,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               )?.label ?? null,
           }
         }
+        const approvalView = verdictAnswerOf(t.verdict)
         return {
           id: t.id,
           retryOf: t.retry_of,
@@ -375,6 +389,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           endedAt: t.ended_at,
           finishedAt: t.finished_at,
           decision: decisionView,
+          approval: approvalView,
           outside: parseOutsideSource(t.outside_mark),
           program: t.program_mark === 1,
           sensitive: (t.sensitive_mark as SensitiveLabel | null) ?? null,
@@ -388,7 +403,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       }
 
       const nodesOf = (workflowId: string) =>
-        db.all<{ number: number; name: string; kind: "text" | "decision" }>(
+        db.all<{ number: number; name: string; kind: NodeKind }>(
           "SELECT number, name, kind FROM workflow_node WHERE workflow_id = ? ORDER BY number",
           workflowId,
         )
@@ -563,6 +578,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         readonly state: "done" | "failed" | "blocked"
         readonly result: string
         readonly optionId: string | null
+        readonly output: ApprovalOutput | null
         readonly marks: TaskMarks
       }
 
@@ -604,8 +620,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             return from.node.continueOnFailure ? passesOption(c, from) : null
           return passesOption(c, from)
         }
-        const passesOption = (c: (typeof graph.connections)[number], from: Done): Done | null =>
-          from.node.kind === "decision" ? (c.optionId === from.optionId ? from : null) : from
+        const passesOption = (c: (typeof graph.connections)[number], from: Done): Done | null => {
+          if (from.node.kind === "decision") return c.optionId === from.optionId ? from : null
+          if (from.node.kind === "approval") return c.output === from.output ? from : null
+          return from
+        }
 
         for (;;) {
           if (runSignal.aborted) break
@@ -754,6 +773,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const now = Date.now()
         db.run(
           `UPDATE task SET state = ?, error_code = ?, error_detail = ?, result = ?, option_id = COALESCE(?, option_id),
+             verdict = COALESCE(?, verdict),
              ended_at = ?, ended_as = ?, finished_at = ?
            WHERE id = ? AND state IN ('queued', 'running', 'waiting')`,
           end.state,
@@ -761,6 +781,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           end.text,
           end.result,
           end.optionId ?? null,
+          end.verdict ? verdictJsonOf(end.verdict) : null,
           now,
           end.state,
           now,
@@ -787,6 +808,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           state: "failed",
           result: "",
           optionId: null,
+          output: null,
           marks: n.marks,
         }
         // The run was stopped while the node got its input: it makes no task.
@@ -815,10 +837,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           }
           await place.ready
           markRunning(n.run.id, taskId)
-          end =
-            n.node.kind === "text"
-              ? await runText(n, taskId, input, marks)
-              : await runDecision(n, taskId, input, marks)
+          const runners = { text: runText, decision: runDecision, approval: runApproval }
+          end = await runners[n.node.kind](n, taskId, input, marks)
         } catch (error) {
           // The signal of the run aborted while the task waited or worked. A task that still
           // waited for a start when the user stopped its run shows "The run was stopped".
@@ -864,6 +884,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           state: end.state === "cancelled" ? "failed" : end.state,
           result: end.state === "done" ? end.result : end.result,
           optionId: end.optionId ?? null,
+          output: end.verdict?.verdict ?? null,
           marks,
         }
         return end.state === "cancelled" ? { kind: "cancelled", done } : { kind: "ended", done }
@@ -1009,6 +1030,51 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           pickedId = reply.answer
         }
         return { state: "done", code: null, text: null, result: "", optionId: pickedId }
+      }
+
+      // --- an approval node -----------------------------------------------------------------
+
+      const runApproval = async (
+        n: NodeRun,
+        taskId: string,
+        input: string,
+        marks: TaskMarks,
+      ): Promise<End> => {
+        // The node shows a card with the question and its input and waits for the user (spec 010,
+        // "Flows", item 7). Stop ends the wait, as it ends any card that waits.
+        const reply = await askCard(
+          n,
+          taskId,
+          marks,
+          () => {},
+          () => {},
+          {
+            kind: "verdict",
+            summary: n.node.question,
+            input,
+            step: null,
+            once: true,
+          },
+          n.signal,
+          { code: "verdict", detail: "" },
+        )
+        const verdict =
+          reply.answer === "approve" || reply.answer === "reject" ? reply.answer : null
+        if (verdict === null)
+          return {
+            state: "failed",
+            code: "invalid_input",
+            text: "The answer is not Approve or Reject.",
+            result: "",
+          }
+        const comment = reply.comment ?? ""
+        return {
+          state: "done",
+          code: null,
+          text: null,
+          result: approvalResultOf(input, comment),
+          verdict: { verdict, comment: comment === "" ? null : comment, answeredAt: Date.now() },
+        }
       }
 
       // --- a text node --------------------------------------------------------------------

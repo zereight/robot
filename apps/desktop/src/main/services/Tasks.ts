@@ -1,4 +1,5 @@
 import {
+  type NodeKind,
   QUEUE_BEHIND,
   QUEUE_SLOT,
   type QuietTurn,
@@ -50,7 +51,7 @@ interface ListRow {
   workflow_name: string
   node_name: string
   node_number: number
-  kind: "text" | "decision" | null
+  kind: NodeKind | null
   source: string
   state: string
   run_state: string
