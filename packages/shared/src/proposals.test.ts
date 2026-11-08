@@ -22,6 +22,7 @@ const node = (n: number, extra: Partial<WorkflowNode> = {}): WorkflowNode => ({
   model: "mock-fast",
   effort: null,
   backup: null,
+  silentLimit: null,
   permission: "read_only",
   continueOnFailure: false,
   question: "",
@@ -104,6 +105,39 @@ describe("the backup model in a graph change (spec 006; docs/spec-questions.md, 
     expect(
       graphFingerprint({ ...held, nodes: [node(1, { backup: { ...pick, model: "x" } }), node(2)] }),
     ).not.toBe(graphFingerprint(held))
+  })
+})
+
+describe("the silent limit of a node in a graph change (spec 010, Silent limit of a node)", () => {
+  const held: WorkflowGraph = { ...current, nodes: [node(1, { silentLimit: 30 }), node(2)] }
+
+  test("a kept node keeps its limit, a new node follows the settings, a decision node has none", () => {
+    const r = compileGraph(
+      held,
+      {
+        nodes: [
+          { keep: 1, kind: "text", name: "Node 1" },
+          { keep: 2, kind: "text", name: "Node 2" },
+          { kind: "text", name: "New", prompt: "x" },
+          { kind: "decision", name: "Pick", question: "Q?", options: ["Yes", "No"] },
+        ],
+        connections: [
+          { from: 1, to: 2 },
+          { from: 2, to: 3 },
+          { from: 3, to: 4 },
+          { from: 4, to: 1, option: "Yes" },
+          { from: 4, to: 2, option: "No" },
+        ],
+      },
+      newId,
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.graph.nodes.map((n) => n.silentLimit)).toEqual([30, null, null, null])
+  })
+
+  test("the fingerprint changes with the limit, so a proposal is stale after the user changes it", () => {
+    expect(graphFingerprint(held)).not.toBe(graphFingerprint(current))
   })
 })
 

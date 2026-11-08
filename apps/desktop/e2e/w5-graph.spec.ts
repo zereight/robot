@@ -53,6 +53,22 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   ])
   await page.getByTestId("node-permission").selectOption("read_only")
 
+  // The silent limit of the node: Follow settings, minutes, or Never. It saves like other fields.
+  const silent = await page.getByTestId("node-silent-limit").locator("option").allTextContents()
+  expect(silent).toEqual([
+    "Follow settings",
+    "1 min",
+    "5 min",
+    "10 min",
+    "30 min",
+    "60 min",
+    "Never",
+  ])
+  await page.getByTestId("node-silent-limit").selectOption("30")
+  await expect(page.getByTestId("toast-success").last()).toHaveText(/Saved\./)
+  await page.getByTestId("node-silent-limit").scrollIntoViewIfNeeded()
+  await shot(page, "w5-21b-node-silent-limit")
+
   // A second text node, and a connection from the first to it.
   await page.getByTestId("graph-add-text").click()
   await page.getByTestId("node-name").fill("Write")
@@ -68,6 +84,8 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await page.getByTestId("graph-add-decision").click()
   await expect(page.getByTestId("node-option")).toHaveCount(2)
   await expect(page.getByTestId("node-effort")).toHaveCount(0)
+  // A decision node has no silent limit of its own.
+  await expect(page.getByTestId("node-silent-limit")).toHaveCount(0)
   await expect(page.getByTestId("node-threshold")).toHaveValue("0.9")
   await expect(page.getByTestId("graph-problems").locator("li")).toHaveCount(2)
   // The two kinds differ in shape and icon, not only in the word: a text node is a solid card, a
@@ -105,6 +123,7 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await expect(page.getByTestId("node-model")).toHaveValue("gpt-5")
   await expect(page.getByTestId("node-effort")).toHaveValue("medium")
   await expect(page.getByTestId("node-permission")).toHaveValue("read_only")
+  await expect(page.getByTestId("node-silent-limit")).toHaveValue("30")
 
   // Removing a connection asks first. "Keep it" changes nothing.
   await page.getByTestId("node-next-remove").click()

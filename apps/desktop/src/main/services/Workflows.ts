@@ -25,6 +25,7 @@ import {
   programName,
   redactSecrets,
   resolveLocale,
+  type SilentLimit,
   sameModelChoice,
   THRESHOLD_DEFAULT,
   translate,
@@ -178,6 +179,7 @@ interface NodeRow {
   backup_account_id: string | null
   backup_model: string | null
   backup_effort: string | null
+  silent_limit: number | null
   permission: PermissionLevel | null
   continue_on_failure: number
   question: string
@@ -240,13 +242,18 @@ export const readStoredCheck = (
 
 /**
  * A graph that a version kept, read again. A version from before the backup model has no `backup`
- * on its nodes: they have none (spec 006).
+ * on its nodes: they have none (spec 006). A version from before the silent limit of a node has no
+ * `silentLimit` on its nodes: they follow the setting (spec 010).
  */
 const versionGraph = (json: string): WorkflowGraph => {
   const graph = JSON.parse(json) as WorkflowGraph
   return {
     ...graph,
-    nodes: graph.nodes.map((n) => ({ ...n, backup: n.backup ?? null })),
+    nodes: graph.nodes.map((n) => ({
+      ...n,
+      backup: n.backup ?? null,
+      silentLimit: n.silentLimit ?? null,
+    })),
   }
 }
 
@@ -273,6 +280,7 @@ export const readGraph = (db: DatabaseService, workflowId: string): WorkflowGrap
           r.backup_account_id !== null && r.backup_model !== null
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
+        silentLimit: r.silent_limit as SilentLimit | null,
         permission: r.permission,
         continueOnFailure: r.continue_on_failure === 1,
         question: r.question,
@@ -421,6 +429,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         model?: string | null
         effort?: string | null
         backup?: ModelPick | null
+        silentLimit?: SilentLimit | null
         permission?: PermissionLevel | null
       }) => {
         if (patch.effort !== undefined && patch.effort !== null)
@@ -428,6 +437,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         // A decision node names the decision model, so it keeps it and gets no backup (spec 006).
         if (patch.backup !== undefined && patch.backup !== null)
           return new AppError({ code: "decision_backup", detail: "backup" })
+        // A decision node has no silent limit of its own (spec 010).
+        if (patch.silentLimit !== undefined && patch.silentLimit !== null)
+          return new AppError({ code: "decision_silent_limit", detail: "silentLimit" })
         if (
           (patch.accountId !== undefined && patch.accountId !== null) ||
           (patch.model !== undefined && patch.model !== null)
@@ -562,9 +574,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           for (const n of graph.nodes) {
             db.run(
               `INSERT INTO workflow_node (id, workflow_id, number, kind, name, prompt, account_id, model, effort,
-                 backup_account_id, backup_model, backup_effort,
+                 backup_account_id, backup_model, backup_effort, silent_limit,
                  permission, continue_on_failure, question, threshold, x, y)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               n.id,
               id,
               n.number,
@@ -579,6 +591,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               n.kind === "text" ? (n.backup?.accountId ?? null) : null,
               n.kind === "text" ? (n.backup?.model ?? null) : null,
               n.kind === "text" ? (n.backup?.effort ?? null) : null,
+              // A decision node has no silent limit of its own (spec 010).
+              n.kind === "text" ? (n.silentLimit ?? null) : null,
               n.permission,
               n.continueOnFailure ? 1 : 0,
               n.question,
@@ -870,7 +884,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               keepVersion(row.id, source)
               db.run(
                 `UPDATE workflow_node SET name = ?, prompt = ?, account_id = ?, model = ?, effort = ?,
-                   backup_account_id = ?, backup_model = ?, backup_effort = ?,
+                   backup_account_id = ?, backup_model = ?, backup_effort = ?, silent_limit = ?,
                    permission = ?, continue_on_failure = ?, question = ?, threshold = ?, x = ?, y = ?
                  WHERE id = ?`,
                 pick(patch.name?.trim(), node.name),
@@ -881,6 +895,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 backupNext?.accountId ?? null,
                 backupNext?.model ?? null,
                 backupNext?.effort ?? null,
+                pick(patch.silentLimit, node.silent_limit),
                 pick(patch.permission, node.permission),
                 patch.continueOnFailure === undefined
                   ? node.continue_on_failure

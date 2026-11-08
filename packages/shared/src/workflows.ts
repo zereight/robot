@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { ModelPick } from "./backup.ts"
+import { SilentLimit } from "./settings.ts"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 import type { CheckOutcome, CheckState } from "./workflowCheck.ts"
 
@@ -95,6 +96,12 @@ export interface WorkflowNode {
    * the editor: a proposal, the chat and a linked device cannot (docs/spec-questions.md, B6).
    */
   readonly backup: ModelPick | null
+  /**
+   * The silent limit of a text node in minutes, or null to follow the setting (spec 010, "Silent
+   * limit of a node"). 0 is Never. A decision node has none. Only the user sets it, in the
+   * editor: a proposal and the chat keep it, and a node they add gets null.
+   */
+  readonly silentLimit: SilentLimit | null
   /** A stricter level than the workflow, or null for the level of the workflow. */
   readonly permission: PermissionLevel | null
   readonly continueOnFailure: boolean
@@ -187,6 +194,8 @@ export const NodePatch = Schema.Struct({
   effort: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The backup model (spec 006). Null clears it. Only the editor of this computer may set it. */
   backup: Schema.optionalKey(Schema.NullOr(BackupPick)),
+  /** The silent limit of a text node (spec 010). Null follows the setting. */
+  silentLimit: Schema.optionalKey(Schema.NullOr(SilentLimit)),
   permission: Schema.optionalKey(Schema.NullOr(Level)),
   continueOnFailure: Schema.optionalKey(Schema.Boolean),
   question: Schema.optionalKey(Schema.String),
