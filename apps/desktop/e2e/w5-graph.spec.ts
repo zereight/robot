@@ -68,6 +68,14 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await expect(page.getByTestId("node-effort")).toHaveCount(0)
   await expect(page.getByTestId("node-threshold")).toHaveValue("0.9")
   await expect(page.getByTestId("graph-problems").locator("li")).toHaveCount(2)
+  // The two kinds differ in shape and icon, not only in the word: a text node is a solid card, a
+  // decision node a dashed pill.
+  const textNode = page.locator('[data-testid="graph-node"][data-kind="text"]').first()
+  const decisionNode = page.locator('[data-testid="graph-node"][data-kind="decision"]')
+  await expect(textNode).toHaveCSS("border-top-style", "solid")
+  await expect(decisionNode).toHaveCSS("border-top-style", "dashed")
+  await expect(textNode.getByTestId("graph-node-kind").locator("svg")).toHaveCount(1)
+  await expect(decisionNode.getByTestId("graph-node-kind").locator("svg")).toHaveCount(1)
   await page.getByTestId("node-option-target").first().selectOption({ label: "2. Write" })
   await expect(page.getByTestId("graph-problems").locator("li")).toHaveCount(1)
   await expect(page.getByTestId("graph-line")).toHaveCount(2)
