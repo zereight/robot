@@ -1159,7 +1159,7 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 
 | Spec | Question | Choice for now |
 | --- | --- | --- |
-| 001 | How far apart are the dots on the screen at 100%? 001 names no distance. The examples of 001 (every dot at 75%, every second dot at 50%, every fourth dot at 25%) are true only for a distance of 16 px or more and less than 24 px. | 16 px, the distance that the canvas shows now. To confirm. |
+| 001 | How far apart are the dots on the screen at 100%, from centre to centre? 001 names no distance. The examples of 001 (every dot at 75%, every second dot at 50%, every fourth dot at 25%) are true only for a distance of 16 px or more and less than 24 px. | 16 px, the distance that the canvas shows now. To confirm. |
 | 001 | What size and colour does a dot have on the screen? 001 says only that the size does not change with the zoom. | The size and colour that the canvas shows now: a round dot 2 px across, in the colour of the borders. To confirm. |
 | 001 | When the zoom passes the point where every second or every fourth dot shows, do the dots that go away go at once, or do they fade? 000 and 039 name no motion for the grid. | At once, with no motion. To confirm. |
 | 001 | Above 100% the dots get farther apart, to 32 px at 200%. Does the canvas add dots between them at a high zoom? | No. 001 names only fewer dots. The grid gets wider as the zoom goes up. To confirm. |

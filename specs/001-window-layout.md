@@ -40,12 +40,13 @@ stops and results without opening another page. The app opens on the studio.
   pointer, from 25% to 200%. A small card over the bottom right corner shows the zoom, with
   buttons to zoom out and in; a press on the zoom value shows the graph at 100% from its top left
   corner again. The view starts there when the workflow opens. A click on an empty part clears
-  the selection. The canvas shows a grid of dots. The grid moves and zooms with the graph. Two
-  dots that show are never closer than 12 px on the screen: when the zoom puts the dots closer,
-  the canvas shows only every second dot, or only every fourth dot, in each row and each column,
-  so the space between the dots on the screen stays 12 px or more. The canvas shows as many dots
-  as this rule lets it. A dot that shows stays at its place in the graph. For example, at 100%
-  and at 75% every dot shows, at 50% every second dot shows, and at 25% every fourth dot shows.
+  the selection. The canvas shows a grid of dots. The grid moves and zooms with the graph. The
+  space between two dots is measured on the screen, from the centre of a dot to the centre of the
+  next dot that shows in the same row or column. This space is never less than 12 px: when the
+  zoom makes it less, the canvas shows only every second dot, or only every fourth dot, in each
+  row and each column, so the space stays 12 px or more. The canvas shows as many dots as this
+  rule lets it. A dot that shows stays at its place in the graph. For example, at 100% and at 75%
+  every dot shows, at 50% every second dot shows, and at 25% every fourth dot shows.
   A dot has the same size on the screen at each zoom (see docs/spec-questions.md, rows for
   CG1).
 - **Node panel**: a card that floats over the top right corner of the canvas when a node is
@@ -197,10 +198,11 @@ stops and results without opening another page. The app opens on the studio.
   the graph can go off the screen. Scroll with two fingers: the view moves. Pinch, or press
   Ctrl with the wheel: the zoom changes around the pointer, and the zoom card shows the new
   value. Press the zoom value: the graph shows at 100% from its top left corner again.
-- Zoom the canvas to 100%, 75%, 50% and 25%, and measure the dots on the screen. At each zoom, the
-  space between two dots that show is 12 px or more, and a dot has the same size. At 100% and at
-  75% every dot shows, at 50% every second dot shows, and at 25% every fourth dot shows. Drag the
-  canvas and zoom it around the pointer: the dots move and zoom with the graph.
+- Zoom the canvas to 100%, 75%, 50% and 25%. At each zoom, measure on the screen from the centre
+  of a dot to the centre of the next dot that shows in the same row or column: the space is 12 px
+  or more, and a dot has the same size. At 100% and at 75% every dot shows, at 50% every second
+  dot shows, and at 25% every fourth dot shows. Drag the canvas and zoom it around the pointer: the
+  dots move and zoom with the graph.
 - Drag the top edge of the run strip up: the strip gets higher and the canvas gets lower. Quit
   and open the app again: the strip has the same height.
 - Press the Tasks button: the centre column shows the tasks page, and the list and the chat stay.
