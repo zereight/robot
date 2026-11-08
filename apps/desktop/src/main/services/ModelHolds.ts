@@ -4,6 +4,7 @@ import {
   holdLasts,
   type ModelPick,
   type NodeHold,
+  redactSecrets,
   sameModelChoice,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -173,7 +174,8 @@ export class ModelHolds extends Context.Service<ModelHolds, ModelHoldsService>()
         // the app comes first.
         appendLog(platform.dataDir, "workflows", {
           event: "hold_load_failed",
-          reason: error instanceof Error ? error.message : String(error),
+          // An error text can hold a key: it is hidden as results are (spec 014).
+          reason: redactSecrets(error instanceof Error ? error.message : String(error)),
         })
         try {
           db.run("DELETE FROM model_hold")
