@@ -100,7 +100,13 @@ export const logTeamsEvent = (
   dataDir: string,
   event: { event: string; reason: string; place: string },
 ) => {
-  appendLog(dataDir, "teams", { ...event, reason: redactSecrets(event.reason) })
+  // Each field is picked by hand: a wider caller object must not leak text or a name
+  // into the log (spec 014, 028).
+  appendLog(dataDir, "teams", {
+    event: event.event,
+    reason: redactSecrets(event.reason),
+    place: event.place,
+  })
 }
 
 /**

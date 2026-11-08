@@ -1459,8 +1459,10 @@ export const electronPlatform = (): PlatformService => {
         boxes,
         // The screen of the app first, then the pages of the workflows.
         pages: [screenSnapshot(), ...[...snapshots.values()].map((snapshot) => snapshot())],
-        // The logs that spec 014 names: browser, workflows, outside programs, Teams link.
+        // The app and browser tails explain a screen that takes no click; the rest are the
+        // audit logs of spec 014 (workflows, outside programs, Teams link).
         logs: [
+          { name: "app", lines: readLogTail(dataDir, "app", 100) },
           { name: "browser", lines: readLogTail(dataDir, "browser", 150) },
           { name: "workflows", lines: readLogTail(dataDir, "workflows", 100) },
           { name: "outside", lines: readLogTail(dataDir, "outside", 100) },

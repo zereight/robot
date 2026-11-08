@@ -152,6 +152,23 @@ describe("audit logs (spec 014, 023, 028)", () => {
     expect("name" in entry).toBe(false)
   })
 
+  test("a Teams event drops the fields of a wider caller object", () => {
+    const dir = dataDir()
+    // A non-literal variable: excess fields compile, and must not reach the log.
+    const wider = {
+      event: "answered",
+      reason: "call",
+      place: "Work chat",
+      text: "Secret plans for Friday",
+      sender: "Marta Kim",
+    }
+    logTeamsEvent(dir, wider)
+    const text = readFileSync(join(dir, "logs", "teams.log"), "utf8")
+    expect(text).toContain('"event":"answered"')
+    expect(text).not.toContain("Secret plans for Friday")
+    expect(text).not.toContain("Marta Kim")
+  })
+
   test("pruneOldLogs drops lines older than 90 days from both link logs", () => {
     const DAY_MS = 24 * 60 * 60 * 1000
     const now = Date.parse("2026-11-09T00:00:00.000Z")
