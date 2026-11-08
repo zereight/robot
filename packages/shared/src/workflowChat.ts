@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import type { ChatMeter } from "./compact.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { ChatMarks, RunCard } from "./runs.ts"
+import type { NodeKind } from "./workflows.ts"
 
 /** The limits of the message box (spec 003). */
 export const CHAT_MESSAGE_MAX = 100_000
@@ -273,7 +274,7 @@ export type RunNodeState =
 export interface RunNodeFact {
   readonly number: number
   readonly name: string
-  readonly kind: "text" | "decision"
+  readonly kind: NodeKind
   readonly state: RunNodeState
   /** The reason in words, when the state has one (spec 005, "States and reasons"). */
   readonly reason: string | null

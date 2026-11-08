@@ -4,6 +4,9 @@ import type { DiffSegment } from "./diff.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { CheckOutcome } from "./workflowCheck.ts"
 import {
+  APPROVAL_OUTPUTS,
+  type ApprovalOutput,
+  connectionOutputKey,
   NODES_MAX,
   type NodeKind,
   OPTIONS_MIN,
@@ -123,6 +126,8 @@ export interface GraphConnectionChange {
   readonly to: GraphNodeRef
   /** The label of the option of a decision node, or null. */
   readonly option: string | null
+  /** The output of an approval node, or null. The card turns it into a text. */
+  readonly output: ApprovalOutput | null
 }
 
 /** What a graph change adds, changes and removes (spec 002, "Card"). */
@@ -220,7 +225,7 @@ export const graphFingerprint = (graph: WorkflowGraph): string =>
         n.threshold,
         n.options.map((o) => [o.id, o.label]),
       ]),
-    graph.connections.map((c) => `${c.from}|${c.to}|${c.optionId ?? ""}`).sort(),
+    graph.connections.map((c) => `${c.from}|${c.to}|${connectionOutputKey(c) ?? ""}`).sort(),
   ])
 
 // ---------------------------------------------------------------------------------------------
@@ -253,6 +258,8 @@ export interface GraphProposalConnection {
   readonly to: number
   /** The label of the option of a decision node that the connection leaves. */
   readonly option?: string
+  /** The output of an approval node that the connection leaves: "Approve" or "Reject". */
+  readonly output?: string
 }
 
 export interface GraphProposalInput {
@@ -272,11 +279,14 @@ export type GraphCompileError =
   | "decision_options"
   | "text_options"
   | "decision_fields"
+  | "approval_fields"
   | "threshold"
   | "connection_node"
   | "connection_self"
   | "connection_option"
   | "connection_option_unexpected"
+  | "connection_output"
+  | "connection_output_unexpected"
   | "connection_twice"
   | "no_change"
 
@@ -334,38 +344,33 @@ export const compileGraph = (
       if (new Set(labels).size !== labels.length) return fail("decision_options", String(place))
       const known = new Map((old?.options ?? []).map((o) => [o.label, o.id]))
       options = labels.map((label) => ({ id: known.get(label) ?? newId(), label }))
+    } else if (spec.kind === "approval") {
+      if (spec.accountId || spec.model || spec.effort || (spec.options ?? []).length > 0)
+        return fail("approval_fields", String(place))
     } else if ((spec.options ?? []).length > 0) return fail("text_options", String(place))
     const isNew = old === undefined
     if (isNew) fresh++
+    // A text node keeps its model fields. A decision or approval node keeps none: it uses no
+    // model. A decision or approval node keeps its question; a text node keeps none.
+    const modelFields =
+      spec.kind === "text"
+        ? {
+            prompt: spec.prompt ?? old?.prompt ?? "",
+            accountId: spec.accountId !== undefined ? spec.accountId : (old?.accountId ?? null),
+            model: spec.model !== undefined ? spec.model : (old?.model ?? null),
+            effort: spec.effort !== undefined ? spec.effort : (old?.effort ?? null),
+            backup: old?.backup ?? null,
+          }
+        : { prompt: "", accountId: null, model: null, effort: null, backup: null }
     nodes.push({
       id,
       number: place,
       kind: spec.kind,
       name,
-      prompt: spec.kind === "decision" ? "" : (spec.prompt ?? old?.prompt ?? ""),
-      accountId:
-        spec.kind === "decision"
-          ? null
-          : spec.accountId !== undefined
-            ? spec.accountId
-            : (old?.accountId ?? null),
-      model:
-        spec.kind === "decision"
-          ? null
-          : spec.model !== undefined
-            ? spec.model
-            : (old?.model ?? null),
-      effort:
-        spec.kind === "decision"
-          ? null
-          : spec.effort !== undefined
-            ? spec.effort
-            : (old?.effort ?? null),
-      // A graph change keeps the backup of a node that stays and never sets one (spec 006).
-      backup: spec.kind === "decision" ? null : (old?.backup ?? null),
+      ...modelFields,
       permission: old?.permission ?? null,
       continueOnFailure: spec.continueOnFailure ?? old?.continueOnFailure ?? false,
-      question: spec.kind === "decision" ? (spec.question ?? old?.question ?? "") : "",
+      question: spec.kind === "text" ? "" : (spec.question ?? old?.question ?? ""),
       threshold,
       options,
       x: old?.x ?? maxX + 260 * fresh,
@@ -380,20 +385,33 @@ export const compileGraph = (
     if (!from || !to) return fail("connection_node", `${spec.from}->${spec.to}`)
     if (from.id === to.id) return fail("connection_self", String(spec.from))
     let optionId: string | null = null
+    let output: ApprovalOutput | null = null
     if (from.kind === "decision") {
       const option = from.options.find((o) => o.label === spec.option?.trim())
       if (!option) return fail("connection_option", `${spec.from}: ${spec.option ?? ""}`)
       optionId = option.id
-    } else if (spec.option !== undefined && spec.option !== "")
-      return fail("connection_option_unexpected", String(spec.from))
-    const key = optionId ?? `${from.id}|${to.id}`
+      if (spec.output !== undefined && spec.output !== "")
+        return fail("connection_output_unexpected", String(spec.from))
+    } else if (from.kind === "approval") {
+      if (spec.option !== undefined && spec.option !== "")
+        return fail("connection_option_unexpected", String(spec.from))
+      const hit = APPROVAL_OUTPUTS.find((o) => o === spec.output?.trim().toLowerCase())
+      if (!hit) return fail("connection_output", `${spec.from}: ${spec.output ?? ""}`)
+      output = hit
+    } else {
+      if (spec.option !== undefined && spec.option !== "")
+        return fail("connection_option_unexpected", String(spec.from))
+      if (spec.output !== undefined && spec.output !== "")
+        return fail("connection_output_unexpected", String(spec.from))
+    }
+    const key = optionId ?? output ?? `${from.id}|${to.id}`
     if (seen.has(key)) return fail("connection_twice", `${spec.from}->${spec.to}`)
     seen.add(key)
     // A connection that is kept keeps its id, so a restore of a version still finds it.
     const old = current.connections.find(
-      (c) => c.from === from.id && c.to === to.id && c.optionId === optionId,
+      (c) => c.from === from.id && c.to === to.id && c.optionId === optionId && c.output === output,
     )
-    connections.push({ id: old?.id ?? newId(), from: from.id, to: to.id, optionId })
+    connections.push({ id: old?.id ?? newId(), from: from.id, to: to.id, optionId, output })
   }
   const graph: WorkflowGraph = { nodes, connections }
   if (graphFingerprint(graph) === graphFingerprint(current)) return fail("no_change", "")
@@ -488,7 +506,7 @@ export const graphChange = (
     if (was.number !== n.number) fields.push("number")
     if (fields.length > 0) changedNodes.push(change(n, fields, was))
   }
-  const key = (c: WorkflowConnection) => `${c.from}|${c.to}|${c.optionId ?? ""}`
+  const key = (c: WorkflowConnection) => `${c.from}|${c.to}|${connectionOutputKey(c) ?? ""}`
   const oldKeys = new Set(before.connections.map(key))
   const newKeys = new Set(after.connections.map(key))
   const view = (c: WorkflowConnection, within: WorkflowGraph): GraphConnectionChange => {
@@ -498,6 +516,7 @@ export const graphChange = (
       from: { number: from?.number ?? 0, name: from?.name ?? "" },
       to: { number: to?.number ?? 0, name: to?.name ?? "" },
       option: from?.options.find((o) => o.id === c.optionId)?.label ?? null,
+      output: c.output,
     }
   }
   return {
@@ -573,6 +592,8 @@ export const compileErrorText = (error: GraphCompileError, detail: string): stri
       return `A text node has no options (node ${detail}).`
     case "decision_fields":
       return `A decision node has no account, model or reasoning level (node ${detail}).`
+    case "approval_fields":
+      return `An approval node has a name and a question only (node ${detail}).`
     case "threshold":
       return `The threshold of node ${detail} must be between 0 and 1.`
     case "connection_node":
@@ -583,6 +604,10 @@ export const compileErrorText = (error: GraphCompileError, detail: string): stri
       return `A connection of a decision node must name one of its options (${detail}).`
     case "connection_option_unexpected":
       return `Only a decision node has options (node ${detail}).`
+    case "connection_output":
+      return `A connection of an approval node must name "Approve" or "Reject" (${detail}).`
+    case "connection_output_unexpected":
+      return `Only an approval node has outputs (node ${detail}).`
     case "connection_twice":
       return `The same connection is listed twice (${detail}), or an option has two connections.`
     case "no_change":

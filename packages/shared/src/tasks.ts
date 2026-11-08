@@ -2,6 +2,7 @@ import type { TaskProgress } from "./chat.ts"
 import type { ActionLogEntry } from "./outside.ts"
 import type { RunSource, TaskState } from "./runs.ts"
 import type { TaskUsage } from "./taskUsage.ts"
+import type { NodeKind } from "./workflows.ts"
 
 // The Tasks page, the queue, the slots, the moments, the quiet line and the retry note (spec 005).
 // The words of the states and the reasons are the words of spec 005. This file holds the rules
@@ -90,7 +91,7 @@ export interface TaskItem {
   readonly workflowName: string
   readonly nodeNumber: number
   readonly nodeName: string
-  readonly kind: "text" | "decision"
+  readonly kind: NodeKind
   /** The source of a task is the source of its run. */
   readonly source: RunSource
   readonly state: TaskState

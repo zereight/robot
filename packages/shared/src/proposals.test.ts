@@ -34,7 +34,7 @@ const node = (n: number, extra: Partial<WorkflowNode> = {}): WorkflowNode => ({
 
 const current: WorkflowGraph = {
   nodes: [node(1), node(2)],
-  connections: [{ id: "c1", from: "n1", to: "n2", optionId: null }],
+  connections: [{ id: "c1", from: "n1", to: "n2", optionId: null, output: null }],
 }
 
 let counter = 0
@@ -216,6 +216,68 @@ describe("compileGraph (spec 002, a graph change)", () => {
     expect(compile({ nodes: [{ ...keep1, threshold: 2 }], connections: [] })).toMatchObject({
       error: "threshold",
     })
+  })
+
+  test("an approval node keeps its question and no model fields; a connection names its output", () => {
+    const gate = { kind: "approval" as const, name: "Gate", question: "Ship it?" }
+    const r = compile({
+      nodes: [
+        { keep: 1, kind: "text", name: "Node 1" },
+        gate,
+        { keep: 2, kind: "text", name: "Node 2" },
+      ],
+      connections: [
+        { from: 1, to: 2 },
+        { from: 2, to: 3, output: "Approve" },
+      ],
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.graph.nodes[1]).toMatchObject({
+      kind: "approval",
+      question: "Ship it?",
+      prompt: "",
+      accountId: null,
+      model: null,
+      effort: null,
+      options: [],
+    })
+    expect(r.graph.connections[1]).toMatchObject({ optionId: null, output: "approve" })
+    const change = graphChange(current, r.graph)
+    expect(change.addedConnections[1]).toMatchObject({ option: null, output: "approve" })
+  })
+
+  test("an approval node refuses options and model fields, and a connection without its output", () => {
+    const gate = { kind: "approval" as const, name: "Gate", question: "Ship it?" }
+    expect(compile({ nodes: [{ ...gate, options: ["Maybe"] }], connections: [] })).toMatchObject({
+      ok: false,
+      error: "approval_fields",
+    })
+    expect(compile({ nodes: [{ ...gate, model: "mock-fast" }], connections: [] })).toMatchObject({
+      ok: false,
+      error: "approval_fields",
+    })
+    expect(
+      compile({
+        nodes: [gate, { keep: 2, kind: "text", name: "Node 2" }],
+        connections: [{ from: 1, to: 2 }],
+      }),
+    ).toMatchObject({ ok: false, error: "connection_output" })
+    expect(
+      compile({
+        nodes: [gate, { keep: 2, kind: "text", name: "Node 2" }],
+        connections: [{ from: 1, to: 2, option: "Approve" }],
+      }),
+    ).toMatchObject({ ok: false, error: "connection_option_unexpected" })
+    expect(
+      compile({
+        nodes: [
+          { keep: 1, kind: "text", name: "Node 1" },
+          { keep: 2, kind: "text", name: "Node 2" },
+        ],
+        connections: [{ from: 1, to: 2, output: "approve" }],
+      }),
+    ).toMatchObject({ ok: false, error: "connection_output_unexpected" })
   })
 
   test("the same graph is no change", () => {

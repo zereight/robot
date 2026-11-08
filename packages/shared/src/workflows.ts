@@ -18,8 +18,18 @@ export const OPTIONS_MIN = 2
 /** The threshold of a new decision node (spec 010, "Flows", item 6). */
 export const THRESHOLD_DEFAULT = 0.9
 
-export const NODE_KINDS = ["text", "decision"] as const
+export const NODE_KINDS = ["text", "decision", "approval"] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
+
+/** The two outputs of an approval node: the run follows the one that the user picks (spec 010). */
+export const APPROVAL_OUTPUTS = ["approve", "reject"] as const
+export type ApprovalOutput = (typeof APPROVAL_OUTPUTS)[number]
+
+/** The comment of the user on an approval card has at most 2,000 characters (spec 010). */
+export const APPROVAL_COMMENT_MAX = 2000
+
+/** Which output of a node a connection leaves. Null is the single implicit output of a text node. */
+export type OutputKey = string | null
 
 /** Where a change of the responsible document came from (spec 002, "Responsible document history"). */
 export const DOCUMENT_SOURCES = ["editor", "proposal", "undo", "restore"] as const
@@ -100,7 +110,7 @@ export interface WorkflowNode {
   readonly continueOnFailure: boolean
   readonly question: string
   readonly threshold: number
-  /** The options of a decision node, in order. Empty for a text node. */
+  /** The options of a decision node, in order. Empty for a text or approval node. */
   readonly options: readonly WorkflowOption[]
   readonly x: number
   readonly y: number
@@ -110,8 +120,27 @@ export interface WorkflowConnection {
   readonly id: string
   readonly from: string
   readonly to: string
-  /** The option of the decision node that this connection leaves, or null. */
+  /** A decision node: the option that this connection leaves. Null for a text or approval node. */
   readonly optionId: string | null
+  /** An approval node: the output that this connection leaves. Null for a text or decision node. */
+  readonly output: ApprovalOutput | null
+}
+
+/** The outputs a node offers, derived from its kind. An approval node owns no option rows. */
+export const nodeOutputs = (node: WorkflowNode): readonly OutputKey[] => {
+  if (node.kind === "approval") return [...APPROVAL_OUTPUTS]
+  if (node.kind === "decision") return node.options.map((o) => o.id)
+  return [null]
+}
+
+/**
+ * Which output a connection leaves. `connect` is the single writer and never sets both fields;
+ * a reader that needs the output uses this and never reads one field alone.
+ */
+export const connectionOutputKey = (c: WorkflowConnection): OutputKey => {
+  if (c.optionId !== null && c.output !== null)
+    throw new Error("A connection has an option and an output.")
+  return c.optionId ?? c.output
 }
 
 export interface WorkflowGraph {
@@ -207,27 +236,33 @@ export type WorkflowCreate = typeof WorkflowCreate.Type
 /** A structural problem of a graph: a fault of its shape that the editor can show (spec 010). */
 export type GraphProblem =
   | { readonly code: "decision_options"; readonly nodeId: string }
+  | { readonly code: "approval_question"; readonly nodeId: string }
   | { readonly code: "option_unconnected"; readonly nodeId: string; readonly optionId: string }
   | { readonly code: "nodes_full" }
 
 /**
  * The faults of the shape of a graph that the rules of the graph name (spec 010, "File"): a
- * decision node with fewer than two options, an option with no connection, and more than 30 nodes.
- * A connection to a node that does not exist, and a connection of a node to itself, cannot exist
- * in the database. The check on the TLA form (a deadlock, a node that no run reaches) is in
- * `workflowCheck.ts`; the check reads these faults first.
+ * decision node with fewer than two options, an approval node with an empty question, a decision
+ * option with no connection, and more than 30 nodes. An output of an approval node with no
+ * connection is not a problem: the run skips the nodes that only that output reaches (spec 010,
+ * "Approval node rules"). A connection to a node that does not exist, and a connection of a node
+ * to itself, cannot exist in the database. The check on the TLA form (a deadlock, a node that no
+ * run reaches) is in `workflowCheck.ts`; the check reads these faults first.
  */
 export const graphProblems = (graph: WorkflowGraph): readonly GraphProblem[] => {
   const problems: GraphProblem[] = []
   if (graph.nodes.length > NODES_MAX) problems.push({ code: "nodes_full" })
   const wired = new Set(graph.connections.map((c) => c.optionId).filter((id) => id !== null))
   for (const node of graph.nodes) {
-    if (node.kind !== "decision") continue
-    if (node.options.length < OPTIONS_MIN)
-      problems.push({ code: "decision_options", nodeId: node.id })
-    for (const option of node.options)
-      if (!wired.has(option.id))
-        problems.push({ code: "option_unconnected", nodeId: node.id, optionId: option.id })
+    if (node.kind === "decision") {
+      if (node.options.length < OPTIONS_MIN)
+        problems.push({ code: "decision_options", nodeId: node.id })
+      for (const option of node.options)
+        if (!wired.has(option.id))
+          problems.push({ code: "option_unconnected", nodeId: node.id, optionId: option.id })
+    } else if (node.kind === "approval") {
+      if (node.question.trim() === "") problems.push({ code: "approval_question", nodeId: node.id })
+    }
   }
   return problems
 }
