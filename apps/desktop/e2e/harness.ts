@@ -225,13 +225,15 @@ export const startRecording = async (page: Page, name: string) => {
 type Invoke = (method: string, input?: unknown) => Promise<{ ok: boolean; value?: unknown }>
 
 export interface NodeSpec {
-  readonly kind?: "text" | "decision"
+  readonly kind?: "text" | "decision" | "approval"
   readonly name: string
   readonly prompt?: string
   readonly permission?: string | null
   readonly continueOnFailure?: boolean
   /** A decision node: the labels of the options. */
   readonly options?: readonly string[]
+  /** An approval node: the question. */
+  readonly question?: string
 }
 
 export interface FlowSpec {
@@ -239,7 +241,7 @@ export interface FlowSpec {
   /** The permission level of the workflow. The app starts at "Ask for risky steps". */
   readonly level?: string
   readonly nodes: readonly NodeSpec[]
-  /** `[from, to, option]`: indexes into `nodes`; `option` is the index of the option of a decision node. */
+  /** `[from, to, option]`: indexes into `nodes`; `option` is the index of the option of a decision node, or of the output (Approve, Reject) of an approval node. */
   readonly edges?: readonly (readonly [number, number, number?])[]
 }
 
@@ -283,24 +285,33 @@ export const buildFlow = async (page: Page, spec: FlowSpec) =>
           y: 24 + Math.floor(index / 4) * 120,
           ...(n.kind === "decision"
             ? { question: "Which way?", threshold: 0.9, options: n.options ?? ["Yes", "No"] }
-            : {
-                prompt: n.prompt ?? "",
-                accountId: accounts[0]?.id,
-                model: "mock-fast",
-                ...(n.permission !== undefined ? { permission: n.permission } : {}),
-                ...(n.continueOnFailure ? { continueOnFailure: true } : {}),
-              }),
+            : n.kind === "approval"
+              ? { question: n.question ?? "Approve this run?" }
+              : {
+                  prompt: n.prompt ?? "",
+                  accountId: accounts[0]?.id,
+                  model: "mock-fast",
+                  ...(n.permission !== undefined ? { permission: n.permission } : {}),
+                  ...(n.continueOnFailure ? { continueOnFailure: true } : {}),
+                }),
         },
       })) as Made
       made.push(node)
     }
+    const outputs = ["approve", "reject"] as const
     for (const [from, to, option] of spec.edges ?? []) {
-      const optionId = option === undefined ? null : (made[from]?.options[option]?.id ?? null)
+      const kind = spec.nodes[from]?.kind ?? "text"
+      const optionId =
+        kind === "decision" && option !== undefined
+          ? (made[from]?.options[option]?.id ?? null)
+          : null
+      const output = kind === "approval" && option !== undefined ? (outputs[option] ?? null) : null
       await call("workflows.connect", {
         workflowId: flow?.id,
         from: made[from]?.id,
         to: made[to]?.id,
         optionId,
+        output,
       })
     }
     return flow?.id ?? ""
