@@ -29,7 +29,7 @@ export const problemLine = (
 
 export { GRAPH_FIELD_KEYS, type NodeDetail, nodeDetails } from "@robot/shared"
 
-const WORKFLOW_TABS = ["graph", "document", "memory", "improvement", "settings"] as const
+const WORKFLOW_TABS = ["graph", "document", "memory", "secrets", "improvement", "settings"] as const
 export type WorkflowTab = (typeof WORKFLOW_TABS)[number]
 
 /**

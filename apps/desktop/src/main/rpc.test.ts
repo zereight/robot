@@ -114,6 +114,29 @@ describe("the requests of a linked device (spec 012)", () => {
     })
   })
 
+  test("the vault is for this computer only: a linked device is refused", async () => {
+    const t = await setup()
+    // A linked device shows the vault as one muted line, and never takes or sends a value
+    // (spec 020, V1). None of the vault methods is a client method.
+    for (const method of [
+      "secrets.list",
+      "secrets.add",
+      "secrets.rename",
+      "secrets.test",
+      "secrets.replace",
+      "secrets.delete",
+      "logins.list",
+      "logins.add",
+      "logins.rename",
+      "logins.replace",
+      "logins.remove",
+    ])
+      expect(await t.ask(method, {}, "may")).toMatchObject({
+        ok: false,
+        error: { code: "not_allowed" },
+      })
+  })
+
   test("a device without the switch can run, see and stop a run, and answer cards", async () => {
     const t = await setup()
     const created = await t.ask("workflows.create", { serverId: t.server.id, name: "Report" })

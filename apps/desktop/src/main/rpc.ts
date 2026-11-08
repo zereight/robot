@@ -13,6 +13,7 @@ import {
   NodePatch,
   PERMISSION_LEVELS,
   ProviderConnect,
+  parseSecretAuth,
   type RpcInput,
   type RpcMethod,
   type RpcOutput,
@@ -20,6 +21,7 @@ import {
   RUN_SOURCES,
   RUNTIME_KINDS,
   redactSecrets,
+  SECRET_VALUE_MAX,
   SettingsPatch,
   SIGN_IN_ID,
   TASK_STATES,
@@ -52,6 +54,7 @@ import { Providers } from "./services/Providers.ts"
 import { Rules } from "./services/Rules.ts"
 import { Runs } from "./services/Runs.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { SavedLogins } from "./services/SavedLogins.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -536,6 +539,117 @@ export const handlers: Handlers = {
           }),
         ),
       ),
+    ),
+  "secrets.add": (input) =>
+    decode(
+      Schema.Struct({
+        workflowId: Schema.String,
+        name: Schema.String.check(Schema.isMaxLength(40)),
+        origin: Schema.String.check(Schema.isMaxLength(500)),
+        kind: Schema.Literals(["bearer", "header", "basic"]),
+        header: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+        user: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+        value: Schema.String.check(Schema.isMaxLength(SECRET_VALUE_MAX)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ workflowId, name, origin, kind, header, user, value }) =>
+        Effect.gen(function* () {
+          const auth = parseSecretAuth(kind, header, user)
+          if (!auth) return yield* new AppError({ code: "invalid_input" })
+          const allowLocal = (yield* SettingsStore.use((s) => s.get)).secretsLocal
+          return yield* SavedSecrets.use((s) =>
+            Effect.try({
+              try: () => s.add(workflowId, { name, origin, auth }, value, allowLocal),
+              catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+            }),
+          )
+        }),
+      ),
+    ),
+  "secrets.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String.check(Schema.isMaxLength(40)) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, name }) =>
+        SavedSecrets.use((s) =>
+          Effect.try({
+            try: () => s.rename(id, name),
+            catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+          }),
+        ),
+      ),
+    ),
+  "secrets.test": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) =>
+        Effect.gen(function* () {
+          const allowLocal = (yield* SettingsStore.use((s) => s.get)).secretsLocal
+          return yield* SavedSecrets.use((s) => Effect.promise(() => s.test(id, allowLocal)))
+        }),
+      ),
+    ),
+  "logins.list": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.optionalKey(Schema.String) }))(input).pipe(
+      Effect.flatMap(({ workflowId }) =>
+        SavedLogins.use((s) => Effect.sync(() => s.list(workflowId))),
+      ),
+    ),
+  "logins.add": (input) =>
+    decode(
+      Schema.Struct({
+        workflowId: Schema.String,
+        name: Schema.String.check(Schema.isMaxLength(40)),
+        origin: Schema.String.check(Schema.isMaxLength(500)),
+        user: Schema.String.check(Schema.isMaxLength(200)),
+        password: Schema.String.check(Schema.isMaxLength(SECRET_VALUE_MAX)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ workflowId, name, origin, user, password }) =>
+        Effect.gen(function* () {
+          const allowLocal = (yield* SettingsStore.use((s) => s.get)).secretsLocal
+          return yield* SavedLogins.use((s) =>
+            Effect.try({
+              try: () => s.add(workflowId, { name, origin, user }, password, allowLocal),
+              catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+            }),
+          )
+        }),
+      ),
+    ),
+  "logins.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String.check(Schema.isMaxLength(40)) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, name }) =>
+        SavedLogins.use((s) =>
+          Effect.try({
+            try: () => s.rename(id, name),
+            catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+          }),
+        ),
+      ),
+    ),
+  "logins.replace": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        user: Schema.String.check(Schema.isMaxLength(200)),
+        password: Schema.String.check(Schema.isMaxLength(SECRET_VALUE_MAX)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ id, user, password }) =>
+        SavedLogins.use((s) =>
+          Effect.try({
+            try: () => s.replace(id, user, password),
+            catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+          }),
+        ),
+      ),
+    ),
+  "logins.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => SavedLogins.use((s) => Effect.sync(() => s.remove(id)))),
+      done,
     ),
   // The key of the decision model goes from the window to the keychain only (spec 013). The page
   // learns whether a key is saved, never the key.
