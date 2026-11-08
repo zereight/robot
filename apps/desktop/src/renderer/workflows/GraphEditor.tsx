@@ -1,4 +1,5 @@
 import {
+  type ConnectionSource,
   type GraphVersion,
   type MessageKey,
   type ModelChoice,
@@ -20,7 +21,7 @@ import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
-import { labelPlace } from "./labelPlace.ts"
+import { type LabelBox, labelBox, labelPlace } from "./labelPlace.ts"
 import { approvalOutputKey, nodeKindKey } from "./labels.ts"
 import { NodePanel } from "./NodePanel.tsx"
 
@@ -255,6 +256,32 @@ export const GraphEditor = (props: {
     }
   }
 
+  const labelText = (from: WorkflowNode | undefined, s: ConnectionSource) => {
+    if (s.kind === "verdict") return t(approvalOutputKey(s.verdict))
+    if (s.kind !== "option" || from?.kind !== "decision") return undefined
+    return from.options.find((o) => o.id === s.optionId)?.label
+  }
+
+  const labelAts = createMemo(() => {
+    const out = new Map<string, { x: number; y: number }>()
+    const placed: LabelBox[] = []
+    const boxes = graph().nodes.map((n) => {
+      const q = positionOf(n)
+      return { x: q.x, y: q.y, w: NODE_W, h: NODE_H }
+    })
+    for (const c of graph().connections) {
+      const from = graph().nodes.find((n) => n.id === c.from)
+      const to = graph().nodes.find((n) => n.id === c.to)
+      if (!from || !to) continue
+      const text = labelText(from, c.source)
+      if (text === undefined) continue
+      const at = labelPlace(lineFor(from, to), text, boxes, placed)
+      out.set(c.id, at)
+      placed.push(labelBox(at.x, at.y, text))
+    }
+    return out
+  })
+
   // A drag on an empty part of the canvas moves the view; a click there clears the selection.
   let canvasEl: HTMLElement | undefined
   const onCanvasPointerDown = (e: PointerEvent) => {
@@ -342,26 +369,12 @@ export const GraphEditor = (props: {
                   {(c) => {
                     const from = () => graph().nodes.find((n) => n.id === c().from)
                     const to = () => graph().nodes.find((n) => n.id === c().to)
-                    const label = () => {
-                      const f = from()
-                      const s = c().source
-                      if (s.kind === "verdict") return t(approvalOutputKey(s.verdict))
-                      if (s.kind !== "option" || f?.kind !== "decision") return undefined
-                      return f.options.find((o) => o.id === s.optionId)?.label
-                    }
+                    const label = () => labelText(from(), c().source)
                     return (
                       <Show when={from() && to()}>
                         {(() => {
                           const l = () => lineFor(from() as WorkflowNode, to() as WorkflowNode)
-                          const at = () => {
-                            const text = label()
-                            if (text === undefined) return undefined
-                            const p = (n: WorkflowNode) => {
-                              const q = positionOf(n)
-                              return { x: q.x, y: q.y, w: NODE_W, h: NODE_H }
-                            }
-                            return labelPlace(l(), text, graph().nodes.map(p))
-                          }
+                          const at = () => labelAts().get(c().id)
                           return (
                             <g data-testid="graph-line">
                               <path
