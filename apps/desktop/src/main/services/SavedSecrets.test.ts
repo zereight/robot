@@ -196,4 +196,56 @@ describe("saved secrets of a workflow (spec 020)", () => {
       t.run(SavedSecrets.use((s) => Effect.sync(() => s.rename("nope", "Fresh")))),
     ).rejects.toMatchObject({ code: "secret_not_found" })
   })
+
+  test("test shows the reason when the value is missing or the switch is off", async () => {
+    const t = await setup()
+    const saved = await t.save("Api")
+    // A local origin saved with the switch on: Test with the switch off refuses it.
+    const local = await t.run(
+      SavedSecrets.use((s) =>
+        Effect.sync(() =>
+          s.add(
+            t.workflow.id,
+            { name: "Local", origin: "http://127.0.0.1:4001", auth: bearer },
+            VALUE,
+            true,
+          ),
+        ),
+      ),
+    )
+    expect(
+      await t.run(SavedSecrets.use((s) => Effect.promise(() => s.test(local.id, false)))),
+    ).toEqual({ ok: false, reason: "local_off" })
+    // The row stays, the last-used date does not change, and no request went out.
+    const row = await t.run(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.get<{ last_used_at: number | null }>(
+            "SELECT last_used_at FROM saved_secret WHERE id = ?",
+            local.id,
+          ),
+        ),
+      ),
+    )
+    expect(row?.last_used_at).toBeNull()
+    // With no value in the keychain, Test fails with the missing-value reason.
+    const ref = await t.run(
+      Database.use((db) =>
+        Effect.sync(
+          () =>
+            db.get<{ value_ref: string }>(
+              "SELECT value_ref FROM saved_secret WHERE id = ?",
+              saved.id,
+            )?.value_ref,
+        ),
+      ),
+    )
+    await t.run(Secrets.use((s) => Effect.sync(() => s.remove(savedSecretKey(ref as string)))))
+    expect(
+      await t.run(SavedSecrets.use((s) => Effect.promise(() => s.test(saved.id, false)))),
+    ).toEqual({ ok: false, reason: "value_missing" })
+    expect(
+      await t.run(SavedSecrets.use((s) => Effect.sync(() => s.find(t.workflow.id, "Api")))),
+    )?.toMatchObject({ valueMissing: true })
+  })
 })

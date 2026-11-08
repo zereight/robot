@@ -302,6 +302,22 @@ export const checkRequestAddress = (
   return { ok: true, url }
 }
 
+/** Why Test (spec 020, flow 4) shows a reason instead of a status code. */
+export type SecretTestReason =
+  | "value_missing"
+  | "keychain"
+  | SecretAddressError
+  | "timeout"
+  | "network"
+
+/**
+ * The answer of Test: the status code of the GET request to the origin, or the reason. It never
+ * holds the value.
+ */
+export type SecretTestResult =
+  | { readonly ok: true; readonly status: number; readonly location?: string }
+  | { readonly ok: false; readonly reason: SecretTestReason }
+
 const toBase64 = (text: string) => {
   const bytes = new TextEncoder().encode(text)
   let bin = ""

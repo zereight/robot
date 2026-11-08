@@ -6,6 +6,7 @@ import {
   type SavedSecret,
   SECRETS_PER_AGENT,
   type SecretAuth,
+  type SecretTestResult,
   sameAuth,
   secretNameKey,
 } from "@robot/shared"
@@ -14,6 +15,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Rules } from "./Rules.ts"
+import { type SecretLookup, testSecretRequest } from "./SecretRequest.ts"
 import { Secrets } from "./Secrets.ts"
 
 interface Row {
@@ -71,6 +73,16 @@ export interface SavedSecretsService {
    * name move to the new name. A name that the vault already holds is refused.
    */
   rename(id: string, name: string): SavedSecret
+  /**
+   * Test (spec 020, flow 4, "Test"): sends a GET request to the origin with the secret. It shows
+   * the status code on the row, or the reason, and never the value. Test does not change the
+   * date last used.
+   */
+  test(
+    id: string,
+    allowLocal: boolean,
+    options?: { timeoutMs?: number; lookup?: SecretLookup },
+  ): Promise<SecretTestResult>
   /** A new value for a saved secret, from settings. */
   replace(id: string, value: string): SavedSecret
   /** Deletes a secret and its value. False when it does not exist. */
@@ -288,6 +300,22 @@ export class SavedSecrets extends Context.Service<SavedSecrets, SavedSecretsServ
           rules.renameSecret(row.workflow_id, row.name, name)
           changed()
           return toView(byId(id) as Row)
+        },
+        test: async (id, allowLocal, options) => {
+          const row = byId(id)
+          if (!row) throw new AppError({ code: "secret_not_found" })
+          let value: string | null
+          try {
+            value = row.value_ref ? keychain.get(savedSecretKey(row.value_ref)) : null
+          } catch {
+            // Until the keychain can be read again, Test fails with the keychain reason.
+            return { ok: false, reason: "keychain" } as const
+          }
+          if (value === null) return { ok: false, reason: "value_missing" } as const
+          return testSecretRequest(row.origin, row.origin, parseAuth(row.auth), value, {
+            allowLocal,
+            ...options,
+          })
         },
         replace: (id, value) => {
           const row = byId(id)
