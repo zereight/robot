@@ -39,6 +39,7 @@ import type { Server, UiState, UiStatePatch } from "./ui.ts"
 import type { WorkflowChatHistory, WorkflowChatMessage, WorkflowChatSend } from "./workflowChat.ts"
 import type { CheckOutcome } from "./workflowCheck.ts"
 import type {
+  ApprovalOutput,
   DocumentVersion,
   GraphVersion,
   NodeInput,
@@ -318,7 +319,13 @@ export interface RpcMethods {
   "workflows.option.rename": { input: { id: string; label: string }; output: WorkflowNode }
   "workflows.option.remove": { input: { id: string }; output: WorkflowNode }
   "workflows.connect": {
-    input: { workflowId: string; from: string; to: string; optionId?: string | null }
+    input: {
+      workflowId: string
+      from: string
+      to: string
+      optionId?: string | null
+      output?: ApprovalOutput | null
+    }
     output: WorkflowConnection
   }
   "workflows.disconnect": { input: { id: string }; output: undefined }

@@ -276,6 +276,77 @@ describe("the graph (spec 010)", () => {
     expect((await t.w((x) => x.graph(flow.id))).connections).toHaveLength(3)
   })
 
+  test("an approval node needs a question, owns no options, and each output leads on once", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    expect(await t.code((x) => x.addNode(flow.id, { kind: "approval", name: "Gate" }))).toBe(
+      "approval_question_empty",
+    )
+    expect(
+      await t.code((x) =>
+        x.addNode(flow.id, {
+          kind: "approval",
+          name: "Gate",
+          question: "Ship it?",
+          options: ["Yes", "No"],
+        }),
+      ),
+    ).toBe("text_node_options")
+    const g = await t.w((x) =>
+      x.addNode(flow.id, { kind: "approval", name: "Gate", question: "Ship it?" }),
+    )
+    expect(g.options).toEqual([])
+    // No option can be added to it, and the question cannot be cleared.
+    expect(await t.code((x) => x.addOption(g.id, "Maybe"))).toBe("text_node_options")
+    expect(await t.code((x) => x.updateNode(g.id, { question: " " }))).toBe(
+      "approval_question_empty",
+    )
+    const next = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Go" }))
+    const other = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "Back" }))
+    // An approval node connects through one of its outputs only, never through an option.
+    expect(await t.code((x) => x.connect(flow.id, g.id, next.id))).toBe("connection_output_missing")
+    expect(await t.code((x) => x.connect(flow.id, g.id, next.id, "o1", "approve"))).toBe(
+      "connection_option_unexpected",
+    )
+    const link = await t.w((x) => x.connect(flow.id, g.id, next.id, null, "approve"))
+    expect(link.optionId).toBeNull()
+    expect(link.output).toBe("approve")
+    // The same output cannot lead to a second node, and the other output stays free.
+    expect(await t.code((x) => x.connect(flow.id, other.id, next.id, null, "approve"))).toBe(
+      "connection_output_unexpected",
+    )
+    expect(await t.code((x) => x.connect(flow.id, g.id, other.id, null, "approve"))).toBe(
+      "connection_exists",
+    )
+    expect(await t.code((x) => x.connect(flow.id, g.id, other.id, null, "reject"))).toBe("ok")
+    const graph = await t.w((x) => x.graph(flow.id))
+    expect(graph.connections.map((c) => [c.optionId, c.output])).toEqual([
+      [null, "approve"],
+      [null, "reject"],
+    ])
+  })
+
+  test("a version from before the approval node reads its connections with no output", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const a = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "A" }))
+    const b = await t.w((x) => x.addNode(flow.id, { kind: "text", name: "B" }))
+    await t.w((x) => x.connect(flow.id, a.id, b.id))
+    // A version that an older app kept has no `output` on its connections.
+    await t.sql(
+      "UPDATE workflow_version SET graph = ? WHERE workflow_id = ?",
+      JSON.stringify({
+        nodes: [],
+        connections: [{ id: "c", from: a.id, to: b.id, optionId: null }],
+      }),
+      flow.id,
+    )
+    const versions = await t.w((x) => x.versions(flow.id))
+    expect(versions[0]?.graph.connections).toEqual([
+      { id: "c", from: a.id, to: b.id, optionId: null, output: null },
+    ])
+  })
+
   test("a restore keeps the node of the tasks of a node that comes back", async () => {
     const t = await setup()
     const flow = await t.create("Report")
