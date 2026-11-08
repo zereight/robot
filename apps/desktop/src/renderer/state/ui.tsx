@@ -87,6 +87,9 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** The run strip is folded to its tab row (spec 001). */
     stripFolded: () => ui.stripFolded,
     selectStripFolded: (stripFolded: boolean) => update({ stripFolded }),
+    /** The node panel is folded to its header (spec 001). */
+    nodePanelFolded: () => ui.nodePanelFolded,
+    selectNodePanelFolded: (nodePanelFolded: boolean) => update({ nodePanelFolded }),
     selectPanelWidth: (panelWidth: number) => update({ panelWidth: clampPanelWidth(panelWidth) }),
     /** The tab of the Tasks page; it stays after a restart (spec 005, 038). */
     selectTasksTab: (tasksTab: UiState["tasksTab"]) => update({ tasksTab }),

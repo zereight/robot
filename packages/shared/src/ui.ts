@@ -50,6 +50,8 @@ export const UiState = Schema.Struct({
   ),
   /** The run strip is folded to its tab row, so the canvas gets the height (spec 001). */
   stripFolded: Schema.Boolean,
+  /** The node panel is folded to its header, so the user sees the canvas below it (spec 001). */
+  nodePanelFolded: Schema.Boolean,
   /** The width of the panel column of the studio, in px (spec 001). */
   panelWidth: Schema.Number.check(Schema.isBetween({ minimum: PANEL_MIN, maximum: PANEL_MAX })),
 })
@@ -68,6 +70,7 @@ export const defaultUiState: UiState = {
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
   panelWidth: PANEL_DEFAULT,
   stripFolded: false,
+  nodePanelFolded: false,
 }
 
 export const clampPlaceListWidth = (width: number) =>

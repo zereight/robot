@@ -76,6 +76,9 @@ export const launch = async (
     } as Record<string, string>,
   })
   const page = await mainPage(app)
+  // macOS fits a new window into the free part of the screen, so on a small screen or beside a
+  // Dock at the side it opens narrower than 1200 px and the layout changes (spec 001).
+  await resizeWindow(app, 1200, 800)
   return { app, page, userData }
 }
 
@@ -327,4 +330,15 @@ export const startHangingRun = async (
 ) => {
   const workflowId = await buildFlow(page, { provider, nodes: [{ name: "Work", prompt }] })
   return startRunCall(page, workflowId)
+}
+
+/**
+ * Selects a node of the canvas. An open node panel floats over the canvas and can hide the node
+ * (spec 001), so the panel closes first, as a user does.
+ */
+export const selectNode = async (page: Page, node: Locator) => {
+  if (await page.getByTestId("node-side").isVisible()) {
+    await page.getByTestId("node-panel-close").click()
+  }
+  await node.click()
 }

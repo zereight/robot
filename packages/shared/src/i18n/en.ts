@@ -954,6 +954,8 @@ export const en = {
   "runs.strip.fold": "Fold the runs",
   "runs.strip.unfold": "Show the runs",
   "graph.panel.close": "Close the node panel",
+  "graph.panel.fold": "Fold the node panel",
+  "graph.panel.unfold": "Show the node panel",
   "runs.none": "No run yet. Press Run to start one.",
   "runs.source.hand": "By hand",
   "runs.source.chat": "From the chat",

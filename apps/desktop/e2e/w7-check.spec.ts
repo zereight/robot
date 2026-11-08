@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { buildFlow, freshUserData, launch, shot } from "./harness.ts"
+import { buildFlow, freshUserData, launch, selectNode, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Spec 010, "Check": a graph with a fault shows "Problem found" with its place and its path. The
@@ -81,7 +81,7 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await page.getByTestId("workflow-open").click()
 
   // The fix: Publish stops waiting for Edit. The check runs again and passes.
-  await nodes.nth(2).click()
+  await selectNode(page, nodes.nth(2))
   await page.getByTestId("node-next-remove").click()
   await page.getByTestId("node-next-confirm").click()
   await page.getByTestId("strip-tab-check").click()

@@ -7,7 +7,7 @@ import {
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { FileText, Split, TriangleAlert, X } from "lucide-solid"
+import { ChevronDown, ChevronUp, FileText, Split, TriangleAlert, X } from "lucide-solid"
 import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
@@ -22,6 +22,8 @@ import styles from "./graph.module.css"
 import { NodePanel } from "./NodePanel.tsx"
 
 const NODE_W = 176
+/** The width of the node panel and its margins: the canvas scrolls that far past the graph. */
+const PANEL_ROOM = 352
 const NODE_H = 60
 const STEP = 16
 
@@ -101,7 +103,7 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
 
 /**
  * The editor of the graph (spec 010, flow 2). The canvas fills the workflow view (spec 001); the
- * buttons and the versions float over it, and the node panel docks beside it. The
+ * buttons, the versions and the node panel float over it, and the node panel folds. The
  * canvas shows each node as a button at its place and each connection as a line. A drag on an
  * empty part moves the view; a click there clears the selection. A node moves with the pointer or with the arrow keys; it
  * connects through its side panel, so the whole editor works with the keyboard. The canvas marks
@@ -141,6 +143,9 @@ export const GraphEditor = (props: {
       w = Math.max(w, p.x + NODE_W + 48)
       h = Math.max(h, p.y + NODE_H + 48)
     }
+    // An open node panel floats over the right side; the room lets the user pan a node out from
+    // under it.
+    if (props.selectedNode && !ui.nodePanelFolded()) w += PANEL_ROOM
     return { w, h }
   })
 
@@ -475,8 +480,19 @@ export const GraphEditor = (props: {
         {(id) => (
           <Show when={graph().nodes.find((x) => x.id === id)}>
             {(n) => (
-              <div class={styles.side} data-testid="node-side">
-                <span class={styles.sideClose}>
+              <div class={styles.side} data-folded={ui.nodePanelFolded()} data-testid="node-side">
+                <div class={styles.sideHead}>
+                  <span class={styles.sideTitle} data-testid="node-side-title">
+                    {n().number}. {n().name}
+                  </span>
+                  <IconButton
+                    label={ui.nodePanelFolded() ? t("graph.panel.unfold") : t("graph.panel.fold")}
+                    aria-expanded={!ui.nodePanelFolded()}
+                    onClick={() => ui.selectNodePanelFolded(!ui.nodePanelFolded())}
+                    data-testid="node-panel-fold"
+                  >
+                    {ui.nodePanelFolded() ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                  </IconButton>
                   <IconButton
                     label={t("graph.panel.close")}
                     onClick={() => props.onSelectNode(undefined)}
@@ -484,14 +500,16 @@ export const GraphEditor = (props: {
                   >
                     <X size={16} />
                   </IconButton>
-                </span>
-                <NodePanel
-                  workflow={props.workflow}
-                  node={n()}
-                  choices={choices() ?? []}
-                  readOnly={readOnly()}
-                  onDeleted={() => props.onSelectNode(undefined)}
-                />
+                </div>
+                <div class={styles.sideBody} hidden={ui.nodePanelFolded()}>
+                  <NodePanel
+                    workflow={props.workflow}
+                    node={n()}
+                    choices={choices() ?? []}
+                    readOnly={readOnly()}
+                    onDeleted={() => props.onSelectNode(undefined)}
+                  />
+                </div>
               </div>
             )}
           </Show>
