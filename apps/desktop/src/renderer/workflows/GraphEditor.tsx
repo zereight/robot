@@ -64,6 +64,26 @@ const zoomAt = (v: View, zoom: number, cx: number, cy: number): View => {
   return { x: cx - ((cx - v.x) * z) / v.zoom, y: cy - ((cy - v.y) * z) / v.zoom, zoom: z }
 }
 
+/** The least space between two dots of the grid on the screen (spec 001). */
+const DOT_GAP_MIN = 12
+/**
+ * The dot grid of the canvas (spec 001): it moves and zooms with the graph. When the dots get closer
+ * than DOT_GAP_MIN, only every k-th dot shows, with k the smallest power of two that keeps them
+ * apart. The dot is at the centre of its tile, so the shift keeps each dot that stays on its place
+ * of the full grid. The dot keeps its size on the screen at each zoom.
+ */
+const dotGrid = (v: View) => {
+  const full = GRID * v.zoom
+  let gap = full
+  // A zoom of the wheel lands a little below 75% (0.7499…); it must still show every dot.
+  while (gap < DOT_GAP_MIN - 1e-6) gap *= 2
+  const shift = (full - gap) / 2
+  return {
+    "background-size": `${gap}px ${gap}px`,
+    "background-position": `${v.x + shift}px ${v.y + shift}px`,
+  }
+}
+
 /** A place for a new node: a grid of four columns, in the order of the numbers. */
 const placeFor = (count: number) => ({
   x: 24 + (count % 4) * (NODE_W + 40),
@@ -433,10 +453,7 @@ export const GraphEditor = (props: {
           class={styles.canvas}
           aria-label={t("graph.canvas")}
           data-testid="graph-canvas"
-          style={{
-            "background-size": `${GRID * view().zoom}px ${GRID * view().zoom}px`,
-            "background-position": `${view().x}px ${view().y}px`,
-          }}
+          style={dotGrid(view())}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={onCanvasPointerMove}
           onPointerUp={onCanvasPointerUp}
