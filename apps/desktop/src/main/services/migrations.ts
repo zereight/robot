@@ -643,4 +643,47 @@ export const migrations: readonly string[] = [
   -- them. The meter and the automatic compact read it from the last reply after the last compact.
   ALTER TABLE chat_message ADD COLUMN context_tokens INTEGER;
   `,
+  `
+  -- An approval node (spec 010): the kind of a node holds 'text', 'decision' or 'approval'.
+  -- SQLite has no way to change a CHECK, so the table is made again with the same rows and the new
+  -- CHECK. The foreign keys stay off while a migration runs (see \`migrate\`), so the drop of the
+  -- old table deletes no row that refers to it, and \`foreign_key_check\` runs before the commit.
+  CREATE TABLE workflow_node_new (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK (number >= 1),
+    kind TEXT NOT NULL CHECK (kind IN ('text', 'decision', 'approval')),
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL DEFAULT '',
+    account_id TEXT,
+    model TEXT,
+    effort TEXT,
+    permission TEXT CHECK (permission IS NULL OR permission IN ('read_only', 'ask_all', 'ask_risky', 'ask_unsure', 'full')),
+    continue_on_failure INTEGER NOT NULL DEFAULT 0 CHECK (continue_on_failure IN (0, 1)),
+    question TEXT NOT NULL DEFAULT '',
+    threshold REAL NOT NULL DEFAULT 0.9 CHECK (threshold >= 0 AND threshold <= 1),
+    x REAL NOT NULL DEFAULT 0,
+    y REAL NOT NULL DEFAULT 0,
+    backup_account_id TEXT,
+    backup_model TEXT,
+    backup_effort TEXT
+  );
+  INSERT INTO workflow_node_new (id, workflow_id, number, kind, name, prompt, account_id, model,
+    effort, permission, continue_on_failure, question, threshold, x, y, backup_account_id,
+    backup_model, backup_effort)
+  SELECT id, workflow_id, number, kind, name, prompt, account_id, model, effort, permission,
+    continue_on_failure, question, threshold, x, y, backup_account_id, backup_model, backup_effort
+  FROM workflow_node;
+  DROP TABLE workflow_node;
+  ALTER TABLE workflow_node_new RENAME TO workflow_node;
+  CREATE INDEX workflow_node_workflow ON workflow_node (workflow_id, number);
+  -- The output of an approval node that a connection leaves: 'approve' or 'reject' (spec 010).
+  -- NULL for a connection of a text or decision node. Each output has one outgoing connection.
+  ALTER TABLE workflow_connection ADD COLUMN output TEXT
+    CHECK (output IS NULL OR output IN ('approve', 'reject'));
+  CREATE UNIQUE INDEX workflow_connection_output ON workflow_connection (from_node_id, output)
+    WHERE output IS NOT NULL;
+  -- The stored answer of an approval node: the answer, the comment and the time, as JSON.
+  ALTER TABLE task ADD COLUMN verdict TEXT;
+  `,
 ]

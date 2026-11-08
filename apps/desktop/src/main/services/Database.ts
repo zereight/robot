@@ -108,14 +108,23 @@ export const migrate = (db: DatabaseSync) => {
   const row = db.prepare("PRAGMA user_version").get() as { user_version: number }
   if (row.user_version === 0) db.exec(`PRAGMA application_id = ${SCHEMA_ID}`)
   for (let version = row.user_version; version < migrations.length; version++) {
+    // A migration that makes a table again (SQLite has no way to change a CHECK) drops the old
+    // table. With the foreign keys on, the drop would delete the rows that refer to it, so the
+    // keys stay off while a migration runs. `foreign_key_check` before the commit keeps the guard:
+    // a migration that breaks a key is rolled back.
+    db.exec("PRAGMA foreign_keys = OFF")
     db.exec("BEGIN")
     try {
       db.exec(migrations[version] ?? "")
+      const broken = db.prepare("PRAGMA foreign_key_check").get()
+      if (broken !== undefined) throw new Error(`Migration ${version + 1} breaks a foreign key.`)
       db.exec(`PRAGMA user_version = ${version + 1}`)
       db.exec("COMMIT")
     } catch (error) {
       db.exec("ROLLBACK")
       throw error
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON")
     }
   }
 }
