@@ -22,7 +22,7 @@ import {
   shell,
   WebContentsView,
 } from "electron"
-import { appendLog, readLogTail } from "./services/logs.ts"
+import { appendLog, pruneOldLogs, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
   BrowserActionState,
@@ -1201,6 +1201,8 @@ export const electronPlatform = (): PlatformService => {
   let awakeHold: number | undefined
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
+  // Drop audit lines older than 90 days (spec 014, 023, 028). A prune that fails is dropped.
+  pruneOldLogs(dataDir)
   watchApp()
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)

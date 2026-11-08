@@ -2,7 +2,15 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { appendLog, LOG_MAX_BYTES, pruneLog } from "./logs.ts"
+import {
+  appendLog,
+  LINK_LOG_KEEP_MS,
+  LOG_MAX_BYTES,
+  logOutsideCall,
+  logTeamsEvent,
+  pruneLog,
+  pruneOldLogs,
+} from "./logs.ts"
 
 /** A data folder of the test, apart from the data of the user. */
 const dataDir = () => mkdtempSync(join(tmpdir(), "robot-logs-"))
@@ -95,5 +103,77 @@ describe("pruneLog dates (spec 014: the link log keeps 90 days)", () => {
     seed(dir)
     pruneLog(dir, "teams", 91 * DAY_MS, now)
     expect(eventsOf(dir)).toContain("old")
+  })
+})
+
+describe("audit logs (spec 014, 023, 028)", () => {
+  test("an outside call writes the entry, the tool, the place, and the result", () => {
+    const dir = dataDir()
+    logOutsideCall(dir, {
+      entry: "helper",
+      tool: "List workflows",
+      workflow: "Weekly report",
+      result: "ok",
+    })
+    const [line] = readFileSync(join(dir, "logs", "outside.log"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+    expect(JSON.parse(line ?? "{}")).toMatchObject({
+      entry: "helper",
+      tool: "List workflows",
+      workflow: "Weekly report",
+      result: "ok",
+    })
+  })
+
+  test("an outside call hides a key in the result", () => {
+    const dir = dataDir()
+    logOutsideCall(dir, {
+      entry: "helper",
+      tool: "Read a task",
+      task: "task-1",
+      result: "key sk-abcdefgh12345678 here",
+    })
+    const text = readFileSync(join(dir, "logs", "outside.log"), "utf8")
+    expect(text).not.toContain("sk-abcdefgh12345678")
+    expect(text).toContain("[redacted]")
+  })
+
+  test("a Teams event writes the event, the reason, and the place, with no name and no text", () => {
+    const dir = dataDir()
+    logTeamsEvent(dir, { event: "answered", reason: "call", place: "Work chat" })
+    const [line] = readFileSync(join(dir, "logs", "teams.log"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+    const entry = JSON.parse(line ?? "{}") as Record<string, unknown>
+    expect(entry).toMatchObject({ event: "answered", reason: "call", place: "Work chat" })
+    expect("text" in entry).toBe(false)
+    expect("sender" in entry).toBe(false)
+    expect("name" in entry).toBe(false)
+  })
+
+  test("pruneOldLogs drops lines older than 90 days from both link logs", () => {
+    const DAY_MS = 24 * 60 * 60 * 1000
+    const now = Date.parse("2026-11-09T00:00:00.000Z")
+    expect(LINK_LOG_KEEP_MS).toBe(90 * DAY_MS)
+    const dir = dataDir()
+    mkdirSync(join(dir, "logs"), { recursive: true })
+    for (const name of ["outside", "teams"]) {
+      const oldLine = JSON.stringify({
+        time: new Date(now - 91 * DAY_MS).toISOString(),
+        event: "old",
+      })
+      const freshLine = JSON.stringify({
+        time: new Date(now - DAY_MS).toISOString(),
+        event: "fresh",
+      })
+      writeFileSync(join(dir, "logs", `${name}.log`), `${oldLine}\n${freshLine}\n`)
+    }
+    pruneOldLogs(dir, now)
+    for (const name of ["outside", "teams"]) {
+      const text = readFileSync(join(dir, "logs", `${name}.log`), "utf8")
+      expect(text).not.toContain('"event":"old"')
+      expect(text).toContain('"event":"fresh"')
+    }
   })
 })

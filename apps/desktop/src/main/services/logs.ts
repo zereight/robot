@@ -1,8 +1,19 @@
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { redactSecrets } from "@robot/shared"
 
 /** The logs that the app writes. */
-export type LogName = "channels" | "organizations" | "teams" | "browser" | "app" | "workflows"
+export type LogName =
+  | "channels"
+  | "organizations"
+  | "teams"
+  | "outside"
+  | "browser"
+  | "app"
+  | "workflows"
+
+/** How long the outside-programs log and the Teams-link log keep a line (spec 014, 023, 028). */
+export const LINK_LOG_KEEP_MS = 90 * 24 * 60 * 60 * 1000
 
 /** The size limit of one log file. When a file grows past it, the oldest lines go first. */
 export const LOG_MAX_BYTES = 256 * 1024
@@ -61,6 +72,44 @@ export const pruneLog = (dataDir: string, name: LogName, maxAgeMs: number, now: 
   } catch {
     // Dropped on purpose.
   }
+}
+
+/**
+ * One call of an outside program (spec 023): the entry, the tool, the workflow or task, and the
+ * result. The line holds no message text and no key (spec 014).
+ */
+export const logOutsideCall = (
+  dataDir: string,
+  call: { entry: string; tool: string; workflow?: string; task?: string; result: string },
+) => {
+  appendLog(dataDir, "outside", {
+    event: "call",
+    entry: call.entry,
+    tool: call.tool,
+    ...(call.workflow === undefined ? {} : { workflow: call.workflow }),
+    ...(call.task === undefined ? {} : { task: call.task }),
+    result: redactSecrets(call.result),
+  })
+}
+
+/**
+ * One event of the Teams link (spec 028): the event, the reason, and the place. The line holds
+ * no message text and no sender name (spec 014).
+ */
+export const logTeamsEvent = (
+  dataDir: string,
+  event: { event: string; reason: string; place: string },
+) => {
+  appendLog(dataDir, "teams", { ...event, reason: redactSecrets(event.reason) })
+}
+
+/**
+ * Drops the lines older than 90 days from the outside-programs log and the Teams-link log
+ * (spec 014, 023, 028). The app runs this at startup. A prune that fails is dropped.
+ */
+export const pruneOldLogs = (dataDir: string, now: number = Date.now()) => {
+  pruneLog(dataDir, "outside", LINK_LOG_KEEP_MS, now)
+  pruneLog(dataDir, "teams", LINK_LOG_KEEP_MS, now)
 }
 
 /**
