@@ -36,9 +36,9 @@ The user sets the app up the way they like in one place.
 - **Decision model**: the fast model for decision nodes, computer use and permission checks. See
   "Decision model".
 - **Token savings**: three switches that cut repeated work in long runs, off at first. See 026.
-- **Permissions**: the rules that allow or deny steps, the action log (see 007), the saved
-  secrets, and the switch "Allow saved secrets on this computer and the local network" (see
-  020).
+- **Permissions**: the rules that allow or deny steps, the action log (see 007), the overview of
+  the secrets vaults of the workflows (see 020), and the switch "Allow saved secrets on this
+  computer and the local network" (see 020).
 - **Skills**: the saved instructions that the user calls with a slash, and that a node prompt can
   include. See 017.
 - **Connections**: the outside tools that text nodes can use. See 018. A built-in connection has no

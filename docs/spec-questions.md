@@ -1170,3 +1170,17 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | --- | --- | --- |
 | 002, 010 | When the turn has both the direct tools and the propose tools, which path does a change of the graph or of a node prompt take: a direct change, or a proposal that waits? | A change that the user asks for goes direct; a proposal is for a better way that the responsible document sees by itself, after a run or from feedback. The prompt states this. To confirm. |
 | 002, 010 | Does the responsible document follow a no-give-up discipline: exhaust every tool before saying it cannot, act before asking, verify a change by reading it back? Inspired by tanweai/pua, in our own words; the repo has no license grant, so no text is copied. | Yes for a chat turn with full rights; the prompt states it. Read-only and no-switch turns are exempt. To confirm. |
+
+## V1: each workflow has its own vault (open points for 001, 013, 020)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 020, 001 | Where does the user open the vault: a Secrets tab in the workflow view, or only from Settings? | A Secrets tab in the workflow view. Settings holds an overview with a link to each vault. To confirm. |
+| 020, 013 | Does Settings keep any management, or is the vault the only place? | The vault is the only place. Settings shows counts and a link, and no value. To confirm. |
+| 020 | Can the user add a secret by hand in the vault? The old spec said the user cannot add in Settings. | Yes, in the vault only. To confirm. |
+| 020 | What does Test do: a real GET request to the origin with the secret, or a check with no request? | A real GET request to the origin. It shows the status code or the reason, and never the value. To confirm. |
+| 020 | Do logins get a Test button too? | No, only secrets. A login is tested when a node fills it. To confirm. |
+| 020, 010 | Does a renamed workflow keep its vault, and does a duplicate copy it? | A rename keeps the vault with the same rows. A duplicate starts with an empty vault. To confirm. |
+| 020, 012, 011 | What does a linked device or the phone show for the vault? | One muted line. Only the computer shows and manages the vault. To confirm. |
+| 020, glossary | What is the Korean word for Vault? | 보관함 (proposed). To confirm. |
+| 020, 007 | When the user renames a secret or a login, do the permission rules that name it move to the new name, or stay on the old name? | They move to the new name, so a Deny rule still stops the renamed row and the old name keeps no rule. To confirm. |
