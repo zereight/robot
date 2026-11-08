@@ -1,4 +1,4 @@
-import { type GraphProblem, type WorkflowGraph } from "./workflows.ts"
+import type { GraphProblem, WorkflowGraph } from "./workflows.ts"
 
 // The check of a workflow (spec 010, "Check"): the result as data, with the place of each fault.
 // The window turns a problem into a text with its translation keys. Points that the specs call
