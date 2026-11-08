@@ -49,9 +49,9 @@ stops and results without opening another page. The app opens on the studio.
   Every dot shows from 75% to 200%. Every second dot shows from 37.5% to less than 75%. Every
   fourth dot shows from 25% to less than 37.5%. The canvas shows no dot between two dots of the
   grid. A drag of the view does not change which dots show. Each dot that shows at a zoom also
-  shows at each higher zoom. A dot has the same size on the screen at each zoom. The 16 px
-  distance is to confirm. The size and the colour of the dots, and a fade when dots go or come,
-  are open (see docs/spec-questions.md, rows for 001 in CG1).
+  shows at each higher zoom. A dot has the same size on the screen at each zoom. The size and the
+  colour of the dots, and a fade when dots go or come, are open (see docs/spec-questions.md, rows
+  for 001 in CG1).
 - **Node panel**: a card that floats over the top right corner of the canvas when a node is
   selected. The canvas keeps its full width below it. The card is 320 px wide, is never taller
   than the canvas, and scrolls by itself. Its header shows the number and the name of the node,
