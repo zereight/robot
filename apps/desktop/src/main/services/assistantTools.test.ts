@@ -432,6 +432,19 @@ describe("changes of the graph (spec 010: add, edit and remove nodes and connect
     expect((await t.graph()).nodes[1]?.backup).toEqual(pick)
   })
 
+  test("an edit of another field leaves the silent limit of the node as it is; a node it adds follows the settings (spec 010)", async () => {
+    const t = await setup()
+    await t.run(Workflows.use((w) => w.updateNode(t.b.id, { silentLimit: 30 })))
+    // The chat reads the graph again after the change of the user.
+    await t.newTurn()
+    const r = await t.call("edit_node", { node: 2, prompt: "Write it in three lines." })
+    expect(r.outcome.failed).toBe(false)
+    expect((await t.graph()).nodes[1]?.silentLimit).toBe(30)
+    const added = await t.call("add_node", { kind: "text", name: "Send", prompt: "x" })
+    expect(added.outcome.failed).toBe(false)
+    expect((await t.graph()).nodes[2]?.silentLimit).toBeNull()
+  })
+
   test("a model that the account offers is set; a model that it does not offer is refused", async () => {
     const t = await setup()
     const ok = await t.call("edit_node", { node: 1, model: "gpt-5", effort: "high" })
