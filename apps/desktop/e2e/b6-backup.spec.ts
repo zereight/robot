@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import { connectMock, freshUserData, launch, resizeWindow, selectNode, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Slice B6: the backup model of a text node (spec 006, "Backup model"; 010, 005, 012). The main
@@ -115,7 +115,7 @@ test("backup model: the editor, the first run on the backup, the hold, 'Use the 
     // 4. The editor shows the hold too. The next run goes to the backup at once: no second line.
     await page.getByTestId("run-back").click()
     await page.getByTestId("tab-graph").click()
-    await page.getByTestId("graph-node").first().click()
+    await selectNode(page, page.getByTestId("graph-node").first())
     await expect(page.getByTestId("node-backup-hold-until")).toHaveText(/^Backup until \S/)
     await expect(page.getByTestId("node-backup-hold-use-main")).toHaveText("Use mock-fast now")
     await shot(page, "b6-05-editor-hold")
@@ -129,7 +129,7 @@ test("backup model: the editor, the first run on the backup, the hold, 'Use the 
     // 5. "Use mock-fast now" ends the hold. The next run tries the main model, which is still at
     // its limit: the hold starts again, and the run view shows no second line.
     await page.getByTestId("tab-graph").click()
-    await page.getByTestId("graph-node").first().click()
+    await selectNode(page, page.getByTestId("graph-node").first())
     await page.getByTestId("node-backup-hold-use-main").click()
     await expect(page.getByTestId("node-backup-hold")).toHaveCount(0)
     await runOnce(page)
@@ -146,7 +146,7 @@ test("backup model: the editor, the first run on the backup, the hold, 'Use the 
     // The window opens the workflow that was open again.
     await expect(page.getByTestId("tab-graph")).toBeVisible()
     await page.getByTestId("tab-graph").click()
-    await page.getByTestId("graph-node").first().click()
+    await selectNode(page, page.getByTestId("graph-node").first())
     await expect(page.getByTestId("node-backup-hold-until")).toContainText("백업 사용")
     await expect(page.getByTestId("node-backup-hold-use-main")).toHaveText("지금 mock-fast 쓰기")
     await expect(page.getByTestId("node-backup")).toContainText("백업 모델")
@@ -192,7 +192,7 @@ test("backup model: a key that is not valid does not move the run, and a backup 
 
     // Remove the backup: the node shows "None" again.
     await page.getByTestId("tab-graph").click()
-    await page.getByTestId("graph-node").first().click()
+    await selectNode(page, page.getByTestId("graph-node").first())
     await page.getByTestId("node-backup-remove").click()
     await expect(page.getByTestId("node-backup-none")).toHaveText("None")
   } finally {

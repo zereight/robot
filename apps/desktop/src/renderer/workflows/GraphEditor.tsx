@@ -22,6 +22,8 @@ import styles from "./graph.module.css"
 import { NodePanel } from "./NodePanel.tsx"
 
 const NODE_W = 176
+/** The width of the node panel and its margins: the canvas scrolls that far past the graph. */
+const PANEL_ROOM = 352
 const NODE_H = 60
 const STEP = 16
 
@@ -141,6 +143,9 @@ export const GraphEditor = (props: {
       w = Math.max(w, p.x + NODE_W + 48)
       h = Math.max(h, p.y + NODE_H + 48)
     }
+    // An open node panel floats over the right side; the room lets the user pan a node out from
+    // under it.
+    if (props.selectedNode && !ui.nodePanelFolded()) w += PANEL_ROOM
     return { w, h }
   })
 
