@@ -27,7 +27,8 @@ stops and results without opening another page. The app opens on the studio.
   workflow, and the run strip below. The header shows the name, the state of the check, the
   buttons Run and Stop, the button "Device" (032), and the delete of the workflow (000, 010).
   The view shows one part at a time: the canvas, the responsible document, the memory, the
-  proposals, or the settings of the workflow. A row of tabs switches between them.
+  secrets vault (020), the proposals, or the settings of the workflow. A row of tabs switches
+  between them.
 - **Canvas**: the graph of the workflow (010): its nodes, its connections, its trigger, and the
   path of a failed check. The canvas is the main surface of the studio: it fills the workflow
   view from edge to edge, between the tab row and the run strip, with no frame around it. The
