@@ -504,6 +504,42 @@ describe("failure, retry, blocked, stop (spec 010, 005)", () => {
     expect(d.nodes[0]?.task?.reasonText).toBe("No answer for 1 minute.")
   })
 
+  test("a turn of a node uses the silent limit of the node; Follow settings uses the setting (spec 010)", async () => {
+    const t = await setup()
+    // A minute is 60 ms here. The setting fails a silent turn after 600 ms.
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 10 })))
+    const slow = await t.node({ name: "Slow", prompt: "[[hang]]" })
+    await t.run(Workflows.use((w) => w.updateNode(slow.id, { silentLimit: 30 })))
+    const run = await t.start()
+    await until(async () => (await t.get(run.id)).state === "running")
+    // The 10 minutes of the setting pass: the node with 30 minutes still works.
+    await new Promise((r) => setTimeout(r, 800))
+    expect((await t.get(run.id)).state).toBe("running")
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("failed")
+    expect(d.nodes[0]?.task?.reasonCode).toBe("silent:30")
+    expect(d.nodes[0]?.task?.reasonText).toBe("No answer for 30 minutes.")
+    // Back to Follow settings: the same node fails after the 10 minutes of the setting.
+    await t.run(Workflows.use((w) => w.updateNode(slow.id, { silentLimit: null })))
+    const again = await t.ended((await t.start()).id)
+    expect(again.nodes[0]?.task?.reasonCode).toBe("silent:10")
+  })
+
+  test("a node with Never shows no silent failure (spec 010)", async () => {
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
+    const slow = await t.node({ name: "Slow", prompt: "[[hang]]" })
+    await t.run(Workflows.use((w) => w.updateNode(slow.id, { silentLimit: 0 })))
+    const run = await t.start()
+    await until(async () => (await t.get(run.id)).state === "running")
+    // Past the 1 minute of the setting the turn still works: nothing stops it for silence.
+    await new Promise((r) => setTimeout(r, 300))
+    expect((await t.get(run.id)).state).toBe("running")
+    await t.run(Runs.use((r) => r.stop(run.id)))
+    const d = await t.ended(run.id)
+    expect(d.nodes[0]?.task?.reasonCode).toBe("user")
+  })
+
   test("the step limit ends a task that takes too many tool steps", async () => {
     const t = await setup({ level: "full" })
     await t.run(SettingsStore.use((s) => s.update({ stepLimit: 20 })))
