@@ -399,8 +399,14 @@ export const GraphEditor = (props: {
     const x = Math.min(n.right, p.right) - Math.max(n.left, p.left)
     const y = Math.min(n.bottom, p.bottom) - Math.max(n.top, p.top)
     if (x <= 0 || y <= 0) return
-    // The panel floats at the right: move the node to its left.
-    setView((v) => ({ ...v, x: v.x - (x + 8) }))
+    // The panel floats at the right: move the node to its left, but not past the left edge of
+    // the canvas. If it still touches the panel (a folded panel is short), move it below the
+    // panel when it fits there.
+    const c = canvasEl.getBoundingClientRect()
+    const dx = Math.max(0, Math.min(x + 8, n.left - c.left - 8))
+    const down = p.bottom - n.top + 8
+    const dy = dx < x + 8 && p.bottom + 8 + n.height <= c.bottom ? down : 0
+    setView((v) => ({ ...v, x: v.x - dx, y: v.y + dy }))
   }
   let panelSizes: ResizeObserver | undefined
   onMount(() => {

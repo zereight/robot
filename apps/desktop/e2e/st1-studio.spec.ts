@@ -116,6 +116,16 @@ test("studio: in a medium window the list opens as an overlay and the chat stays
   // The header button opens the list as an overlay; picking a card closes it.
   await page.getByTestId("studio-show-list").click()
   await expect(page.getByTestId("studio-list")).toBeVisible()
+  // A refresh of the list (here the check of the new workflow ends) is not a pick: the list stays.
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const w = window as unknown as { robot: { on: (e: string, f: () => void) => void } }
+        w.robot.on("workflows.changed", () => done())
+        setTimeout(done, 2000)
+      }),
+  )
+  await expect(page.getByTestId("studio-list")).toBeVisible()
   await page.getByTestId("workflow-open").click()
   await expect(page.getByTestId("studio-list")).toHaveCount(0)
   await expect(page.getByTestId("workflow-view")).toBeVisible()

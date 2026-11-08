@@ -116,6 +116,8 @@ test("canvas: it fills the view, pans and zooms, the node panel folds, and the s
   // The canvas has no edge: a drag on an empty part moves the view past the graph, and so does a
   // two finger scroll. The selection stays clear.
   const node = page.getByTestId("graph-node").first()
+  // Start from the home view: the open panel moved the view to keep its node clear.
+  await page.getByTestId("graph-zoom-reset").click()
   const home = await node.boundingBox()
   if (box) {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height - 60)
