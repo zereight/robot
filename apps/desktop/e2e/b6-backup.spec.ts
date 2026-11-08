@@ -76,6 +76,11 @@ test("backup model: the editor, the first run on the backup, the hold, 'Use the 
     await page.getByTestId("node-provider").selectOption({ label: "Main" })
     await page.getByTestId("node-model").selectOption("mock-fast")
     await expect(page.getByTestId("node-backup-none")).toHaveText("None")
+    // The check label takes its natural width: with room in the header it never truncates.
+    const labelCut = await page
+      .getByTestId("workflow-header-check")
+      .evaluate((el) => el.scrollWidth - el.clientWidth)
+    expect(labelCut, "check label shows in full").toBeLessThanOrEqual(1)
     await shot(page, "b6-01-editor-none")
 
     // 2. The same choice as the main one is refused, with the reason. A different one saves.

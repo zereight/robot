@@ -117,7 +117,7 @@ export const RunStrip = (props: {
         </span>
       </div>
       <Show when={!props.folded}>
-        <div class={styles.stripBody}>
+        <div class={styles.stripBody} data-testid="strip-body">
           <Switch>
             <Match when={props.mode === "runs"}>
               <RunsPanel

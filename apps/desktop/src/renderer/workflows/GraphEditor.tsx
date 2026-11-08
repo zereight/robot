@@ -11,13 +11,23 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  History,
   Minus,
   Plus,
   Split,
   TriangleAlert,
   X,
 } from "lucide-solid"
-import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
@@ -45,6 +55,8 @@ const ZOOM_MAX = 2
 type View = { readonly x: number; readonly y: number; readonly zoom: number }
 /** The graph starts below the floating buttons, so they never hide a node. */
 const HOME: View = { x: 0, y: 64, zoom: 1 }
+/** The space between the floats at the top of the canvas and the graph. */
+const FLOAT_GAP = 24
 const clampZoom = (zoom: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom))
 /** The view zoomed to `zoom`, with the point (cx, cy) of the canvas kept in place. */
 const zoomAt = (v: View, zoom: number, cx: number, cy: number): View => {
@@ -352,8 +364,69 @@ export const GraphEditor = (props: {
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
+  // The graph starts below everything that floats at the top (the toolbar, the read-only note,
+  // an error, the versions): when the floats grow or shrink, the view moves by the same height.
+  let floatEl: HTMLDivElement | undefined
+  const [floatH, setFloatH] = createSignal(HOME.y - FLOAT_GAP)
+  const home = (): View => ({ ...HOME, y: floatH() + FLOAT_GAP })
+  onMount(() => {
+    const el = floatEl
+    if (!el) return
+    const read = () => setFloatH(el.offsetHeight)
+    read()
+    const sizes = new ResizeObserver(read)
+    sizes.observe(el)
+    onCleanup(() => sizes.disconnect())
+  })
+  createEffect(
+    on(floatH, (h, before) => {
+      if (before !== undefined) setView((v) => ({ ...v, y: v.y + h - before }))
+    }),
+  )
+  // When the panel opens, the selected node stays visible: the view pans it clear of the panel.
+  // The panel keeps floating over the canvas (spec 001).
+  let layoutEl: HTMLDivElement | undefined
+  const clearNode = () => {
+    const root = layoutEl
+    if (!canvasEl || !root || !props.selectedNode) return
+    const node = canvasEl.querySelector<HTMLElement>(
+      '[data-testid="graph-node"][aria-pressed="true"]',
+    )
+    const panel = root.querySelector<HTMLElement>('[data-testid="node-side"]')
+    if (!node || !panel) return
+    const n = node.getBoundingClientRect()
+    const p = panel.getBoundingClientRect()
+    const x = Math.min(n.right, p.right) - Math.max(n.left, p.left)
+    const y = Math.min(n.bottom, p.bottom) - Math.max(n.top, p.top)
+    if (x <= 0 || y <= 0) return
+    // The panel floats at the right: move the node to its left, but not past the left edge of
+    // the canvas. If it still touches the panel (a folded panel is short), move it below the
+    // panel when it fits there.
+    const c = canvasEl.getBoundingClientRect()
+    const dx = Math.max(0, Math.min(x + 8, n.left - c.left - 8))
+    const down = p.bottom - n.top + 8
+    const dy = dx < x + 8 && p.bottom + 8 + n.height <= c.bottom ? down : 0
+    setView((v) => ({ ...v, x: v.x - dx, y: v.y + dy }))
+  }
+  let panelSizes: ResizeObserver | undefined
+  onMount(() => {
+    panelSizes = new ResizeObserver(() => clearNode())
+    onCleanup(() => panelSizes?.disconnect())
+  })
+  createEffect(
+    on(
+      () => [props.selectedNode, ui.nodePanelFolded()] as const,
+      () => {
+        clearNode()
+        // The panel grows as its content loads: keep the node clear then too.
+        const panel = layoutEl?.querySelector<HTMLElement>('[data-testid="node-side"]')
+        panelSizes?.disconnect()
+        if (panel) panelSizes?.observe(panel)
+      },
+    ),
+  )
   return (
-    <div class={styles.layout} data-narrow={ui.narrow()} data-testid="graph-editor">
+    <div class={styles.layout} ref={layoutEl} data-narrow={ui.narrow()} data-testid="graph-editor">
       <div class={styles.canvasArea}>
         <section
           ref={canvasEl}
@@ -477,14 +550,16 @@ export const GraphEditor = (props: {
                         {marks().lines.get(node().id)}
                       </span>
                     </Show>
-                    <span class={styles.nodeName}>
-                      {node().number}. {node().name}
-                    </span>
-                    <Show when={working(node())}>
-                      <span class={styles.nodeSpin} data-testid="graph-node-running">
-                        <Spinner />
+                    <span class={styles.nodeHead}>
+                      <span class={styles.nodeName}>
+                        {node().number}. {node().name}
                       </span>
-                    </Show>
+                      <Show when={working(node())}>
+                        <span class={styles.nodeSpin} data-testid="graph-node-running">
+                          <Spinner />
+                        </span>
+                      </Show>
+                    </span>
                     <span class={styles.nodeKind} data-testid="graph-node-kind">
                       <Show
                         when={node().kind === "decision"}
@@ -500,28 +575,36 @@ export const GraphEditor = (props: {
             </div>
           </Show>
         </section>
-        <div class={styles.float}>
-          <div class={styles.toolbar}>
+        <div class={styles.float} ref={floatEl}>
+          <div class={styles.toolbar} data-testid="graph-toolbar">
             <Button
               disabled={readOnly()}
               onClick={() => void add("text")}
+              aria-label={t("graph.add.text")}
               data-testid="graph-add-text"
             >
-              {t("graph.add.text")}
+              <FileText size={14} aria-hidden="true" />
+              <span class={styles.toolbarLabel}>{t("graph.add.text")}</span>
             </Button>
             <Button
               disabled={readOnly()}
               onClick={() => void add("decision")}
+              aria-label={t("graph.add.decision")}
               data-testid="graph-add-decision"
             >
-              {t("graph.add.decision")}
+              <Split size={14} aria-hidden="true" />
+              <span class={styles.toolbarLabel}>{t("graph.add.decision")}</span>
             </Button>
             <Button
               onClick={() => setShowVersions(!showVersions())}
               aria-pressed={showVersions()}
+              aria-label={showVersions() ? t("graph.version.hide") : t("graph.version.show")}
               data-testid="graph-versions-toggle"
             >
-              {showVersions() ? t("graph.version.hide") : t("graph.version.show")}
+              <History size={14} aria-hidden="true" />
+              <span class={styles.toolbarLabel}>
+                {showVersions() ? t("graph.version.hide") : t("graph.version.show")}
+              </span>
             </Button>
           </div>
           <Show when={readOnly()}>
@@ -557,7 +640,7 @@ export const GraphEditor = (props: {
             class={styles.zoomValue}
             title={t("graph.zoom.reset")}
             aria-label={`${t("graph.zoom")} ${Math.round(view().zoom * 100)}%. ${t("graph.zoom.reset")}`}
-            onClick={() => setView(HOME)}
+            onClick={() => setView(home())}
             data-testid="graph-zoom-reset"
           >
             {Math.round(view().zoom * 100)}%
@@ -599,7 +682,11 @@ export const GraphEditor = (props: {
                     <X size={16} />
                   </IconButton>
                 </div>
-                <div class={styles.sideBody} hidden={ui.nodePanelFolded()}>
+                <div
+                  class={styles.sideBody}
+                  hidden={ui.nodePanelFolded()}
+                  data-testid="node-side-body"
+                >
                   <NodePanel
                     workflow={props.workflow}
                     node={n()}

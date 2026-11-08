@@ -80,6 +80,40 @@ test("a run proposes a prompt change: card, Accept, new version, change log, Und
   await expect(card.getByTestId("proposal-source")).toContainText("From a run")
   await expect(card.getByTestId("proposal-added").first()).toContainText("lines.")
   await expect(card.getByTestId("proposal-removed").first()).toBeVisible()
+  // A removed run next to an added run stands apart: no replacement reads as one word.
+  const junctions = await card
+    .getByTestId("proposal-diff")
+    .first()
+    .evaluate((diff) => {
+      const line = (el: Element) => {
+        const style = getComputedStyle(el)
+        const parsed = Number.parseFloat(style.lineHeight)
+        return Number.isNaN(parsed) ? Number.parseFloat(style.fontSize) * 1.5 : parsed
+      }
+      const boxes = (el: Element) => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        // The hidden "Removed"/"Added" labels are 1 px boxes, not text lines.
+        return [...range.getClientRects()].filter((r) => r.width >= 2 && r.height >= 2)
+      }
+      let sameLine = 0
+      let glued = 0
+      for (const el of diff.querySelectorAll("del + ins, ins + del")) {
+        const prev = el.previousElementSibling
+        if (!prev) continue
+        const a = boxes(prev)
+        const b = boxes(el)
+        const end = a[a.length - 1]
+        const start = b[0]
+        if (!end || !start) continue
+        if (Math.abs(start.top - end.top) > line(diff) / 2) continue
+        sameLine += 1
+        if (start.left - end.right < 4) glued += 1
+      }
+      return { sameLine, glued }
+    })
+  expect(junctions.sameLine, "the diff holds a same-line replacement").toBeGreaterThan(0)
+  expect(junctions.glued, "no replacement glues mid-word").toBe(0)
   expect(await prompts(page)).toEqual([before])
   await shot(page, "w8-01-proposal-card")
 

@@ -17,6 +17,7 @@
 }
 
 .scroll {
+  composes: scrollBody from "../ui/controls.module.css";
   flex: 1;
   min-height: 0;
   overflow-y: auto;

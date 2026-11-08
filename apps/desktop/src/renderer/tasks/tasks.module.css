@@ -65,6 +65,9 @@
 .table {
   width: 100%;
   border-collapse: collapse;
+  /* Korean breaks between words, never inside one; a piece that fits nowhere alone still breaks. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 .table th,
@@ -79,11 +82,18 @@
 .table thead th {
   color: var(--c-text-muted);
   font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* A short cell never breaks inside a word: the source, the state and the duration fit one line. */
+.nowrap {
+  white-space: nowrap;
 }
 
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .rowButton {
@@ -106,6 +116,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
 .state[data-state="done"] {
