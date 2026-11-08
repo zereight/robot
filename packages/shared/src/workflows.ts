@@ -154,20 +154,15 @@ export const columnsOfSource = (
       : { optionId: null, output: null }
 
 /**
- * The word of a source in a stored key: the option id, the verdict, or null for the single
- * output of a text node. The fingerprint of a graph and the key of the check keep this form.
- */
-export const sourceKey = (source: ConnectionSource): string | null =>
-  source.kind === "option" ? source.optionId : source.kind === "verdict" ? source.verdict : null
-
-/**
  * Which output of which node a connection leaves, as text. Two connections share it when they
  * leave the same output of the same node; two lines between the same text nodes share it too.
  */
-export const connectionKey = (c: Pick<WorkflowConnection, "from" | "to" | "source">): string => {
-  const key = sourceKey(c.source)
-  return key === null ? `${c.from}|${c.to}` : `${c.from}|${key}`
-}
+export const connectionKey = (c: Pick<WorkflowConnection, "from" | "to" | "source">): string =>
+  c.source.kind === "option"
+    ? `${c.from}|${c.source.optionId}`
+    : c.source.kind === "verdict"
+      ? `${c.from}|${c.source.verdict}`
+      : `${c.from}|${c.to}`
 
 /** True when two sources leave the same output. */
 export const sameSource = (a: ConnectionSource, b: ConnectionSource): boolean =>

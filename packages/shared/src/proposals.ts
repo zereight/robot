@@ -12,7 +12,6 @@ import {
   type NodeKind,
   OPTIONS_MIN,
   sameSource,
-  sourceKey,
   type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
@@ -200,6 +199,12 @@ export interface ProposalsView {
 // The fingerprint of a graph
 // ---------------------------------------------------------------------------------------------
 
+const connectionFingerprint = (c: WorkflowConnection): string => {
+  const s = c.source
+  const part = s.kind === "option" ? s.optionId : s.kind === "verdict" ? s.verdict : ""
+  return `${c.from}|${c.to}|${part}`
+}
+
 /**
  * A text that names the graph as a change sees it: the nodes with every field the user can set,
  * the options and the connections. The place of a node on the canvas is not in it, because a move
@@ -228,7 +233,7 @@ export const graphFingerprint = (graph: WorkflowGraph): string =>
         n.threshold,
         n.options.map((o) => [o.id, o.label]),
       ]),
-    graph.connections.map((c) => `${c.from}|${c.to}|${sourceKey(c.source) ?? ""}`).sort(),
+    graph.connections.map(connectionFingerprint).sort(),
   ])
 
 // ---------------------------------------------------------------------------------------------
@@ -506,7 +511,7 @@ export const graphChange = (
     if (was.number !== n.number) fields.push("number")
     if (fields.length > 0) changedNodes.push(change(n, fields, was))
   }
-  const key = (c: WorkflowConnection) => `${c.from}|${c.to}|${sourceKey(c.source) ?? ""}`
+  const key = connectionFingerprint
   const oldKeys = new Set(before.connections.map(key))
   const newKeys = new Set(after.connections.map(key))
   const view = (c: WorkflowConnection, within: WorkflowGraph): GraphConnectionChange => {

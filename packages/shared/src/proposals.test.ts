@@ -57,6 +57,36 @@ describe("the fingerprint of a graph", () => {
     ).not.toBe(base)
     expect(graphFingerprint({ ...current, connections: [] })).not.toBe(base)
   })
+  test("the stored form keeps the empty word for the single output: old proposals still match", () => {
+    const graph: WorkflowGraph = {
+      nodes: [
+        node(1),
+        node(2, {
+          kind: "decision",
+          options: [
+            { id: "o1", label: "Yes" },
+            { id: "o2", label: "No" },
+          ],
+        }),
+        node(3, { kind: "approval", question: "Ship it?" }),
+        node(4),
+      ],
+      connections: [
+        { id: "c1", from: "n1", to: "n2", source: { kind: "text" } },
+        { id: "c2", from: "n2", to: "n3", source: { kind: "option", optionId: "o1" } },
+        { id: "c3", from: "n2", to: "n4", source: { kind: "option", optionId: "o2" } },
+        { id: "c4", from: "n3", to: "n4", source: { kind: "verdict", verdict: "approve" } },
+        { id: "c5", from: "n3", to: "n2", source: { kind: "verdict", verdict: "reject" } },
+      ],
+    }
+    expect(graphFingerprint(graph)).toBe(
+      '[[["n1",1,"text","Node 1","prompt 1","acc","mock-fast",null,null,null,null,"read_only",false,"",0.9,[]],' +
+        '["n2",2,"decision","Node 2","prompt 2","acc","mock-fast",null,null,null,null,"read_only",false,"",0.9,[["o1","Yes"],["o2","No"]]],' +
+        '["n3",3,"approval","Node 3","prompt 3","acc","mock-fast",null,null,null,null,"read_only",false,"Ship it?",0.9,[]],' +
+        '["n4",4,"text","Node 4","prompt 4","acc","mock-fast",null,null,null,null,"read_only",false,"",0.9,[]]],' +
+        '["n1|n2|","n2|n3|o1","n2|n4|o2","n3|n2|reject","n3|n4|approve"]]',
+    )
+  })
 })
 
 describe("the backup model in a graph change (spec 006; docs/spec-questions.md, B6)", () => {
