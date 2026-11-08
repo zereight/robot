@@ -21,7 +21,7 @@ user can read, edit and check the whole workflow.
 - **Text node**: a node that writes text. It has a prompt, a provider, a model and a reasoning
   level (006). At run time it sends the responsible document and its own prompt to its model. Its
   prompt can include the text of a skill of the user (017). It can use tools (see "Folder and
-  permission level" and "Tools").
+  permission level" and "Tools"). It has a silent limit (see "Silent limit of a node").
 - **Decision node**: a node that asks a decision model one question with a fixed list of options,
   and follows the option that wins (see "Decision node rules"). It takes its model from 013. It has
   no reasoning level. It uses no tools and writes no text.
@@ -109,6 +109,19 @@ user can read, edit and check the whole workflow.
   stricter permission level than the workflow, never a looser one. A decision node uses neither.
 - Only the user changes the folder and the permission levels of a workflow. A node cannot change
   them. A proposal for self-improvement cannot change them.
+
+## Silent limit of a node
+
+- The choice "Silent limit" is in the editor of a text node. The choices are "Follow settings"
+  (the default), 1, 5, 10, 30 and 60 minutes, and Never. A new node has "Follow settings".
+- With "Follow settings", a turn of the node uses the silent limit of Settings (013). With another
+  choice, a turn of the node uses that limit (005, "Silent turns"). The quiet line uses the same
+  limit (005, "Quiet line").
+- A decision node has no silent limit of its own. Its model call has its own time (see "Decision
+  node rules").
+- The choice is a part of the node. A version keeps it, and a restore brings it back.
+- Only the user changes the choice. The tools of the assistant and a proposal for self-improvement
+  keep the choice of a node that exists. A node that they add gets "Follow settings".
 
 ## Tools
 
@@ -268,6 +281,9 @@ user can read, edit and check the whole workflow.
 
 - Press "New workflow" and type "Weekly": the canvas opens with the chat beside it, and the
   responsible document has a default text that the user can edit.
+- Set "Silent limit" of a text node to 30 minutes, with the setting at 10 minutes: a turn of that
+  node that shows no sign of life fails after 30 minutes, and a turn of another node fails after
+  10. Set it back to "Follow settings": the node uses the setting again.
 - A workflow with two text nodes: the second node's prompt holds `{{input}}`, and it gets the result
   of the first node.
 - Ask the chat to add a node after node 2: the canvas shows a new node 3, and the version list holds

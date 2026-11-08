@@ -10,7 +10,8 @@ The user sets the app up the way they like in one place.
   workspace folder, the step limit of a task (a whole number from 20 to 2000; the default is 300;
   see 005), "While a reply is written, new messages" (see 003, "Messages during a turn"), and the
   silent limit: how long a turn may show no sign of life before the app stops it (see 005). The
-  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
+  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never. A text node can have its own
+  silent limit in place of this one (010).
   - The default workspace folder is the folder in which a new workflow gets its own empty folder
     (007, 010). A change counts for new workflows only. A workflow that exists keeps its folder.
   - Two more settings are here. "Compact long chats automatically" is on or off; the default is on
