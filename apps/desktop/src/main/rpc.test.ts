@@ -129,7 +129,7 @@ describe("the requests of a linked device (spec 012)", () => {
       "logins.add",
       "logins.rename",
       "logins.replace",
-      "logins.remove",
+      "logins.delete",
     ])
       expect(await t.ask(method, {}, "may")).toMatchObject({
         ok: false,

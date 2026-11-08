@@ -103,7 +103,18 @@ describe("Test of a saved secret (spec 020, flow 4)", () => {
     expect(seen).toEqual([])
   })
 
+  test("an address outside this computer and the local network must use https", async () => {
+    seen.length = 0
+    expect(
+      await testSecretRequest("http://api.example.com/", "http://api.example.com", bearer, VALUE, {
+        allowLocal: true,
+      }),
+    ).toEqual({ ok: false, reason: "http_public" })
+    expect(seen).toEqual([])
+  })
+
   test("a link-local address and a cloud metadata address are refused", async () => {
+    seen.length = 0
     expect(
       await testSecretRequest(
         "http://169.254.169.254/latest/",

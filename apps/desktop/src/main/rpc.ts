@@ -646,7 +646,7 @@ export const handlers: Handlers = {
         ),
       ),
     ),
-  "logins.remove": (input) =>
+  "logins.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => SavedLogins.use((s) => Effect.sync(() => s.remove(id)))),
       done,

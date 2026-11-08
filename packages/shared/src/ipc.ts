@@ -313,7 +313,7 @@ export interface RpcMethods {
   /** Puts new values for a saved login in the keychain. */
   "logins.replace": { input: { id: string; user: string; password: string }; output: SavedLogin }
   /** Deletes a saved login and its values. */
-  "logins.remove": { input: { id: string }; output: undefined }
+  "logins.delete": { input: { id: string }; output: undefined }
   /**
    * The decision model (spec 013): whether a key is saved, never the key. Not offered to a linked
    * device: the keys stay on this computer.

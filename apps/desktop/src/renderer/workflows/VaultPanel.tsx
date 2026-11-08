@@ -851,7 +851,7 @@ export const VaultPanel = (props: { workflowId: string }) => {
               <Button
                 variant="danger"
                 onClick={() =>
-                  call("logins.remove", { id: login.id })
+                  call("logins.delete", { id: login.id })
                     .then(() => setDeletingLogin(undefined))
                     .catch(fail)
                 }
