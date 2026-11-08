@@ -147,6 +147,12 @@ textarea.input {
   text-decoration: underline;
 }
 
+/* A removed run next to an added run stands apart, so a replacement never reads as one word. */
+.text del + ins,
+.text ins + del {
+  margin-left: var(--spacing-sm);
+}
+
 .hidden {
   position: absolute;
   width: 1px;

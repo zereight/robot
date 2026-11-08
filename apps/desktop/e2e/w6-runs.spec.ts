@@ -213,7 +213,8 @@ test("run: a step that needs approval waits on a card; Allow runs it and Deny re
   await expect(page.getByTestId("run-node-state-1")).toHaveText("Waiting for you")
   await page.getByTestId("tab-graph").click()
   await expect(page.getByTestId("graph-node-running")).toHaveCount(0)
-  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-running-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-card-readonly")).toHaveCount(0)
   await expect(page.getByTestId("workflow-card-spinner")).toHaveCount(0)
   await page.getByTestId("workflow-open").click()
   await expect(page.getByTestId("chat-spinner")).toHaveCount(0)
@@ -274,7 +275,8 @@ test("run: the card of the list keeps no spinner while the run waits for a card 
   )
   // The run waits for the user: the card of the list stops turning.
   await expect(spinner).toHaveCount(0)
-  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-running-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-card-readonly")).toHaveCount(0)
   // The answer: the second node works, so the spinner comes back.
   await page.evaluate(
     async ({ cardId }) => {

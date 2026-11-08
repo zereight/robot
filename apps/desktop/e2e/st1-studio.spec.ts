@@ -160,3 +160,17 @@ test("studio in Korean: the list, the canvas and the chat", async () => {
   await shot(page, "st1-06-wide-ko")
   await app.close()
 })
+
+test("toolbar: on a narrow canvas the labels shrink to icons and every button stays whole", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await newWorkflow(page, "Weekly")
+  // A medium window: the list closes, the chat stays, and the canvas drops under 460 px.
+  await resizeWindow(app, 820, 700)
+  await expect(page.getByTestId("graph-toolbar")).toBeVisible()
+  const overflow = await page
+    .getByTestId("graph-toolbar")
+    .evaluate((el) => el.scrollWidth - el.clientWidth)
+  expect(overflow, "toolbar buttons fit without scrolling").toBeLessThanOrEqual(1)
+  await shot(page, "st1-09-toolbar-icons")
+  await app.close()
+})

@@ -118,7 +118,10 @@ export const WorkflowView = (props: {
   }
   /** Starts a run by hand and shows it in the strip (spec 010). */
   const start = () =>
-    void call("runs.start", { workflowId: props.id, ...(trigger() ? { trigger: trigger() } : {}) })
+    void call("runs.start", {
+      workflowId: props.id,
+      ...(trigger() ? { trigger: trigger() } : {}),
+    })
       .then((run) => {
         setSelected(run.id)
         showStrip("runs")
@@ -154,7 +157,7 @@ export const WorkflowView = (props: {
             </span>
           )}
         </Show>
-        <span class={shell.headerSpacer} />
+        <span class={shell.headerSpacer} data-testid="workflow-header-spacer" />
         <Show when={detail()}>
           <Show when={runs().active().length > 0}>
             <Button variant="danger" onClick={stop} data-testid="workflow-stop">
@@ -220,7 +223,12 @@ export const WorkflowView = (props: {
           <Show when={detail()}>
             {(flow) => (
               <>
-                <div class={graph.tabs} role="tablist" aria-label={t("workflows.tabs")}>
+                <div
+                  class={graph.tabs}
+                  role="tablist"
+                  aria-label={t("workflows.tabs")}
+                  data-testid="workflow-tabs"
+                >
                   <For each={tabs()}>
                     {(name) => (
                       <button

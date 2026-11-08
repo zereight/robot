@@ -32,7 +32,6 @@ import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { showToast } from "../ui/toast.ts"
-import { WorkMark } from "../ui/WorkMark.tsx"
 import styles from "./chat.module.css"
 import { formatTime } from "./format.ts"
 import { Markdown } from "./Markdown.tsx"
@@ -461,9 +460,6 @@ export const MessageRow = (props: MessageRowProps) => {
         )}
       </Show>
       {body()}
-      <Show when={m().status === "streaming" && m().parts.length === 0}>
-        <WorkMark />
-      </Show>
       <Show when={m().status === "stopped" && m().error === null}>
         <p class={styles.note} data-testid="message-stopped">
           {t("chat.stopped")}

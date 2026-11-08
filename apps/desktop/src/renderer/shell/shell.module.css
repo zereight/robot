@@ -145,11 +145,15 @@
 
 .header button {
   -webkit-app-region: no-drag;
+  flex: none;
 }
 
 .headerTitle {
   font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .headerDivider {
@@ -163,7 +167,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+  /* Its natural width; the spacer takes the free room, so this only shrinks when the header is
+     really out of room. */
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -289,6 +295,7 @@
 
 /* Pages */
 .page {
+  composes: scrollBody from "../ui/controls.module.css";
   animation: fade-in var(--motion-medium) var(--ease-out);
   padding: 24px 32px;
   overflow-y: auto;

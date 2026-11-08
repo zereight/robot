@@ -107,6 +107,28 @@ const openTasks = async (page: Page) => {
   await expect(page.getByTestId("tasks-page")).toBeVisible()
 }
 
+/** Every header and every source cell fits one line: nothing breaks inside a word. */
+const singleLineCells = async (page: Page) => {
+  const cells = await page.getByTestId("tasks-table").evaluate((table) => {
+    const found: { text: string; lines: number }[] = []
+    const els = [
+      ...table.querySelectorAll("thead th"),
+      ...table.querySelectorAll('[data-testid="task-source"]'),
+    ]
+    for (const el of els) {
+      // A row stretches every cell to its own height, so the box of the cell lies: count the
+      // line boxes of its text instead.
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      const tops = new Set([...range.getClientRects()].map((r) => Math.round(r.top)))
+      found.push({ text: (el.textContent ?? "").trim().slice(0, 24), lines: tops.size })
+    }
+    return found
+  })
+  expect(cells.length).toBeGreaterThan(0)
+  for (const cell of cells) expect(cell.lines, `single line: ${cell.text}`).toBe(1)
+}
+
 test("tasks page: the button opens it with the tabs Tasks and Events; the tab stays after a restart", async () => {
   const mock = await startMockProvider()
   const { app, page, userData } = await launch(undefined, env)
@@ -225,6 +247,7 @@ test("tasks at once: the field takes 1 to 8; a third task waits for a free slot;
     "Waits for a free slot. Slots: 2",
   )
   await expect(page.locator("[data-testid=task-row][data-state=running]")).toHaveCount(2)
+  await singleLineCells(page)
   await shot(page, "b2-04-waits-for-a-slot")
 
   // Stop one running task from its detail: the third starts at once.
@@ -270,6 +293,7 @@ test("tasks at once in Korean: the reason reads in Korean", async () => {
   await expect(page.getByTestId("tasks-tab")).toHaveText("작업")
   await expect(page.getByTestId("events-tab")).toHaveText("이벤트")
   await expect(row(page, queued).getByTestId("task-run-next")).toHaveText("먼저 실행")
+  await singleLineCells(page)
   await shot(page, "b2-05-tasks-ko")
   await app.close()
   await mock.close()

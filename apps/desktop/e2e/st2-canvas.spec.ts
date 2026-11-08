@@ -44,6 +44,16 @@ test("canvas: it fills the view, pans and zooms, the node panel folds, and the s
   expect(
     side && tools ? tools.x + tools.width <= side.x || tools.y + tools.height <= side.y : false,
   ).toBe(true)
+  // At rest, the first line of the node panel body sits clear of its header edge.
+  const [nHead, nBody] = await page.getByTestId("node-side-body").evaluate((el) => {
+    let first = el.firstElementChild
+    while (first?.firstElementChild) first = first.firstElementChild
+    return [el.getBoundingClientRect().top, first?.getBoundingClientRect().top ?? 0]
+  })
+  expect(
+    nBody - nHead,
+    "node panel body starts below its header with space",
+  ).toBeGreaterThanOrEqual(8)
   await shot(page, "st2-01-panel-floats")
 
   // The fold button folds the panel to its header; the next node opens folded too.
@@ -55,9 +65,39 @@ test("canvas: it fills the view, pans and zooms, the node panel folds, and the s
   await page.getByTestId("graph-node").nth(1).click()
   await expect(page.getByTestId("node-side-title")).toContainText("2.")
   await expect(page.getByTestId("node-panel")).toBeHidden()
+  // When the panel opens, the selected node stays visible: the canvas scrolls it clear.
+  const touches = (
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+  ) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  const foldedNode = await page.getByTestId("graph-node").nth(1).boundingBox()
+  if (foldedNode === null || foldedSide === null) throw new Error("no box for node or panel")
+  expect(touches(foldedNode, foldedSide), "node stays clear of the folded panel").toBe(false)
   await shot(page, "st2-02-panel-folded")
   await page.getByTestId("node-panel-fold").click()
   await expect(page.getByTestId("node-panel")).toBeVisible()
+  const [openNode, openSide] = await Promise.all([
+    page.getByTestId("graph-node").nth(1).boundingBox(),
+    page.getByTestId("node-side").boundingBox(),
+  ])
+  if (openNode === null || openSide === null) throw new Error("no box for node or panel")
+  expect(touches(openNode, openSide), "node stays clear of the open panel").toBe(false)
+  // A tab round trip mounts the canvas again with the node still selected: it stays clear.
+  await page.getByTestId("tab-memory").click()
+  await page.getByTestId("tab-graph").click()
+  await expect(page.getByTestId("node-panel")).toBeVisible()
+  await expect
+    .poll(
+      async () => {
+        const [n, p] = await Promise.all([
+          page.getByTestId("graph-node").nth(1).boundingBox(),
+          page.getByTestId("node-side").boundingBox(),
+        ])
+        return n !== null && p !== null && !touches(n, p)
+      },
+      { message: "node stays clear of the panel after a tab round trip" },
+    )
+    .toBe(true)
   await page.getByTestId("graph-versions-toggle").click()
   await expect(page.getByTestId("graph-versions-toggle")).toHaveAttribute("aria-pressed", "true")
   await page.getByTestId("graph-versions-toggle").click()

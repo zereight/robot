@@ -103,7 +103,8 @@
   pointer-events: auto;
 }
 
-/* One row, whatever the width of the canvas, so the toolbar never grows over the graph. */
+/* One row, whatever the width of the canvas, so the toolbar never grows over the graph. Every
+   button stays whole: the buttons are tight, and on a narrow canvas the labels shrink to icons. */
 .toolbar {
   display: flex;
   flex-wrap: nowrap;
@@ -121,6 +122,17 @@
 .toolbar > button {
   flex: none;
   white-space: nowrap;
+  padding: 0.45rem 0.55rem;
+}
+
+@container graph (width < 460px) {
+  .toolbarLabel {
+    display: none;
+  }
+
+  .toolbar > button {
+    padding: 0.45rem 0.6rem;
+  }
 }
 
 .floatNote {
@@ -172,6 +184,7 @@
 }
 
 .sideBody {
+  composes: scrollBody from "../ui/controls.module.css";
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -182,8 +195,9 @@
   border-radius: 0;
 }
 
-/* On a narrow canvas the panel opens below the floating buttons, so it never hides them. */
-@container graph (width < 760px) {
+/* Until the canvas holds the toolbar and the panel side by side, the panel opens below
+   the floating buttons, so it never hides them. */
+@container graph (width < 880px) {
   .side {
     top: 64px;
     max-height: calc(100% - 64px - var(--spacing-md));
@@ -272,18 +286,23 @@
   border-color: var(--c-danger);
 }
 
-/* The spinner of a node that works sits at the top right corner of its box (specs/039). */
+/* The spinner shares the name row, so a long name ends before the spinner (specs/039). */
+.nodeHead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  max-width: 100%;
+}
+
 .nodeSpin {
-  position: absolute;
-  top: var(--spacing-sm);
-  right: var(--spacing-sm);
   display: inline-flex;
+  flex: none;
   font-size: var(--text-s);
 }
 
 .nodeName {
   font-weight: 600;
-  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -389,9 +408,9 @@ textarea.control {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-md);
-  overflow-x: auto;
   flex-shrink: 0;
 }
 
@@ -516,4 +535,16 @@ textarea.control {
 .mark[data-problem="true"] {
   background: var(--c-danger);
   color: var(--c-danger-text);
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
