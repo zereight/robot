@@ -32,6 +32,7 @@ import { checkStateKey } from "./labels.ts"
 import { MemoryPanel } from "./MemoryPanel.tsx"
 import { RunStrip, type StripMode } from "./RunStrip.tsx"
 import type { createRunsState } from "./runsState.ts"
+import { VaultPanel } from "./VaultPanel.tsx"
 import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
 
@@ -57,6 +58,13 @@ export const WorkflowView = (props: {
   const local = () => showsProposals(ui.server()?.kind)
   const tabs = createMemo(() => workflowTabs(local()))
   const runs = () => props.runs
+  createEffect(() => {
+    const wanted = ui.vaultRequest()
+    if (wanted !== undefined && wanted === props.id) {
+      setTab("secrets")
+      ui.takeVaultRequest()
+    }
+  })
   const [selected, setSelected] = createSignal<string>()
   const [strip, setStrip] = createSignal<StripMode>("runs")
   const [nodeSelected, setNodeSelected] = createSignal<string>()
@@ -264,6 +272,9 @@ export const WorkflowView = (props: {
                       workflow={flow()}
                       onOpenProposals={() => openImprovement(flow().id)}
                     />
+                  </Match>
+                  <Match when={tab() === "secrets"}>
+                    <VaultPanel workflowId={flow().id} />
                   </Match>
                   <Match when={tab() === "improvement" && local()}>
                     <ImprovementPanel

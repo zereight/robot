@@ -23,7 +23,7 @@ import type {
 } from "./providers.ts"
 import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
 import type { CardAnswer, RunDetail, RunStart, RunSummary } from "./runs.ts"
-import type { SavedSecret } from "./secrets.ts"
+import type { SavedLogin, SavedSecret, SecretTestResult } from "./secrets.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
 import type { QuietTurn, RetryResult, TaskFilter, TaskItem, TaskView } from "./tasks.ts"
@@ -277,10 +277,43 @@ export interface RpcMethods {
    * and a value never goes over a link.
    */
   "secrets.list": { input: { workflowId?: string }; output: readonly SavedSecret[] }
+  /** Adds a saved secret by hand in the vault of the workflow (spec 020, flow 4). */
+  "secrets.add": {
+    input: {
+      workflowId: string
+      name: string
+      origin: string
+      kind: "bearer" | "header" | "basic"
+      header?: string
+      user?: string
+      value: string
+    }
+    output: SavedSecret
+  }
+  /** Renames a saved secret; the rules of 007 follow the new name (spec 020, flow 4). */
+  "secrets.rename": { input: { id: string; name: string }; output: SavedSecret }
+  /** Test: a GET request to the origin with the secret, or the reason (spec 020, flow 4). */
+  "secrets.test": { input: { id: string }; output: SecretTestResult }
   /** Puts a new value for a saved secret in the keychain. */
   "secrets.replace": { input: { id: string; value: string }; output: SavedSecret }
   /** Deletes a saved secret and its value. */
   "secrets.delete": { input: { id: string }; output: undefined }
+  /**
+   * The saved logins of this computer (spec 020), never a value. Not offered to a linked device,
+   * and a value never goes over a link.
+   */
+  "logins.list": { input: { workflowId?: string }; output: readonly SavedLogin[] }
+  /** Adds a saved login by hand in the vault of the workflow (spec 020, "Manage"). */
+  "logins.add": {
+    input: { workflowId: string; name: string; origin: string; user: string; password: string }
+    output: SavedLogin
+  }
+  /** Renames a saved login; the rules of 007 follow the new name (spec 020, "Manage"). */
+  "logins.rename": { input: { id: string; name: string }; output: SavedLogin }
+  /** Puts new values for a saved login in the keychain. */
+  "logins.replace": { input: { id: string; user: string; password: string }; output: SavedLogin }
+  /** Deletes a saved login and its values. */
+  "logins.delete": { input: { id: string }; output: undefined }
   /**
    * The decision model (spec 013): whether a key is saved, never the key. Not offered to a linked
    * device: the keys stay on this computer.

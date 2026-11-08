@@ -649,4 +649,32 @@ export const migrations: readonly string[] = [
   -- belongs to the graph and to the versions of the graph.
   ALTER TABLE workflow_node ADD COLUMN silent_limit INTEGER;
   `,
+  `
+  -- Saved logins (spec 020, "Saved logins"): the user name and the password of a site are in the
+  -- system keychain; the row holds neither. When a workflow is deleted, the references go to
+  -- saved_login_drop and the app removes the values.
+  CREATE TABLE saved_login (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    value_ref TEXT,
+    saved_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    UNIQUE (workflow_id, name_key)
+  );
+  CREATE TABLE saved_login_drop (
+    kind TEXT NOT NULL,
+    value_ref TEXT NOT NULL,
+    PRIMARY KEY (kind, value_ref)
+  ) WITHOUT ROWID;
+  CREATE TRIGGER saved_login_workflow_gone AFTER DELETE ON workflow BEGIN
+    INSERT OR IGNORE INTO saved_login_drop (kind, value_ref)
+      SELECT 'user', value_ref FROM saved_login WHERE workflow_id = OLD.id AND value_ref IS NOT NULL;
+    INSERT OR IGNORE INTO saved_login_drop (kind, value_ref)
+      SELECT 'password', value_ref FROM saved_login WHERE workflow_id = OLD.id AND value_ref IS NOT NULL;
+    DELETE FROM saved_login WHERE workflow_id = OLD.id;
+  END;
+  `,
 ]

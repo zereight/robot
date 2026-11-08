@@ -5,6 +5,8 @@ export interface SecretsService {
   get(key: string): string | null
   set(key: string, value: string): void
   remove(key: string): void
+  /** Throws when the keychain cannot be read (spec 020, "Keychain error"). */
+  check(): void
 }
 
 /** Exit code of `robot-host secrets get` when the store holds no value. */
@@ -54,6 +56,14 @@ export const hostStore = (command: string, file?: string): SecretsService => {
       }
       known.set(key, null)
     },
+    check: () => {
+      // A key that was never written reads as no value (exit 3) when the store can be read.
+      try {
+        run(["get", `probe:${Date.now().toString(36)}`])
+      } catch (error) {
+        if (exitCode(error) !== NO_VALUE) throw new Error("The keychain could not be read")
+      }
+    },
   }
 }
 
@@ -75,6 +85,7 @@ export class Secrets extends Context.Service<Secrets, SecretsService>()("robot/m
       get: (key) => store.get(key) ?? null,
       set: (key, value) => void store.set(key, value),
       remove: (key) => void store.delete(key),
+      check: () => {},
     })
   })
 }
