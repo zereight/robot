@@ -7,7 +7,7 @@ import {
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { ChevronDown, ChevronUp, TriangleAlert, X } from "lucide-solid"
+import { ChevronDown, ChevronUp, FileText, Split, TriangleAlert, X } from "lucide-solid"
 import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
@@ -413,7 +413,13 @@ export const GraphEditor = (props: {
                         <Spinner />
                       </span>
                     </Show>
-                    <span class={styles.nodeKind}>
+                    <span class={styles.nodeKind} data-testid="graph-node-kind">
+                      <Show
+                        when={node().kind === "decision"}
+                        fallback={<FileText size={12} aria-hidden="true" />}
+                      >
+                        <Split size={12} aria-hidden="true" />
+                      </Show>
                       {t(node().kind === "text" ? "graph.kind.text" : "graph.kind.decision")}
                     </span>
                   </button>

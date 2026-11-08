@@ -209,8 +209,26 @@
   background: var(--c-selected);
 }
 
+/* The two node kinds differ in shape and icon, not in colour (DESIGN.md: one accent).
+   A text node is a card that writes. A decision node is a dashed pill that picks a path. */
+.node[data-kind="text"] {
+  border-radius: var(--radius-s);
+}
+
 .node[data-kind="decision"] {
-  border-radius: var(--radius-l);
+  align-items: center;
+  text-align: center;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-style: dashed;
+  border-width: 2px;
+  border-color: var(--c-text-muted);
+  border-radius: 999px;
+  background: var(--c-main);
+}
+
+.node[data-kind="decision"][aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-selected);
 }
 
 .node[data-problem="true"] {
@@ -235,6 +253,9 @@
 }
 
 .nodeKind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
   color: var(--c-text-muted);
   font-size: var(--text-xs);
 }
