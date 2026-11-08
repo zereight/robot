@@ -230,7 +230,9 @@ test("a stale proposal is refused: the document changed after it", async () => {
   await page.getByTestId("tab-document").click()
   await page.getByTestId("document-text").fill("Something else entirely.")
   await page.getByTestId("document-save").click()
-  await expect(page.getByTestId("document-saved")).toBeVisible()
+  await expect(page.getByTestId("toast-success").last()).toContainText(
+    "It counts from the next chat turn",
+  )
   await page.getByTestId("note-review").click()
   await page.getByTestId("proposal-accept").click()
   await page.getByTestId("improve-tab-log").click()

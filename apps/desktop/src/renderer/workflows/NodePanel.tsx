@@ -17,6 +17,7 @@ import { useApp } from "../state/app.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, IconButton, Switch } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { showToast } from "../ui/toast.ts"
 import { BackupField } from "./BackupField.tsx"
 import styles from "./graph.module.css"
 
@@ -56,7 +57,9 @@ export const NodePanel = (props: {
   const guard = async <T,>(work: () => Promise<T>) => {
     setProblem(undefined)
     try {
-      return await work()
+      const done = await work()
+      showToast("success", "workflows.saved")
+      return done
     } catch (e) {
       setProblem(describeError(e))
       return undefined

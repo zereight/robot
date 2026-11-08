@@ -27,6 +27,8 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await expect(page.getByTestId("node-panel")).toBeVisible()
   await page.getByTestId("node-name").fill("Collect")
   await page.getByTestId("node-name").press("Tab")
+  // A change in the editor that saves says so.
+  await expect(page.getByTestId("toast-success").last()).toHaveText(/Saved\./)
   await page.getByTestId("node-prompt").fill("Collect the news. {{input}}")
   await page.getByTestId("node-prompt").press("Tab")
   await expect(page.getByTestId("graph-node")).toContainText("1. Collect")
@@ -128,7 +130,7 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   const before = await page.getByTestId("graph-version").count()
   expect(before).toBeGreaterThan(5)
   await page.getByTestId("graph-version-restore").last().click()
-  await expect(page.getByTestId("graph-restored")).toBeVisible()
+  await expect(page.getByTestId("toast-success").last()).toContainText("Restored.")
   await expect(page.getByTestId("graph-node")).toHaveCount(0)
   await expect(page.getByTestId("graph-version")).toHaveCount(before + 1)
   await shot(page, "w5-24-graph-versions")
@@ -148,6 +150,8 @@ test("graph: a node moves with the keyboard and the pointer, and keeps its numbe
   await expect
     .poll(async () => (await node.boundingBox())?.x ?? 0)
     .toBeGreaterThan((before?.x ?? 0) + 8)
+  while ((await page.getByTestId("toast-dismiss").count()) > 0)
+    await page.getByTestId("toast-dismiss").first().click()
   const mid = await node.boundingBox()
   await page.mouse.move((mid?.x ?? 0) + 20, (mid?.y ?? 0) + 20)
   await page.mouse.down()
@@ -156,6 +160,7 @@ test("graph: a node moves with the keyboard and the pointer, and keeps its numbe
   await expect
     .poll(async () => (await node.boundingBox())?.y ?? 0)
     .toBeGreaterThan((mid?.y ?? 0) + 50)
+  await expect(page.getByTestId("toast-success").last()).toHaveText(/Saved\./)
   await expect(node).toContainText("1.")
   // A move keeps no version of the graph.
   await page.getByTestId("graph-versions-toggle").click()

@@ -6,6 +6,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
+import { showToast } from "../ui/toast.ts"
 import { documentSourceKey } from "./labels.ts"
 import styles from "./workflows.module.css"
 
@@ -18,13 +19,12 @@ const History = (props: {
   const { t, locale } = useApp()
   const [open, setOpen] = createSignal<DocumentVersion>()
   const [problem, setProblem] = createSignal<ErrorText>()
-  const [restored, setRestored] = createSignal(false)
   const restore = async (version: DocumentVersion) => {
     setProblem(undefined)
     try {
       await call("workflows.document.restore", { id: props.workflow.id, versionId: version.id })
       setOpen(undefined)
-      setRestored(true)
+      showToast("success", "workflows.document.version.restored")
       props.onRestored()
     } catch (e) {
       setProblem(describeError(e))
@@ -69,11 +69,6 @@ const History = (props: {
             )}
           </Keyed>
         </ul>
-      </Show>
-      <Show when={restored()}>
-        <p class={styles.hint} role="status" data-testid="document-restored">
-          {t("workflows.document.version.restored")}
-        </p>
       </Show>
       <Show when={open()}>
         {(version) => (
@@ -123,7 +118,6 @@ export const DocumentEditor = (props: { workflow: WorkflowDetail }) => {
   const [text, setText] = createSignal(props.workflow.document)
   const [saved, setSaved] = createSignal(props.workflow.document)
   const [problem, setProblem] = createSignal<ErrorText>()
-  const [done, setDone] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [versions, { refetch }] = createResource(
     () => props.workflow.id,
@@ -150,7 +144,7 @@ export const DocumentEditor = (props: { workflow: WorkflowDetail }) => {
         text: text(),
       })
       setSaved(next.document)
-      setDone(true)
+      showToast("success", "workflows.document.saved")
       void refetch()
     } catch (e) {
       setProblem(describeError(e))
@@ -176,7 +170,6 @@ export const DocumentEditor = (props: { workflow: WorkflowDetail }) => {
         onInput={(e) => {
           setText(e.currentTarget.value)
           setProblem(undefined)
-          setDone(false)
         }}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -225,11 +218,6 @@ export const DocumentEditor = (props: { workflow: WorkflowDetail }) => {
             {t(p().key, p().params)}
           </p>
         )}
-      </Show>
-      <Show when={done() && !dirty()}>
-        <p class={styles.hint} role="status" data-testid="document-saved">
-          {t("workflows.document.saved")}
-        </p>
       </Show>
       <History
         workflow={props.workflow}
