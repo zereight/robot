@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto"
-import type { CardAnswer, RunCard, SensitiveLabel } from "@robot/shared"
+import {
+  APPROVAL_COMMENT_MAX,
+  type CardAnswer,
+  charLength,
+  type RunCard,
+  type SensitiveLabel,
+} from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import type { Actor } from "./actor.ts"
 import { Database } from "./Database.ts"
@@ -7,9 +13,9 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 
 /**
- * The cards in the chat that wait for the user (spec 003, flow 6; spec 007): an approval card, a
- * question card and the pick of a decision node. A card of a node belongs to a task. A card of the
- * chat (the guarded feedback) has no task.
+ * The cards in the chat that wait for the user (spec 003, flow 6; spec 007; spec 010): an approval
+ * card, a question card, the pick of a decision node and the verdict of an approval node. A card
+ * of a node belongs to a task. A card of the chat (the guarded feedback) has no task.
  *
  * A card waits for one answer. Stop, and the end of the turn or of the task, close it and it goes
  * away. After an app restart no card is left that nobody answered: it is deleted, and so are the
@@ -25,6 +31,8 @@ export interface CardAsk {
   readonly nodeName: string | null
   readonly kind: RunCard["kind"]
   readonly summary: string
+  /** A verdict card: the input of the approval node. */
+  readonly input?: string | null
   readonly step: RunCard["step"]
   readonly once: boolean
   readonly outside: RunCard["outside"]
@@ -49,6 +57,8 @@ export interface CardReply {
   readonly inChat: boolean
   /** The name of the linked device that answered, or null for this computer (spec 012). */
   readonly device?: string | null
+  /** A verdict card: the comment of the user, without the space around it. */
+  readonly comment?: string
 }
 
 export interface CardsService {
@@ -127,6 +137,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           nodeName: p.nodeName,
           kind: r.kind as RunCard["kind"],
           summary: p.summary,
+          input: p.input ?? null,
           step: p.step,
           once: p.once,
           outside: p.outside,
@@ -159,6 +170,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
             nodeNumber: a.nodeNumber,
             nodeName: a.nodeName,
             summary: a.summary,
+            input: a.input ?? null,
             step: a.step,
             once: a.once,
             outside: a.outside,
@@ -203,7 +215,13 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           changed(a.workflowId, a.runId)
         })
 
-      const close = (id: string, answer: string, inChat: boolean, device: string | null = null) => {
+      const close = (
+        id: string,
+        answer: string,
+        inChat: boolean,
+        device: string | null = null,
+        comment?: string,
+      ) => {
         const row = db.get<Row>("SELECT * FROM task_card WHERE id = ?", id)
         const waiter = waiters.get(id)
         if (!row || !waiter || row.answered_at !== null) return false
@@ -215,7 +233,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           Date.now(),
           id,
         )
-        waiter.resolve({ answer, inChat, device })
+        waiter.resolve({ answer, inChat, device, ...(comment === undefined ? {} : { comment }) })
         changed(row.workflow_id, row.run_id)
         return true
       }
@@ -244,6 +262,13 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
               // A linked device cannot take or give back the browser of this computer (spec 012).
               if (actor) return yield* new AppError({ code: "not_allowed" })
               close(cardId, "given_back", false)
+            } else if (answer.kind === "verdict") {
+              // Only the user answers, as other cards: a linked device answers with its name
+              // (spec 012). The comment is trimmed and holds at most 2,000 characters (spec 010).
+              const comment = answer.comment.trim()
+              if (charLength(comment) > APPROVAL_COMMENT_MAX)
+                return yield* new AppError({ code: "invalid_input" })
+              close(cardId, answer.verdict, false, actor?.name ?? null, comment)
             } else {
               if (!waiter.payload.options.some((o) => o.id === answer.optionId))
                 return yield* new AppError({ code: "invalid_input" })

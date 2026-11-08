@@ -1,5 +1,6 @@
 import {
   ACTION_KINDS,
+  APPROVAL_COMMENT_MAX,
   BrowserProfileCreate,
   CHAT_MESSAGE_MAX,
   CONNECTION_SCOPE_MAX,
@@ -722,10 +723,11 @@ export const handlers: Handlers = {
         from: Schema.String,
         to: Schema.String,
         optionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+        output: Schema.optionalKey(Schema.NullOr(Schema.Literals(["approve", "reject"]))),
       }),
     )(input).pipe(
-      Effect.flatMap(({ workflowId, from, to, optionId }) =>
-        Workflows.use((w) => w.connect(workflowId, from, to, optionId ?? null)),
+      Effect.flatMap(({ workflowId, from, to, optionId, output }) =>
+        Workflows.use((w) => w.connect(workflowId, from, to, optionId ?? null, output ?? null)),
       ),
     ),
   "workflows.disconnect": (input) =>
@@ -887,6 +889,11 @@ export const handlers: Handlers = {
           }),
           Schema.Struct({ kind: Schema.Literal("question"), text: Schema.String }),
           Schema.Struct({ kind: Schema.Literal("pick"), optionId: Schema.String }),
+          Schema.Struct({
+            kind: Schema.Literal("verdict"),
+            verdict: Schema.Literals(["approve", "reject"]),
+            comment: Schema.String.pipe(Schema.check(Schema.isMaxCodePoints(APPROVAL_COMMENT_MAX))),
+          }),
           Schema.Struct({ kind: Schema.Literal("control") }),
         ]),
       }),
