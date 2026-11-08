@@ -4,7 +4,7 @@
 
 # ROBot
 
-**Run a small team of AI agents on your own computer, the way you work with people on a chat server.**
+**Build workflows of AI models on your own computer, run them, and see every step.**
 
 [![CI](https://github.com/zereight/robot/actions/workflows/ci.yml/badge.svg)](https://github.com/zereight/robot/actions/workflows/ci.yml)
 [![Release](https://github.com/zereight/robot/actions/workflows/release.yml/badge.svg)](https://github.com/zereight/robot/actions/workflows/release.yml)
@@ -16,23 +16,25 @@ English · 한국어 interface
 </div>
 
 <p align="center">
-  <img src=".github/assets/chat.jpg" alt="A direct chat with an agent: a numbered plan, a code block with a copy button, and a table" width="900">
+  <img src=".github/assets/studio.jpg" alt="The studio: the workflow list, the canvas of the Release notes workflow with a decision node and two branches, the finished run below it, and the chat that answers how the run went" width="900">
 </p>
 
-ROBot (Rapid Open Bot) is a desktop app for Macs with Apple silicon. Each AI agent is a member
-with a face, a name, a role, a model and a workspace. You talk to one agent in a direct chat. You
-put several agents in a channel and give them one job together. A phone app for iOS and Android
-pairs with your computer, so that you can follow and direct your agents when you are away.
+ROBot (Rapid Open Bot) is a desktop app for Macs with Apple silicon. A workflow is a graph of
+nodes. A text node sends a prompt to a model that you pick. A decision node chooses one of its
+options. You start a run, and the nodes run in a fixed order. Each workflow also has a
+responsible document, one chat and one memory.
 
-Your conversations, files and settings stay on your computer. Only the model provider you
-choose receives the messages you send to it. The app sends no analytics and no failure reports.
+The app is a studio. The workflow list, the canvas, the runs and the chat show in one window, so
+you see progress, approvals and results without opening another page.
 
-ROBot does not train or change a model. An agent gets better at its job through things that you
-can see and edit: its instructions, its memory, its knowledge, and the skills that you save.
+Your workflows, chats and settings stay on your computer. Only the model provider you choose
+receives the prompts you send to it. The app sends no analytics and no failure reports.
 
-> **Status: early alpha.** The desktop app has the features below. Builds are unsigned
-> pre-releases. The phone app runs from source with Expo and has no store build yet. Expect
-> changes to data and settings between versions.
+ROBot does not train or change a model. A workflow gets better through things that you can see
+and edit: its responsible document, its memory, its nodes and the skills that you save.
+
+> **Status: early alpha.** The app moved from agents and channels to workflows in November 2026.
+> Builds are unsigned pre-releases. Expect changes to data and settings between versions.
 
 ## Contents
 
@@ -54,48 +56,47 @@ can see and edit: its instructions, its memory, its knowledge, and the skills th
 
 | Area | What you can do |
 | --- | --- |
-| **Agents** | Create an agent from a starter (Assistant, Briefer, Researcher, Reviewer, Organizer) or from blank. A starter fills the name, role and instructions, and can also make a paused routine and a skill. Pick one of 6 faces and 10 colours, or upload a picture. A face follows the theme: it glows in the dark theme and is a tinted disc in the light theme. Give an agent a role line from a list or a new one. Edit, duplicate, archive, restore and delete. Each agent has its own workspace folder, and its instructions keep a history that you can restore. Export agents to one file, and import them with a review before anything is made. |
-| **Model accounts** | Use the subscription you already have: sign in to Claude Code (Claude plan), Codex (ChatGPT plan) or Muse Code (Meta account), use the models that you set up in pi or opencode, or use Cursor on this computer (`cursor-agent`, then `cursor-agent login` or `CURSOR_API_KEY`). ROBot runs that program with your sign-in. It never reads or stores your tokens and it removes API key variables from the program's environment, so the plan pays (not for pi and opencode, which have their own models and billing). Cursor keeps `CURSOR_API_KEY`, because that key is the Cursor account. Or connect OpenAI, Anthropic or any OpenAI-compatible endpoint with an API key, which goes to the system keychain. Add more than one Claude Code account, each with its own sign-in. The app shows if a program is missing or signed out, and has **Check again** and **Repair**. Pick a model and an effort level (None to Ultra) per agent. A model shows only the levels that it lists. Hide models you do not use. |
-| **Direct chat** | Replies stream in. Stop a reply at any time; the partial reply stays and is marked. Messages you send while the agent works join the turn or wait in a queue that you can edit. Reply to a message and jump to the quote. Edit your last message. Retry a failed reply. Markdown with code copy buttons, tables and links; a picture from the web loads only when you press **Load image**. Thinking folds into one line. Attach files. Use threads, fork a thread from a message, hand a chat over to another agent, and search all messages. A context meter shows how full the chat is, and **Compact** (also automatic) shortens it. Type `/` to run a saved skill. |
-| **Channels** | Put several agents in a channel and pick a lead. The lead splits a job into parts, and each part has a done test. The members work on their parts. The lead checks each result against its test and posts one summary. Mention one agent with `@Name`, or all of them with `@all`. Turn on review of parts, so that you accept a part or ask for changes. A part that cannot be done shows as **Blocked**. The activity panel shows the plan steps and the members at work. An optional small decision model (off by default) can pick one member for a job, so that the lead does not have to. |
-| **Tasks** | Every agent turn is a task. The Tasks page lists them with their state and times, and a work record for each. Stop, retry, run next, and set how many agents work at once. A task that waits for you keeps waiting after a restart. |
-| **Tools and approvals** | Agents read and write files in their workspace, run shell commands, search and fetch the web, and ask you questions. Four permission levels: Read only, Ask for risky steps, Ask for everything, Full access. An approval card has **Allow once**, **Always allow for this agent** and **Deny**. Saved rules and an action log are in Settings, Permissions. Each agent can have a browser: it shows in the activity panel, and you take control and give it back. Text that comes from the web is marked as outside content, and it cannot widen a permission. Agents can use keys that you saved without ever seeing them. |
-| **Memory and knowledge** | An agent saves facts to its memory at once, or asks you first. You edit, search and undo memory items. An agent also writes linked articles with sources in its workspace, cites them, and checks them for changes. A change list lets you undo a change. |
-| **Skills** | Save instructions as a skill and call it with a slash. Make a skill from a finished task, an article or a memory item, or teach one: do a task in the browser once and ROBot drafts the skill. |
-| **Connections** | Add outside tools for agents over MCP (a program, or a web address). Test a connection, set approvals for its tools, and review a tool when it changes. |
-| **Routines** | Run a job on a schedule: once, every N minutes, daily, weekly or by a cron line. Or watch a file, a folder, a command or a tool for changes. See the next runs in a list, a week or a month. Missed and skipped runs are recorded. A routine pauses after 3 failed runs in a row, and a server holds at most 50. |
-| **Workflows** | Build a graph of steps on a canvas: agent, condition (text or a model answers), approval, post to a place, and notify. Start it by hand, by a schedule or by a channel message. Read the history of runs. Export and import workflows. |
-| **Today and Org chart** | **Today** shows what needs you, what went wrong, what is done today and what runs in the next 24 hours. **Org chart** shows you, the channels, their members and leads, the state of each agent, and the work that agents handed to each other. |
-| **Devices and sync** | Link another computer or a phone with a QR code or a 6-digit code. The link is encrypted, and works on one network or through your own VPN. A linked computer shows as a server in the rail. With a switch that you set for each device, that device can also create and change agents and channels. Two computers can sync agents, chats, memory, routines and workflows. |
-| **Notifications** | System notifications by kind, with mutes. A status island on the screen shows agents at work and lets you answer an approval. Keep the computer awake while agents work. |
-| **Teams link** (experimental) | Talk to one agent or one channel from a Microsoft Teams chat. The app reads the chat in a page where you signed in by hand, and writes the answers to the same chat. It is off until you turn it on. It has been checked against a stand-in page only, not against the real Teams page. |
-| **Window and settings** | Server rail, place list with search (Cmd+K), your own sections, unread counts, a working dot, role badges, a resizable list and an activity panel. English or Korean (or follow the system), dark, light or system theme, three text sizes, reduce motion, start at login, workspace folder, third-party licences. A delete or a remove is a red button, and it asks first when nothing on that screen puts the thing back. |
-| **Motion** | Calm enter and exit motion, every motion under 300 ms. A working agent shows two motions that do not end: its badge light breathes, and its dot in the place list breathes. Reduce motion turns all of it off. |
-| **Local data** | One SQLite database in your app data folder. A reply is saved while it streams, so a crash loses at most the last part. Keys go to the system keychain. Export and import your data; keys and secrets stay out of the export. |
+| **Studio** | One window: a server rail, the workflow list, the canvas, a run strip with runs and the check, and the chat of the open workflow. The canvas fills the workflow view, the node panel docks beside it, and the run strip folds. |
+| **Workflows** | Make, rename and delete workflows. Each card in the list shows its nodes, its last run and its check. A workflow that runs cannot be renamed or deleted. |
+| **Graph** | Add text nodes and decision nodes, connect them, and connect each option of a decision node to its own branch. Every change that is not a move keeps the graph as a version. |
+| **Text nodes** | A name, a prompt, a provider, a model and a reasoning level. `{{input}}` is the result of the nodes before, and `{{trigger}}` is the text that started the run. A backup model can take over while the main model is at its limit. |
+| **Decision nodes** | A decision model gives a probability to each option. The node takes the option that reaches the threshold. When no option does, a card in the chat asks you to pick. |
+| **Runs** | Press Run, with an optional trigger text. The run view shows the state, the reason and the result of each node. Stop a run at any time; the part result stays. The Tasks page shows the queue, the slots and each task, with Run next and retry. |
+| **Check** | The check reads the shape of the workflow as a TLA model and reports what can go wrong: nodes that wait for each other so that no run can end, and a node that never runs. |
+| **Chat** | One chat per workflow, where the responsible document answers. Replies stream in and render Markdown. Stop a reply, edit the last message, mark a message as unread, and fold the tool steps. A meter shows how full the context is, and a long chat compacts into a summary. The chat can read the graph and the runs, and propose a change or a new workflow that you allow. |
+| **Responsible document** | A text that says who answers for the workflow, its character and its limits. Edit it, and go back to an earlier version from its history. |
+| **Memory and self-improvement** | A workflow keeps facts between runs. After a run, it can propose a change to its memory, its document or its graph. You accept or reject each proposal, and undo it from the change log. |
+| **Model accounts** | Use the subscription you already have through Claude Code, Codex, Muse Code, pi, opencode or Cursor. Or connect an API key for OpenAI, Anthropic or another OpenAI-compatible provider. |
+| **Tools and approvals** | Nodes read and write files in the workflow folder, run shell commands, use a browser, and ask you questions. Five permission levels, from Read only to Full access, plus your own Allow and Deny rules. An action log records each step. |
+| **Connections** | Add outside tools over MCP, as a program or a web address. Test a connection, set approvals for its tools, and review a tool when it changes. |
+| **Skills and secrets** | Save instructions as a skill and call it with a slash. Save keys and passwords that nodes use and the model never sees. |
+| **Shared folders** | Two workflows that use one folder claim the files they change, so they do not write over each other. |
+| **Devices** | Link another computer or a phone with a QR code or a 6-digit code. The link is encrypted. A linked computer shows as a server in the rail. |
+| **Settings** | English or Korean, a dark and a light theme, three text sizes, and the decision model. Reduce motion stops every motion. |
+| **Local data** | One SQLite database in your app data folder. A reply is saved while it streams, so a crash loses at most the last part. Keys go to the macOS Keychain. |
 
 ### Not built yet
 
-These parts have a spec and no code yet: separate profiles on one computer, one board for all
-agents, voice, token-saving switches, shared folders with file claims, own copies of a Git
-repository for parts, web hook triggers, outside programs that call ROBot, a backup model, ACP
-programs, a menu bar item, the quiet line, the workflow assistant, and computer use. See the
-[roadmap](#roadmap).
+These areas have a spec and no finished code yet: schedule triggers, sync between two computers,
+notifications and the status island, knowledge, profiles, voice, token-saving switches, outside
+programs that call ROBot, the Teams link, test devices, setup actions, and workflows on the phone.
+See the [roadmap](#roadmap).
 
 ## Screenshots
 
 | | |
 | --- | --- |
-| <img src=".github/assets/channel.jpg" alt="The Docs channel while two members work: the lead's plan with two parts, replies that stream in, and the activity panel with plan steps and working agents"> | <img src=".github/assets/approval.jpg" alt="An approval card for a shell command: Allow once, Always allow for this agent, Deny"> |
-| A channel at work | An approval card |
-| <img src=".github/assets/org-chart.jpg" alt="The org chart: you, the Docs channel with its lead, a hand-off line from Bo to Cy, one agent at work and one that waits for you"> | <img src=".github/assets/workflow.jpg" alt="The workflow editor: a graph of agent, condition, approval, post and notify steps, with the form of one step"> |
-| Org chart | Workflow editor |
-| <img src=".github/assets/today.jpg" alt="The Today page: one request that waits for you, and two routines that run in the next 24 hours"> | <img src=".github/assets/new-agent.jpg" alt="The new agent dialog with five starters, and the Researcher starter filled in"> |
-| Today | New agent, with starters |
-| <img src=".github/assets/channel-light.jpg" alt="The Docs channel in the light theme after the lead posted its summary"> | <img src=".github/assets/demo.gif" alt="A channel job from start to end: the message is typed, the lead plans, two members reply, and the lead posts a summary"> |
-| Light theme | A job from start to end |
+| <img src=".github/assets/node-panel.jpg" alt="The node panel docked beside the canvas: name, prompt, provider, model and backup model of the Draft notes node"> | <img src=".github/assets/approval.jpg" alt="A run that waits: the Publish node asks for approval of a shell command in the chat, with Allow, Always allow and Deny"> |
+| The node panel | An approval during a run |
+| <img src=".github/assets/check.jpg" alt="The Check tab of the run strip: the check passed and found no problem in the nodes and connections"> | <img src=".github/assets/studio-dark.jpg" alt="The studio in the dark theme after the run"> |
+| The check | Dark theme |
 
-The pictures show a team of four agents. A scripted stand-in model writes the replies, not a real
-model. The end-to-end tooling makes the pictures from the real app (see
+<p align="center">
+  <img src=".github/assets/demo.gif" alt="A run from start to end: the nodes run, the Publish node waits for approval, the user allows it, the run ends, and the chat answers how the run went" width="900">
+</p>
+
+The pictures show one workflow, Release notes. A scripted stand-in model writes the results and
+the replies, not a real model. The end-to-end tooling makes the pictures from the real app (see
 [Make the pictures](#make-the-pictures)).
 
 ## Download
@@ -125,17 +126,16 @@ API keys are not in this folder. They are in the macOS Keychain.
 
 ## Phone app
 
-The phone app is for iOS and Android, with the same screens on both. It runs no agents. It needs
-a Mac that runs ROBot.
+The phone app is for iOS and Android, with the same screens on both. It runs no workflows. It
+needs a Mac that runs ROBot.
 
 - Pair with a computer: scan the QR code on the computer, or type the address and the 6-digit
   code. One phone can pair with more than one computer.
-- Read the places of a computer, open a direct chat or a channel, send messages and files, and
-  stop an agent.
-- Answer approval and question cards, and see what waits for you in one list.
-- See the org chart as a list, and change the language and theme.
+- See each paired computer and the state of its connection.
+- Change the language and the theme.
 
-There is no store build and no release build yet. To run it from source, use Expo:
+The workflows of a computer come to the phone in a later slice. There is no store build and no
+release build yet. To run it from source, use Expo:
 
 ```sh
 bun install
@@ -199,26 +199,26 @@ hook only moves the failure to the pull request.
 ```text
 host/                The host program in Rust: the work of the app, apart from the windows
 apps/desktop/
-  src/main/          Electron main process: Effect services, RPC, providers, runtimes,
-                     device link, sync, connections, Teams link, SQLite
+  src/main/          Electron main process: Effect services, RPC, providers, runtimes, runs,
+                     the check, device link, connections, SQLite
   src/preload/       The narrow bridge the window can call
-  src/renderer/      SolidJS interface: shell, chat, channels, agents, workflows, org chart,
-                     settings and more
+  src/renderer/      SolidJS interface: studio shell, workflows, chat, tasks, settings and
+                     more
   e2e/               Playwright tests, mock model provider, harness, README pictures
   scripts/           Release checks, licence list, size and speed measures
   resources/         App icon: icon.svg is the source of icon.png
   electron-builder.yml
 apps/mobile/
   app/               Expo Router screens
-  src/               State, chat, Markdown, org chart list, theme and interface parts
+  src/               State, pairing, theme and interface parts
   e2e/               Maestro flows and the runner for the iOS Simulator
   assets/            Phone icons: each .svg is the source of the .png of the same name
 packages/shared/     Types, schemas, en and ko catalogues, shared rules
 packages/link/       The device link: identity, pairing, encrypted messages
-packages/phone/      The phone's side of the link: hub, places, cache
+packages/phone/      The phone's side of the link: hub and cache
 packages/teams-bridge/  A stand-alone Teams reader for tests (not part of the app)
 specs/               Behaviour specs: the only source for implementation
-docs/                Spec questions, release process, formats, measures, what an agent is
+docs/                Spec questions, proposals, release process, formats, measures
 ```
 
 ### App icon
@@ -240,21 +240,25 @@ have no transparency. Remove the alpha channel after the export, for example wit
 
 ### Make the pictures
 
-The pictures in this file come from the real app. One Playwright file builds a team of four
-agents against a scripted stand-in model, and saves a PNG of each screen to `build/e2e/readme`:
+The pictures in this file come from the real app. One Playwright file builds the Release notes
+workflow against a scripted stand-in model, runs it, and saves a PNG of each screen to
+`build/e2e/readme`:
 
 ```sh
-README_SHOTS=1 bun run --cwd apps/desktop e2e e2e/readme-shots.spec.ts
+bun run --cwd apps/desktop build
+cd apps/desktop && README_SHOTS=1 bunx playwright test e2e/readme-shots.spec.ts
 ```
 
 The file does nothing without `README_SHOTS`, so the normal suite skips it. Make the JPEG files
 of the README (1400 px wide) from the PNG files, for example with the `sips` tool of macOS:
 
 ```sh
-sips -s format jpeg -s formatOptions 82 -Z 1400 build/e2e/readme/chat.png --out .github/assets/chat.jpg
+for f in studio node-panel approval check studio-dark; do
+  sips -s format jpeg -s formatOptions 82 -Z 1400 build/e2e/readme/$f.png --out .github/assets/$f.jpg
+done
 ```
 
-The file also films the channel job. With `ffmpeg` in PATH, the harness writes
+The file also films the run. With `ffmpeg` in PATH, the harness writes
 `build/e2e/videos/readme-demo.gif`, and that file is `.github/assets/demo.gif`. Without it, the
 frames stay in `build/e2e/videos/readme-demo-frames`. Look at each picture before you commit it.
 
@@ -262,15 +266,15 @@ frames stay in `build/e2e/videos/readme-demo-frames`. Look at each picture befor
 
 ```text
 ┌──────────── renderer (SolidJS) ────────────┐
-│ shell · chat · channels · agents · pages   │
+│ studio · canvas · runs · chat · settings   │
 │ every string from the en / ko catalogues   │
 └───────────────┬────────────────────────────┘
                 │ typed RPC + events (contextIsolation, sandbox)
 ┌───────────────┴──────────── main (Effect) ─┐
-│ Agents · Chat · Channels · Tasks · Tools   │
-│ Providers · Runtimes · Routines            │
-│ Workflows · Memory · Knowledge · Skills    │
-│ Connections · Devices · Sync · Notifier    │
+│ Workflows · Runs · Check · Chat · Tasks    │
+│ Providers · Runtimes · Decision · Tools    │
+│ Memory · Proposals · Skills · Secrets      │
+│ Connections · Devices · File claims        │
 ├──────────────┬──────────────┬──────────────┤
 │ node:sqlite  │ OS keychain  │ model APIs   │
 │ (WAL)        │              │ (SSE)        │
@@ -292,17 +296,17 @@ frames stay in `build/e2e/videos/readme-demo-frames`. Look at each picture befor
   runtime swaps the platform, secrets and network for fakes, so unit tests cover the real
   services.
 - **RPC.** The renderer calls named methods over one IPC channel. The main process decodes every
-  input with a schema before a handler runs. Events (`chat.message`, `agents.changed`, …) go the
-  other way.
-- **Chat and tasks.** One worker per agent streams the reply, saves it every 500 ms and when it
-  ends, and sends the next queued message. Replies still marked as streaming at start-up become
-  stopped. An agent that uses a vendor program (Claude Code, Codex, Muse Code, pi, opencode,
-  Cursor) runs that program, and the app shows its steps and approvals in the same cards. Cursor
-  shows its steps. A headless run cannot ask before a step, so the permission level sets the mode
-  of the program instead.
+  input with a schema before a handler runs. Events (`chat.message`, `settings.changed`, …) go
+  the other way.
+- **Runs and tasks.** A run makes one task for each node that an input reaches, in the order of
+  the graph. A text node streams its reply, and the reply is saved every 500 ms and when it ends.
+  A node that uses a vendor program (Claude Code, Codex, Muse Code, pi, opencode, Cursor) runs
+  that program, and the app shows its steps and approvals in the same cards. A headless run
+  cannot ask before a step, so the permission level sets the mode of the program instead.
+- **Check.** The check writes the graph as a TLA model and checks it in a worker with
+  [tla-ts](https://www.npmjs.com/package/tla-ts).
 - **Device link.** A computer that you link is a server. The window and the phone ask it for
-  places and messages over an encrypted link, and it pushes changes back. Two computers that sync
-  each keep a full copy, and send change records to each other.
+  data over an encrypted link, and it pushes changes back.
 - **Security.** Context isolation, a sandboxed preload, a strict content security policy, no new
   windows, no navigation. Links open in the system browser, http, https and mailto only. Markdown
   never renders raw HTML.
@@ -316,8 +320,8 @@ frames stay in `build/e2e/videos/readme-demo-frames`. Look at each picture befor
 | --- | --- | --- |
 | Unit | `bun test` | Services against an in-memory database, SSE parsing, provider requests, schemas, contrast of every theme colour (WCAG 4.5:1), catalogue parity, licence list, style rules |
 | Host | `cargo test`, clippy | The Rust host: protocol, keychain, licences |
-| End to end | Playwright with Electron | The real app against a local mock provider: every flow of the specs, restarts, two copies that link and sync, both languages, narrow windows, motion limits |
-| Phone | Maestro on the iOS Simulator | Pairing, conversation, approvals, settings and the org chart (by hand, not in CI) |
+| End to end | Playwright with Electron | The real app against a local mock provider: every flow of the specs, restarts, two copies that link, both languages, narrow windows, motion limits |
+| Phone | Maestro on the iOS Simulator | Pairing and settings (by hand, not in CI) |
 | Packaged | Same suite, `ROBOT_E2E_APP` | The installed app on macOS arm64 |
 
 End-to-end runs write screenshots, a report and a motion video under `build/e2e`. The Release
@@ -339,7 +343,7 @@ only CI run of the suite is the Release workflow, against the packaged app (see 
 
 ```sh
 bun run e2e                                        # whole suite
-cd apps/desktop && bunx playwright test e2e/s5-chat.spec.ts   # one file, without a new build
+cd apps/desktop && bunx playwright test e2e/w5-chat.spec.ts   # one file, without a new build
 ROBOT_E2E_WORKERS=1 bun run e2e                    # one test at a time
 ```
 
@@ -362,20 +366,19 @@ signing plan are in [docs/release.md](docs/release.md).
 
 ## Roadmap
 
-The [spec index](specs/README.md) lists every milestone and the slices of each.
-[docs/spec-changes.md](docs/spec-changes.md) says what each slice built and what it left out.
-This table says where the app stands.
+The [spec index](specs/README.md) lists every spec and the milestones before the change to
+workflows. [docs/proposal-workflow-first.md](docs/proposal-workflow-first.md) explains the change
+and its slices. [docs/spec-changes.md](docs/spec-changes.md) says what each slice built and what
+it left out.
 
-| Milestone | Scope | State |
+| Step | Scope | State |
 | --- | --- | --- |
-| **M1** | Window, agents, direct chat, providers, settings, local data | Done |
-| **M2** | Channels, split work, tasks page | Done |
-| **M3** | Workspace tools, approvals, browser, memory | Done |
-| **M4** | Routines and workflows | Done |
-| **M5** | Device link, sync between computers, phone app | Done on the desktop. The phone app has pairing, places, chat, approvals and the org chart; it runs from source and has no store build |
-| **M6** | Notifications and status island | Done |
-| **M7 on** | Slices of later milestones | In progress, slice by slice. Built: decision model and fast pick, user sections, agent and workflow files with a review before an import, knowledge, skills, connections, permission rules and action log, limits of a task, runtime states, review of parts, messages during a turn, outside content, changes from the chat, saved secrets, task times, watch routines, teach a task, message search, Today, memory control, verdicts in the check, starters, threads, compact, the task queue, pictures from the web, sensitive places, handover, make a skill, effort levels and the model list, the Teams link, the org chart, the role label |
-| **Planned** | No code yet | Separate profiles on one computer, one board for all agents, voice, token-saving switches, shared folders with file claims, own copies of a Git repository for parts, web hook triggers, outside programs that call ROBot, a backup model, ACP programs, a menu bar item, the quiet line, the workflow assistant, computer use |
+| **M1 to M6** | Agents, channels, routines, the org chart, Today, device link, sync, phone app, notifications | Built, then removed or reshaped for workflows |
+| **W1 to W3** | Specs for the workflow model | Done |
+| **W4 to W8** | Schema reset, the workflow list and chat, node runs, the TLA check, memory and self-improvement | Done |
+| **B slices** | Chat tools, the Tasks page, compact, chat details, the looping motion, the backup model, shared folders, the browser tool, connections | Done |
+| **ST** | The studio: one window for the list, the canvas, the run strip and the chat | Done |
+| **Planned** | Spec, no finished code | Schedule triggers, sync between two computers, notifications and the status island, knowledge, profiles, voice, token-saving switches, outside programs that call ROBot, the Teams link, test devices, setup actions, workflows on the phone |
 
 ## Contributing
 
