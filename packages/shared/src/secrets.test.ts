@@ -4,8 +4,10 @@ import {
   checkRequestAddress,
   classifyHost,
   classifyIp,
+  isLoginUser,
   isSecretName,
   isSecretValue,
+  LOGINS_PER_WORKFLOW,
   parseOrigin,
   parseSecretAuth,
   redactSecretValue,
@@ -212,5 +214,23 @@ describe("redaction of the value in an answer", () => {
 
   test("text without the value stays", () => {
     expect(redactSecretValue("nothing here", value)).toBe("nothing here")
+  })
+})
+
+describe("the name and the user of a saved login", () => {
+  test("a login name follows the same rule as a secret name", () => {
+    expect(isSecretName("test_user-1")).toBe(true)
+    expect(isSecretName("")).toBe(false)
+    expect(isSecretName("has space")).toBe(false)
+    // A workflow holds at most 50 logins; a password at most 16384 characters.
+    expect(LOGINS_PER_WORKFLOW).toBe(50)
+    expect(SECRET_VALUE_MAX).toBe(16384)
+  })
+
+  test("a user name is plain text of 1 to 200 characters", () => {
+    expect(isLoginUser("ada")).toBe(true)
+    expect(isLoginUser("")).toBe(false)
+    expect(isLoginUser("a".repeat(201))).toBe(false)
+    expect(isLoginUser("has\nbreak")).toBe(false)
   })
 })

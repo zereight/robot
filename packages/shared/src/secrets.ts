@@ -11,6 +11,8 @@ export const SECRET_REASON_MAX = 500
 export const SECRET_VALUE_MAX = 16_384
 /** An agent holds at most this many saved secrets. */
 export const SECRETS_PER_AGENT = 100
+/** A workflow holds at most this many saved logins (spec 020, "Saved logins"). */
+export const LOGINS_PER_WORKFLOW = 50
 /** The name of a header or a user name for a basic sign-in. */
 export const SECRET_FIELD_MAX = 200
 
@@ -39,6 +41,23 @@ export interface SavedSecret {
   readonly name: string
   readonly origin: string
   readonly auth: SecretAuth
+  readonly savedAt: number
+  readonly lastUsedAt: number | null
+  /** True when the keychain of this computer holds no value for it (spec 020, after an import). */
+  readonly valueMissing: boolean
+}
+
+/**
+ * One saved login as the vault shows it (spec 020, "Saved logins"). It holds no value: the user
+ * name and the password are in the system keychain. A login has no way to send: the browser of
+ * the workflow fills both values into the sign-in form of the origin.
+ */
+export interface SavedLogin {
+  readonly id: string
+  readonly workflowId: string
+  readonly name: string
+  readonly origin: string
+  readonly user: string
   readonly savedAt: number
   readonly lastUsedAt: number | null
   /** True when the keychain of this computer holds no value for it (spec 020, after an import). */
@@ -142,6 +161,10 @@ export const authHeader = (auth: SecretAuth, value: string): [string, string] =>
 /** True when a value can go in a header: no line breaks and no control characters. */
 export const isSecretValue = (value: string) =>
   value.length > 0 && value.length <= SECRET_VALUE_MAX && plainField(value)
+
+/** True when a user name of a saved login is valid: plain text of 1 to 200 characters. */
+export const isLoginUser = (user: string) =>
+  user.length > 0 && user.length <= SECRET_FIELD_MAX && plainField(user)
 
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
