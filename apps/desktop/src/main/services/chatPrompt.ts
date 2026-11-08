@@ -4,6 +4,7 @@ import {
   type RunNodeFact,
   redactSecrets,
   type WorkflowGraph,
+  type WorkflowNode,
 } from "@robot/shared"
 
 /** A result longer than this shows its first part (spec 003, "What the results are"). */
@@ -99,23 +100,37 @@ export const runFactsText = (runs: readonly RunFact[]): string => {
 }
 
 /** The nodes and the connections, for a turn that may propose a change (spec 010, "Assistant"). */
+/** The words of an approval output, as the chat names it. */
+const OUTPUT_WORDS: Record<"approve" | "reject", string> = { approve: "Approve", reject: "Reject" }
+
+/** One node, as the chat sees it: the fields that the kind owns. */
+const nodeText = (n: WorkflowNode): string => {
+  if (n.kind === "text")
+    return `Node ${n.number} "${escapeOutside(n.name)}" (text node)${
+      n.accountId && n.model ? `, account ${n.accountId}, model ${n.model}` : ""
+    }${n.effort ? `, reasoning level ${n.effort}` : ""}${
+      n.continueOnFailure ? ", continues on failure" : ""
+    }\n  <prompt>${escapeOutside(n.prompt)}</prompt>`
+  if (n.kind === "approval")
+    return `Node ${n.number} "${escapeOutside(n.name)}" (approval node)\n  question: ${escapeOutside(n.question)}\n  outputs: "Approve", "Reject"`
+  return `Node ${n.number} "${escapeOutside(n.name)}" (decision node), threshold ${n.threshold}\n  question: ${escapeOutside(n.question)}\n  options: ${n.options.map((o) => `"${escapeOutside(o.label)}"`).join(", ")}`
+}
+
 export const graphText = (graph: WorkflowGraph): string => {
   if (graph.nodes.length === 0) return "The graph has no node."
   const byId = new Map(graph.nodes.map((n) => [n.id, n]))
-  const lines = graph.nodes.map((n) =>
-    n.kind === "text"
-      ? `Node ${n.number} "${escapeOutside(n.name)}" (text node)${
-          n.accountId && n.model ? `, account ${n.accountId}, model ${n.model}` : ""
-        }${n.effort ? `, reasoning level ${n.effort}` : ""}${
-          n.continueOnFailure ? ", continues on failure" : ""
-        }\n  <prompt>${escapeOutside(n.prompt)}</prompt>`
-      : `Node ${n.number} "${escapeOutside(n.name)}" (decision node), threshold ${n.threshold}\n  question: ${escapeOutside(n.question)}\n  options: ${n.options.map((o) => `"${escapeOutside(o.label)}"`).join(", ")}`,
-  )
+  const lines = graph.nodes.map(nodeText)
   const connections = graph.connections.map((c) => {
     const from = byId.get(c.from)
     const to = byId.get(c.to)
     const option = from?.options.find((o) => o.id === c.optionId)
-    return `${from?.number ?? "?"} -> ${to?.number ?? "?"}${option ? ` (option "${escapeOutside(option.label)}")` : ""}`
+    const output = c.output === null ? null : OUTPUT_WORDS[c.output]
+    const branch = option
+      ? ` (option "${escapeOutside(option.label)}")`
+      : output
+        ? ` (output "${output}")`
+        : ""
+    return `${from?.number ?? "?"} -> ${to?.number ?? "?"}${branch}`
   })
   return [
     ...lines,

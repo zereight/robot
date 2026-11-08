@@ -7,7 +7,13 @@ import { readyNode, stalled } from "./runGraph.ts"
 // lived in `Runs.test.ts` when a queued run read its graph late).
 
 const node = (id: string, number: number) => ({ id, number }) as unknown as WorkflowNode
-const link = (from: string, to: string) => ({ id: `${from}-${to}`, from, to, optionId: null })
+const link = (from: string, to: string) => ({
+  id: `${from}-${to}`,
+  from,
+  to,
+  optionId: null,
+  output: null,
+})
 const incomingOf = (nodes: WorkflowNode[], connections: WorkflowConnection[]) =>
   new Map(nodes.map((n) => [n.id, connections.filter((c) => c.to === n.id)]))
 

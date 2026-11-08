@@ -39,14 +39,14 @@ const graphNode = {
       description:
         "The number that this node has now. The node keeps its place, its permission level and every field that you leave out. Leave out for a new node.",
     },
-    kind: { type: "string", enum: ["text", "decision"] },
+    kind: { type: "string", enum: ["text", "decision", "approval"] },
     name: { type: "string" },
     prompt: { type: "string", description: "A text node: its prompt." },
     accountId: { type: "string", description: "A text node: the id of a connected account." },
     model: { type: "string", description: "A text node: a model that the account offers." },
     effort: { type: "string", description: "A text node: a reasoning level of the model." },
     continueOnFailure: { type: "boolean" },
-    question: { type: "string", description: "A decision node: the question." },
+    question: { type: "string", description: "A decision or approval node: the question." },
     threshold: { type: "number", description: "A decision node: from 0 to 1." },
     options: {
       type: "array",
@@ -88,7 +88,7 @@ export const PROPOSE_TOOL_DEFS: readonly ToolDef[] = [
   {
     name: PROPOSE_GRAPH_TOOL,
     description:
-      "Propose a new graph: give the whole list of nodes and the whole list of connections as they should be. Nothing changes: the app checks the new graph, and the user accepts or rejects the proposal. A connection names its nodes by their place in your list of nodes, from 1. A connection that leaves a decision node names the option. You cannot set a permission level, a folder, a trigger or a schedule.",
+      'Propose a new graph: give the whole list of nodes and the whole list of connections as they should be. Nothing changes: the app checks the new graph, and the user accepts or rejects the proposal. A connection names its nodes by their place in your list of nodes, from 1. A connection that leaves a decision node names the option; one that leaves an approval node names the output ("Approve" or "Reject"). You cannot set a permission level, a folder, a trigger or a schedule.',
     schema: {
       type: "object",
       properties: {
@@ -101,6 +101,10 @@ export const PROPOSE_TOOL_DEFS: readonly ToolDef[] = [
               from: { type: "integer", description: "The place of the node, from 1." },
               to: { type: "integer", description: "The place of the node, from 1." },
               option: { type: "string", description: "The option of the decision node." },
+              output: {
+                type: "string",
+                description: 'The output of the approval node: "Approve" or "Reject".',
+              },
             },
             required: ["from", "to"],
           },
@@ -169,8 +173,8 @@ const graphInput = (args: Record<string, unknown>): GraphProposalInput | string 
     if (typeof n !== "object" || n === null) return "Each node is an object."
     const o = n as Record<string, unknown>
     if (namesBackup(o)) return BACKUP_REFUSED_TEXT
-    if (o.kind !== "text" && o.kind !== "decision")
-      return 'Each node has a "kind": "text" or "decision".'
+    if (o.kind !== "text" && o.kind !== "decision" && o.kind !== "approval")
+      return 'Each node has a "kind": "text", "decision" or "approval".'
     nodes.push({
       ...(typeof o.keep === "number" && Number.isInteger(o.keep) ? { keep: o.keep } : {}),
       kind: o.kind,
@@ -199,6 +203,7 @@ const graphInput = (args: Record<string, unknown>): GraphProposalInput | string 
       from: o.from,
       to: o.to,
       ...(typeof o.option === "string" ? { option: o.option } : {}),
+      ...(typeof o.output === "string" ? { output: o.output } : {}),
     })
   }
   return { nodes, connections }

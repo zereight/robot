@@ -531,6 +531,52 @@ describe("changes of the graph (spec 010: add, edit and remove nodes and connect
     expect((await t.call("add_option", { node: 1, option: "A", to: 2 })).outcome.failed).toBe(true)
   })
 
+  test("an approval node: it has a question only, and its connections name the output", async () => {
+    const t = await setup()
+    expect((await t.call("add_node", { kind: "approval", name: "Gate" })).outcome.failed).toBe(true)
+    expect(
+      (
+        await t.call("add_node", {
+          kind: "approval",
+          name: "Gate",
+          question: "Ship it?",
+          options: [{ label: "Yes", to: 1 }],
+        })
+      ).outcome.failed,
+    ).toBe(true)
+    expect(
+      (
+        await t.call("add_node", {
+          kind: "approval",
+          name: "Gate",
+          question: "Ship it?",
+          model: "mock-fast",
+        })
+      ).outcome.failed,
+    ).toBe(true)
+    const added = await t.call("add_node", { kind: "approval", name: "Gate", question: "Ship it?" })
+    expect(added.outcome.failed).toBe(false)
+    expect((await t.graph()).nodes[2]).toMatchObject({ kind: "approval", question: "Ship it?" })
+    // Options and model fields are refused on it; the question can change.
+    expect((await t.call("edit_node", { node: 3, model: "mock-fast" })).outcome.failed).toBe(true)
+    expect((await t.call("edit_node", { node: 3, threshold: 0.5 })).outcome.failed).toBe(true)
+    expect((await t.call("edit_node", { node: 3, question: "Ready?" })).outcome.failed).toBe(false)
+    expect((await t.call("add_option", { node: 3, option: "A", to: 2 })).outcome.failed).toBe(true)
+    // The connections name one of the two outputs, never an option.
+    expect((await t.call("add_connection", { from: 3, to: 2 })).outcome.failed).toBe(true)
+    expect((await t.call("add_connection", { from: 3, to: 2, option: "A" })).outcome.failed).toBe(
+      true,
+    )
+    expect(
+      (await t.call("add_connection", { from: 3, to: 2, output: "Approve" })).outcome.failed,
+    ).toBe(false)
+    expect((await t.call("remove_connection", { from: 3, to: 2 })).outcome.failed).toBe(true)
+    expect(
+      (await t.call("remove_connection", { from: 3, to: 2, output: "Approve" })).outcome.failed,
+    ).toBe(false)
+    expect((await t.graph()).connections).toHaveLength(1)
+  })
+
   test("a connection leaves the graph with its option", async () => {
     const t = await setup()
     await decide(t, ["A", "B"])
