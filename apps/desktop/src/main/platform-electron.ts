@@ -1459,10 +1459,12 @@ export const electronPlatform = (): PlatformService => {
         boxes,
         // The screen of the app first, then the pages of the workflows.
         pages: [screenSnapshot(), ...[...snapshots.values()].map((snapshot) => snapshot())],
+        // The logs that spec 014 names: browser, workflows, outside programs, Teams link.
         logs: [
-          { name: "app", lines: readLogTail(dataDir, "app", 100) },
           { name: "browser", lines: readLogTail(dataDir, "browser", 150) },
-          { name: "channels", lines: readLogTail(dataDir, "channels", 40) },
+          { name: "workflows", lines: readLogTail(dataDir, "workflows", 100) },
+          { name: "outside", lines: readLogTail(dataDir, "outside", 100) },
+          { name: "teams", lines: readLogTail(dataDir, "teams", 100) },
         ],
       })
       // The text also stays on disk, in the logs folder, so it can be found again.
