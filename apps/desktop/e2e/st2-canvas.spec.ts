@@ -147,6 +147,15 @@ test("canvas: it fills the view, pans and zooms, the node panel folds, and the s
   await expect(page.getByTestId("graph-zoom-reset")).toHaveText("100%")
   expect(await node.boundingBox()).toEqual(home)
 
+  // At the smallest zoom, the dots of the grid stay at least 12 px apart: every fourth dot shows.
+  const canvasEl = page.getByTestId("graph-canvas")
+  await expect(canvasEl).toHaveCSS("background-size", "16px 16px")
+  for (let i = 0; i < 8; i++) await page.getByTestId("graph-zoom-out").click()
+  await expect(page.getByTestId("graph-zoom-reset")).toHaveText("25%")
+  await expect(canvasEl).toHaveCSS("background-size", "16px 16px")
+  await page.getByTestId("graph-zoom-reset").click()
+  await expect(page.getByTestId("graph-zoom-reset")).toHaveText("100%")
+
   // A drag on the top edge of the strip changes its height, and the canvas gets the rest.
   const strip = await page.getByTestId("run-strip").boundingBox()
   const edge = await page.getByTestId("strip-resize").boundingBox()
