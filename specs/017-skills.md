@@ -168,14 +168,14 @@ the skill and about the other skills of the server. It asks no model.
    - **On**: the skill is turned on. If it is off, the reason says that it is off and that it does
      not show in the slash list.
    - **Listed**: the description is not empty, so the responsible document reads the skill in its
-     skill list (flow 8). If it is empty, the reason says that the skill works with the slash only.
+     skill list (flow 8). If it is empty, the reason says that the skill is for slash use only.
    - **Slash**: a slash and the first letters of the name show the skill in the slash list of a
      chat. No other skill has the same name, ignoring case. If another skill has it, the reason names
      that skill.
    - **Loads**: the instructions load as saved, and they are not empty.
    - **No secret**: the instructions and the description hold no text that looks like a secret.
    - **Lean**: the description holds at most 140 characters, and the instructions hold at most 4000.
-     A longer text shows "Long" with its length, and says that the skill still works. "Long" is not
+     A longer text shows "Long" with its length and the allowed length. "Long" is not
      a failure.
 3. If "Saved" fails (the skill was deleted), the other facts show "Not checked".
 4. The result is a list of lines, one for each fact. A reason is a short sentence. The result stays
