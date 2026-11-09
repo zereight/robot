@@ -35,7 +35,7 @@ service holds it.
 
 | Item | Why |
 | --- | --- |
-| Keys, tokens and the sign-in of vendor programs | Secrets stay in the secrets file of their computer (014). |
+| Keys and tokens | Secrets stay in the secrets file of their computer (014). |
 | Permission levels of workflows and nodes, permission rules (allow and deny) and the action log (007) | A change on one computer must not give another computer more power over its files. The log tells what ran on one computer. |
 | Connections (018) and the reviewed tools of a connection | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay in the secrets file of one computer (014). Each computer reviews the tools of its own connections. |
 | Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. A prompt of a node syncs as text. |

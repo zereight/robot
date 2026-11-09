@@ -62,21 +62,37 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   the data folder of the profile. Secrets are never in the database, the logs, an export or a
   sync, and never in plain text on the disk. A value that the user deletes leaves the secrets
   file at once. Deleting a profile deletes its secrets file and its secrets key. A linked
-  device never receives provider keys.
-- Each profile has one secrets key. It opens the secrets file of the profile. It stays in the
-  system keychain of this computer. When the secrets key is locked or denied, nothing that
-  needs a secret can run. The vault shows "Cannot read the vault." with Retry (020). When the
-  secrets file exists but the secrets key does not, the app treats every secret as missing.
-  This happens on a new computer, with a folder copied from another computer, or with a
-  cleared keychain. Each row shows "Value missing". The user can save new secrets. The first
-  save makes a new secrets key and a new secrets file, and replaces the old file. Providers
-  ask to sign in again, and linked devices show "Pair again" (012). When the app cannot open
-  the secrets file with a good secrets key, the vault shows "Cannot read the vault." with
-  Retry (020), and nothing is overwritten. Values that an earlier version saved in the
-  keychain are never read, never moved and never removed. They stay in the keychain. The user
-  types them again.
+  device never receives provider keys. A vendor sign-in that stays in the program on this
+  computer (006) is not a secret of the app and is not in the secrets file.
+- Readable storage means each profile has one secrets key. It opens the secrets file of the
+  profile. It stays in the system keychain of this computer. The state Readable means all
+  works as before.
+- Locked means the secrets key cannot be read now, because the keychain is locked or denied.
+  Nothing that needs a secret runs, and a request, a sign-in fill, a provider call and a
+  connection call fail with the reason "Cannot read the vault.". A save of any secret
+  (protected card Save, vault Add or Replace, a key in Settings, a connection value) is
+  refused with that reason and does not touch the file, and a screen that shows whether a
+  secret is saved shows "Cannot read the vault." with Retry. Nothing is overwritten, and
+  Retry works again when the state is Readable.
+- Missing key means no secrets key exists for this profile while a secrets file exists, on a
+  new computer, with a folder copied from another computer, or with a cleared keychain. Every
+  secret counts as missing, and vault rows, connection values, env rows and the decision
+  model key show "Value missing" or their normal "no key" state per their own spec (006
+  "Provider not connected", 018, 013). A request fails with "Value missing" until the user
+  saves a new value, and the first save of any secret makes a new secrets key and a new
+  secrets file and replaces the old file. The other secrets stay missing, and making a new
+  device identity is also a save, so the app makes a new device identity, which makes the new
+  key and file, and every linked device is treated as if the user had chosen "Remove access"
+  (012).
+- Damaged means the secrets file cannot be opened with the secrets key of this profile. This
+  covers a changed or broken file, and a file made with another secrets key, for example a
+  folder copied onto a computer that has its own key for this profile. The same rules as
+  Locked apply. The app has no recovery, and the user deletes the secrets file by hand, then
+  the state is Readable or Missing key.
+- Values that an earlier version saved in the keychain are never read, never moved and never
+  removed. They stay in the keychain. The user types them again.
 - Logs and exports redact anything that looks like a secret. A text looks like a secret when
-  it equals a stored key, or holds a key or token of a known form. A known form is a long
+  it equals a stored secret, or holds a key or token of a known form. A known form is a long
   string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to "PRIVATE
   KEY-----".
 - A service that a saved secret (020) is for gets what a text node writes in a request with that
@@ -151,22 +167,30 @@ makes anything. The user sees each part that the file holds and picks what to ke
 
 ## Acceptance
 
-- After an export, searching the archive for a stored key finds nothing.
+- After an export, searching the archive for a stored secret finds nothing.
 - Add a connection with a secret value, export, and search the archive for the value: it finds
   nothing. Import the archive into an empty profile: the connection shows and is turned off, and its
   secret value is missing.
 - Copy the data folder to a new computer, start the app: all workflows and history are there; the
   providers ask to sign in again.
-- Copy the secrets file to a computer without its secrets key: every row shows "Value
-  missing", and the file holds no plain text of a saved secret.
-- With the secrets key locked: the vault shows "Cannot read the vault." A request with a
-  secret fails with that reason.
-- Delete the secrets key and keep the secrets file: every row shows "Value missing". Save a
-  new secret: the save works, and the next request with it runs.
-- Change the secrets file with another program so the app cannot open it: the vault shows
-  "Cannot read the vault." The app does not change the file.
-- Values of an earlier version in the keychain, with no secrets file: the app shows no saved
-  value, and the providers ask to sign in again.
+- Copy the data folder of a profile (database and secrets file) to another computer
+  without its secrets key. The vault rows show "Value missing" there. The file holds no plain
+  text of a saved secret.
+- With the secrets key locked, the vault shows "Cannot read the vault." A request with a
+  secret fails with that reason. A save is refused with that reason. Unlock the keychain and
+  press Retry, then the vault reads again and the request runs.
+- Delete the secrets key and keep the secrets file. Every vault row shows "Value missing". A
+  provider with an API key shows "Provider not connected". A connection value shows "Value
+  missing". Every linked device is treated as if the user had chosen "Remove access".
+- A request fails with "Value missing" until the user saves a new value. Save a new secret.
+  The save makes a new secrets key and a new secrets file and replaces the old file. The
+  other secrets stay missing. The next request with the new value runs.
+- Change the secrets file with another program so the app cannot open it. The vault shows
+  "Cannot read the vault." A request with a secret fails with that reason. A save is refused
+  with that reason. The app does not change the file.
+- Values of an earlier version stay in the keychain, with no secrets file. The app shows no
+  saved value, and the providers ask to sign in again. After the app ran, the old entries are
+  still in the keychain. They are not read, not moved and not removed.
 - Import a workflow file with two workflows. The review screen lists both, ticked, with the number
   of nodes of each. Untick one: one workflow is made, and it is off. Its chat shows a checklist
   with "Turn on". Turn it on: the item ticks.

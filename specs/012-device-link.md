@@ -282,6 +282,7 @@ accept connections, this is the same computer.
 - A server needs a running app to answer. A sleeping or closed computer is offline.
 - A server holds back the notices to its phones while its computer is in use (015, "Phone notices
   while the user works"). The data still reaches the phone.
+- The identity key of this computer is a secret and follows 014.
 
 ## Out of scope
 

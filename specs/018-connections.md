@@ -63,10 +63,10 @@ built-in tools.
    may add a short guide for nodes to the task (see "Built-in connections").
 4. Turn off: a switch on the row. The connection stops, and its tools leave every node from the
    next task.
-5. Edit: the user changes any field. A saved secret stays until the user types a new value or
-   removes it. The page never shows a saved secret again. A built-in connection has no such fields;
-   its feature holds the switch, the download and the guide. See "Built-in connections".
-6. Remove: after a confirm. The saved secrets of the connection leave the secrets file at
+5. Edit: the user changes any field. A secret value stays until the user types a new value
+   or removes it. The page never shows a secret value again. A built-in connection has no such
+   fields; its feature holds the switch, the download and the guide. See "Built-in connections".
+6. Remove: after a confirm. The secret values of the connection leave the secrets file at
    once, and the rules for its tools are removed (see 007). The action log keeps its entries. A
    built-in connection cannot be removed; the feature that owns it explains what its "Delete"
    does.
@@ -105,7 +105,8 @@ built-in tools.
   `localhost` or `::1`) may use http. An address has no sign-in part. The app does not follow a
   redirect to another host.
 - Secret values are in the secrets file (see 014). They are not in the database, the logs,
-  the export, or the action log.
+  the export, or the action log. A row with a missing value shows "Value missing". When
+  Locked or Damaged, the row shows "Cannot read the vault." (see 014).
 - With "Trust read-only marks" on, a call of a tool with the read-only mark is not a risky step.
   It runs with no card at "Ask for risky steps" and at "Ask when unsure", and its tool card shows
   "Read only, as the connection says". At "Ask for everything" it still asks. At "Read only" it is
