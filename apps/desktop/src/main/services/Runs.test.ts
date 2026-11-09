@@ -2082,7 +2082,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${entered}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${entered}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
@@ -2129,46 +2129,52 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       expect(existsSync(d.worktree?.path ?? "")).toBe(true)
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   }, 30000)
 
   test("a stop while the worktree is made ends the run as stopped, starts no task and removes the half-made folder", async () => {
     const t = await setup()
-    const { dir, started: entered } = slowHookRepo(30)
+    const { dir, started: entered, hooks } = slowHookRepo(30)
+    const hook = join(hooks, "post-checkout")
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
     await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
     await t.node({ name: "Say", prompt: "hello" })
-    const started = await t.start()
-    // The hook runs: creation is in flight. The planned path is on the row from the launch.
-    await until(() => existsSync(entered))
-    const planned =
-      (
-        await t.rows<{ worktree_path: string }>(
-          "SELECT worktree_path FROM run WHERE id = ?",
-          started.id,
-        )
-      )[0]?.worktree_path ?? ""
-    expect(planned).not.toBe("")
-    await t.run(Runs.use((r) => r.stop(started.id)))
-    const d = await t.ended(started.id)
-    expect(d.state).toBe("cancelled")
-    expect(d.reasonText).toBe("Stopped by you")
-    expect(
-      await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
-    ).toEqual([{ n: 0 }])
-    // The cleanup runs in the background: the folder goes and the row is cleared after.
-    await until(() => !existsSync(planned))
-    await until(
-      async () =>
+    try {
+      const started = await t.start()
+      // The hook runs: creation is in flight. The planned path is on the row from the launch.
+      await until(() => existsSync(entered))
+      const planned =
         (
-          await t.rows<{ worktree_path: string | null }>(
+          await t.rows<{ worktree_path: string }>(
             "SELECT worktree_path FROM run WHERE id = ?",
             started.id,
           )
-        )[0]?.worktree_path == null,
-    )
-    // Nothing was made, so the planned path and branch are cleared.
-    expect((await t.get(started.id)).worktree).toBeNull()
+        )[0]?.worktree_path ?? ""
+      expect(planned).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(started.id)))
+      const d = await t.ended(started.id)
+      expect(d.state).toBe("cancelled")
+      expect(d.reasonText).toBe("Stopped by you")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
+      ).toEqual([{ n: 0 }])
+      // The cleanup runs in the background: the folder goes and the row is cleared after.
+      await until(() => !existsSync(planned))
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              started.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      // Nothing was made, so the planned path and branch are cleared.
+      expect((await t.get(started.id)).worktree).toBeNull()
+    } finally {
+      await expectHookGone(hook)
+    }
   }, 30000)
 
   test("a stop during creation ends the run before the cleanup ends", async () => {
@@ -2235,8 +2241,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       process.env.PATH = pathBefore
       writeFileSync(release, "go\n")
       writeFileSync(go, "go\n")
-      await until(() => !pgrep(hook))
-      expect(pgrep(hook)).toBe(false)
+      await expectHookGone(hook)
     }
   })
 
@@ -2459,7 +2464,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     try {
@@ -2484,6 +2489,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       await until(() => !pgrep(hook))
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -2496,7 +2502,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
@@ -2536,6 +2542,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       await until(() => !pgrep(hook))
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -2551,7 +2558,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
@@ -2588,6 +2595,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       await until(() => !pgrep(hook))
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -2604,7 +2612,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
@@ -2632,6 +2640,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       await until(() => !pgrep(hook))
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -2652,7 +2661,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     try {
@@ -2665,6 +2674,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       expect((await t.ended(runB.id)).state).toBe("done")
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -2814,32 +2824,47 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
   test("a stop during a slow hook ends the run at once and leaves no hook process", async () => {
     const t = await setup()
     const { dir, started: entered, done: marker, hooks } = slowHookRepo(30)
+    const hook = join(hooks, "post-checkout")
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
     await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
     await t.node({ name: "Say", prompt: "hello" })
-    const started = await t.start()
-    await until(() => existsSync(entered))
-    const planned =
-      (
-        await t.rows<{ worktree_path: string }>(
-          "SELECT worktree_path FROM run WHERE id = ?",
-          started.id,
-        )
-      )[0]?.worktree_path ?? ""
-    const before = Date.now()
-    await t.run(Runs.use((r) => r.stop(started.id)))
-    const d = await t.ended(started.id)
-    // Well under the 30 seconds of the hook: the abort ends the whole process group.
-    expect(Date.now() - before).toBeLessThan(4000)
-    expect(d.state).toBe("cancelled")
-    expect(
-      await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
-    ).toEqual([{ n: 0 }])
-    expect(existsSync(planned)).toBe(false)
-    expect(d.worktree).toBeNull()
-    // The hook died with git: its mark never appears and no process holds the hook.
-    await until(() => !pgrep(hooks))
-    expect(existsSync(marker)).toBe(false)
+    try {
+      const started = await t.start()
+      await until(() => existsSync(entered))
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            started.id,
+          )
+        )[0]?.worktree_path ?? ""
+      const before = Date.now()
+      await t.run(Runs.use((r) => r.stop(started.id)))
+      const d = await t.ended(started.id)
+      // Well under the 30 seconds of the hook: the abort ends the whole process group.
+      expect(Date.now() - before).toBeLessThan(4000)
+      expect(d.state).toBe("cancelled")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
+      ).toEqual([{ n: 0 }])
+      // The cleanup runs in the background: it ends with the row cleared.
+      await until(() => !existsSync(planned))
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              started.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect((await t.get(started.id)).worktree).toBeNull()
+      // The hook died with git: its mark never appears and no process holds the hook.
+      await until(() => !pgrep(hook))
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      await expectHookGone(hook)
+    }
   }, 30000)
 
   test("the queue limit counts a run that still waits for its worktree", async () => {
@@ -3466,4 +3491,29 @@ const pgrep = (text: string): boolean => {
   } catch {
     return false
   }
+}
+
+/** Kills the hook processes whose command line holds `hook`. The pattern is exact. */
+const killHook = (hook: string): void => {
+  try {
+    execFileSync("pkill", ["-9", "-f", hook.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")], {
+      encoding: "utf8",
+    })
+  } catch {
+    // None matched, or pkill is missing: the wait below says what is left.
+  }
+}
+
+/**
+ * Waits for the hook processes of `hook` to be gone, kills them when they linger, and fails
+ * the test when one is still alive: no test leaves a hook behind.
+ */
+const expectHookGone = async (hook: string): Promise<void> => {
+  try {
+    await until(() => !pgrep(hook))
+  } catch {
+    killHook(hook)
+    await until(() => !pgrep(hook))
+  }
+  expect(pgrep(hook)).toBe(false)
 }

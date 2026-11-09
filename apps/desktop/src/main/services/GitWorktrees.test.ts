@@ -88,6 +88,31 @@ const pgrep = (text: string): boolean => {
   }
 }
 
+/** Kills the hook processes whose command line holds `hook`. The pattern is exact. */
+const killHook = (hook: string): void => {
+  try {
+    execFileSync("pkill", ["-9", "-f", hook.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")], {
+      encoding: "utf8",
+    })
+  } catch {
+    // None matched, or pkill is missing: the wait below says what is left.
+  }
+}
+
+/**
+ * Waits for the hook processes of `hook` to be gone, kills them when they linger, and fails
+ * the test when one is still alive: no test leaves a hook behind.
+ */
+const expectHookGone = async (hook: string): Promise<void> => {
+  try {
+    await until(() => !pgrep(hook))
+  } catch {
+    killHook(hook)
+    await until(() => !pgrep(hook))
+  }
+  expect(pgrep(hook)).toBe(false)
+}
+
 describe("is-inside-repo (spec 007, New worktree)", () => {
   test("a repository and a folder inside it are in; a plain or missing folder is out", async () => {
     const dir = repo()
@@ -247,7 +272,7 @@ describe("make worktree (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
@@ -260,6 +285,7 @@ describe("make worktree (spec 007, New worktree)", () => {
       await until(() => !pgrep(hook))
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -273,7 +299,7 @@ describe("make worktree (spec 007, New worktree)", () => {
     // file appears: the close of the pipes lands long after the exit of git.
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\n(touch ${held}; while [ ! -f ${release} ]; do sleep 0.05; done) &\n`,
+      `#!/bin/sh\ntouch ${started}\n(touch ${held}; n=0; while [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done) &\n`,
     )
     chmodSync(hook, 0o755)
     const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
@@ -291,6 +317,7 @@ describe("make worktree (spec 007, New worktree)", () => {
       await until(() => !pgrep(hook))
     } finally {
       writeFileSync(release, "go\n")
+      await expectHookGone(hook)
     }
   })
 
@@ -321,8 +348,7 @@ describe("make worktree (spec 007, New worktree)", () => {
     } finally {
       arm()
       writeFileSync(release, "go\n")
-      await until(() => !pgrep(hook))
-      expect(pgrep(hook)).toBe(false)
+      await expectHookGone(hook)
     }
   })
 })
