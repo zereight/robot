@@ -1784,17 +1784,22 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               setRun(r.id, "cancelled", { text: "Stopped by you", code: "user" }, true)
               const folder = detail.folder
               const runId = r.id
+              const workflowId = r.workflow_id
               void (async () => {
                 await removeAttemptWorktree(folder, path)
                 await deleteAttemptBranch(folder, branch, branchExistedBefore, baseCommit)
                 // A cleanup that failed keeps the row, so Remove can still reach what is
                 // left. The row goes only when the folder is gone and no admin entry of
                 // the path stays.
-                if (!existsSync(path) && !(await worktreeEntryExists(folder, path)))
+                if (!existsSync(path) && !(await worktreeEntryExists(folder, path))) {
                   db.run(
                     "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
                     runId,
                   )
+                  // The row changed after the run ended: tell the run view, as a state
+                  // change does, so the worktree line goes away without a reopen.
+                  changed(workflowId, runId)
+                }
               })().catch((error) => {
                 console.error("runs: cleanup of a stopped worktree failed:", error)
               })

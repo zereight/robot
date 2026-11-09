@@ -2360,6 +2360,78 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     }
   }, 30000)
 
+  test("after the cleanup of a stopped creation ends, one more event tells the run view", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    // A git that gates `worktree remove` on a file: the cleanup blocks in it while the test
+    // counts the events of the run. Every other call passes through to the real git.
+    const realGit = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim()
+    const bin = trackTemp(mkdtempSync(join(tmpdir(), "robot-gitbin-")))
+    const entered = join(bin, "remove-entered")
+    const go = join(bin, "remove-release")
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\nhit=no\nprev=\nfor a in "$@"; do if [ "$prev" = "worktree" ] && [ "$a" = "remove" ]; then hit=yes; break; fi; prev="$a"; done\nif [ "$hit" = "yes" ]; then touch ${entered}; n=0; while [ ! -f ${go} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done; fi\nexec ${realGit} "$@"\n`,
+    )
+    chmodSync(join(bin, "git"), 0o755)
+    const pathBefore = process.env.PATH ?? ""
+    process.env.PATH = `${bin}${pathBefore === "" ? "" : `:${pathBefore}`}`
+    try {
+      await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+      await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+      await t.node({ name: "Say", prompt: "hello" })
+      const run = await t.start()
+      await until(() => existsSync(started))
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      // The cleanup reached `worktree remove` and blocks there: the row still names the
+      // worktree, and every event of the run so far saw it that way.
+      await until(() => existsSync(entered))
+      const eventsOfRun = () =>
+        t.events.filter(
+          (e) => e.event === "runs.changed" && (e.payload as { runId?: string }).runId === run.id,
+        )
+      const before = eventsOfRun().length
+      expect(before).toBeGreaterThan(0)
+      expect(
+        (
+          await t.rows<{ worktree_path: string | null }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_path,
+      ).not.toBeNull()
+      // Release the cleanup: it ends with the row cleared, and one more event tells the
+      // run view, which reads the run with no worktree.
+      writeFileSync(go, "go\n")
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      await until(async () => eventsOfRun().length > before)
+      const done = await t.get(run.id)
+      expect(done.state).toBe("cancelled")
+      expect(done.worktree).toBeNull()
+    } finally {
+      process.env.PATH = pathBefore
+      writeFileSync(release, "go\n")
+      writeFileSync(go, "go\n")
+      await expectHookGone(hook)
+    }
+  }, 30000)
+
   test("a run that waits in the queue makes its worktree only when it starts", async () => {
     const t = await setup()
     const dir = gitRepo()
