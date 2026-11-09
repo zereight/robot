@@ -13,13 +13,9 @@ use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 /// The name under which the app keeps its secrets keys in the keychain.
 pub const SERVICE: &str = "ROBot";
 
-/// Magic and version at the start of the secrets file.
 const MAGIC: &[u8; 4] = b"RBV1";
-/// Nonce size of the cipher (ChaCha20-Poly1305).
 const NONCE_LEN: usize = 12;
-/// Secrets key size in bytes (256 bit).
 const KEY_LEN: usize = 32;
-/// Authentication tag size of the cipher.
 const TAG_LEN: usize = 16;
 
 /// Failure of the vault. No variant holds a value or key bytes, so stderr cannot leak them.
@@ -34,8 +30,7 @@ pub enum VaultError {
     Io(String),
 }
 
-/// Source of the secrets key of one profile. The keychain answers in prod. Tests inject an
-/// in-memory source, so no test touches the user keychain.
+/// Source of the secrets key of one profile.
 pub trait KeySource {
     /// Reads the key. `Ok(None)` means no key was stored yet.
     fn load(&self, profile: &str) -> Result<Option<[u8; 32]>, VaultError>;
@@ -231,16 +226,15 @@ pub struct Vault<K: KeySource> {
     keys: K,
 }
 
-/// A `Made` key reaches the keychain only after its file lands, so a crash leaves Missing key.
 enum KeyState {
     Loaded([u8; 32]),
-    Made([u8; 32]),
+    Unstored([u8; 32]),
 }
 
 impl KeyState {
     fn secret(&self) -> &[u8; 32] {
         match self {
-            KeyState::Loaded(secret) | KeyState::Made(secret) => secret,
+            KeyState::Loaded(secret) | KeyState::Unstored(secret) => secret,
         }
     }
 }
@@ -276,17 +270,24 @@ impl<K: KeySource> Vault<K> {
             None => {
                 let mut secret = [0u8; KEY_LEN];
                 getrandom::fill(&mut secret).map_err(reason)?;
-                KeyState::Made(secret)
+                KeyState::Unstored(secret)
             }
         };
-        let mut values = match (read_file(&self.path)?, &state) {
+        let existing = read_file(&self.path)?;
+        let had_file = existing.is_some();
+        let mut values = match (existing, &state) {
             (Some(bytes), KeyState::Loaded(secret)) => open(&bytes, secret)?,
             _ => BTreeMap::new(),
         };
         values.insert(key.to_owned(), value.to_owned());
         atomic_write(&self.path, &seal(&values, state.secret())?)?;
-        if let KeyState::Made(secret) = &state {
-            self.keys.store(&self.profile, secret)?;
+        if let KeyState::Unstored(secret) = &state
+            && let Err(error) = self.keys.store(&self.profile, secret)
+        {
+            if !had_file {
+                let _ = std::fs::remove_file(&self.path);
+            }
+            return Err(error);
         }
         Ok(())
     }
@@ -600,6 +601,8 @@ mod tests {
         assert_eq!(store.get("k").unwrap(), None);
         store.remove("k").unwrap();
         assert!(matches!(store.check(), Err(VaultError::Keychain(_))));
+        assert!(matches!(store.set("k", "v"), Err(VaultError::Keychain(_))));
+        assert!(!dir.path().join("secrets.vault").exists());
     }
 
     #[test]

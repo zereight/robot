@@ -433,8 +433,21 @@ mod tests {
         assert_eq!(code, 1);
         assert_eq!(out, "");
         assert_eq!(err, "robot-host secrets: keychain error -1\n");
-        assert!(file.exists());
+        assert!(!file.exists());
         assert_eq!(run_vault(&file, &keys, &["get", "k"], "").0, 3);
+    }
+
+    #[test]
+    fn a_replace_that_cannot_store_its_key_leaves_missing_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = vault_file(&dir);
+        let keys = EphemeralKeys::default();
+        assert_eq!(run_vault(&file, &keys, &["set", "old"], "v").0, 0);
+        keys.remove("default").unwrap();
+        assert_eq!(run_vault(&file, &FailStoreKeys, &["set", "k"], "v").0, 1);
+        assert!(file.exists());
+        assert_eq!(run_vault(&file, &keys, &["get", "old"], "").0, 3);
+        assert_eq!(run_vault(&file, &keys, &["check"], "").0, 0);
     }
 
     #[test]

@@ -78,9 +78,8 @@ export const hostStore = (command: string, source: SecretsSource): SecretsServic
 export class Secrets extends Context.Service<Secrets, SecretsService>()("robot/main/Secrets") {
   /**
    * The store of the host program (`host/src/secrets.rs`): the secrets file of one profile, or
-   * with `file` the plain store of end-to-end tests. Each read or write is one short run of the
-   * host that the main process waits for, so the calls stay synchronous. Values that were read
-   * once are kept in memory. Every `set` and every failed `check` drops them all, so a replaced
+   * with `file` the plain store of end-to-end tests. Values that were read once are kept in
+   * memory. Every `set` and every failed `check` drops them all, so a replaced
    * file never shows an old value.
    */
   static readonly host = (command: string, source: SecretsSource) =>
