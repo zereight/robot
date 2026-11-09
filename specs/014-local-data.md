@@ -56,9 +56,16 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up, to a page that a node visits, or to a download that the user starts (see the
   download exception below).
-- These are secrets: keys, tokens, secret values of environment variables, secret
-  values of a connection, keys of device links, access keys of outside programs, saved
-  secrets and saved logins (020). Secrets are in the secrets file of their profile.
+- These are secrets:
+  - keys
+  - tokens
+  - secret values of environment variables
+  - secret values of a connection
+  - keys of device links
+  - access keys of outside programs
+  - saved secrets (020)
+  - saved logins (020)
+  Secrets are in the secrets file of their profile.
   The file is encrypted, and it is in the data folder of the profile. Secrets are never
   in the database, the logs, an export or a sync, and never in plain text on the disk. A
   value that the user deletes leaves the secrets file at once when the state is Readable.
@@ -78,10 +85,16 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   key in Settings, or a provider key. An env row, a connection value, an outside program
   add, or a new access key are also saves. A refused save does not touch the file. A
   screen that shows whether a secret is saved shows "Cannot read the vault." with Retry.
-  Every delete of a secret is refused with that reason, for example Forget, vault Delete,
-  connection Remove, provider Disconnect, removing a decision model key, removing a secret
-  value in a connection edit, removing an outside program, and Remove access of a linked
-  device. Nothing is overwritten. Retry works again when the state is Readable.
+  Every delete of a secret is refused with that reason. These are deletes:
+  - Forget
+  - vault Delete
+  - connection Remove
+  - provider Disconnect
+  - removing a decision model key
+  - removing a secret value in a connection edit
+  - removing an outside program
+  - Remove access of a linked device
+  Nothing is overwritten. Retry works again when the state is Readable.
 - Missing key means no secrets key exists for this profile, while a secrets file exists. This
   happens on a new computer, with a folder copied from another computer, or with a cleared
   keychain. Every secret counts as missing. Vault rows, connection values and env rows show
@@ -93,9 +106,11 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   state is Missing key only until the next start finishes. A later save of any secret also
   works. The other secrets stay missing until the user saves them. Every delete of a
   secret succeeds and writes nothing.
-- When the app starts and finds no device identity, it makes a new one. Every linked
+- In Readable and Missing key, the app makes a new device identity at start when it
+  finds none. In Locked and Damaged it makes none, because a save is refused. The app
+  also makes it when Retry or a later start finds Readable or Missing key. Every linked
   device is then treated as if the user had chosen Remove access (012). This also holds
-  after the user deleted a Damaged secrets file by hand.
+  after the user deleted a Damaged secrets file by hand. The state is then Readable.
 - Damaged means the secrets file cannot be opened with the secrets key of this profile. This
   covers a changed or broken file. It also covers a file made with another secrets key. For
   example a folder copied onto a computer that has its own secrets key for this profile. The
