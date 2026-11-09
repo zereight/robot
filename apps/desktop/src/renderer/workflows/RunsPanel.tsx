@@ -368,7 +368,7 @@ const NodeCard = (props: { node: RunNode; workflowId: string; hold?: NodeHold | 
 /**
  * The worktree line of a run (spec 007, "New worktree"): its path and branch, with "Open" and
  * "Remove". A removed worktree names its branch and offers no buttons. "Remove" asks first when
- * the worktree holds changes that are not committed.
+ * the worktree may hold changes that are not committed or files that Git ignores.
  */
 const WorktreeLine = (props: { runId: string; worktree: RunWorktree; onChanged: () => void }) => {
   const { t } = useApp()

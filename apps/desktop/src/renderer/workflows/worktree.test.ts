@@ -46,12 +46,12 @@ describe("the worktree line of a run", () => {
     expect(ko("runs.worktree.remove")).toBe("제거")
   })
 
-  test("the remove question names the path and the uncommitted changes", () => {
+  test("the remove question names the path and what the worktree may hold", () => {
     expect(en("runs.worktree.remove.ask", { path: "/tmp/w" })).toBe(
-      "Remove the worktree at /tmp/w? It holds changes that are not committed.",
+      "Remove the worktree at /tmp/w? It may hold changes that are not committed or files that Git ignores.",
     )
     expect(ko("runs.worktree.remove.ask", { path: "/tmp/w" })).toBe(
-      "워크트리 /tmp/w을(를) 제거할까요? 커밋하지 않은 변경 사항이 있어요.",
+      "워크트리 /tmp/w을(를) 제거할까요? 커밋하지 않은 변경 사항이나 Git이 무시하는 파일이 있을 수 있어요.",
     )
   })
 })

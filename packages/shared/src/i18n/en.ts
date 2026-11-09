@@ -1128,7 +1128,7 @@ export const en = {
   "runs.worktree.open": "Open",
   "runs.worktree.remove": "Remove",
   "runs.worktree.remove.ask":
-    "Remove the worktree at {path}? It holds changes that are not committed.",
+    "Remove the worktree at {path}? It may hold changes that are not committed or files that Git ignores.",
   "runs.back": "Back to the runs",
   "cards.title.approval": "Approval needed",
   "cards.title.question": "A node asks you",

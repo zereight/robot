@@ -1118,7 +1118,8 @@ export const ko: Record<MessageKey, string> = {
   "runs.worktree.removed": "워크트리를 제거했어요, 브랜치 {branch}",
   "runs.worktree.open": "열기",
   "runs.worktree.remove": "제거",
-  "runs.worktree.remove.ask": "워크트리 {path}을(를) 제거할까요? 커밋하지 않은 변경 사항이 있어요.",
+  "runs.worktree.remove.ask":
+    "워크트리 {path}을(를) 제거할까요? 커밋하지 않은 변경 사항이나 Git이 무시하는 파일이 있을 수 있어요.",
   "runs.back": "실행 목록으로",
   "cards.title.approval": "승인이 필요해요",
   "cards.title.question": "노드가 물어봐요",
