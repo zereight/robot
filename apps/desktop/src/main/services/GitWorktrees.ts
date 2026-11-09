@@ -134,16 +134,15 @@ export const createWorktree = async (
   path: string,
   branch: string,
   signal?: AbortSignal,
+  timeoutMs = 120_000,
 ): Promise<void> => {
   signal?.throwIfAborted()
   return new Promise<void>((resolve, reject) => {
     const child = spawn("git", ["-C", repo, "worktree", "add", "-b", branch, path, "HEAD"], {
       env: gitEnv(),
       stdio: ["ignore", "ignore", "pipe"],
-      timeout: 120_000,
-      killSignal: "SIGKILL",
       windowsHide: true,
-      // Its own process group: an abort ends a slow hook with git, not only git.
+      // Its own process group: an abort or a timeout ends a slow hook with git, not only git.
       detached: true,
     })
     let stderr = ""
@@ -151,8 +150,7 @@ export const createWorktree = async (
       if (stderr.length < REASON_MAX * 4) stderr += chunk.toString()
     })
     let finished = false
-    const onAbort = () => {
-      if (finished) return
+    const killGroup = () => {
       try {
         if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL")
       } catch {
@@ -162,12 +160,22 @@ export const createWorktree = async (
           // The process is gone already.
         }
       }
+    }
+    const onAbort = () => {
+      if (finished) return
+      killGroup()
       // Nothing waits on the pipes then: the rejection lands on the exit of git.
       child.stderr?.destroy()
     }
+    const timer = setTimeout(() => {
+      if (finished) return
+      killGroup()
+      child.stderr?.destroy()
+    }, timeoutMs)
     const done = (work: () => void) => {
       if (finished) return
       finished = true
+      clearTimeout(timer)
       signal?.removeEventListener("abort", onAbort)
       work()
     }
@@ -189,14 +197,14 @@ export const createWorktree = async (
       // for the pipes, briefly, before the rejection. The bound is for a hook child that holds
       // a pipe after a failed git.
       const fail = () => {
-        clearTimeout(timer)
+        clearTimeout(pipeTimer)
         if (signal?.aborted) return done(() => reject(abortError()))
         const text = stderr.trim()
         done(() =>
           reject(new Error(text !== "" ? capReason(text) : `git exited with code ${code}`)),
         )
       }
-      const timer = setTimeout(() => {
+      const pipeTimer = setTimeout(() => {
         child.stderr?.destroy()
         fail()
       }, 2000)
@@ -240,6 +248,33 @@ export const removeWorktree = async (repo: string, path: string): Promise<void> 
     })
   } catch (error) {
     throw new Error(gitReason(error))
+  }
+}
+
+/** Drops the stale entries of worktrees whose folders are gone. Best effort: it never throws. */
+export const pruneWorktrees = async (repo: string): Promise<void> => {
+  try {
+    await runFile("git", ["-C", repo, "worktree", "prune"], {
+      timeout: 30_000,
+      env: gitEnv(),
+    })
+  } catch {
+    // The cleanup must not mask the failure that caused it.
+  }
+}
+
+/**
+ * Deletes the branch when no worktree uses it. Best effort: a branch that does not exist, or
+ * that a worktree still holds, stays. The caller only names a branch that its own attempt made.
+ */
+export const deleteBranchIfUnused = async (repo: string, branch: string): Promise<void> => {
+  try {
+    await runFile("git", ["-C", repo, "branch", "-D", branch], {
+      timeout: 30_000,
+      env: gitEnv(),
+    })
+  } catch {
+    // Used, missing, or unreadable: the branch stays.
   }
 }
 

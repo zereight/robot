@@ -1,14 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -65,6 +57,24 @@ const untilFile = async (file: string, ms = 10000) => {
     await new Promise((r) => setTimeout(r, 15))
   }
   throw new Error(`missing file: ${file}`)
+}
+
+const until = async (ok: () => boolean | Promise<boolean>, ms = 10000) => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await ok()) return
+    await new Promise((r) => setTimeout(r, 15))
+  }
+  throw new Error("timeout")
+}
+
+const pgrep = (text: string): boolean => {
+  try {
+    execFileSync("pgrep", ["-f", text], { encoding: "utf8" })
+    return true
+  } catch {
+    return false
+  }
 }
 
 describe("is-inside-repo (spec 007, New worktree)", () => {
@@ -219,44 +229,79 @@ describe("make worktree (spec 007, New worktree)", () => {
     expect(existsSync(path)).toBe(false)
   })
 
-  test("an abort mid-way ends git before it fails: nothing is written after the failure", async () => {
-    const dir = emptyRepo()
-    mkdirSync(join(dir, "bulk"))
-    for (let i = 0; i < 3000; i++) writeFileSync(join(dir, "bulk", `f${i}.txt`), `file ${i}\n`)
-    git(dir, "add", "-A")
-    git(dir, "commit", "--quiet", "-m", "bulk")
-    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
-    const controller = new AbortController()
-    const made = createWorktree(dir, path, "robot/report-20261109-120000", controller.signal)
-    await new Promise((r) => setTimeout(r, 100))
-    controller.abort()
-    expect(await reasonOf(made)).not.toBe("made")
-    // Git has ended: the half-made folder stops growing.
-    const count = () =>
-      existsSync(join(path, "bulk")) ? readdirSync(join(path, "bulk")).length : -1
-    const first = count()
-    await new Promise((r) => setTimeout(r, 500))
-    expect(count()).toBe(first)
-  })
-
-  test("an abort after git exited 0 keeps the finished worktree", async () => {
+  test("an abort mid-way ends the whole group and fails, with no leftover process", async () => {
     const dir = repo()
     const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
     const hook = join(dir, ".git", "hooks", "post-checkout")
-    // The hook exits at once, but a background child holds the stderr pipe for 8 seconds: the
-    // close of the pipes lands long after the exit of git.
-    writeFileSync(hook, `#!/bin/sh\n(sleep 8 >&2 &)\ntouch ${started}\n`)
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+    )
     chmodSync(hook, 0o755)
     const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
     const controller = new AbortController()
     const made = createWorktree(dir, path, "robot/report-20261109-120000", controller.signal)
-    await untilFile(started)
-    // Git has exited; the pipes are still open. The abort comes late.
-    await new Promise((r) => setTimeout(r, 1000))
-    controller.abort()
-    await made
-    expect(readFileSync(join(path, "notes.md"), "utf8")).toBe("first\n")
-    expect(git(dir, "worktree", "list", "--porcelain")).toContain(path)
+    try {
+      await untilFile(started)
+      controller.abort()
+      expect(await reasonOf(made)).not.toBe("made")
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+    }
+  })
+
+  test("an abort after git exited 0 keeps the finished worktree, with no leftover process", async () => {
+    const dir = repo()
+    const started = join(dir, "hook-started")
+    const held = join(dir, "hook-held")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    // The hook exits at once, but a background child holds the stderr pipe until the release
+    // file appears: the close of the pipes lands long after the exit of git.
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\n(touch ${held}; while [ ! -f ${release} ]; do sleep 0.05; done) &\n`,
+    )
+    chmodSync(hook, 0o755)
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    const controller = new AbortController()
+    const made = createWorktree(dir, path, "robot/report-20261109-120000", controller.signal)
+    try {
+      await untilFile(started)
+      await untilFile(held)
+      // Git has exited; the pipes are still open. The abort comes late.
+      await made
+      controller.abort()
+      writeFileSync(release, "go\n")
+      expect(readFileSync(join(path, "notes.md"), "utf8")).toBe("first\n")
+      expect(git(dir, "worktree", "list", "--porcelain")).toContain(path)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+    }
+  })
+
+  test("a timeout ends the whole group, with no leftover child", async () => {
+    const dir = repo()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+    )
+    chmodSync(hook, 0o755)
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    const made = createWorktree(dir, path, "robot/report-20261109-120000", undefined, 1500)
+    try {
+      await untilFile(started)
+      expect(await reasonOf(made)).not.toBe("made")
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+    }
   })
 })
 
