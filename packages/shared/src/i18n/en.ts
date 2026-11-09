@@ -53,9 +53,6 @@ export const en = {
   "settings.data.report.copied": "Copied",
   "settings.data.report.failed": "The report could not be made.",
 
-  "dialog.filter.export": "ROBot export",
-  "dialog.filter.workflows": "ROBot workflows",
-
   "settings.about.version": "Version {version}",
   "settings.about.licenses": "Open source licenses",
   "settings.about.licenses.count": "{count} packages",

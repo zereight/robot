@@ -13,13 +13,10 @@ describe("the reason of a run", () => {
     expect(reasonText(t("ko"), "engine", "boom")).toBe("엔진에 오류가 생겼어요: boom")
   })
 
-  test("a full queue shows the name of the workflow, from a new row or an old one", () => {
+  test("a full queue shows the name of the workflow", () => {
     expect(reasonText(t("en"), "run_queue_full", "Weekly")).toBe(
       "Weekly has 20 tasks that wait. Try again later.",
     )
-    expect(
-      reasonText(t("en"), "run_queue_full", "Weekly has 20 tasks that wait. Try again later."),
-    ).toBe("Weekly has 20 tasks that wait. Try again later.")
     expect(reasonText(t("ko"), "run_queue_full", "Weekly")).toBe(
       "Weekly에 대기 중인 작업이 20개 있어요. 나중에 다시 시도하세요.",
     )

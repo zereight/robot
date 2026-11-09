@@ -4,7 +4,6 @@ import { join, resolve } from "node:path"
 import { EVENT_CHANNEL, resolveLocale, translate } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { app, BrowserWindow, dialog } from "electron"
-import { setDialogLanguage } from "./dialogLanguage.ts"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
@@ -141,7 +140,6 @@ app.whenReady().then(async () => {
       Effect.gen(function* () {
         const settings = yield* SettingsStore.use((s) => s.get)
         yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
-        setDialogLanguage(settings.language)
         // The first start guide is for new users. A data folder that already holds a workflow or an
         // account, or a test run that asks to skip it, counts as done.
         if (!settings.firstRunDone) {

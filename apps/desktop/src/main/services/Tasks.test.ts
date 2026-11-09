@@ -481,6 +481,12 @@ describe("the limit of 20 queued tasks (spec 005, Queue)", () => {
     expect(failed.reasonText).toBe("Weekly")
     expect(failed.reasonCode).toBe("run_queue_full")
     for (const r of [running, ...queued].reverse()) await t.stop(r.id)
+    const lastRun = async () => (await t.run(RunFacts.use((f) => f.runs(a.id))))[0]
+    await until(async () => (await lastRun())?.active === false, "no active run")
+    expect(await lastRun()).toMatchObject({
+      id: failed.id,
+      reason: "Weekly has 20 tasks that wait. Try again later.",
+    })
   })
 
   test("a task that waits for the user does not count", async () => {

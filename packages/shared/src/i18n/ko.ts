@@ -55,9 +55,6 @@ export const ko: Record<MessageKey, string> = {
   "settings.data.report.copied": "복사했어요",
   "settings.data.report.failed": "보고서를 만들지 못했어요.",
 
-  "dialog.filter.export": "ROBot 내보내기",
-  "dialog.filter.workflows": "ROBot 워크플로우",
-
   "settings.about.version": "버전 {version}",
   "settings.about.licenses": "오픈 소스 라이선스",
   "settings.about.licenses.count": "패키지 {count}개",
@@ -1418,7 +1415,7 @@ export const ko: Record<MessageKey, string> = {
   "improve.source.chat": "채팅의 한 턴에서, {time}",
   "improve.source.check": "메모리 점검에서, {time}",
   "improve.source.open": "실행 열기",
-  "improve.outside": "이 작업은 외부 콘텐츠를 읽었어요. 수락하기 전에 변경 내용을 읽어 보세요.",
+  "improve.outside": "이 작업은 바깥 내용을 읽었어요. 수락하기 전에 변경 내용을 읽어 보세요.",
   "improve.diff": "변경 내용",
   "improve.diff.removed": "삭제:",
   "improve.diff.added": "추가:",
