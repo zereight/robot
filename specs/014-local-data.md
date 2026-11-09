@@ -12,8 +12,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   rules, the action log (007), skills (017) and connections (018). Attachments are files next to
   it.
 - The data folder is in the system's app data location under the name "ROBot".
-- Each profile (022) has its own database, attachments, logs, saved-secrets file and key, apart
-  from the other profiles. The rules of this spec hold for each profile.
+- Each profile (022) has its own database, attachments, logs, secrets file and secrets key,
+  apart from the other profiles. The rules of this spec hold for each profile.
 - The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
   (019) each hold a full copy of the shared data. Both are sources of truth, and the rules of
   019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
@@ -58,17 +58,27 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   download exception below).
 - Secrets (keys, tokens, secret values of environment variables, secret values of a
   connection, keys of device links, access keys of outside programs, saved secrets and saved
-  logins (020)) are saved encrypted on this computer, in the data folder of its profile. They
-  are never in the database, the logs, an export or a sync, and never in plain text on the disk.
-  The key that opens the saved secrets stays in the system keychain of this computer. A copy of
-  the saved-secrets file on another computer, or without the keychain, shows no value. When the
-  key cannot be read, nothing that needs a secret can run. A value that the user deletes leaves
-  the file at once. Deleting a profile deletes its file and its key. Values saved by an earlier
-  version in the keychain are not moved. The user types them again. Logs and exports redact
-  anything that looks like a secret. A text looks like a secret when it equals a stored key, or
-  holds a key or token of a known form. For example a long string that starts with "sk-",
-  "ghp_" or "xox", or a block from "-----BEGIN" to "PRIVATE KEY-----". A linked device never
-  receives provider keys.
+  logins (020)) are in the secrets file of their profile. The file is encrypted, and it is in
+  the data folder of the profile. Secrets are never in the database, the logs, an export or a
+  sync, and never in plain text on the disk. A value that the user deletes leaves the secrets
+  file at once. Deleting a profile deletes its secrets file and its secrets key. A linked
+  device never receives provider keys.
+- Each profile has one secrets key. It opens the secrets file of the profile. It stays in the
+  system keychain of this computer. When the secrets key is locked or denied, nothing that
+  needs a secret can run. The vault shows "Cannot read the vault." with Retry (020). When the
+  secrets file exists but the secrets key does not, the app treats every secret as missing.
+  This happens on a new computer, with a folder copied from another computer, or with a
+  cleared keychain. Each row shows "Value missing". The user can save new secrets. The first
+  save makes a new secrets key and a new secrets file, and replaces the old file. Providers
+  ask to sign in again, and linked devices show "Pair again" (012). When the app cannot open
+  the secrets file with a good secrets key, the vault shows "Cannot read the vault." with
+  Retry (020), and nothing is overwritten. Values that an earlier version saved in the
+  keychain are never read, never moved and never removed. They stay in the keychain. The user
+  types them again.
+- Logs and exports redact anything that looks like a secret. A text looks like a secret when
+  it equals a stored key, or holds a key or token of a known form. A known form is a long
+  string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to "PRIVATE
+  KEY-----".
 - A service that a saved secret (020) is for gets what a text node writes in a request with that
   secret. The app sends it nothing else.
 - The local database also holds the earlier versions of each workflow (010), with the text of its
@@ -147,6 +157,16 @@ makes anything. The user sees each part that the file holds and picks what to ke
   secret value is missing.
 - Copy the data folder to a new computer, start the app: all workflows and history are there; the
   providers ask to sign in again.
+- Copy the secrets file to a computer without its secrets key: every row shows "Value
+  missing", and the file holds no plain text of a saved secret.
+- With the secrets key locked: the vault shows "Cannot read the vault." A request with a
+  secret fails with that reason.
+- Delete the secrets key and keep the secrets file: every row shows "Value missing". Save a
+  new secret: the save works, and the next request with it runs.
+- Change the secrets file with another program so the app cannot open it: the vault shows
+  "Cannot read the vault." The app does not change the file.
+- Values of an earlier version in the keychain, with no secrets file: the app shows no saved
+  value, and the providers ask to sign in again.
 - Import a workflow file with two workflows. The review screen lists both, ticked, with the number
   of nodes of each. Untick one: one workflow is made, and it is off. Its chat shows a checklist
   with "Turn on". Turn it on: the item ticks.

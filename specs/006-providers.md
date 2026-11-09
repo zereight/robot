@@ -45,9 +45,8 @@ them (010). A decision node uses the decision model of 013 and no account of thi
    - A variable of this list wins over the same name in the vendor's own settings file.
    - A name that the app needs for itself is refused when the user types it. The message names
      the row.
-   - A value that is not a secret is stored as text and shows again. A secret value is saved
-     encrypted on this computer (see 014), is never sent back to the settings page, and shows as
-     hidden.
+   - A value that is not a secret is stored as text and shows again. A secret value is in
+     the secrets file (see 014), is never sent back to the settings page, and shows as hidden.
      A row saved without a new value keeps the old value. To show a secret again, the user types
      the value again.
    - A saved name that a later version of the app refuses is dropped when the list loads, so the

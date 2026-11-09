@@ -232,7 +232,7 @@ The specs hold a default for each decision. Change the default in the spec, or t
 ## Conflict with an open proposal
 
 `docs/spec-questions.md` (013, 007, 018) holds a proposal for test devices that a gateway leases to
-ROBot, with an agent token in the keychain and the program `agent-device` that the user installs.
+ROBot, with an agent token in the secrets file and the program `agent-device` that the user installs.
 That proposal and this spec are different things:
 
 - this spec: the devices of this Mac, one downloaded program, a panel in the window;

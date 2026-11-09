@@ -35,9 +35,9 @@ service holds it.
 
 | Item | Why |
 | --- | --- |
-| Keys, tokens and the sign-in of vendor programs | Secrets stay on their computer (014). |
+| Keys, tokens and the sign-in of vendor programs | Secrets stay in the secrets file of their computer (014). |
 | Permission levels of workflows and nodes, permission rules (allow and deny) and the action log (007) | A change on one computer must not give another computer more power over its files. The log tells what ran on one computer. |
-| Connections (018) and the reviewed tools of a connection | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay on one computer (014). Each computer reviews the tools of its own connections. |
+| Connections (018) and the reviewed tools of a connection | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay in the secrets file of one computer (014). Each computer reviews the tools of its own connections. |
 | Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. A prompt of a node syncs as text. |
 | Workspace folders of workflows and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |
@@ -48,8 +48,8 @@ service holds it.
 | Usage numbers | They count what ran on this computer. |
 | Knowledge: articles, sources and the change list (016) | Not in this version. It does not sync. |
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
-| The secret of a trigger of a workflow (010) | It stays on one computer, like a saved secret. |
-| Saved logins (020) | Their values stay on one computer, like saved secrets. |
+| The secret of a trigger of a workflow (010) | It stays in the secrets file of one computer, like a saved secret. |
+| Saved logins (020) | Their values stay in the secrets file of one computer, like saved secrets. |
 | The decision model and the other settings of 013 | Settings are local. A decision node uses the choice that is saved on the computer where the workflow runs. |
 | Linked devices and their keys | They are not data of the workflows. |
 | The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |

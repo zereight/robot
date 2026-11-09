@@ -66,9 +66,10 @@ built-in tools.
 5. Edit: the user changes any field. A saved secret stays until the user types a new value or
    removes it. The page never shows a saved secret again. A built-in connection has no such fields;
    its feature holds the switch, the download and the guide. See "Built-in connections".
-6. Remove: after a confirm. The saved secrets of the connection leave the file at once, and
-   so do the rules for its tools (see 007). The action log keeps its entries. A built-in connection cannot be
-   removed; the feature that owns it explains what its "Delete" does.
+6. Remove: after a confirm. The saved secrets of the connection leave the secrets file at
+   once, and the rules for its tools are removed (see 007). The action log keeps its entries. A
+   built-in connection cannot be removed; the feature that owns it explains what its "Delete"
+   does.
 7. Review: the row of a connection with held tools shows "N tools need review" and the button
    "Review". The dialog lists each held tool with the tag "New" or "Changed". For a changed tool,
    it shows the old text and the new text of the description and of the parameters, and tells
@@ -103,8 +104,8 @@ built-in tools.
 - The address of a web connection uses https. An address on this computer (host `127.0.0.1`,
   `localhost` or `::1`) may use http. An address has no sign-in part. The app does not follow a
   redirect to another host.
-- Secret values are saved encrypted on this computer (see 014). They are not in the database,
-  the logs, the export, or the action log.
+- Secret values are in the secrets file (see 014). They are not in the database, the logs,
+  the export, or the action log.
 - With "Trust read-only marks" on, a call of a tool with the read-only mark is not a risky step.
   It runs with no card at "Ask for risky steps" and at "Ask when unsure", and its tool card shows
   "Read only, as the connection says". At "Ask for everything" it still asks. At "Read only" it is
