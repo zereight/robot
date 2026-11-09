@@ -115,7 +115,8 @@ export const en = {
   "providers.disconnect": "Disconnect",
   "providers.reconnect": "Connect again",
   "providers.remove": "Remove",
-  "providers.remove.ask": "Remove the account {name}? Its agents show “Provider not connected”.",
+  "providers.remove.ask":
+    "Remove the account {name}? Its agents show “This account is not connected.”",
   "providers.cancel": "Cancel",
   "providers.empty": "No accounts yet. Add one to give your agents a model.",
   "providers.runtimes":
