@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn a_set_that_cannot_store_its_key_leaves_missing_key() {
+    fn a_first_set_that_cannot_store_its_key_leaves_no_file() {
         let dir = tempfile::tempdir().unwrap();
         let file = vault_file(&dir);
         let keys = FailStoreKeys;
