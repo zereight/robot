@@ -53,6 +53,22 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   ])
   await page.getByTestId("node-permission").selectOption("read_only")
 
+  // The silent limit of the node: Follow settings, minutes, or Never. It saves like other fields.
+  const silent = await page.getByTestId("node-silent-limit").locator("option").allTextContents()
+  expect(silent).toEqual([
+    "Follow settings",
+    "1 min",
+    "5 min",
+    "10 min",
+    "30 min",
+    "60 min",
+    "Never",
+  ])
+  await page.getByTestId("node-silent-limit").selectOption("30")
+  await expect(page.getByTestId("toast-success").last()).toHaveText(/Saved\./)
+  await page.getByTestId("node-silent-limit").scrollIntoViewIfNeeded()
+  await shot(page, "w5-21b-node-silent-limit")
+
   // A second text node, and a connection from the first to it.
   await page.getByTestId("graph-add-text").click()
   await page.getByTestId("node-name").fill("Write")
@@ -68,6 +84,8 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await page.getByTestId("graph-add-decision").click()
   await expect(page.getByTestId("node-option")).toHaveCount(2)
   await expect(page.getByTestId("node-effort")).toHaveCount(0)
+  // A decision node has no silent limit of its own.
+  await expect(page.getByTestId("node-silent-limit")).toHaveCount(0)
   await expect(page.getByTestId("node-threshold")).toHaveValue("0.9")
   await expect(page.getByTestId("graph-problems").locator("li")).toHaveCount(2)
   // The two kinds differ in shape and icon, not only in the word: a text node is a solid card, a
@@ -105,6 +123,7 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await expect(page.getByTestId("node-model")).toHaveValue("gpt-5")
   await expect(page.getByTestId("node-effort")).toHaveValue("medium")
   await expect(page.getByTestId("node-permission")).toHaveValue("read_only")
+  await expect(page.getByTestId("node-silent-limit")).toHaveValue("30")
 
   // Removing a connection asks first. "Keep it" changes nothing.
   await page.getByTestId("node-next-remove").click()
@@ -119,6 +138,23 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
   await page.getByTestId("graph-node").first().click()
   await page.getByTestId("node-delete").click()
   await expect(page.getByTestId("node-delete-ask")).toContainText("Collect")
+  // Both buttons of the question show together: one row, inside the panel.
+  const [keepBox, deleteBox, sideBox] = await Promise.all([
+    page.getByTestId("node-delete-ask").getByRole("button", { name: "Keep it" }).boundingBox(),
+    page.getByTestId("node-delete-confirm").boundingBox(),
+    page.getByTestId("node-side").boundingBox(),
+  ])
+  if (keepBox === null || deleteBox === null || sideBox === null)
+    throw new Error("no box for the delete question")
+  expect(Math.abs(keepBox.y - deleteBox.y), "Keep and Delete share one row").toBeLessThan(4)
+  for (const [name, b] of [
+    ["Keep it", keepBox],
+    ["Delete node", deleteBox],
+  ] as const)
+    expect(
+      b.y >= sideBox.y - 1 && b.y + b.height <= sideBox.y + sideBox.height + 1,
+      `${name} is inside the panel`,
+    ).toBe(true)
   await shot(page, "w5-23-graph-delete-ask")
   await page.getByTestId("node-delete-confirm").click()
   await expect(page.getByTestId("graph-node")).toHaveCount(2)
@@ -140,7 +176,9 @@ test("graph: add nodes, edit a node, connect, decision options, delete, versions
 
 test("graph: a node moves with the keyboard and the pointer, and keeps its number", async () => {
   const userData = freshUserData()
-  const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(userData, {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+  })
   await newWorkflow(page, "Weekly")
   await page.getByTestId("graph-add-text").click()
   const node = page.getByTestId("graph-node")
@@ -170,7 +208,9 @@ test("graph: a node moves with the keyboard and the pointer, and keeps its numbe
 
 test("workflow settings: the permission level and the folder, in Korean words too", async () => {
   const userData = freshUserData()
-  const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  const { app, page } = await launch(userData, {
+    ROBOT_SYSTEM_LOCALE: "ko-KR",
+  })
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("주간 보고")
   await page.getByTestId("new-workflow-name").press("Enter")
@@ -191,7 +231,9 @@ test("workflow settings: the permission level and the folder, in Korean words to
 test("workflow settings: the folder and the level are read-only while a run works", async () => {
   const mock = await startMockProvider()
   const userData = freshUserData()
-  const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(userData, {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+  })
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Weekly")
   await page.getByTestId("new-workflow-name").press("Enter")
@@ -201,18 +243,34 @@ test("workflow settings: the folder and the level are read-only while a run work
   await expect(page.getByTestId("workflow-settings-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-permission")).toBeDisabled()
   await expect(page.getByTestId("workflow-folder-pick")).toBeDisabled()
-  // A workflow that runs is not deleted: the button is off and the read-only line shows.
+  // A workflow that runs is not deleted: the button is off and the read-only line shows,
+  // once, in the workflow view. The card shows the run through its spinner and its last run.
   await expect(page.getByTestId("workflow-running-readonly")).toBeVisible()
   await expect(page.getByTestId("workflow-delete")).toBeDisabled()
-  await expect(page.getByTestId("workflow-card-readonly")).toBeVisible()
+  await expect(page.getByTestId("workflow-card-readonly")).toHaveCount(0)
   await expect(page.getByTestId("workflow-card-delete")).toBeDisabled()
   await shot(page, "w5-27-card-running")
+  // Every tab is whole and inside the tab row at the default window size, with no scroll.
+  const tabsBox = await page.getByTestId("workflow-tabs").boundingBox()
+  if (tabsBox === null) throw new Error("no box for the tab row")
+  for (const tab of await page.getByTestId("workflow-tabs").getByRole("tab").all()) {
+    const box = await tab.boundingBox()
+    if (box === null) throw new Error("no box for a tab")
+    expect(
+      box.x >= tabsBox.x - 1 && box.x + box.width <= tabsBox.x + tabsBox.width + 1,
+      `tab "${await tab.textContent()}" is inside the tab row`,
+    ).toBe(true)
+  }
+  await page.getByTestId("tab-graph").click()
+  await expect(page.getByTestId("tab-graph")).toHaveAttribute("aria-selected", "true")
   await app.close()
   await mock.close()
 })
 
 test("node panel: a background change keeps the focus and the typed text of a field", async () => {
-  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+  })
   await newWorkflow(page, "Weekly")
   await page.getByTestId("graph-add-decision").click()
   await expect(page.getByTestId("node-option")).toHaveCount(2)
@@ -233,10 +291,15 @@ test("node panel: a background change keeps the focus and the typed text of a fi
     page.evaluate(async () => {
       const invoke = (
         window as unknown as {
-          robot: { invoke: (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }> }
+          robot: {
+            invoke: (m: string, i?: unknown) => Promise<{ ok: boolean; value?: unknown }>
+          }
         }
       ).robot.invoke
-      const servers = (await invoke("servers.list")).value as { id: string; kind: string }[]
+      const servers = (await invoke("servers.list")).value as {
+        id: string
+        kind: string
+      }[]
       const local = servers.find((s) => s.kind === "local")
       const flows = (await invoke("workflows.list", { serverId: local?.id })).value as {
         id: string

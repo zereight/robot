@@ -644,6 +644,40 @@ export const migrations: readonly string[] = [
   ALTER TABLE chat_message ADD COLUMN context_tokens INTEGER;
   `,
   `
+  -- The silent limit of a text node in minutes (spec 010, "Silent limit of a node"). 0 is Never.
+  -- NULL is "Follow settings". A decision node has none. The choice is a field of the node, so it
+  -- belongs to the graph and to the versions of the graph.
+  ALTER TABLE workflow_node ADD COLUMN silent_limit INTEGER;
+  `,
+  `
+  -- Saved logins (spec 020, "Saved logins"): the user name and the password of a site are in the
+  -- system keychain; the row holds neither. When a workflow is deleted, the references go to
+  -- saved_login_drop and the app removes the values.
+  CREATE TABLE saved_login (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    value_ref TEXT,
+    saved_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    UNIQUE (workflow_id, name_key)
+  );
+  CREATE TABLE saved_login_drop (
+    kind TEXT NOT NULL,
+    value_ref TEXT NOT NULL,
+    PRIMARY KEY (kind, value_ref)
+  ) WITHOUT ROWID;
+  CREATE TRIGGER saved_login_workflow_gone AFTER DELETE ON workflow BEGIN
+    INSERT OR IGNORE INTO saved_login_drop (kind, value_ref)
+      SELECT 'user', value_ref FROM saved_login WHERE workflow_id = OLD.id AND value_ref IS NOT NULL;
+    INSERT OR IGNORE INTO saved_login_drop (kind, value_ref)
+      SELECT 'password', value_ref FROM saved_login WHERE workflow_id = OLD.id AND value_ref IS NOT NULL;
+    DELETE FROM saved_login WHERE workflow_id = OLD.id;
+  END;
+  `,
+  `
   CREATE TABLE workflow_node_new (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
@@ -662,13 +696,15 @@ export const migrations: readonly string[] = [
     y REAL NOT NULL DEFAULT 0,
     backup_account_id TEXT,
     backup_model TEXT,
-    backup_effort TEXT
+    backup_effort TEXT,
+    silent_limit INTEGER
   );
   INSERT INTO workflow_node_new (id, workflow_id, number, kind, name, prompt, account_id, model,
     effort, permission, continue_on_failure, question, threshold, x, y, backup_account_id,
-    backup_model, backup_effort)
+    backup_model, backup_effort, silent_limit)
   SELECT id, workflow_id, number, kind, name, prompt, account_id, model, effort, permission,
-    continue_on_failure, question, threshold, x, y, backup_account_id, backup_model, backup_effort
+    continue_on_failure, question, threshold, x, y, backup_account_id, backup_model, backup_effort,
+    silent_limit
   FROM workflow_node;
   DROP TABLE workflow_node;
   ALTER TABLE workflow_node_new RENAME TO workflow_node;

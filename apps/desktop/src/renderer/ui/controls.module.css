@@ -115,6 +115,10 @@
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
   transition:
     background var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out),
@@ -266,7 +270,9 @@
   transform: scale(var(--press-scale));
 }
 
-/* The question of a danger step that asks in place (spec 000, "Danger buttons"). */
+/* The question of a danger step that asks in place (spec 000, "Danger buttons"). The
+   question takes its own line, so the two buttons share the next line and stay visible together,
+   even in the 320 px node panel. */
 .confirm {
   display: flex;
   flex-wrap: wrap;
@@ -275,10 +281,29 @@
 }
 
 .confirmAsk {
-  flex: 1;
-  min-width: 160px;
+  flex: 1 1 100%;
   color: var(--c-text-muted);
   font-size: var(--text-s);
+}
+
+.confirmBtns {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* A header above a body that scrolls: space under it and an edge, so scrolled content never cuts
+   hard against it. Bodies add .scrollBody below. */
+.scrollHead {
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--c-border);
+}
+
+/* A body that scrolls under a fixed header: the top fades over 8 px, so scrolled content softens
+   instead of cutting hard. Invisible at rest: every body that uses it keeps 8 px of space above
+   its first line. */
+.scrollBody {
+  mask-image: linear-gradient(to bottom, transparent, black var(--spacing-sm));
 }
 
 /* A menu item that takes data away: the text is in the colour of danger (spec 000). */

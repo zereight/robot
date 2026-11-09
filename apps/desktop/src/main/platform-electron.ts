@@ -22,7 +22,7 @@ import {
   shell,
   WebContentsView,
 } from "electron"
-import { appendLog, readLogTail } from "./services/logs.ts"
+import { appendLog, pruneOldLogs, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
   BrowserActionState,
@@ -1201,6 +1201,8 @@ export const electronPlatform = (): PlatformService => {
   let awakeHold: number | undefined
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
+  // Drop audit lines older than 90 days (spec 014, 023, 028). A prune that fails is dropped.
+  pruneOldLogs(dataDir)
   watchApp()
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)
@@ -1457,10 +1459,14 @@ export const electronPlatform = (): PlatformService => {
         boxes,
         // The screen of the app first, then the pages of the workflows.
         pages: [screenSnapshot(), ...[...snapshots.values()].map((snapshot) => snapshot())],
+        // The app and browser tails explain a screen that takes no click; the rest are the
+        // audit logs of spec 014 (workflows, outside programs, Teams link).
         logs: [
           { name: "app", lines: readLogTail(dataDir, "app", 100) },
           { name: "browser", lines: readLogTail(dataDir, "browser", 150) },
-          { name: "channels", lines: readLogTail(dataDir, "channels", 40) },
+          { name: "workflows", lines: readLogTail(dataDir, "workflows", 100) },
+          { name: "outside", lines: readLogTail(dataDir, "outside", 100) },
+          { name: "teams", lines: readLogTail(dataDir, "teams", 100) },
         ],
       })
       // The text also stays on disk, in the logs folder, so it can be found again.

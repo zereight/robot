@@ -50,6 +50,11 @@ test("check: a loop shows Problem found with its place, the run does not start, 
   await expect(page.getByTestId("check-status").getByTestId("check-problem-found")).toHaveText(
     "Problem found",
   )
+  // ...and it shows once: the header names the state, the live line takes no room.
+  const liveBox = await page.getByTestId("check-problem-found").boundingBox()
+  if (liveBox === null) throw new Error("no box for the live problem line")
+  expect(Math.max(liveBox.width, liveBox.height), "live line takes no room").toBeLessThanOrEqual(2)
+  await expect(page.getByTestId("check-state")).toBeVisible()
 
   // The canvas marks the nodes of the problem with the danger colour and an icon, and the node of
   // the path with the number of its line. A click on a line selects its node.
@@ -110,6 +115,12 @@ test("check: the problem and its path are in Korean when the window is Korean", 
   await expect(page.getByTestId("check-state")).toHaveText("문제 발견")
   await expect(page.getByTestId("graph-problems")).toContainText("서로를 기다려서")
   await expect(page.getByTestId("check-path-line").first()).toHaveText("노드 1 “Draft” 실행")
+  const liveBoxKo = await page.getByTestId("check-problem-found").boundingBox()
+  if (liveBoxKo === null) throw new Error("no box for the live problem line")
+  expect(
+    Math.max(liveBoxKo.width, liveBoxKo.height),
+    "live line takes no room",
+  ).toBeLessThanOrEqual(2)
   await shot(page, "w7-04-problem-ko")
   await expect(page.getByTestId("workflow-check")).toHaveText("검사: 문제 발견")
   await app.close()

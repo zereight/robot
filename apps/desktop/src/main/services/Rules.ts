@@ -62,6 +62,13 @@ export interface RulesService {
   removeForConnection(name: string): void
   /** The rules for the tools of a connection follow its new name (spec 018, "Edit"). */
   renameConnection(from: string, to: string): void
+  /**
+   * The permission rules of 007 that name a saved secret or login follow its new name
+   * (spec 020, "Rename"): a Deny rule still stops the renamed row, and the old name keeps no
+   * rule. Only the rules of this workflow move. The names match with case ignored, as a rule
+   * does.
+   */
+  renameSecret(workflowId: string, from: string, to: string): void
 }
 
 interface Row {
@@ -244,6 +251,11 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
           .all<Row>(`${SELECT} WHERE kind = 'connection'`)
           .filter((r) => r.match_text.trim().toLowerCase() === name.trim().toLowerCase())
 
+      /** The secret rules of one workflow that name this secret or login. */
+      const secretRules = (workflowId: string, name: string) =>
+        db
+          .all<Row>(`${SELECT} WHERE kind = 'secret' AND workflow_id = ?`, workflowId)
+          .filter((r) => r.match_text.trim().toLowerCase() === name.trim().toLowerCase())
       return Rules.of({
         get,
         verdict,
@@ -255,6 +267,12 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
         },
         renameConnection: (from, to) => {
           const found = connectionRules(from)
+          for (const rule of found)
+            db.run("UPDATE permission_rule SET match_text = ? WHERE id = ?", to, rule.id)
+          if (found.length > 0) changed()
+        },
+        renameSecret: (workflowId, from, to) => {
+          const found = secretRules(workflowId, from)
           for (const rule of found)
             db.run("UPDATE permission_rule SET match_text = ? WHERE id = ?", to, rule.id)
           if (found.length > 0) changed()

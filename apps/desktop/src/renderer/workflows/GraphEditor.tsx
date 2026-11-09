@@ -8,8 +8,28 @@ import {
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { ChevronDown, ChevronUp, FileText, Split, Stamp, TriangleAlert, X } from "lucide-solid"
-import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
+import {
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  History,
+  Minus,
+  Plus,
+  Split,
+  Stamp,
+  TriangleAlert,
+  X,
+} from "lucide-solid"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { formatDateTime } from "../lib/format.ts"
 import { call } from "../lib/rpc.ts"
@@ -26,10 +46,47 @@ import { approvalOutputKey, nodeKindKey } from "./labels.ts"
 import { NodePanel } from "./NodePanel.tsx"
 
 const NODE_W = 176
-/** The width of the node panel and its margins: the canvas scrolls that far past the graph. */
-const PANEL_ROOM = 352
 const NODE_H = 60
 const STEP = 16
+const GRID = 16
+const ZOOM_MIN = 0.25
+const ZOOM_MAX = 2
+
+/**
+ * The view of the canvas (spec 001): a point (px, py) of the graph shows at
+ * (x + px * zoom, y + py * zoom) of the canvas. The canvas has no edge, so any x and y is valid.
+ */
+type View = { readonly x: number; readonly y: number; readonly zoom: number }
+/** The graph starts below the floating buttons, so they never hide a node. */
+const HOME: View = { x: 0, y: 64, zoom: 1 }
+/** The space between the floats at the top of the canvas and the graph. */
+const FLOAT_GAP = 24
+const clampZoom = (zoom: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom))
+/** The view zoomed to `zoom`, with the point (cx, cy) of the canvas kept in place. */
+const zoomAt = (v: View, zoom: number, cx: number, cy: number): View => {
+  const z = clampZoom(zoom)
+  return { x: cx - ((cx - v.x) * z) / v.zoom, y: cy - ((cy - v.y) * z) / v.zoom, zoom: z }
+}
+
+/** The least space between two dots of the grid on the screen (spec 001). */
+const DOT_GAP_MIN = 12
+/**
+ * The dot grid of the canvas (spec 001): it moves and zooms with the graph. When the dots get closer
+ * than DOT_GAP_MIN, only every k-th dot shows, with k the smallest power of two that keeps them
+ * apart. The dot is at the centre of its tile, so the shift keeps each dot that stays on its place
+ * of the full grid. The dot keeps its size on the screen at each zoom.
+ */
+const dotGrid = (v: View) => {
+  const full = GRID * v.zoom
+  let gap = full
+  // A zoom of the wheel lands a little below 75% (0.7499…); it must still show every dot.
+  while (gap < DOT_GAP_MIN - 1e-6) gap *= 2
+  const shift = (full - gap) / 2
+  return {
+    "background-size": `${gap}px ${gap}px`,
+    "background-position": `${v.x + shift}px ${v.y + shift}px`,
+  }
+}
 
 /** A place for a new node: a grid of four columns, in the order of the numbers. */
 const placeFor = (count: number) => ({
@@ -101,9 +158,11 @@ const Versions = (props: { workflow: WorkflowDetail; readOnly: boolean }) => {
 
 /**
  * The editor of the graph (spec 010, flow 2). The canvas fills the workflow view (spec 001); the
- * buttons, the versions and the node panel float over it, and the node panel folds. The
- * canvas shows each node as a button at its place and each connection as a line. A drag on an
- * empty part moves the view; a click there clears the selection. A node moves with the pointer or with the arrow keys; it
+ * buttons, the versions, the zoom and the node panel float over it, and the node panel folds. The
+ * canvas has no edge: it shows each node as a button at its place and each connection as a line,
+ * in a view that pans and zooms freely. A drag on an empty part, one finger, or a two finger
+ * scroll moves the view; a pinch or Ctrl with the wheel zooms it. A click there clears the
+ * selection. A node moves with the pointer or with the arrow keys; it
  * connects through its side panel, so the whole editor works with the keyboard. The canvas marks
  * the nodes of the problem and of its path while the run strip shows the check (spec 001).
  */
@@ -133,19 +192,7 @@ export const GraphEditor = (props: {
     const d = dragging()
     return d && d.id === n.id ? { x: d.x, y: d.y } : { x: n.x, y: n.y }
   }
-  const extent = createMemo(() => {
-    let w = 640
-    let h = 360
-    for (const n of graph().nodes) {
-      const p = positionOf(n)
-      w = Math.max(w, p.x + NODE_W + 48)
-      h = Math.max(h, p.y + NODE_H + 48)
-    }
-    // An open node panel floats over the right side; the room lets the user pan a node out from
-    // under it.
-    if (props.selectedNode && !ui.nodePanelFolded()) w += PANEL_ROOM
-    return { w, h }
-  })
+  const [view, setView] = createSignal<View>(HOME)
 
   const add = async (kind: NodeKind) => {
     setProblem(undefined)
@@ -198,7 +245,8 @@ export const GraphEditor = (props: {
       const dy = ev.clientY - startY
       if (!moved && Math.hypot(dx, dy) < 4) return
       moved = true
-      setDragging({ id: n.id, x: Math.max(0, from.x + dx), y: Math.max(0, from.y + dy) })
+      const z = view().zoom
+      setDragging({ id: n.id, x: Math.max(0, from.x + dx / z), y: Math.max(0, from.y + dy / z) })
     }
     const onUp = () => {
       target.removeEventListener("pointermove", onMove)
@@ -282,36 +330,85 @@ export const GraphEditor = (props: {
     return out
   })
 
-  // A drag on an empty part of the canvas moves the view; a click there clears the selection.
+  // On an empty part of the canvas, one pointer pans the view and two pointers pinch it; a click
+  // clears the selection. The wheel pans, and with Ctrl or Cmd it zooms (a trackpad pinch).
   let canvasEl: HTMLElement | undefined
+  const local = (clientX: number, clientY: number) => {
+    const r = canvasEl?.getBoundingClientRect()
+    return { x: clientX - (r?.left ?? 0), y: clientY - (r?.top ?? 0) }
+  }
+  const pointers = new Map<number, { x: number; y: number }>()
+  /** Where one pointer started to pan, and the view then: the pan follows the whole move. */
+  let anchor: { x: number; y: number; view: View } | undefined
+  let gestureMoved = false
+  const spread = () => {
+    const [a, b] = [...pointers.values()]
+    return a && b
+      ? { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      : undefined
+  }
+  const anchorAt = () => {
+    const [only] = [...pointers.values()]
+    anchor = pointers.size === 1 && only ? { ...only, view: view() } : undefined
+  }
   const onCanvasPointerDown = (e: PointerEvent) => {
     const el = canvasEl
     if (!el || e.button !== 0 || (e.target as Element).closest("button, path, text")) return
-    const startX = e.clientX
-    const startY = e.clientY
-    const from = { left: el.scrollLeft, top: el.scrollTop }
-    let moved = false
+    if (pointers.size === 0) gestureMoved = false
+    pointers.set(e.pointerId, local(e.clientX, e.clientY))
     el.setPointerCapture(e.pointerId)
-    const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX
-      const dy = ev.clientY - startY
-      if (!moved && Math.hypot(dx, dy) < 4) return
-      moved = true
-      el.dataset.panning = "true"
-      el.scrollLeft = from.left - dx
-      el.scrollTop = from.top - dy
-    }
-    const onUp = () => {
-      el.removeEventListener("pointermove", onMove)
-      el.removeEventListener("pointerup", onUp)
-      el.removeEventListener("pointercancel", onUp)
-      delete el.dataset.panning
-      if (!moved) props.onSelectNode(undefined)
-    }
-    el.addEventListener("pointermove", onMove)
-    el.addEventListener("pointerup", onUp)
-    el.addEventListener("pointercancel", onUp)
+    anchorAt()
   }
+  const onCanvasPointerMove = (e: PointerEvent) => {
+    if (!pointers.has(e.pointerId) || !canvasEl) return
+    const before = spread()
+    const now = local(e.clientX, e.clientY)
+    pointers.set(e.pointerId, now)
+    const after = spread()
+    if (before && after) {
+      gestureMoved = true
+      const v = zoomAt(view(), (view().zoom * after.d) / Math.max(1, before.d), before.x, before.y)
+      setView({ ...v, x: v.x + after.x - before.x, y: v.y + after.y - before.y })
+      return
+    }
+    if (!anchor) return
+    const dx = now.x - anchor.x
+    const dy = now.y - anchor.y
+    if (!gestureMoved && Math.hypot(dx, dy) < 4) return
+    gestureMoved = true
+    canvasEl.dataset.panning = "true"
+    setView({ ...anchor.view, x: anchor.view.x + dx, y: anchor.view.y + dy })
+  }
+  const onCanvasPointerUp = (e: PointerEvent) => {
+    if (!pointers.delete(e.pointerId)) return
+    anchorAt()
+    if (pointers.size > 0) return
+    if (canvasEl) delete canvasEl.dataset.panning
+    if (!gestureMoved && e.type === "pointerup") props.onSelectNode(undefined)
+  }
+  const zoomBy = (factor: number) => {
+    const r = canvasEl?.getBoundingClientRect()
+    setView((v) => zoomAt(v, v.zoom * factor, (r?.width ?? 0) / 2, (r?.height ?? 0) / 2))
+  }
+  onMount(() => {
+    const el = canvasEl
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1
+      const dx = e.deltaX * unit
+      const dy = e.deltaY * unit
+      if (e.ctrlKey || e.metaKey) {
+        const at = local(e.clientX, e.clientY)
+        const step = Math.max(-50, Math.min(50, dy))
+        setView((v) => zoomAt(v, v.zoom * Math.exp(-step * 0.01), at.x, at.y))
+      } else {
+        setView((v) => ({ ...v, x: v.x - dx, y: v.y - dy }))
+      }
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    onCleanup(() => el.removeEventListener("wheel", onWheel))
+  })
   // Escape closes the node panel (spec 001), unless a field of the panel has the focus.
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -323,15 +420,80 @@ export const GraphEditor = (props: {
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
+  // The graph starts below everything that floats at the top (the toolbar, the read-only note,
+  // an error, the versions): when the floats grow or shrink, the view moves by the same height.
+  let floatEl: HTMLDivElement | undefined
+  const [floatH, setFloatH] = createSignal(HOME.y - FLOAT_GAP)
+  const home = (): View => ({ ...HOME, y: floatH() + FLOAT_GAP })
+  onMount(() => {
+    const el = floatEl
+    if (!el) return
+    const read = () => setFloatH(el.offsetHeight)
+    read()
+    const sizes = new ResizeObserver(read)
+    sizes.observe(el)
+    onCleanup(() => sizes.disconnect())
+  })
+  createEffect(
+    on(floatH, (h, before) => {
+      if (before !== undefined) setView((v) => ({ ...v, y: v.y + h - before }))
+    }),
+  )
+  // When the panel opens, the selected node stays visible: the view pans it clear of the panel.
+  // The panel keeps floating over the canvas (spec 001).
+  let layoutEl: HTMLDivElement | undefined
+  const clearNode = () => {
+    const root = layoutEl
+    if (!canvasEl || !root || !props.selectedNode) return
+    const node = canvasEl.querySelector<HTMLElement>(
+      '[data-testid="graph-node"][aria-pressed="true"]',
+    )
+    const panel = root.querySelector<HTMLElement>('[data-testid="node-side"]')
+    if (!node || !panel) return
+    const n = node.getBoundingClientRect()
+    const p = panel.getBoundingClientRect()
+    const x = Math.min(n.right, p.right) - Math.max(n.left, p.left)
+    const y = Math.min(n.bottom, p.bottom) - Math.max(n.top, p.top)
+    if (x <= 0 || y <= 0) return
+    // The panel floats at the right: move the node to its left, but not past the left edge of
+    // the canvas. If it still touches the panel (a folded panel is short), move it below the
+    // panel when it fits there.
+    const c = canvasEl.getBoundingClientRect()
+    const dx = Math.max(0, Math.min(x + 8, n.left - c.left - 8))
+    const down = p.bottom - n.top + 8
+    const dy = dx < x + 8 && p.bottom + 8 + n.height <= c.bottom ? down : 0
+    setView((v) => ({ ...v, x: v.x - dx, y: v.y + dy }))
+  }
+  let panelSizes: ResizeObserver | undefined
+  onMount(() => {
+    panelSizes = new ResizeObserver(() => clearNode())
+    onCleanup(() => panelSizes?.disconnect())
+  })
+  createEffect(
+    on(
+      () => [props.selectedNode, ui.nodePanelFolded()] as const,
+      () => {
+        clearNode()
+        // The panel grows as its content loads: keep the node clear then too.
+        const panel = layoutEl?.querySelector<HTMLElement>('[data-testid="node-side"]')
+        panelSizes?.disconnect()
+        if (panel) panelSizes?.observe(panel)
+      },
+    ),
+  )
   return (
-    <div class={styles.layout} data-narrow={ui.narrow()} data-testid="graph-editor">
+    <div class={styles.layout} ref={layoutEl} data-narrow={ui.narrow()} data-testid="graph-editor">
       <div class={styles.canvasArea}>
         <section
           ref={canvasEl}
           class={styles.canvas}
           aria-label={t("graph.canvas")}
           data-testid="graph-canvas"
+          style={dotGrid(view())}
           onPointerDown={onCanvasPointerDown}
+          onPointerMove={onCanvasPointerMove}
+          onPointerUp={onCanvasPointerUp}
+          onPointerCancel={onCanvasPointerUp}
         >
           <Show
             when={graph().nodes.length > 0}
@@ -343,12 +505,15 @@ export const GraphEditor = (props: {
           >
             <div
               class={styles.canvasInner}
-              style={{ width: `${extent().w}px`, height: `${extent().h}px` }}
+              data-testid="graph-view"
+              style={{
+                transform: `translate(${view().x}px, ${view().y}px) scale(${view().zoom})`,
+              }}
             >
               <svg
                 class={styles.lines}
-                width={extent().w}
-                height={extent().h}
+                width="1"
+                height="1"
                 aria-hidden="true"
                 data-testid="graph-lines"
               >
@@ -441,14 +606,16 @@ export const GraphEditor = (props: {
                         {marks().lines.get(node().id)}
                       </span>
                     </Show>
-                    <span class={styles.nodeName}>
-                      {node().number}. {node().name}
-                    </span>
-                    <Show when={working(node())}>
-                      <span class={styles.nodeSpin} data-testid="graph-node-running">
-                        <Spinner />
+                    <span class={styles.nodeHead}>
+                      <span class={styles.nodeName}>
+                        {node().number}. {node().name}
                       </span>
-                    </Show>
+                      <Show when={working(node())}>
+                        <span class={styles.nodeSpin} data-testid="graph-node-running">
+                          <Spinner />
+                        </span>
+                      </Show>
+                    </span>
                     <span class={styles.nodeKind} data-testid="graph-node-kind">
                       <Show
                         when={node().kind === "decision"}
@@ -471,21 +638,25 @@ export const GraphEditor = (props: {
             </div>
           </Show>
         </section>
-        <div class={styles.float}>
-          <div class={styles.toolbar}>
+        <div class={styles.float} ref={floatEl}>
+          <div class={styles.toolbar} data-testid="graph-toolbar">
             <Button
               disabled={readOnly()}
               onClick={() => void add("text")}
+              aria-label={t("graph.add.text")}
               data-testid="graph-add-text"
             >
-              {t("graph.add.text")}
+              <FileText size={14} aria-hidden="true" />
+              <span class={styles.toolbarLabel}>{t("graph.add.text")}</span>
             </Button>
             <Button
               disabled={readOnly()}
               onClick={() => void add("decision")}
+              aria-label={t("graph.add.decision")}
               data-testid="graph-add-decision"
             >
-              {t("graph.add.decision")}
+              <Split size={14} aria-hidden="true" />
+              <span class={styles.toolbarLabel}>{t("graph.add.decision")}</span>
             </Button>
             <Button
               disabled={readOnly()}
@@ -497,9 +668,13 @@ export const GraphEditor = (props: {
             <Button
               onClick={() => setShowVersions(!showVersions())}
               aria-pressed={showVersions()}
+              aria-label={showVersions() ? t("graph.version.hide") : t("graph.version.show")}
               data-testid="graph-versions-toggle"
             >
-              {showVersions() ? t("graph.version.hide") : t("graph.version.show")}
+              <History size={14} aria-hidden="true" />
+              <span class={styles.toolbarLabel}>
+                {showVersions() ? t("graph.version.hide") : t("graph.version.show")}
+              </span>
             </Button>
           </div>
           <Show when={readOnly()}>
@@ -521,6 +696,32 @@ export const GraphEditor = (props: {
           <Show when={showVersions()}>
             <Versions workflow={props.workflow} readOnly={readOnly()} />
           </Show>
+        </div>
+        <div class={styles.zoom} data-testid="graph-zoom">
+          <IconButton
+            label={t("graph.zoom.out")}
+            onClick={() => zoomBy(1 / 1.25)}
+            data-testid="graph-zoom-out"
+          >
+            <Minus size={14} />
+          </IconButton>
+          <button
+            type="button"
+            class={styles.zoomValue}
+            title={t("graph.zoom.reset")}
+            aria-label={`${t("graph.zoom")} ${Math.round(view().zoom * 100)}%. ${t("graph.zoom.reset")}`}
+            onClick={() => setView(home())}
+            data-testid="graph-zoom-reset"
+          >
+            {Math.round(view().zoom * 100)}%
+          </button>
+          <IconButton
+            label={t("graph.zoom.in")}
+            onClick={() => zoomBy(1.25)}
+            data-testid="graph-zoom-in"
+          >
+            <Plus size={14} />
+          </IconButton>
         </div>
         <Show when={!props.selectedNode && graph().nodes.length > 0}>
           <p class={styles.canvasHint}>{t("graph.panel.empty")}</p>
@@ -551,7 +752,11 @@ export const GraphEditor = (props: {
                     <X size={16} />
                   </IconButton>
                 </div>
-                <div class={styles.sideBody} hidden={ui.nodePanelFolded()}>
+                <div
+                  class={styles.sideBody}
+                  hidden={ui.nodePanelFolded()}
+                  data-testid="node-side-body"
+                >
                   <NodePanel
                     workflow={props.workflow}
                     node={n()}

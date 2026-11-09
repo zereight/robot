@@ -45,7 +45,9 @@ const setReduceMotion = (page: Page, value: "system" | "on" | "off") =>
 
 test("motion: spinners and pulses share one period, and reduce motion stills them", async () => {
   const mock = await startMockProvider()
-  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+  })
   await resizeWindow(app, 1200, 800)
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("Looping")
@@ -55,6 +57,70 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   // One run works until the test ends. The canvas, the chat head and the run view all show it.
   await startHangingRun(page, { openaiUrl: mock.openaiUrl, key: GOOD_KEY })
   await expect(page.getByTestId("graph-node-running")).toBeVisible()
+  const runningNode = page
+    .getByTestId("graph-node")
+    .filter({ has: page.getByTestId("graph-node-running") })
+  const [box, name, spin] = await Promise.all([
+    runningNode.boundingBox(),
+    runningNode.locator("span[class*=nodeName]").boundingBox(),
+    page.getByTestId("graph-node-running").boundingBox(),
+  ])
+  if (box === null || name === null || spin === null) throw new Error("no box for the running node")
+  expect(spin.x, "spinner starts after the name ends").toBeGreaterThanOrEqual(name.x + name.width)
+  expect(spin.x + spin.width, "spinner stays inside the node").toBeLessThanOrEqual(
+    box.x + box.width,
+  )
+  expect(
+    Math.abs(spin.y + spin.height / 2 - (name.y + name.height / 2)),
+    "spinner is on the name line",
+  ).toBeLessThan(2)
+  // Every button centers its icon on its text line.
+  for (const id of ["workflow-run", "workflow-stop"]) {
+    const drift = await page.getByTestId(id).evaluate((el) => {
+      const icon = el.querySelector("svg")
+      const text = [...el.childNodes].find(
+        (n): n is Text => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "",
+      )
+      if (!icon || !text) throw new Error("no icon or text in the button")
+      const range = document.createRange()
+      range.selectNodeContents(text)
+      const a = icon.getBoundingClientRect()
+      const b = range.getBoundingClientRect()
+      return Math.abs(a.top + a.height / 2 - (b.top + b.height / 2))
+    })
+    expect(drift, `${id} icon is on the text line`).toBeLessThan(1)
+  }
+  // The check label only truncates when the header is really out of room: never while the spacer
+  // still holds free space.
+  const headerRoom = await page.evaluate(() => {
+    const label = document.querySelector('[data-testid="workflow-header-check"]') as HTMLElement
+    const spacer = document.querySelector('[data-testid="workflow-header-spacer"]') as HTMLElement
+    if (!label || !spacer) throw new Error("no check label or spacer in the header")
+    return {
+      cut: label.scrollWidth - label.clientWidth,
+      free: spacer.getBoundingClientRect().width,
+    }
+  })
+  expect(
+    headerRoom.cut <= 1 || headerRoom.free < 2,
+    "check label takes its natural width first",
+  ).toBe(true)
+  // Every toolbar button stays whole: the toolbar never scrolls.
+  const toolbarCut = await page
+    .getByTestId("graph-toolbar")
+    .evaluate((el) => el.scrollWidth - el.clientWidth)
+  expect(toolbarCut, "toolbar buttons fit without scrolling").toBeLessThanOrEqual(1)
+  // The graph starts below the floating note.
+  const note = await page.getByTestId("graph-readonly").boundingBox()
+  if (note === null) throw new Error("no box for the floating note")
+  expect(box.y, "graph starts below the floating note").toBeGreaterThanOrEqual(note.y + note.height)
+  // At rest, the first line of the run strip body sits clear of its tabs.
+  const [sHead, sBody] = await page.getByTestId("strip-body").evaluate((el) => {
+    let first = el.firstElementChild
+    while (first?.firstElementChild) first = first.firstElementChild
+    return [el.getBoundingClientRect().top, first?.getBoundingClientRect().top ?? 0]
+  })
+  expect(sBody - sHead, "run strip body starts below its tabs with space").toBeGreaterThanOrEqual(8)
   await expect(page.getByTestId("chat-spinner")).toBeVisible()
   // The spinners have a text alternative, as the app shows the state in words (specs/039).
   await expect(page.getByTestId("chat-spinner")).toHaveText("Running")
@@ -64,6 +130,10 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
   await page.getByTestId("chat-input").press("Enter")
   await expect(page.getByTestId("working-line")).toBeVisible()
   await expect(page.getByTestId("working-line").getByTestId("work-mark")).toBeVisible()
+  // One working line: the badge shows nowhere else, not even on the streaming row (spec 003).
+  const streaming = page.getByTestId("message").last()
+  await expect(streaming).toHaveAttribute("data-author", "assistant")
+  await expect(streaming.getByTestId("work-mark")).toHaveCount(0)
   await page.getByTestId("runs-list").locator("button").first().click()
   await expect(page.getByTestId("run-node-state-1")).toHaveText("Running")
   await page.getByTestId("run-back").click()
@@ -127,7 +197,9 @@ test("motion: spinners and pulses share one period, and reduce motion stills the
 
 test('motion: the spinners say "Running" in Korean too, with reduce motion on', async () => {
   const mock = await startMockProvider()
-  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "ko-KR",
+  })
   await resizeWindow(app, 1200, 800)
   await page.getByTestId("new-workflow-empty").click()
   await page.getByTestId("new-workflow-name").fill("반복")
@@ -144,7 +216,9 @@ test('motion: the spinners say "Running" in Korean too, with reduce motion on', 
 })
 
 test("motion: a motion that ends takes under 300 ms, and a dialog leaves with an exit", async () => {
-  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+  })
   await resizeWindow(app, 1200, 800)
   await page.evaluate(() => {
     const seen: { name: string; duration: number; infinite: boolean }[] = []
@@ -187,7 +261,9 @@ test("motion: a motion that ends takes under 300 ms, and a dialog leaves with an
   const state = await page.evaluate(() => ({
     closing: (window as unknown as { __closing: number }).__closing,
     seen: (
-      window as unknown as { __motion: { name: string; duration: number; infinite: boolean }[] }
+      window as unknown as {
+        __motion: { name: string; duration: number; infinite: boolean }[]
+      }
     ).__motion,
   }))
   expect(state.closing).toBe(1)

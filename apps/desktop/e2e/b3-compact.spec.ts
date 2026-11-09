@@ -192,6 +192,8 @@ test("automatic compact: 90 percent shows Compacting… first, and the setting t
   await send(page, "after the limit")
   await expect(page.getByTestId("working-line")).toContainText("Compacting…")
   await expect(meter(page)).toHaveAttribute("data-used", "")
+  // One working line: no bare badge row sits above it (spec 003, "States").
+  await expect(page.getByTestId("message").last().getByTestId("work-mark")).toHaveCount(0)
   await shot(page, "b3-05-auto-compacting")
   await expect(replies(page).last()).toContainText("You said: after the limit")
   await expect(page.getByTestId("working-line")).toHaveCount(0)
@@ -319,7 +321,9 @@ test("the size of the context is not known: the ring says so and Compact is off 
 
 test("Korean: the meter, the line and the working line", async () => {
   test.setTimeout(120_000)
-  const { mock, app, page } = await start(1_000_000, { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  const { mock, app, page } = await start(1_000_000, {
+    ROBOT_SYSTEM_LOCALE: "ko-KR",
+  })
   await turn(page, "하나 long summary")
   await turn(page, "둘")
   await turn(page, "셋 use 400000")

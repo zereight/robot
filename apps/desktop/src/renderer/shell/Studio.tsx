@@ -47,10 +47,11 @@ export const Studio = () => {
   const [chatOverlay, setChatOverlay] = createSignal(false)
   const listOpen = () => !ui.listDocked() && listOverlay()
   const chatOpen = () => ui.narrow() && chatOverlay()
-  // Picking a workflow or a page closes the list overlay.
+  // Picking a workflow or a page closes the list overlay. A refresh of the list does not: it is
+  // not a pick.
   createEffect(
     on(
-      () => [open(), ui.ui.page] as const,
+      () => [ui.place(), ui.ui.page] as const,
       () => setListOverlay(false),
       { defer: true },
     ),

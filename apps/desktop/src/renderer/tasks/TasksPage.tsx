@@ -419,7 +419,7 @@ const TasksTab = () => {
                         {t("tasks.node", { number: task().nodeNumber, name: task().nodeName })}
                       </button>
                     </th>
-                    <td data-testid="task-source">
+                    <td class={styles.nowrap} data-testid="task-source">
                       {t(`tasks.source.${task().source}` as MessageKey)}
                     </td>
                     <td>

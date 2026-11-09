@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { ModelPick } from "./backup.ts"
+import { SilentLimit } from "./settings.ts"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 import type { CheckOutcome, CheckState } from "./workflowCheck.ts"
 
@@ -27,6 +28,13 @@ export type ApprovalOutput = (typeof APPROVAL_OUTPUTS)[number]
 
 /** The comment of the user on an approval card has at most 2,000 characters (spec 010). */
 export const APPROVAL_COMMENT_MAX = 2000
+
+/**
+ * The silent limit of a node: minutes of silence, 0 for Never, or "follow" for the setting
+ * (spec 010, "Silent limit of a node").
+ */
+export const NodeSilentLimit = Schema.Union([SilentLimit, Schema.Literal("follow")])
+export type NodeSilentLimit = typeof NodeSilentLimit.Type
 
 /** Where a change of the responsible document came from (spec 002, "Responsible document history"). */
 export const DOCUMENT_SOURCES = ["editor", "proposal", "undo", "restore"] as const
@@ -102,6 +110,13 @@ export interface WorkflowNode {
    * the editor: a proposal, the chat and a linked device cannot (docs/spec-questions.md, B6).
    */
   readonly backup: ModelPick | null
+  /**
+   * The silent limit of a text node: minutes, 0 for Never, or "follow" for the setting (spec 010,
+   * "Silent limit of a node"). A decision node always holds "follow" and never reads it. Only the
+   * user sets it, in the editor: a proposal and the chat keep it, and a node they add follows the
+   * setting.
+   */
+  readonly silentLimit: NodeSilentLimit
   /** A stricter level than the workflow, or null for the level of the workflow. */
   readonly permission: PermissionLevel | null
   readonly continueOnFailure: boolean
@@ -269,6 +284,8 @@ export const NodePatch = Schema.Struct({
   effort: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The backup model (spec 006). Null clears it. Only the editor of this computer may set it. */
   backup: Schema.optionalKey(Schema.NullOr(BackupPick)),
+  /** The silent limit of a text node (spec 010). "follow" follows the setting. */
+  silentLimit: Schema.optionalKey(NodeSilentLimit),
   permission: Schema.optionalKey(Schema.NullOr(Level)),
   continueOnFailure: Schema.optionalKey(Schema.Boolean),
   question: Schema.optionalKey(Schema.String),

@@ -12,6 +12,7 @@ const node = (n: number, extra: Partial<WorkflowNode> = {}): WorkflowNode => ({
   model: "mock-fast",
   effort: null,
   backup: null,
+  silentLimit: "follow",
   permission: "read_only",
   continueOnFailure: false,
   question: "",

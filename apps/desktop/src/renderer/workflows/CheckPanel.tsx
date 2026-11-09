@@ -47,7 +47,10 @@ export const CheckPanel = (props: {
     const n = nodeOf(p.nodeId)
     if (!n) return ""
     if (p.code === "decision_options")
-      return t("graph.problem.decision_options", { number: n.number, name: n.name })
+      return t("graph.problem.decision_options", {
+        number: n.number,
+        name: n.name,
+      })
     if (p.code === "approval_question")
       return t("graph.problem.approval_question", { number: n.number, name: n.name })
     return t("graph.problem.option_unconnected", {
@@ -58,7 +61,9 @@ export const CheckPanel = (props: {
   }
   const problemText = (p: CheckProblem) => {
     if (p.code === "deadlock")
-      return t("check.problem.deadlock", { nodes: p.nodeIds.map(nodeText).join(", ") })
+      return t("check.problem.deadlock", {
+        nodes: p.nodeIds.map(nodeText).join(", "),
+      })
     if (p.code === "never_runs") {
       const n = nodeOf(p.nodeIds[0] ?? "")
       return n ? t("check.problem.never_runs", { number: n.number, name: n.name }) : ""
@@ -137,7 +142,9 @@ export const CheckPanel = (props: {
           </p>
         </Show>
         <Show when={problemsOf(outcome()).length > 0}>
-          <p data-testid="check-problem-found">{t("workflows.check.problem")}</p>
+          <p class={styles.hidden} data-testid="check-problem-found">
+            {t("workflows.check.problem")}
+          </p>
         </Show>
         <Show when={stopped()}>
           {(o) => <p data-testid="check-stopped">{stoppedText(o().reason)}</p>}

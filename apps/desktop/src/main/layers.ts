@@ -22,6 +22,7 @@ import { Rules } from "./services/Rules.ts"
 import { RunFacts } from "./services/RunFacts.ts"
 import { Runs } from "./services/Runs.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { SavedLogins } from "./services/SavedLogins.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
@@ -88,11 +89,14 @@ export const appLayer = (options: AppLayerOptions) => {
     FileClaims.layer,
     ModelHolds.layer,
     Rules.layer,
-    SavedSecrets.layer,
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),
   ).pipe(Layer.provideMerge(providers))
+  // The vault (spec 020) renames the permission rules of a secret or a login with it.
+  const vault = Layer.mergeAll(SavedLogins.layer, SavedSecrets.layer).pipe(
+    Layer.provideMerge(rules),
+  )
   // The connections use the rules, to remove the rules of a connection that is removed (spec 018).
-  const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(rules))
+  const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(vault))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(connections))
   const workflowCheck = WorkflowCheck.layer({ auto: true, ...options.check }).pipe(
     Layer.provideMerge(workflows),

@@ -27,14 +27,32 @@ stops and results without opening another page. The app opens on the studio.
   workflow, and the run strip below. The header shows the name, the state of the check, the
   buttons Run and Stop, the button "Device" (032), and the delete of the workflow (000, 010).
   The view shows one part at a time: the canvas, the responsible document, the memory, the
-  proposals, or the settings of the workflow. A row of tabs switches between them.
+  secrets vault (020), the proposals, or the settings of the workflow. A row of tabs switches
+  between them.
 - **Canvas**: the graph of the workflow (010): its nodes, its connections, its trigger, and the
   path of a failed check. The canvas is the main surface of the studio: it fills the workflow
   view from edge to edge, between the tab row and the run strip, with no frame around it. The
   buttons to add a node and the button for the versions float over its top left corner. The
   user drags nodes onto the canvas, connects outputs to inputs, and edits the selected node in
-  the node panel. The user moves the view by dragging an empty part of the canvas, or with the
-  scroll of the pointer. A click on an empty part clears the selection.
+  the node panel. The canvas has no edge: the user moves the view freely in all directions, past
+  the graph, as in a design tool. A drag on an empty part of the canvas, a drag with one finger on
+  a touch screen, or a scroll with two fingers on a trackpad or with the mouse wheel moves the
+  view. A pinch on the trackpad, or the mouse wheel with Ctrl or Cmd, zooms the view around the
+  pointer, from 25% to 200%. A small card over the bottom right corner shows the zoom, with
+  buttons to zoom out and in; a press on the zoom value shows the graph at 100% from its top left
+  corner again. The view starts there when the workflow opens. A click on an empty part clears
+  the selection. The canvas shows a grid of dots. The grid moves and zooms with the graph. At
+  100%, the dots of the grid are 16 px apart on the screen. The space between two dots is the
+  distance on the screen between their centres. The other dot is the next dot that shows in the
+  same row or column. This space is never less than 12 px. The canvas shows every dot, every
+  second dot or every fourth dot of the grid, in each row and each column. Of these three
+  choices, the canvas uses the one that shows the most dots and keeps the space at 12 px or more.
+  Every dot shows from 75% to 200%. Every second dot shows from 37.5% to less than 75%. Every
+  fourth dot shows from 25% to less than 37.5%. The canvas shows no dot between two dots of the
+  grid. A drag of the view does not change which dots show. Each dot that shows at a zoom also
+  shows at each higher zoom. A dot has the same size on the screen at each zoom. The size and the
+  colour of the dots, and a fade when dots go or come, are open (see docs/spec-questions.md, rows
+  for 001 in CG1).
 - **Node panel**: a card that floats over the top right corner of the canvas when a node is
   selected. The canvas keeps its full width below it. The card is 320 px wide, is never taller
   than the canvas, and scrolls by itself. Its header shows the number and the name of the node,
@@ -48,9 +66,11 @@ stops and results without opening another page. The app opens on the studio.
   runs of the open workflow, newest first, and the tasks of the selected run: each node with
   its state, its reason when it is not done, and its result when it has one (005, 010). The run
   strip also shows the result of the check (010): "Problem found" with the path, or the pass
-  line. A close button returns to the runs. A button folds the strip to its tab row, so the
-  canvas gets the height, and unfolds it again. The app remembers this. A run that starts, or a
-  check that finds a problem, unfolds the strip.
+  line. A close button returns to the runs. The user drags the top edge of the strip to change
+  its height, or moves the edge with the arrow keys when it has the focus. The strip is at least
+  120 px high, and the canvas keeps at least 160 px. A button folds the strip to its tab row, so
+  the canvas gets the height, and unfolds it again. The app remembers the height and the fold. A
+  run that starts, or a check that finds a problem, unfolds the strip.
 - **Panel column**: the column at the right of the window. It shows the chat of the open
   workflow (003), or the panel of the test devices connection (032). It shows one panel at a
   time. The chat is the default. The user drags the left edge of the column to change its
@@ -115,7 +135,7 @@ stops and results without opening another page. The app opens on the studio.
   (010).
 - The list shows workflows in alphabetical order, ignoring case. It has no sections, no pins,
   no Back and no Forward.
-- Only the tab row and the run strip take room from the canvas. The node panel, the buttons and
+- Only the tab row and the run strip take room from the canvas. The node panel, the buttons, the zoom card and
   the versions float over it. The canvas has no frame and no margin.
 - The run strip shows runs newest first. It selects the run that works now, or the newest run.
   A selection by the user stays until the user selects another run or a new run starts.
@@ -151,7 +171,7 @@ stops and results without opening another page. The app opens on the studio.
   header shows the check and whether a run works. The run strip shows each run, each task with
   its state and reason, and each result that a task kept. After a restart, the selection and the
   states of the runs stay (010).
-- **Data**: the selection, the widths, the open panels, the fold of the run strip and the fold of the node panel stay on this computer. They do not sync
+- **Data**: the selection, the widths, the open panels, the height and the fold of the run strip and the fold of the node panel stay on this computer. They do not sync
   (019), and no export holds them (014). The cache of a linked client holds what 012 says.
 - **Words**: "Studio" and "Run strip" go in docs/glossary.md, in English and Korean.
 
@@ -178,6 +198,21 @@ stops and results without opening another page. The app opens on the studio.
 - Click a node: the node panel floats over the top right corner of the canvas, and the canvas
   keeps its full width. Press the fold button: the panel shows only its header. Click another
   node: its panel opens folded. Quit and open the app again: the panel still opens folded.
+- Drag an empty part of the canvas far to the left and up: the view moves past the graph, and
+  the graph can go off the screen. Scroll with two fingers: the view moves. Pinch, or press
+  Ctrl with the wheel: the zoom changes around the pointer, and the zoom card shows the new
+  value. Press the zoom value: the graph shows at 100% from its top left corner again.
+- Zoom the canvas slowly from 200% to 25%. At each zoom, measure the space between two dots, from
+  centre to centre. The space is 12 px or more. When not every dot shows, the space is less than
+  24 px. A dot has the same size at each zoom.
+- At 200% the space is 32 px, and no dot shows between two dots of the grid. At 100% the space
+  is 16 px, and at 75% it is 12 px. At 74%, 50%, 37% and 25% the space is 16 px or more and less
+  than 24 px.
+- At 50%, drag the view far in each direction: the same dots show, and they move with the graph.
+  Zoom out to 25%: each dot that shows is at the place of a dot that showed at 50%. Zoom around
+  the pointer: the dots zoom with the graph.
+- Drag the top edge of the run strip up: the strip gets higher and the canvas gets lower. Quit
+  and open the app again: the strip has the same height.
 - Press the Tasks button: the centre column shows the tasks page, and the list and the chat stay.
   Pick a card: the open workflow shows again.
 - Press "New workflow" in the header of the list and type "Weekly": the new workflow is selected,

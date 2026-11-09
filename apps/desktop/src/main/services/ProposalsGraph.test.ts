@@ -245,6 +245,27 @@ describe("the backup model of a node (spec 006; docs/spec-questions.md, B6)", ()
   })
 })
 
+describe("the silent limit of a node (spec 010, Silent limit of a node)", () => {
+  test("an accepted graph change keeps the limit of a node that stays; a new node follows the settings", async () => {
+    const t = await setup()
+    const node1 = (await t.graph()).nodes[0]
+    await t.w((x) => x.updateNode(node1?.id ?? "", { silentLimit: 30 }))
+    const id = await t.ok(t.addNode())
+    await t.p((x) => x.accept(id))
+    expect((await t.graph()).nodes.map((n) => n.silentLimit)).toEqual([30, "follow", "follow"])
+  })
+
+  test("the user changes the limit while a proposal waits: Accept finds the graph changed and applies nothing", async () => {
+    const t = await setup()
+    const node1 = (await t.graph()).nodes[0]
+    const id = await t.ok(t.addNode())
+    await t.w((x) => x.updateNode(node1?.id ?? "", { silentLimit: 30 }))
+    await t.p((x) => x.accept(id))
+    expect((await t.graph()).nodes).toHaveLength(2)
+    expect((await t.view()).log[0]).toMatchObject({ id, state: "failed" })
+  })
+})
+
 describe("the account of a node (spec 002: only a model that the account of the node offers)", () => {
   test("a graph change that moves a node to another account is refused", async () => {
     const t = await setup()

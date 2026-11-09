@@ -1,5 +1,6 @@
 import {
   clampPanelWidth,
+  clampStripHeight,
   LIST_DOCK_MIN,
   NARROW_WIDTH,
   type Page,
@@ -50,6 +51,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
   })
   /** The open settings section, or undefined when settings are closed. Not kept between runs. */
   const [settingsSection, setSettingsSection] = createSignal<string>()
+  /** The workflow whose vault opens next. The workflow view takes it and clears it. */
+  const [vaultRequest, setVaultRequest] = createSignal<string>()
 
   return {
     ui,
@@ -61,6 +64,26 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     settingsSection,
     openSettings: (section = "general") => setSettingsSection(section),
     closeSettings: () => setSettingsSection(undefined),
+    vaultRequest,
+    /**
+     * Opens the vault of a workflow (spec 020, flow 4): the workflow opens with its Secrets
+     * tab, and settings close. Only this computer shows the vault.
+     */
+    openVault: (workflowId: string) => {
+      const id = server()?.id
+      if (id)
+        update({
+          places: { ...ui.places, [id]: { kind: "workflow", id: workflowId } },
+          page: "workflows",
+        })
+      setSettingsSection(undefined)
+      setVaultRequest(workflowId)
+    },
+    takeVaultRequest: () => {
+      const next = vaultRequest()
+      setVaultRequest(undefined)
+      return next
+    },
     selectServer: (serverId: string) => update({ serverId }),
     /** Opens a workflow. */
     selectPlace: (ref: PlaceRef) => {
@@ -87,6 +110,9 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** The run strip is folded to its tab row (spec 001). */
     stripFolded: () => ui.stripFolded,
     selectStripFolded: (stripFolded: boolean) => update({ stripFolded }),
+    /** The height of the run strip (spec 001). */
+    stripHeight: () => ui.stripHeight,
+    selectStripHeight: (height: number) => update({ stripHeight: clampStripHeight(height) }),
     /** The node panel is folded to its header (spec 001). */
     nodePanelFolded: () => ui.nodePanelFolded,
     selectNodePanelFolded: (nodePanelFolded: boolean) => update({ nodePanelFolded }),

@@ -52,11 +52,6 @@ const Card = (props: { flow: Workflow }) => {
           <Trash2 size={16} />
         </IconButton>
       </div>
-      <Show when={props.flow.running}>
-        <p class={styles.hint} role="status" data-testid="workflow-card-readonly">
-          {t("workflows.readonly")}
-        </p>
-      </Show>
       <dl class={styles.facts}>
         <div>
           <dt class={styles.hidden}>{t("workflows.nodes", { n: props.flow.nodeCount })}</dt>

@@ -8,6 +8,8 @@ import {
   OPTIONS_MIN,
   PERMISSION_LEVELS,
   type PermissionLevel,
+  SILENT_LIMITS,
+  type SilentLimit,
   sameSource,
   type WorkflowDetail,
   type WorkflowNode,
@@ -41,6 +43,11 @@ const Field = (props: { label: string; hint?: string; children: JSX.Element }) =
   </div>
 )
 
+/**
+ * The side panel of one node (spec 010, flow 2): name, prompt, provider, model, reasoning level,
+ * permission level, silent limit and the connections of a text node; question, threshold, options
+ * and the target of each option of a decision node. A change saves when the field loses focus.
+ */
 export const NodePanel = (props: {
   workflow: WorkflowDetail
   node: WorkflowNode
@@ -396,6 +403,33 @@ export const NodePanel = (props: {
                 {(level) => (
                   <option value={level} selected={props.node.permission === level}>
                     {t(levelKey(level))}
+                  </option>
+                )}
+              </For>
+            </select>
+          </Field>
+          <Field label={t("node.silentLimit")} hint={t("node.silentLimit.hint")}>
+            <select
+              class={styles.control}
+              aria-label={t("node.silentLimit")}
+              data-testid="node-silent-limit"
+              value={String(props.node.silentLimit)}
+              onChange={(e) =>
+                void patch({
+                  silentLimit:
+                    e.currentTarget.value === "follow"
+                      ? "follow"
+                      : (Number(e.currentTarget.value) as SilentLimit),
+                })
+              }
+            >
+              <option value="follow">{t("node.silentLimit.follow")}</option>
+              <For each={SILENT_LIMITS}>
+                {(minutes) => (
+                  <option value={minutes} selected={props.node.silentLimit === minutes}>
+                    {minutes === 0
+                      ? t("settings.silentLimit.never")
+                      : t("settings.silentLimit.option", { count: minutes })}
                   </option>
                 )}
               </For>

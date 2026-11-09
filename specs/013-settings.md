@@ -10,7 +10,8 @@ The user sets the app up the way they like in one place.
   workspace folder, the step limit of a task (a whole number from 20 to 2000; the default is 300;
   see 005), "While a reply is written, new messages" (see 003, "Messages during a turn"), and the
   silent limit: how long a turn may show no sign of life before the app stops it (see 005). The
-  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
+  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never. A text node can have its own
+  silent limit in place of this one (010).
   - The default workspace folder is the folder in which a new workflow gets its own empty folder
     (007, 010). A change counts for new workflows only. A workflow that exists keeps its folder.
   - Two more settings are here. "Compact long chats automatically" is on or off; the default is on
@@ -35,9 +36,9 @@ The user sets the app up the way they like in one place.
 - **Decision model**: the fast model for decision nodes, computer use and permission checks. See
   "Decision model".
 - **Token savings**: three switches that cut repeated work in long runs, off at first. See 026.
-- **Permissions**: the rules that allow or deny steps, the action log (see 007), the saved
-  secrets, and the switch "Allow saved secrets on this computer and the local network" (see
-  020).
+- **Permissions**: the rules that allow or deny steps, the action log (see 007), the overview of
+  the secrets vaults of the workflows (see 020), and the switch "Allow saved secrets on this
+  computer and the local network" (see 020).
 - **Skills**: the saved instructions that the user calls with a slash, and that a node prompt can
   include. See 017.
 - **Connections**: the outside tools that text nodes can use. See 018. A built-in connection has no

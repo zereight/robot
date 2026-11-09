@@ -32,6 +32,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
 | Tool search | The step "Search tools", with which an agent finds the tools of its connections when it may use more than 20 (018). | 도구 검색 (proposed) | lookup, discover, browse |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
+| Vault | The saved secrets and saved logins of one workflow, in its Secrets tab (020). | 보관함 (proposed) | safe, store |
 | Saved login | A user name and a password for a site, which the browser of an agent fills in. The model never sees them (020). | 저장된 로그인 (proposed) | credential, account |
 | Model account | A provider or a vendor program that the user signed in to (006). | 모델 계정 | provider (in interface text), subscription |
 | Backup model | The model that an agent uses while its main model is held (006). | 백업 모델 (proposed) | fallback, failover |

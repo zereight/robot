@@ -221,7 +221,8 @@ its Retry shows no retry note.
 ## Silent turns
 
 - A turn is silent when the model or the program shows no sign of life for the silent limit. The
-  limit is 10 minutes. The user can change it in Settings (see 013).
+  limit is 10 minutes. The user can change it in Settings (see 013). A text node can have its own
+  silent limit (010). Then a turn of that node uses the limit of the node.
 - A sign of life is a new part of the reply, new thinking, a tool step that starts or ends, an
   approval request, or a question.
 - The clock starts when the app hands the request over. It stops, and starts again at 0 after
@@ -235,7 +236,10 @@ its Retry shows no retry note.
   answer for 1 minute." when N is 1). The failed row has Retry (003).
 - A failed task by this rule is like any failed task: one notification of the kind "task failed"
   (015).
-- The limit holds for every turn: a turn of a node and a turn of the chat.
+- The limit holds for every turn: a turn of a node and a turn of the chat. A turn of the chat
+  always uses the limit of Settings.
+- A turn takes its limit when it starts. A change of the setting or of the node during the turn
+  counts for the next turn only.
 
 ### Quiet line
 

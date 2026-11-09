@@ -3,11 +3,14 @@ import { Schema } from "effect"
 import {
   clampPanelWidth,
   clampPlaceListWidth,
+  clampStripHeight,
   clampWorkflowSideWidth,
   defaultUiState,
   PANEL_DEFAULT,
   PANEL_MAX,
   PANEL_MIN,
+  STRIP_DEFAULT,
+  STRIP_MIN,
   UiState,
   WORKFLOW_CANVAS_MIN,
   WORKFLOW_HANDLE_WIDTH,
@@ -67,5 +70,14 @@ describe("ui state", () => {
     expect(clampPanelWidth(401.4)).toBe(401)
     expect(Schema.is(UiState)({ ...defaultUiState, panelWidth: PANEL_MIN - 1 })).toBe(false)
     expect(Schema.is(UiState)({ ...defaultUiState, panelWidth: PANEL_MAX + 1 })).toBe(false)
+  })
+
+  test("the run strip keeps its lowest height, and leaves 160 px for the canvas", () => {
+    expect(defaultUiState.stripHeight).toBe(STRIP_DEFAULT)
+    expect(clampStripHeight(40)).toBe(STRIP_MIN)
+    expect(clampStripHeight(400.4, 600)).toBe(400)
+    expect(clampStripHeight(900, 600)).toBe(440)
+    expect(clampStripHeight(900, 200)).toBe(STRIP_MIN)
+    expect(Schema.is(UiState)({ ...defaultUiState, stripHeight: STRIP_MIN - 1 })).toBe(false)
   })
 })

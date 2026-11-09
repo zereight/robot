@@ -32,6 +32,7 @@ import { checkStateKey } from "./labels.ts"
 import { MemoryPanel } from "./MemoryPanel.tsx"
 import { RunStrip, type StripMode } from "./RunStrip.tsx"
 import type { createRunsState } from "./runsState.ts"
+import { VaultPanel } from "./VaultPanel.tsx"
 import { WorkflowSettings } from "./WorkflowSettings.tsx"
 import styles from "./workflows.module.css"
 
@@ -57,6 +58,13 @@ export const WorkflowView = (props: {
   const local = () => showsProposals(ui.server()?.kind)
   const tabs = createMemo(() => workflowTabs(local()))
   const runs = () => props.runs
+  createEffect(() => {
+    const wanted = ui.vaultRequest()
+    if (wanted !== undefined && wanted === props.id) {
+      setTab("secrets")
+      ui.takeVaultRequest()
+    }
+  })
   const [selected, setSelected] = createSignal<string>()
   const [strip, setStrip] = createSignal<StripMode>("runs")
   const [nodeSelected, setNodeSelected] = createSignal<string>()
@@ -118,7 +126,10 @@ export const WorkflowView = (props: {
   }
   /** Starts a run by hand and shows it in the strip (spec 010). */
   const start = () =>
-    void call("runs.start", { workflowId: props.id, ...(trigger() ? { trigger: trigger() } : {}) })
+    void call("runs.start", {
+      workflowId: props.id,
+      ...(trigger() ? { trigger: trigger() } : {}),
+    })
       .then((run) => {
         setSelected(run.id)
         showStrip("runs")
@@ -154,7 +165,7 @@ export const WorkflowView = (props: {
             </span>
           )}
         </Show>
-        <span class={shell.headerSpacer} />
+        <span class={shell.headerSpacer} data-testid="workflow-header-spacer" />
         <Show when={detail()}>
           <Show when={runs().active().length > 0}>
             <Button variant="danger" onClick={stop} data-testid="workflow-stop">
@@ -220,7 +231,12 @@ export const WorkflowView = (props: {
           <Show when={detail()}>
             {(flow) => (
               <>
-                <div class={graph.tabs} role="tablist" aria-label={t("workflows.tabs")}>
+                <div
+                  class={graph.tabs}
+                  role="tablist"
+                  aria-label={t("workflows.tabs")}
+                  data-testid="workflow-tabs"
+                >
                   <For each={tabs()}>
                     {(name) => (
                       <button
@@ -257,6 +273,9 @@ export const WorkflowView = (props: {
                       onOpenProposals={() => openImprovement(flow().id)}
                     />
                   </Match>
+                  <Match when={tab() === "secrets"}>
+                    <VaultPanel workflowId={flow().id} />
+                  </Match>
                   <Match when={tab() === "improvement" && local()}>
                     <ImprovementPanel
                       workflow={flow()}
@@ -287,6 +306,8 @@ export const WorkflowView = (props: {
               onMode={showStrip}
               folded={ui.stripFolded()}
               onFold={ui.selectStripFolded}
+              height={ui.stripHeight()}
+              onHeight={ui.selectStripHeight}
               onSelectNode={(id) => {
                 setTab("graph")
                 setNodeSelected(id)

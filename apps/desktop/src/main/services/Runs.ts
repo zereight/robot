@@ -1126,8 +1126,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const signal = controller.signal
 
         // The silent limit (spec 005): no sign of life for the limit stops the turn. The clock stops
-        // while the task waits for the user and while a tool step runs.
-        const limitMs = setting.silentLimit * runClock.minuteMs
+        // while the task waits for the user and while a tool step runs. A turn of a node takes the
+        // limit of the node, or the setting when the node follows it (spec 010). The turn keeps it:
+        // a change during the turn counts for the next turn only.
+        const minutes = node.silentLimit === "follow" ? setting.silentLimit : node.silentLimit
+        const limitMs = minutes * runClock.minuteMs
         let paused = 0
         let timer: ReturnType<typeof setTimeout> | null = null
         // The quiet line shows when the turn shows no sign of life for the quiet time. Its clock
@@ -1152,7 +1155,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 runId: n.run.id,
                 node: node.number,
                 event: "no_answer",
-                minutes: setting.silentLimit,
+                minutes,
               })
               abort("silent")
             }, limitMs)
@@ -1546,8 +1549,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         } catch {
           flush.now()
           // The task stopped: Stop, the silent limit or the step limit.
-          if (endedBy === "silent")
-            return fail(`silent:${setting.silentLimit}`, silentText(setting.silentLimit))
+          if (endedBy === "silent") return fail(`silent:${minutes}`, silentText(minutes))
           if (endedBy === "steps")
             return fail(`steps:${setting.stepLimit}`, stepLimitText(setting.stepLimit))
           return { state: "cancelled", code: "user", text: "Stopped by you", result: result.text }

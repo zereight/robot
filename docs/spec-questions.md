@@ -1155,9 +1155,32 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 001 | Where does the node panel dock when the window is narrow but at least 800 px wide: at the right edge of the canvas, or as an overlay? At which width does it change? | Open. 001 names the docked panel and the overlay under 800 px only. |
 | 001 | At which window width does the workflow list become an overlay? A docked list of 280 px with a panel of 320 px leaves no room for the centre under about 1000 px. | The spec states 1100 px: the list docks at 1100 px and wider, and opens as an overlay from 800 to 1100 px. To confirm. |
 
+## CG1: canvas dot grid (open points for 001)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 001 | How far apart are the dots on the screen at 100%, from centre to centre? The examples of 001 (every dot at 75%, every second dot at 50%, every fourth dot at 25%) are true only for a distance of 16 px or more and less than 24 px. The zooms where fewer dots show follow from this distance. | The spec states 16 px, the distance that the canvas shows now. With 16 px, every second dot shows under 75%, and every fourth dot shows under 37.5%. |
+| 001 | What size and colour does a dot have on the screen? 001 says only that the size does not change with the zoom. | The size and colour that the canvas shows now: a round dot 2 px across, in the colour of the borders. To confirm. |
+| 001 | When the zoom passes the point where every second or every fourth dot shows, do the dots that go away go at once, or do they fade? 000 and 039 name no motion for the grid. | At once, with no motion. To confirm. |
+| 001 | Above 100% the dots get farther apart, to 32 px at 200%. Does the canvas add dots between them at a high zoom? | No. The spec states that the canvas shows no dot between two dots of the grid, so the grid gets wider as the zoom goes up. To confirm. |
+
 ## CH1: what the chat may change
 
 | Spec | Question | Choice for now |
 | --- | --- | --- |
 | 002, 010 | When the turn has both the direct tools and the propose tools, which path does a change of the graph or of a node prompt take: a direct change, or a proposal that waits? | A change that the user asks for goes direct; a proposal is for a better way that the responsible document sees by itself, after a run or from feedback. The prompt states this. To confirm. |
 | 002, 010 | Does the responsible document follow a no-give-up discipline: exhaust every tool before saying it cannot, act before asking, verify a change by reading it back? Inspired by tanweai/pua, in our own words; the repo has no license grant, so no text is copied. | Yes for a chat turn with full rights; the prompt states it. Read-only and no-switch turns are exempt. To confirm. |
+
+## V1: each workflow has its own vault (open points for 001, 013, 020)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 020, 001 | Where does the user open the vault: a Secrets tab in the workflow view, or only from Settings? | A Secrets tab in the workflow view. Settings holds an overview with a link to each vault. To confirm. |
+| 020, 013 | Does Settings keep any management, or is the vault the only place? | The vault is the only place. Settings shows counts and a link, and no value. To confirm. |
+| 020 | Can the user add a secret by hand in the vault? The old spec said the user cannot add in Settings. | Yes, in the vault only. To confirm. |
+| 020 | What does Test do: a real GET request to the origin with the secret, or a check with no request? | A real GET request to the origin. It shows the status code or the reason, and never the value. To confirm. |
+| 020 | Do logins get a Test button too? | No, only secrets. A login is tested when a node fills it. To confirm. |
+| 020, 010 | Does a renamed workflow keep its vault, and does a duplicate copy it? | A rename keeps the vault with the same rows. A duplicate starts with an empty vault. To confirm. |
+| 020, 012, 011 | What does a linked device or the phone show for the vault? | One muted line. Only the computer shows and manages the vault. To confirm. |
+| 020, glossary | What is the Korean word for Vault? | 보관함 (proposed). To confirm. |
+| 020, 007 | When the user renames a secret or a login, do the permission rules that name it move to the new name, or stay on the old name? | They move to the new name, so a Deny rule still stops the renamed row and the old name keeps no rule. To confirm. |
