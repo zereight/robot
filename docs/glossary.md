@@ -29,6 +29,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Undone | The state of a change log row after the user pressed "Undo" on it (002). | 되돌림 (proposed) | reverted, rolled back |
 | Knowledge | Linked articles that an agent writes and reads again (016). | 지식 | memory, wiki |
 | Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the Soul of an agent (소울). | 스킬 | plugin, tool |
+| Skill diet | The cuts that the app makes to the draft of a skill from a workflow: template words, empty and repeated lines, secrets and a length limit of 4000 characters (017). | 스킬 다이어트 (proposed) | compress, optimize, summarize (the diet does not rewrite) |
+| Skill check | The list of facts about a saved skill: saved, on, listed, slash, loads, no secret, lean. Each shows "OK" or a reason (017). It does not test a model. | 스킬 확인 (proposed) | test, eval, verify, validate (the check does not prove that a model picks the skill) |
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
 | Tool search | The step "Search tools", with which an agent finds the tools of its connections when it may use more than 20 (018). | 도구 검색 (proposed) | lookup, discover, browse |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
