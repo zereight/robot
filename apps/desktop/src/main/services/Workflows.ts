@@ -170,6 +170,7 @@ interface WorkflowRow {
   document: string
   folder: string
   permission: PermissionLevel
+  new_worktree: number
   self_improvement: number
   created_at: number
   updated_at: number
@@ -352,7 +353,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           serverId: r.server_id,
           name: r.name,
           folder: r.folder,
-          newWorktree: false,
+          newWorktree: r.new_worktree === 1,
           permission: r.permission,
           selfImprovement: r.self_improvement === 1,
           proposals:

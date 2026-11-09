@@ -157,6 +157,9 @@ interface RunRow {
   reason_code: string | null
   started_at: number
   finished_at: number | null
+  worktree_path: string | null
+  worktree_branch: string | null
+  worktree_removed: number
 }
 
 interface TaskRow {
@@ -432,7 +435,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           reasonText: r.reason,
           startedAt: r.started_at,
           finishedAt: r.finished_at,
-          worktree: null,
+          worktree:
+            r.worktree_path !== null && r.worktree_branch !== null
+              ? {
+                  path: r.worktree_path,
+                  branch: r.worktree_branch,
+                  removed: r.worktree_removed === 1,
+                }
+              : null,
           ended: r.state === "done" ? total : (endedTasks ?? 0),
           total,
         }

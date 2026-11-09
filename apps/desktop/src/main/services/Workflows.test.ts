@@ -808,3 +808,20 @@ describe("a delete (spec 010)", () => {
     expect((await t.w((x) => x.list(t.server.id))).map((f) => f.name)).toEqual(["Stay"])
   })
 })
+
+describe("the switch Work in a new worktree (spec 007)", () => {
+  test("a new workflow has the switch off", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    expect(flow.newWorktree).toBe(false)
+    expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(false)
+    expect((await t.w((x) => x.list(t.server.id)))[0]?.newWorktree).toBe(false)
+  })
+
+  test("the switch is read from the database", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.sql("UPDATE workflow SET new_worktree = 1 WHERE id = ?", flow.id)
+    expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(true)
+  })
+})

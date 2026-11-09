@@ -1751,3 +1751,34 @@ describe("the tools of connections for a text node (spec 018)", () => {
     ).toEqual(["user", "allow_rule"])
   })
 })
+
+describe("the worktree of a run (spec 007, New worktree)", () => {
+  test("a run with no worktree shows none", async () => {
+    const t = await setup()
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'done', 'hand', 1)",
+      t.flow.id,
+    )
+    expect((await t.get("r1")).worktree).toBeNull()
+  })
+
+  test("a run with worktree columns shows path, branch and removed", async () => {
+    const t = await setup()
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch)
+       VALUES ('r1', ?, 'done', 'hand', 1, '/tmp/wt-1', 'robot/report-20261109-120000')`,
+      t.flow.id,
+    )
+    expect((await t.get("r1")).worktree).toEqual({
+      path: "/tmp/wt-1",
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    await t.sql("UPDATE run SET worktree_removed = 1 WHERE id = 'r1'")
+    expect((await t.get("r1")).worktree).toEqual({
+      path: "/tmp/wt-1",
+      branch: "robot/report-20261109-120000",
+      removed: true,
+    })
+  })
+})
