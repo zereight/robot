@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto"
-import type { CardAnswer, RunCard, SensitiveLabel } from "@robot/shared"
+import {
+  APPROVAL_COMMENT_MAX,
+  type CardAnswer,
+  charLength,
+  type RunCard,
+  type SensitiveLabel,
+} from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import type { Actor } from "./actor.ts"
 import { Database } from "./Database.ts"
@@ -7,10 +13,6 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 
 /**
- * The cards in the chat that wait for the user (spec 003, flow 6; spec 007): an approval card, a
- * question card and the pick of a decision node. A card of a node belongs to a task. A card of the
- * chat (the guarded feedback) has no task.
- *
  * A card waits for one answer. Stop, and the end of the turn or of the task, close it and it goes
  * away. After an app restart no card is left that nobody answered: it is deleted, and so are the
  * tasks that waited for it (spec 005, 007).
@@ -25,6 +27,7 @@ export interface CardAsk {
   readonly nodeName: string | null
   readonly kind: RunCard["kind"]
   readonly summary: string
+  readonly input?: string | null
   readonly step: RunCard["step"]
   readonly once: boolean
   readonly outside: RunCard["outside"]
@@ -46,9 +49,11 @@ export interface CardAsk {
 /** What the answer to a card is. A card of a text answer gives the text. */
 export interface CardReply {
   readonly answer: string
+  readonly answeredAt: number
   readonly inChat: boolean
   /** The name of the linked device that answered, or null for this computer (spec 012). */
   readonly device?: string | null
+  readonly comment?: string
 }
 
 export interface CardsService {
@@ -127,6 +132,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           nodeName: p.nodeName,
           kind: r.kind as RunCard["kind"],
           summary: p.summary,
+          input: p.input ?? null,
           step: p.step,
           once: p.once,
           outside: p.outside,
@@ -159,6 +165,7 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
             nodeNumber: a.nodeNumber,
             nodeName: a.nodeName,
             summary: a.summary,
+            input: a.input ?? null,
             step: a.step,
             once: a.once,
             outside: a.outside,
@@ -203,19 +210,32 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
           changed(a.workflowId, a.runId)
         })
 
-      const close = (id: string, answer: string, inChat: boolean, device: string | null = null) => {
+      const close = (
+        id: string,
+        answer: string,
+        inChat: boolean,
+        device: string | null = null,
+        comment?: string,
+      ) => {
         const row = db.get<Row>("SELECT * FROM task_card WHERE id = ?", id)
         const waiter = waiters.get(id)
         if (!row || !waiter || row.answered_at !== null) return false
         waiters.delete(id)
+        const answeredAt = Date.now()
         db.run(
           "UPDATE task_card SET answer = ?, answered_in_chat = ?, answered_at = ? WHERE id = ?",
           answer,
           inChat ? 1 : 0,
-          Date.now(),
+          answeredAt,
           id,
         )
-        waiter.resolve({ answer, inChat, device })
+        waiter.resolve({
+          answer,
+          answeredAt,
+          inChat,
+          device,
+          ...(comment === undefined ? {} : { comment }),
+        })
         changed(row.workflow_id, row.run_id)
         return true
       }
@@ -244,6 +264,11 @@ export class Cards extends Context.Service<Cards, CardsService>()("robot/main/Ca
               // A linked device cannot take or give back the browser of this computer (spec 012).
               if (actor) return yield* new AppError({ code: "not_allowed" })
               close(cardId, "given_back", false)
+            } else if (answer.kind === "verdict") {
+              const comment = answer.comment.trim()
+              if (charLength(comment) > APPROVAL_COMMENT_MAX)
+                return yield* new AppError({ code: "invalid_input" })
+              close(cardId, answer.verdict, false, actor?.name ?? null, comment)
             } else {
               if (!waiter.payload.options.some((o) => o.id === answer.optionId))
                 return yield* new AppError({ code: "invalid_input" })

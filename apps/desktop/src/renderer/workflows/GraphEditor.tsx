@@ -1,4 +1,5 @@
 import {
+  type ConnectionSource,
   type GraphVersion,
   type MessageKey,
   type ModelChoice,
@@ -15,6 +16,7 @@ import {
   Minus,
   Plus,
   Split,
+  Stamp,
   TriangleAlert,
   X,
 } from "lucide-solid"
@@ -39,6 +41,8 @@ import { Spinner } from "../ui/Spinner.tsx"
 import { showToast } from "../ui/toast.ts"
 import { marksOf } from "./checkView.ts"
 import styles from "./graph.module.css"
+import { type LabelBox, labelBox, labelPlace } from "./labelPlace.ts"
+import { approvalOutputKey, nodeKindKey } from "./labels.ts"
 import { NodePanel } from "./NodePanel.tsx"
 
 const NODE_W = 176
@@ -197,7 +201,12 @@ export const GraphEditor = (props: {
         workflowId: props.workflow.id,
         node: {
           kind,
-          name: t(kind === "text" ? "graph.node.new.text" : "graph.node.new.decision"),
+          name:
+            kind === "text"
+              ? t("graph.node.new.text")
+              : kind === "decision"
+                ? t("graph.node.new.decision")
+                : t("graph.node.new.approval"),
           ...placeFor(graph().nodes.length),
           ...(kind === "decision"
             ? {
@@ -205,6 +214,7 @@ export const GraphEditor = (props: {
                 options: [t("graph.option.yes"), t("graph.option.no")],
               }
             : {}),
+          ...(kind === "approval" ? { question: t("graph.node.new.approval.question") } : {}),
         },
       })
       showToast("success", "workflows.saved")
@@ -293,6 +303,32 @@ export const GraphEditor = (props: {
       y2,
     }
   }
+
+  const labelText = (from: WorkflowNode | undefined, s: ConnectionSource) => {
+    if (s.kind === "verdict") return t(approvalOutputKey(s.verdict))
+    if (s.kind !== "option" || from?.kind !== "decision") return undefined
+    return from.options.find((o) => o.id === s.optionId)?.label
+  }
+
+  const labelAts = createMemo(() => {
+    const out = new Map<string, { x: number; y: number }>()
+    const placed: LabelBox[] = []
+    const boxes = graph().nodes.map((n) => {
+      const q = positionOf(n)
+      return { x: q.x, y: q.y, w: NODE_W, h: NODE_H }
+    })
+    for (const c of graph().connections) {
+      const from = graph().nodes.find((n) => n.id === c.from)
+      const to = graph().nodes.find((n) => n.id === c.to)
+      if (!from || !to) continue
+      const text = labelText(from, c.source)
+      if (text === undefined) continue
+      const at = labelPlace(lineFor(from, to), text, boxes, placed)
+      out.set(c.id, at)
+      placed.push(labelBox(at.x, at.y, text))
+    }
+    return out
+  })
 
   // On an empty part of the canvas, one pointer pans the view and two pointers pinch it; a click
   // clears the selection. The wheel pans, and with Ctrl or Cmd it zooms (a trackpad pinch).
@@ -498,11 +534,12 @@ export const GraphEditor = (props: {
                   {(c) => {
                     const from = () => graph().nodes.find((n) => n.id === c().from)
                     const to = () => graph().nodes.find((n) => n.id === c().to)
-                    const label = () => from()?.options.find((o) => o.id === c().optionId)?.label
+                    const label = () => labelText(from(), c().source)
                     return (
                       <Show when={from() && to()}>
                         {(() => {
                           const l = () => lineFor(from() as WorkflowNode, to() as WorkflowNode)
+                          const at = () => labelAts().get(c().id)
                           return (
                             <g data-testid="graph-line">
                               <path
@@ -512,15 +549,17 @@ export const GraphEditor = (props: {
                                 stroke-width="1.5"
                                 marker-end="url(#arrow)"
                               />
-                              <Show when={label()}>
-                                <text
-                                  class={styles.lineLabel}
-                                  x={(l().x1 + l().x2) / 2}
-                                  y={(l().y1 + l().y2) / 2 - 6}
-                                  text-anchor="middle"
-                                >
-                                  {label()}
-                                </text>
+                              <Show when={at()}>
+                                {(p) => (
+                                  <text
+                                    class={styles.lineLabel}
+                                    x={p().x}
+                                    y={p().y}
+                                    text-anchor="middle"
+                                  >
+                                    {label()}
+                                  </text>
+                                )}
                               </Show>
                             </g>
                           )
@@ -580,11 +619,18 @@ export const GraphEditor = (props: {
                     <span class={styles.nodeKind} data-testid="graph-node-kind">
                       <Show
                         when={node().kind === "decision"}
-                        fallback={<FileText size={12} aria-hidden="true" />}
+                        fallback={
+                          <Show
+                            when={node().kind === "approval"}
+                            fallback={<FileText size={12} aria-hidden="true" />}
+                          >
+                            <Stamp size={12} aria-hidden="true" />
+                          </Show>
+                        }
                       >
                         <Split size={12} aria-hidden="true" />
                       </Show>
-                      {t(node().kind === "text" ? "graph.kind.text" : "graph.kind.decision")}
+                      {t(nodeKindKey(node().kind))}
                     </span>
                   </button>
                 )}
@@ -611,6 +657,13 @@ export const GraphEditor = (props: {
             >
               <Split size={14} aria-hidden="true" />
               <span class={styles.toolbarLabel}>{t("graph.add.decision")}</span>
+            </Button>
+            <Button
+              disabled={readOnly()}
+              onClick={() => void add("approval")}
+              data-testid="graph-add-approval"
+            >
+              {t("graph.add.approval")}
             </Button>
             <Button
               onClick={() => setShowVersions(!showVersions())}

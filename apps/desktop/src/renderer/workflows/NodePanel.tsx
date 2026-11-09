@@ -1,4 +1,6 @@
 import {
+  APPROVAL_OUTPUTS,
+  type ConnectionSource,
   isLooser,
   type MessageKey,
   type ModelChoice,
@@ -8,6 +10,7 @@ import {
   type PermissionLevel,
   SILENT_LIMITS,
   type SilentLimit,
+  sameSource,
   type WorkflowDetail,
   type WorkflowNode,
 } from "@robot/shared"
@@ -22,6 +25,7 @@ import { Keyed } from "../ui/Keyed.tsx"
 import { showToast } from "../ui/toast.ts"
 import { BackupField } from "./BackupField.tsx"
 import styles from "./graph.module.css"
+import { approvalOutputKey, nodeKindKey } from "./labels.ts"
 
 const levelKey = (level: PermissionLevel) => `permission.level.${level}` as MessageKey
 const effortKey = (effort: string) => `node.effort.${effort}` as MessageKey
@@ -86,13 +90,14 @@ export const NodePanel = (props: {
     PERMISSION_LEVELS.filter((l) => !isLooser(l, props.workflow.permission))
   const others = () => graph().nodes.filter((n) => n.id !== props.node.id)
   const outgoing = () =>
-    graph().connections.filter((c) => c.from === props.node.id && c.optionId === null)
+    graph().connections.filter((c) => c.from === props.node.id && c.source.kind === "text")
   const nodeOf = (id: string) => graph().nodes.find((n) => n.id === id)
-  const targetOf = (optionId: string) => graph().connections.find((c) => c.optionId === optionId)
+  const targetOf = (key: ConnectionSource) =>
+    graph().connections.find((c) => c.from === props.node.id && sameSource(c.source, key))
 
-  const setTarget = (optionId: string, to: string) =>
+  const setTarget = (key: ConnectionSource, to: string) =>
     guard(async () => {
-      const existing = targetOf(optionId)
+      const existing = targetOf(key)
       if (existing) {
         if (existing.to === to) return
         await call("workflows.disconnect", { id: existing.id })
@@ -102,7 +107,7 @@ export const NodePanel = (props: {
           workflowId: props.workflow.id,
           from: props.node.id,
           to,
-          optionId,
+          source: key,
         })
     })
 
@@ -111,14 +116,14 @@ export const NodePanel = (props: {
       class={styles.panel}
       aria-label={t("graph.panel.title", {
         number: props.node.number,
-        kind: t(props.node.kind === "text" ? "graph.kind.text" : "graph.kind.decision"),
+        kind: t(nodeKindKey(props.node.kind)),
       })}
       data-testid="node-panel"
     >
       <h3>
         {t("graph.panel.title", {
           number: props.node.number,
-          kind: t(props.node.kind === "text" ? "graph.kind.text" : "graph.kind.decision"),
+          kind: t(nodeKindKey(props.node.kind)),
         })}
       </h3>
       <fieldset disabled={props.readOnly} class={styles.fields}>
@@ -135,7 +140,63 @@ export const NodePanel = (props: {
         <Show
           when={props.node.kind === "text"}
           fallback={
-            <>
+            <Show
+              when={props.node.kind === "decision"}
+              fallback={
+                <>
+                  <p class={styles.hintText}>{t("node.approvalHint")}</p>
+                  <Field label={t("node.question")}>
+                    <textarea
+                      class={styles.control}
+                      value={question()}
+                      aria-label={t("node.question")}
+                      data-testid="node-question"
+                      onChange={(e) => void patch({ question: e.currentTarget.value })}
+                    />
+                  </Field>
+                  <div class={styles.field}>
+                    <span class={styles.fieldLabel}>{t("node.outputs")}</span>
+                    <For each={[...APPROVAL_OUTPUTS]}>
+                      {(output) => (
+                        <div class={styles.outputRow} data-testid="node-option">
+                          <span class={styles.outputLabel} data-testid="node-option-label">
+                            {t(approvalOutputKey(output))}
+                          </span>
+                          <select
+                            class={styles.control}
+                            aria-label={t("node.output.target", {
+                              output: t(approvalOutputKey(output)),
+                            })}
+                            data-testid="node-option-target"
+                            value={targetOf({ kind: "verdict", verdict: output })?.to ?? ""}
+                            onChange={(e) =>
+                              void setTarget(
+                                { kind: "verdict", verdict: output },
+                                e.currentTarget.value,
+                              )
+                            }
+                          >
+                            <option value="">{t("node.target.none")}</option>
+                            <Keyed each={others()} by={(n) => n.id}>
+                              {(n) => (
+                                <option
+                                  value={n().id}
+                                  selected={
+                                    targetOf({ kind: "verdict", verdict: output })?.to === n().id
+                                  }
+                                >
+                                  {n().number}. {n().name}
+                                </option>
+                              )}
+                            </Keyed>
+                          </select>
+                        </div>
+                      )}
+                    </For>
+                  </div>
+                </>
+              }
+            >
               <Field label={t("node.question")}>
                 <textarea
                   class={styles.control}
@@ -184,15 +245,22 @@ export const NodePanel = (props: {
                           class={styles.control}
                           aria-label={t("node.option.target", { n: i() + 1 })}
                           data-testid="node-option-target"
-                          value={targetOf(option().id)?.to ?? ""}
-                          onChange={(e) => void setTarget(option().id, e.currentTarget.value)}
+                          value={targetOf({ kind: "option", optionId: option().id })?.to ?? ""}
+                          onChange={(e) =>
+                            void setTarget(
+                              { kind: "option", optionId: option().id },
+                              e.currentTarget.value,
+                            )
+                          }
                         >
                           <option value="">{t("node.target.none")}</option>
                           <Keyed each={others()} by={(n) => n.id}>
                             {(n) => (
                               <option
                                 value={n().id}
-                                selected={targetOf(option().id)?.to === n().id}
+                                selected={
+                                  targetOf({ kind: "option", optionId: option().id })?.to === n().id
+                                }
                               >
                                 {n().number}. {n().name}
                               </option>
@@ -229,7 +297,7 @@ export const NodePanel = (props: {
                   </Button>
                 </div>
               </div>
-            </>
+            </Show>
           }
         >
           <Field label={t("node.prompt")} hint={t("node.prompt.hint")}>

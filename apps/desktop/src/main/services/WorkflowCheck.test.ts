@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { type CheckOutcome, NODES_MAX, type WorkflowNode } from "@robot/shared"
+import {
+  type CheckOutcome,
+  type ConnectionSource,
+  NODES_MAX,
+  type WorkflowNode,
+} from "@robot/shared"
 import { Effect } from "effect"
 import { Database } from "./Database.ts"
 import { Servers } from "./Servers.ts"
@@ -19,8 +24,11 @@ const setup = async (options: Parameters<typeof testRuntime>[0] = {}) => {
   const text = (name: string) => w((x) => x.addNode(flow.id, { kind: "text", name }))
   const decision = (name: string, options = ["Yes", "No"]) =>
     w((x) => x.addNode(flow.id, { kind: "decision", name, question: "Which?", options }))
-  const connect = (from: WorkflowNode, to: WorkflowNode, optionId: string | null = null) =>
-    w((x) => x.connect(flow.id, from.id, to.id, optionId))
+  const connect = (
+    from: WorkflowNode,
+    to: WorkflowNode,
+    source: ConnectionSource = { kind: "text" },
+  ) => w((x) => x.connect(flow.id, from.id, to.id, source))
   const check = (force = true) => run(WorkflowCheck.use((c) => c.check(flow.id, { force })))
   const card = async () => (await w((x) => x.list(server.id)))[0]
   const detail = () => w((x) => x.get(flow.id))
@@ -86,13 +94,13 @@ describe("the check of a saved workflow (spec 010, 001)", () => {
     const d = await t.decision("Ok?")
     const next = await t.text("Go")
     const other = await t.text("Stop")
-    await t.connect(d, next, d.options[0]?.id ?? null)
+    await t.connect(d, next, { kind: "option", optionId: d.options[0]?.id ?? "" })
     const outcome = await t.check()
     expect(outcome).toEqual({
       state: "problem",
       problems: [{ code: "option_unconnected", nodeId: d.id, optionId: d.options[1]?.id ?? "" }],
     })
-    await t.connect(d, other, d.options[1]?.id ?? null)
+    await t.connect(d, other, { kind: "option", optionId: d.options[1]?.id ?? "" })
     expect(await t.check()).toEqual({ state: "passed" })
   })
 
@@ -117,8 +125,14 @@ describe("the check of a saved workflow (spec 010, 001)", () => {
         options: [hostile[2] as string, hostile[4] as string],
       }),
     )
-    await t.connect(d, nodes[0] as WorkflowNode, d.options[0]?.id ?? null)
-    await t.connect(d, nodes[1] as WorkflowNode, d.options[1]?.id ?? null)
+    await t.connect(d, nodes[0] as WorkflowNode, {
+      kind: "option",
+      optionId: d.options[0]?.id ?? "",
+    })
+    await t.connect(d, nodes[1] as WorkflowNode, {
+      kind: "option",
+      optionId: d.options[1]?.id ?? "",
+    })
     await t.connect(nodes[0] as WorkflowNode, nodes[2] as WorkflowNode)
     expect(await t.check()).toEqual({ state: "passed" })
     expect((await t.card())?.check).toBe("passed")

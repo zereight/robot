@@ -3,8 +3,10 @@ import {
   type CheckOutcome,
   type CheckProblem,
   NODES_MAX,
+  type NodeKind,
   problemNodeIds,
   problemPath,
+  type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
 } from "@robot/shared"
@@ -36,7 +38,7 @@ const HOSTILE = [
 const node = (
   id: string,
   number: number,
-  kind: "text" | "decision",
+  kind: NodeKind,
   text: string,
   options: readonly string[] = [],
 ): WorkflowNode => ({
@@ -71,10 +73,10 @@ const graphWith = (
     node("j", 4, "text", text(3)),
   ],
   connections: [
-    { id: "c1", from: "d", to: "a", optionId: "d-o1" },
-    { id: "c2", from: "d", to: "b", optionId: "d-o2" },
-    { id: "c3", from: "a", to: "j", optionId: null },
-    { id: "c4", from: "b", to: "j", optionId: null },
+    { id: "c1", from: "d", to: "a", source: { kind: "option", optionId: "d-o1" } },
+    { id: "c2", from: "d", to: "b", source: { kind: "option", optionId: "d-o2" } },
+    { id: "c3", from: "a", to: "j", source: { kind: "text" } },
+    { id: "c4", from: "b", to: "j", source: { kind: "text" } },
   ],
 })
 
@@ -128,8 +130,8 @@ describe("no text of the user reaches the checker", () => {
     const loop: WorkflowGraph = {
       nodes: [node("a", 1, "text", bad), node("b", 2, "text", bad)],
       connections: [
-        { id: "c1", from: "a", to: "b", optionId: null },
-        { id: "c2", from: "b", to: "a", optionId: null },
+        { id: "c1", from: "a", to: "b", source: { kind: "text" } },
+        { id: "c2", from: "b", to: "a", source: { kind: "text" } },
       ],
     }
     const [one] = await checkSeen(loop)
@@ -156,24 +158,41 @@ describe("no text of the user reaches the checker", () => {
 interface Spec {
   /** A node: its id, and for a decision node the labels of its options. */
   readonly nodes: readonly (readonly [string, ...string[]])[]
-  /** A connection: from, to, and for a decision node the label of the option. */
+  /** A connection: from, to, and the option label for a decision node or the output for an approval node. */
   readonly edges: readonly (readonly [string, string] | readonly [string, string, string])[]
+  /** The ids of the nodes that are approval nodes. */
+  readonly approval?: readonly string[]
 }
 
-const graphOf = (spec: Spec): WorkflowGraph => ({
-  nodes: spec.nodes.map(([id, ...options], i) => ({
-    ...node(id, i + 1, options.length > 0 ? "decision" : "text", `Name ${id}`),
-    prompt: "",
-    question: "",
-    options: options.map((label) => ({ id: `${id}:${label}`, label })),
-  })),
-  connections: spec.edges.map(([from, to, option], i) => ({
-    id: `c${i}`,
-    from,
-    to,
-    optionId: option === undefined ? null : `${from}:${option}`,
-  })),
-})
+const graphOf = (spec: Spec): WorkflowGraph => {
+  const gate = new Set(spec.approval ?? [])
+  return {
+    nodes: spec.nodes.map(([id, ...options], i) => ({
+      ...node(
+        id,
+        i + 1,
+        gate.has(id) ? "approval" : options.length > 0 ? "decision" : "text",
+        `Name ${id}`,
+      ),
+      prompt: "",
+      question: gate.has(id) ? `Question ${id}` : "",
+      options: gate.has(id) ? [] : options.map((label) => ({ id: `${id}:${label}`, label })),
+    })),
+    connections: spec.edges.map(
+      ([from, to, option], i): WorkflowConnection => ({
+        id: `c${i}`,
+        from,
+        to,
+        source:
+          !gate.has(from) && option !== undefined
+            ? { kind: "option", optionId: `${from}:${option}` }
+            : gate.has(from) && (option === "approve" || option === "reject")
+              ? { kind: "verdict", verdict: option }
+              : { kind: "text" },
+      }),
+    ),
+  }
+}
 
 const problemOf = (outcome: CheckOutcome): CheckProblem => {
   if (outcome.state !== "problem") throw new Error(`Expected a problem, got ${outcome.state}`)
@@ -251,7 +270,9 @@ describe("the check of a workflow (spec 010)", () => {
     expect(problem.code).toBe("deadlock")
     expect([...problemNodeIds(problem)].sort()).toEqual(["a", "b"])
     // The shortest path: the start node runs, then no node can start.
-    expect(problemPath(problem)).toEqual([{ nodeId: "start", event: "ran", optionId: null }])
+    expect(problemPath(problem)).toEqual([
+      { nodeId: "start", event: "ran", optionId: null, output: null },
+    ])
   })
 
   test("a workflow where every node has an input has no start: it is a deadlock", async () => {
@@ -298,6 +319,67 @@ describe("the check of a workflow (spec 010)", () => {
     expect(["d:yes", "d:no"]).toContain(path[0]?.optionId ?? "")
     // The loop is named, not the node "ok" and not the nodes that wait for the loop.
     expect([...problemNodeIds(problem)].sort()).toEqual(["bad1", "bad2"])
+  })
+
+  test("the form sees an approval node as a branch with two states", () => {
+    const graph = graphOf({
+      nodes: [["g"], ["x"], ["y"]],
+      approval: ["g"],
+      edges: [
+        ["g", "x", "approve"],
+        ["g", "y", "reject"],
+      ],
+    })
+    const source = buildModule(
+      [...graph.nodes].sort((a, b) => a.number - b.number),
+      graph,
+      null,
+    )
+    expect(source).toContain("OptionCount == <<2, 0, 0>>")
+    expect(source).toContain("[from |-> 1, to |-> 2, opt |-> 1]")
+    expect(source).toContain("[from |-> 1, to |-> 3, opt |-> 2]")
+  })
+
+  test("a deadlock after an approval node: the path names the output that the run takes", async () => {
+    const graph = graphOf({
+      nodes: [["g"], ["ok"], ["bad1"], ["bad2"]],
+      approval: ["g"],
+      edges: [
+        ["g", "ok", "approve"],
+        ["g", "bad1", "reject"],
+        ["bad1", "bad2"],
+        ["bad2", "bad1"],
+      ],
+    })
+    const problem = problemOf(await check(graph))
+    expect(problem.code).toBe("deadlock")
+    const path = problemPath(problem)
+    expect(path).toHaveLength(2)
+    expect(path[0]).toMatchObject({ nodeId: "g", event: "ran", optionId: null })
+    expect(["approve", "reject"]).toContain(path[0]?.output ?? "")
+    expect([...problemNodeIds(problem)].sort()).toEqual(["bad1", "bad2"])
+  })
+
+  test("an approval output with no connection is no problem: the graph still passes", async () => {
+    const graph = graphOf({
+      nodes: [["g"], ["x"]],
+      approval: ["g"],
+      edges: [["g", "x", "approve"]],
+    })
+    expect(await check(graph)).toEqual({ state: "passed" })
+  })
+
+  test("an approval node with an empty question is a problem of the graph", async () => {
+    const graph = graphOf({
+      nodes: [["g"], ["x"]],
+      approval: ["g"],
+      edges: [["g", "x", "approve"]],
+    })
+    const empty: WorkflowGraph = {
+      ...graph,
+      nodes: graph.nodes.map((n) => (n.id === "g" ? { ...n, question: "" } : n)),
+    }
+    expect(problemOf(await check(empty))).toEqual({ code: "approval_question", nodeId: "g" })
   })
 
   test("a join after a decision node: the node that joins waits for both ends", async () => {
@@ -380,9 +462,9 @@ describe("the check of a workflow (spec 010)", () => {
     expect(problem.code).toBe("never_runs")
     expect(problemNodeIds(problem)).toEqual(["c"])
     expect(problemPath(problem)).toEqual([
-      { nodeId: "a", event: "ran", optionId: null },
-      { nodeId: "b", event: "ran", optionId: null },
-      { nodeId: "c", event: "skipped", optionId: null },
+      { nodeId: "a", event: "ran", optionId: null, output: null },
+      { nodeId: "b", event: "ran", optionId: null, output: null },
+      { nodeId: "c", event: "skipped", optionId: null, output: null },
     ])
   })
 })

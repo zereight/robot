@@ -69,7 +69,6 @@ const makeFlows = async (
               workflowId: made.id,
               from: before,
               to: node.id,
-              optionId: null,
             })
           before = node.id
         }

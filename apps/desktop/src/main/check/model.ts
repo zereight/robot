@@ -1,9 +1,12 @@
 import {
+  APPROVAL_OUTPUTS,
   type CheckOutcome,
   type CheckProblem,
   type CheckStep,
   type CheckStopReason,
   graphProblems,
+  type NodeKind,
+  type WorkflowConnection,
   type WorkflowGraph,
   type WorkflowNode,
 } from "@robot/shared"
@@ -16,11 +19,6 @@ import {
 // rules that the app writes. The prompts are not in it: the check does not read what a node writes.
 //
 // How the form sees a run (spec 010, "Node input and output"):
-// - A node waits until each of its inputs has ended. An input passes on when its node ran. It also
-//   passes on from a decision node, when that node took the option of this connection.
-// - A node with no input runs at the start. A node with inputs, where no input passes on, is
-//   skipped. Otherwise it runs. A decision node takes one of its options. The check does not read
-//   the input, so it tries every option.
 // - The engine starts the ready node with the lowest number. The form does the same. Which node
 //   starts first does not change which nodes run, so the check does not try every order.
 // - A node that fails ends no connection that the check can use: a failure stops the run, or the
@@ -50,6 +48,21 @@ export type RunModel = (source: string, config: string) => Promise<ModelRun>
 /** The standard rule "no deadlock" is the deadlock check of the checker. */
 const CONFIG = "INIT Init NEXT Next"
 
+const OPTION_COUNTS: Record<NodeKind, (n: WorkflowNode) => number> = {
+  text: () => 0,
+  decision: (n) => n.options.length,
+  approval: () => APPROVAL_OUTPUTS.length,
+}
+
+const SINGLE_OUTPUT = 0
+
+const optOf = (source: WorkflowNode, c: WorkflowConnection): number => {
+  const s = c.source
+  if (s.kind === "option") return source.options.findIndex((o) => o.id === s.optionId) + 1
+  if (s.kind === "verdict") return APPROVAL_OUTPUTS.indexOf(s.verdict) + 1
+  return SINGLE_OUTPUT
+}
+
 /** `invariant` is a TLA expression over the state, or null for no invariant. */
 export const buildModule = (
   nodes: readonly WorkflowNode[],
@@ -62,9 +75,7 @@ export const buildModule = (
     const front = place.get(c.from)
     const to = place.get(c.to)
     if (!source || !front || !to) return []
-    const option =
-      c.optionId === null ? 0 : source.options.findIndex((o) => o.id === c.optionId) + 1
-    return [`[from |-> ${front}, to |-> ${to}, opt |-> ${option}]`]
+    return [`[from |-> ${front}, to |-> ${to}, opt |-> ${optOf(source, c)}]`]
   })
   const tuple = (items: readonly (string | number)[]) =>
     items.length === 0 ? "<<>>" : `<<${items.join(", ")}>>`
@@ -77,7 +88,7 @@ VARIABLES status, taken
 vars == <<status, taken>>
 N == ${nodes.length}
 Nodes == 1..N
-OptionCount == ${tuple(nodes.map((n) => (n.kind === "decision" ? n.options.length : 0)))}
+OptionCount == ${tuple(nodes.map((n) => OPTION_COUNTS[n.kind](n)))}
 Conn == ${tuple(connections)}
 
 In(m) == {i \in 1..Len(Conn) : Conn[i].to = m}
@@ -138,11 +149,15 @@ const pathOf = (nodes: readonly WorkflowNode[], trace: ModelRun["trace"]): Check
     const node = nodes[index]
     if (!node) continue
     const event = after.status[index] === "ran" ? "ran" : "skipped"
-    const option = event === "ran" && node.kind === "decision" ? after.taken[index] : 0
+    const taken = event === "ran" ? (after.taken[index] ?? 0) : 0
     steps.push({
       nodeId: node.id,
       event,
-      optionId: option ? (node.options[option - 1]?.id ?? null) : null,
+      optionId: node.kind === "decision" && taken ? (node.options[taken - 1]?.id ?? null) : null,
+      output:
+        node.kind === "approval" && (taken === 1 || taken === 2)
+          ? (APPROVAL_OUTPUTS[taken - 1] ?? null)
+          : null,
     })
   }
   return steps

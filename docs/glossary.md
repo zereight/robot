@@ -117,6 +117,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 | Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |
 | Web hook | A trigger of a workflow: an address on this computer that an outside service calls (010). | 웹훅 (proposed) | endpoint, API |
+| Approval node | A node that asks the user one question and waits for the answer, with an optional comment (010). | 승인 노드 (proposed) | — |
+| Approve, Reject | The two answers of an approval node (010). | 승인, 거부 (proposed) | Accept (that answers a proposal, 002), Allow, Deny (those answer an approval card of a step, 007) |
 | Pinned | A place that the user keeps at the top of the place list (001). | 고정됨 (proposed) | favourite, starred |
 | Mark as unread | The action that makes a message and the later messages of agents count as unread again (003). | 읽지 않음으로 표시 (proposed) | flag |
 | Dictate | Speech that becomes text in the message box (027). | 받아쓰기 (proposed) | transcribe |

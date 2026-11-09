@@ -93,7 +93,6 @@ export const nodeDetails = (t: Translate, n: GraphNodeChange): NodeDetail[] => {
   }
   for (const field of SHOWN) {
     if (field === "continueOnFailure" || field === "threshold") {
-      // The flag "go on after a failure" works for both kinds of node; the threshold only for a decision.
       if (field === "continueOnFailure" || n.kind === "decision")
         out.push({ field, old: null, now: fieldValue(t, n.now, field), long: false })
       continue
@@ -120,9 +119,11 @@ export const graphNodeLine = (t: Translate, n: GraphNodeChange): string =>
 export const graphConnectionLine = (t: Translate, c: GraphConnectionChange): string => {
   const from = t("improve.graph.node", { number: c.from.number, name: c.from.name })
   const to = t("improve.graph.node", { number: c.to.number, name: c.to.name })
-  return c.option === null
+  const option =
+    c.option ?? (c.output === null ? null : t(`graph.option.${c.output}` as MessageKey))
+  return option === null
     ? t("improve.graph.connection", { from, to })
-    : t("improve.graph.connection.option", { from, to, option: c.option })
+    : t("improve.graph.connection.option", { from, to, option })
 }
 
 /**

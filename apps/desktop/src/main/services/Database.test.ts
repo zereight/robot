@@ -339,4 +339,81 @@ describe("the reset of a database from before the workflow model (owner decision
       )?.n,
     ).toBe(1)
   })
+
+  test("an upgrade from before the approval node keeps the graph and its tasks; the kind, the output and the verdict hold", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-upgrade-approval-")), "robot.db")
+    const old = new DatabaseSync(file)
+    old.exec("PRAGMA foreign_keys = ON")
+    const at = migrations.findIndex((sql) => sql.includes("workflow_connection_output"))
+    expect(at).toBeGreaterThan(0)
+    for (const sql of migrations.slice(0, at)) old.exec(sql)
+    old.exec(`PRAGMA application_id = ${SCHEMA_ID}; PRAGMA user_version = ${at};`)
+    old.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s1', 'This computer', 'local', 0, 1);
+      INSERT INTO workflow (id, server_id, name, name_key, document, folder, created_at, updated_at)
+        VALUES ('w1', 's1', 'Report', 'report', 'Doc.', '/tmp/w1', 1, 1);
+      INSERT INTO workflow_node (id, workflow_id, number, kind, name, question, threshold)
+        VALUES ('n1', 'w1', 1, 'decision', 'Pick', 'Ready?', 0.9);
+      INSERT INTO workflow_node (id, workflow_id, number, kind, name)
+        VALUES ('n2', 'w1', 2, 'text', 'Write');
+      INSERT INTO workflow_option (id, node_id, position, label) VALUES ('o1', 'n1', 0, 'Yes');
+      INSERT INTO workflow_option (id, node_id, position, label) VALUES ('o2', 'n1', 1, 'No');
+      INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id)
+        VALUES ('c1', 'w1', 'n1', 'n2', 'o1');
+      INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', 'w1', 'done', 'hand', 1);
+      INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, state, option_id, created_at)
+        VALUES ('t1', 'r1', 'w1', 'n1', 'Pick', 1, 'done', 'o1', 1);
+    `)
+    old.close()
+    const db = openDatabase(file)
+    expect(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version).toBe(
+      migrations.length,
+    )
+    // The rows stay: the nodes, the options, the connection and the task.
+    expect(db.all("SELECT id, kind, question FROM workflow_node ORDER BY number")).toEqual([
+      { id: "n1", kind: "decision", question: "Ready?" },
+      { id: "n2", kind: "text", question: "" },
+    ])
+    expect(db.all("SELECT id, label FROM workflow_option ORDER BY position")).toEqual([
+      { id: "o1", label: "Yes" },
+      { id: "o2", label: "No" },
+    ])
+    expect(
+      db.all("SELECT from_node_id, to_node_id, option_id, output FROM workflow_connection"),
+    ).toEqual([{ from_node_id: "n1", to_node_id: "n2", option_id: "o1", output: null }])
+    expect(db.all("SELECT node_id, option_id, verdict FROM task")).toEqual([
+      { node_id: "n1", option_id: "o1", verdict: null },
+    ])
+    // The kind holds 'approval' and refuses anything else.
+    db.run(
+      "INSERT INTO workflow_node (id, workflow_id, number, kind, name) VALUES ('n3', 'w1', 3, 'approval', 'Gate')",
+    )
+    expect(() =>
+      db.run(
+        "INSERT INTO workflow_node (id, workflow_id, number, kind, name) VALUES ('n4', 'w1', 4, 'agent', 'X')",
+      ),
+    ).toThrow()
+    // The output holds 'approve' and 'reject', one line per output, and refuses anything else.
+    db.run(
+      "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, output) VALUES ('c2', 'w1', 'n3', 'n2', 'approve')",
+    )
+    expect(() =>
+      db.run(
+        "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, output) VALUES ('c3', 'w1', 'n3', 'n2', 'maybe')",
+      ),
+    ).toThrow()
+    expect(() =>
+      db.run(
+        "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, output) VALUES ('c4', 'w1', 'n3', 'n1', 'approve')",
+      ),
+    ).toThrow()
+    // The task keeps the stored answer.
+    db.run(
+      "UPDATE task SET verdict = ? WHERE id = 't1'",
+      '{"verdict":"approve","comment":null,"answeredAt":7}',
+    )
+    expect(db.all("SELECT verdict FROM task")).toEqual([
+      { verdict: '{"verdict":"approve","comment":null,"answeredAt":7}' },
+    ])
+  })
 })

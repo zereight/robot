@@ -77,7 +77,7 @@ const setup = async (options: { databaseFile?: string } = {}) => {
         ),
       )
       const before = nodes.at(-1)
-      if (before) await run(Workflows.use((x) => x.connect(w.id, before.id, node.id, null)))
+      if (before) await run(Workflows.use((x) => x.connect(w.id, before.id, node.id)))
       nodes.push(node)
     }
     return { ...w, nodes }

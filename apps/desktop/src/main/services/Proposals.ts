@@ -6,6 +6,7 @@ import {
   charLength,
   compileErrorText,
   compileGraph,
+  connectionFromJson,
   DOCUMENT_MAX,
   factKey,
   GRAPH_PROPOSAL_TEXT_MAX,
@@ -174,6 +175,12 @@ const parse = <T>(text: string | null): T | null => {
   }
 }
 
+const graphParse = (text: string | null): WorkflowGraph | null => {
+  const graph = parse<WorkflowGraph>(text)
+  if (!graph) return null
+  return { ...graph, connections: graph.connections.map(connectionFromJson) }
+}
+
 export class Proposals extends Context.Service<Proposals, ProposalsService>()(
   "robot/main/Proposals",
 ) {
@@ -267,8 +274,8 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
 
       const toProposal = (r: Row, busy: boolean, accountName: (id: string) => string): Proposal => {
         const outside = parseOutsideSource(r.outside)
-        const newGraph = r.kind === "graph" ? parse<WorkflowGraph>(r.graph) : null
-        const oldGraph = r.kind === "graph" ? parse<WorkflowGraph>(r.old_text) : null
+        const newGraph = r.kind === "graph" ? graphParse(r.graph) : null
+        const oldGraph = r.kind === "graph" ? graphParse(r.old_text) : null
         const outcome = parse<CheckOutcome>(r.check_outcome)
         const text = r.kind === "document" || r.kind === "prompt"
         const diff =
@@ -717,7 +724,7 @@ export class Proposals extends Context.Service<Proposals, ProposalsService>()(
             const g = yield* workflows.graph(r.workflow_id)
             if (graphFingerprint(g) !== r.base_key)
               return answer(id, "failed", { reason: "graph_changed" })
-            const next = parse<WorkflowGraph>(r.graph)
+            const next = graphParse(r.graph)
             if (!next) return answer(id, "failed", { reason: "failed" })
             // Spec 002: a graph change never moves a node to another account.
             if (movesAccount(g, next) !== null) return answer(id, "failed", { reason: "failed" })

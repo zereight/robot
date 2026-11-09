@@ -19,6 +19,7 @@ import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import { problemsOf } from "./checkView.ts"
 import styles from "./graph.module.css"
+import { approvalOutputKey } from "./labels.ts"
 
 /**
  * The panel of the check (spec 010, "Check"): the state, the list of problems, and for the first
@@ -50,6 +51,8 @@ export const CheckPanel = (props: {
         number: n.number,
         name: n.name,
       })
+    if (p.code === "approval_question")
+      return t("graph.problem.approval_question", { number: n.number, name: n.name })
     return t("graph.problem.option_unconnected", {
       number: n.number,
       name: n.name,
@@ -73,9 +76,10 @@ export const CheckPanel = (props: {
     const base = { number: n.number, name: n.name }
     if (s.event === "skipped") return t("check.step.skipped", base)
     const option = n.options.find((o) => o.id === s.optionId)?.label
-    return option === undefined
-      ? t("check.step.ran", base)
-      : t("check.step.option", { ...base, option })
+    if (option !== undefined) return t("check.step.option", { ...base, option })
+    if (s.output)
+      return t("check.step.approval", { ...base, output: t(approvalOutputKey(s.output)) })
+    return t("check.step.ran", base)
   }
   const stoppedText = (reason: "time" | "states" | "memory") => {
     const key = `check.stopped.${reason}` as MessageKey

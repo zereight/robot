@@ -5,6 +5,7 @@ import type { OutsideSource } from "./outside.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import type { TaskUsage } from "./taskUsage.ts"
 import type { PermissionLevel } from "./tools.ts"
+import type { ApprovalOutput, NodeKind } from "./workflows.ts"
 
 // The run of a workflow and its tasks (spec 010, 005), for the run list, the run view and the
 // cards in the chat (007, 003). The words of the states are the words of spec 005.
@@ -68,6 +69,12 @@ export interface RunTask {
   readonly decision: {
     readonly options: readonly { readonly label: string; readonly probability: number }[]
     readonly taken: string | null
+  } | null
+  /** An approval node that the user answered: the answer, the comment and the time (spec 010). */
+  readonly approval: {
+    readonly verdict: ApprovalOutput
+    readonly comment: string | null
+    readonly answeredAt: number
   } | null
   /** The first source of outside content, when the task holds it (spec 007). */
   readonly outside: OutsideSource | null
@@ -168,7 +175,7 @@ export interface TaskMemoryLine {
 export interface RunNode {
   readonly number: number
   readonly name: string
-  readonly kind: "text" | "decision"
+  readonly kind: NodeKind
   /** The state of the node in this run: a task state, "skipped" or "not_reached". */
   readonly state: TaskState | "skipped" | "not_reached"
   /** The newest task of the node, or null when the node has no task (spec 005). */
@@ -219,12 +226,14 @@ export interface RunCard {
   readonly nodeName: string | null
   /**
    * approval: Allow and Deny. question: the node asks. pick: a decision node found no winner.
-   * control: the node asks the user to take over the browser (spec 007): the card has one button,
-   * "Give back".
+   * verdict: an approval node asks the user to approve or reject. control: the node asks the
+   * user to take over the browser (spec 007): the card has one button, "Give back".
    */
-  readonly kind: "approval" | "question" | "pick" | "control"
+  readonly kind: "approval" | "question" | "pick" | "verdict" | "control"
   /** What the node wants to do: the command, the path, the host, the question, the feedback text. */
   readonly summary: string
+  /** A verdict card: the input of the approval node, so the user reads what it decides on. */
+  readonly input: string | null
   /** The kind of step of an approval card, for the rules; "feedback" for the chat. */
   readonly step:
     | "file"
@@ -284,6 +293,7 @@ export type CardAnswer =
   | { readonly kind: "approval"; readonly answer: "allow" | "always" | "deny" }
   | { readonly kind: "question"; readonly text: string }
   | { readonly kind: "pick"; readonly optionId: string }
+  | { readonly kind: "verdict"; readonly verdict: ApprovalOutput; readonly comment: string }
   | { readonly kind: "control" }
 
 /** The marks of a place that the header of the chat shows (spec 007, "The mark of a place"). */
@@ -306,6 +316,45 @@ export interface RunLevel {
 
 /** The words of the one line "joined" results of the nodes before a node (spec 010). */
 export const INPUT_SEPARATOR = "\n\n"
+
+/**
+ * The line before the comment of the user in the result of an approval node (spec 010,
+ * "Node input and output"). It stays English, as it is part of the input of the next node.
+ */
+export const APPROVAL_COMMENT_LINE = "Comment from the user:"
+
+/**
+ * The result of an approval node: its input, with the comment of the user at the end when there
+ * is one (spec 010, "Node input and output").
+ */
+export const approvalResultOf = (input: string, comment: string): string =>
+  comment === ""
+    ? input
+    : input === ""
+      ? `${APPROVAL_COMMENT_LINE}\n${comment}`
+      : `${input}\n\n${APPROVAL_COMMENT_LINE}\n${comment}`
+
+/** The stored answer of an approval node, as the task keeps it: the answer, comment and time. */
+export const verdictJsonOf = (approval: NonNullable<RunTask["approval"]>): string =>
+  JSON.stringify(approval)
+
+/** The stored answer read again. Text that is not valid reads as no answer. */
+export const verdictAnswerOf = (text: string | null): RunTask["approval"] => {
+  if (!text) return null
+  try {
+    const v = JSON.parse(text) as {
+      verdict?: unknown
+      comment?: unknown
+      answeredAt?: unknown
+    }
+    if (v.verdict !== "approve" && v.verdict !== "reject") return null
+    if (v.comment !== null && typeof v.comment !== "string") return null
+    if (typeof v.answeredAt !== "number") return null
+    return { verdict: v.verdict, comment: v.comment, answeredAt: v.answeredAt }
+  } catch {
+    return null
+  }
+}
 
 /** The instruction line that every text node gets (spec 005, "Blocked"). */
 export const BLOCKED_PREFIX = "Blocked:"

@@ -19,8 +19,15 @@ export const OPTIONS_MIN = 2
 /** The threshold of a new decision node (spec 010, "Flows", item 6). */
 export const THRESHOLD_DEFAULT = 0.9
 
-export const NODE_KINDS = ["text", "decision"] as const
+export const NODE_KINDS = ["text", "decision", "approval"] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
+
+/** The two outputs of an approval node: the run follows the one that the user picks (spec 010). */
+export const APPROVAL_OUTPUTS = ["approve", "reject"] as const
+export type ApprovalOutput = (typeof APPROVAL_OUTPUTS)[number]
+
+/** The comment of the user on an approval card has at most 2,000 characters (spec 010). */
+export const APPROVAL_COMMENT_MAX = 2000
 
 /**
  * The silent limit of a node: minutes of silence, 0 for Never, or "follow" for the setting
@@ -115,19 +122,94 @@ export interface WorkflowNode {
   readonly continueOnFailure: boolean
   readonly question: string
   readonly threshold: number
-  /** The options of a decision node, in order. Empty for a text node. */
+  /** The options of a decision node, in order. Empty for a text or approval node. */
   readonly options: readonly WorkflowOption[]
   readonly x: number
   readonly y: number
 }
 
+/**
+ * Which output of its source node a connection leaves: the single output of a text node, one
+ * option of a decision node, or the answer of an approval node (spec 010).
+ */
+export const ConnectionSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("text") }),
+  Schema.Struct({ kind: Schema.Literal("option"), optionId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("verdict"), verdict: Schema.Literals(APPROVAL_OUTPUTS) }),
+])
+export type ConnectionSource = typeof ConnectionSource.Type
+
 export interface WorkflowConnection {
   readonly id: string
   readonly from: string
   readonly to: string
-  /** The option of the decision node that this connection leaves, or null. */
-  readonly optionId: string | null
+  /** Which output of the source node this connection leaves. */
+  readonly source: ConnectionSource
 }
+
+/** The source that the two columns of a connection row name: an option wins, then a verdict. */
+export const sourceOfColumns = (
+  optionId: string | null,
+  output: ApprovalOutput | null,
+): ConnectionSource =>
+  optionId !== null
+    ? { kind: "option", optionId }
+    : output !== null
+      ? { kind: "verdict", verdict: output }
+      : { kind: "text" }
+
+/** The two columns of a connection row that a source fills. */
+export const columnsOfSource = (
+  source: ConnectionSource,
+): { optionId: string | null; output: ApprovalOutput | null } =>
+  source.kind === "option"
+    ? { optionId: source.optionId, output: null }
+    : source.kind === "verdict"
+      ? { optionId: null, output: source.verdict }
+      : { optionId: null, output: null }
+
+/**
+ * Which output of which node a connection leaves, as text. Two connections share it when they
+ * leave the same output of the same node; two lines between the same text nodes share it too.
+ */
+export const connectionKey = (c: Pick<WorkflowConnection, "from" | "to" | "source">): string =>
+  c.source.kind === "option"
+    ? `${c.from}|${c.source.optionId}`
+    : c.source.kind === "verdict"
+      ? `${c.from}|${c.source.verdict}`
+      : `${c.from}|${c.to}`
+
+/** True when two sources leave the same output. */
+export const sameSource = (a: ConnectionSource, b: ConnectionSource): boolean =>
+  a.kind === "text"
+    ? b.kind === "text"
+    : a.kind === "option"
+      ? b.kind === "option" && b.optionId === a.optionId
+      : b.kind === "verdict" && b.verdict === a.verdict
+
+/** A connection read from storage: the single field, or the two fields of a graph stored before it. */
+export interface StoredConnection {
+  readonly id: string
+  readonly from: string
+  readonly to: string
+  readonly source?: ConnectionSource | undefined
+  readonly optionId?: string | null | undefined
+  readonly output?: ApprovalOutput | null | undefined
+}
+
+/**
+ * A connection of a stored graph, read through the single field. A graph from before the field
+ * names an option id, a verdict, or neither: neither leaves the single output (spec 010).
+ */
+export const connectionFromJson = (c: StoredConnection): WorkflowConnection => ({
+  id: c.id,
+  from: c.from,
+  to: c.to,
+  source:
+    c.source !== undefined && c.source !== null
+      ? c.source
+      : sourceOfColumns(c.optionId ?? null, c.output ?? null),
+})
 
 export interface WorkflowGraph {
   readonly nodes: readonly WorkflowNode[]
@@ -224,27 +306,35 @@ export type WorkflowCreate = typeof WorkflowCreate.Type
 /** A structural problem of a graph: a fault of its shape that the editor can show (spec 010). */
 export type GraphProblem =
   | { readonly code: "decision_options"; readonly nodeId: string }
+  | { readonly code: "approval_question"; readonly nodeId: string }
   | { readonly code: "option_unconnected"; readonly nodeId: string; readonly optionId: string }
   | { readonly code: "nodes_full" }
 
 /**
  * The faults of the shape of a graph that the rules of the graph name (spec 010, "File"): a
- * decision node with fewer than two options, an option with no connection, and more than 30 nodes.
- * A connection to a node that does not exist, and a connection of a node to itself, cannot exist
- * in the database. The check on the TLA form (a deadlock, a node that no run reaches) is in
- * `workflowCheck.ts`; the check reads these faults first.
+ * decision node with fewer than two options, an approval node with an empty question, a decision
+ * option with no connection, and more than 30 nodes. An output of an approval node with no
+ * connection is not a problem: the run skips the nodes that only that output reaches (spec 010,
+ * "Approval node rules"). A connection to a node that does not exist, and a connection of a node
+ * to itself, cannot exist in the database. The check on the TLA form (a deadlock, a node that no
+ * run reaches) is in `workflowCheck.ts`; the check reads these faults first.
  */
 export const graphProblems = (graph: WorkflowGraph): readonly GraphProblem[] => {
   const problems: GraphProblem[] = []
   if (graph.nodes.length > NODES_MAX) problems.push({ code: "nodes_full" })
-  const wired = new Set(graph.connections.map((c) => c.optionId).filter((id) => id !== null))
+  const wired = new Set(
+    graph.connections.flatMap((c) => (c.source.kind === "option" ? [c.source.optionId] : [])),
+  )
   for (const node of graph.nodes) {
-    if (node.kind !== "decision") continue
-    if (node.options.length < OPTIONS_MIN)
-      problems.push({ code: "decision_options", nodeId: node.id })
-    for (const option of node.options)
-      if (!wired.has(option.id))
-        problems.push({ code: "option_unconnected", nodeId: node.id, optionId: option.id })
+    if (node.kind === "decision") {
+      if (node.options.length < OPTIONS_MIN)
+        problems.push({ code: "decision_options", nodeId: node.id })
+      for (const option of node.options)
+        if (!wired.has(option.id))
+          problems.push({ code: "option_unconnected", nodeId: node.id, optionId: option.id })
+    } else if (node.kind === "approval") {
+      if (node.question.trim() === "") problems.push({ code: "approval_question", nodeId: node.id })
+    }
   }
   return problems
 }

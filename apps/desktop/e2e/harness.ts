@@ -171,7 +171,7 @@ export const startRecording = async (page: Page, name: string) => {
     if (!recording) return
     const file = join(framesDir, `${String(frames.length).padStart(5, "0")}.jpg`)
     writeFileSync(file, Buffer.from(frame.data, "base64"))
-    frames.push({ file, at: frame.metadata.timestamp ?? Date.now() / 1000 })
+    frames.push({ file, at: Date.now() / 1000 })
     void cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {})
   })
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, everyNthFrame: 1 })
@@ -225,22 +225,28 @@ export const startRecording = async (page: Page, name: string) => {
 type Invoke = (method: string, input?: unknown) => Promise<{ ok: boolean; value?: unknown }>
 
 export interface NodeSpec {
-  readonly kind?: "text" | "decision"
+  readonly kind?: "text" | "decision" | "approval"
   readonly name: string
   readonly prompt?: string
   readonly permission?: string | null
   readonly continueOnFailure?: boolean
   /** A decision node: the labels of the options. */
   readonly options?: readonly string[]
+  /** An approval node: the question. */
+  readonly question?: string
 }
+
+export type EdgeSpec =
+  | readonly [number, number]
+  | readonly [number, number, { readonly option: number }]
+  | readonly [number, number, { readonly output: "approve" | "reject" }]
 
 export interface FlowSpec {
   readonly provider: { openaiUrl: string; key: string }
   /** The permission level of the workflow. The app starts at "Ask for risky steps". */
   readonly level?: string
   readonly nodes: readonly NodeSpec[]
-  /** `[from, to, option]`: indexes into `nodes`; `option` is the index of the option of a decision node. */
-  readonly edges?: readonly (readonly [number, number, number?])[]
+  readonly edges?: readonly EdgeSpec[]
 }
 
 /**
@@ -283,24 +289,31 @@ export const buildFlow = async (page: Page, spec: FlowSpec) =>
           y: 24 + Math.floor(index / 4) * 120,
           ...(n.kind === "decision"
             ? { question: "Which way?", threshold: 0.9, options: n.options ?? ["Yes", "No"] }
-            : {
-                prompt: n.prompt ?? "",
-                accountId: accounts[0]?.id,
-                model: "mock-fast",
-                ...(n.permission !== undefined ? { permission: n.permission } : {}),
-                ...(n.continueOnFailure ? { continueOnFailure: true } : {}),
-              }),
+            : n.kind === "approval"
+              ? { question: n.question ?? "Approve this run?" }
+              : {
+                  prompt: n.prompt ?? "",
+                  accountId: accounts[0]?.id,
+                  model: "mock-fast",
+                  ...(n.permission !== undefined ? { permission: n.permission } : {}),
+                  ...(n.continueOnFailure ? { continueOnFailure: true } : {}),
+                }),
         },
       })) as Made
       made.push(node)
     }
-    for (const [from, to, option] of spec.edges ?? []) {
-      const optionId = option === undefined ? null : (made[from]?.options[option]?.id ?? null)
+    for (const [from, to, key] of spec.edges ?? []) {
+      const source =
+        key === undefined
+          ? { kind: "text" }
+          : "option" in key
+            ? { kind: "option", optionId: made[from]?.options[key.option]?.id ?? "" }
+            : { kind: "verdict", verdict: key.output }
       await call("workflows.connect", {
         workflowId: flow?.id,
         from: made[from]?.id,
         to: made[to]?.id,
-        optionId,
+        source,
       })
     }
     return flow?.id ?? ""

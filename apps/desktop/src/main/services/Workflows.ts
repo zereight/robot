@@ -2,11 +2,16 @@ import { randomUUID } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import {
+  APPROVAL_OUTPUTS,
+  type ApprovalOutput,
   type CheckOutcome,
+  type ConnectionSource,
   changesBackup,
   charLength,
   checkGraphKey,
   checkStateOf,
+  columnsOfSource,
+  connectionFromJson,
   DEFAULT_PERMISSION,
   DOCUMENT_MAX,
   DOCUMENT_VERSIONS_MAX,
@@ -18,6 +23,7 @@ import {
   type ModelPick,
   NODES_MAX,
   type NodeInput,
+  type NodeKind,
   type NodePatch,
   type NodeSilentLimit,
   nameKey,
@@ -28,6 +34,7 @@ import {
   resolveLocale,
   type SilentLimit,
   sameModelChoice,
+  sourceOfColumns,
   THRESHOLD_DEFAULT,
   translate,
   type VersionSource,
@@ -112,11 +119,12 @@ export interface WorkflowsService {
   readonly renameOption: (optionId: string, label: string) => Effect.Effect<WorkflowNode, AppError>
   /** Removes an option with its connection. A decision node keeps at least two options. */
   readonly removeOption: (optionId: string) => Effect.Effect<WorkflowNode, AppError>
+  /** Connects one output of a node to the input of another. Left out, it is the single output. */
   readonly connect: (
     workflowId: string,
     from: string,
     to: string,
-    optionId?: string | null,
+    source?: ConnectionSource,
   ) => Effect.Effect<WorkflowConnection, AppError>
   readonly disconnect: (connectionId: string) => Effect.Effect<void, AppError>
   /**
@@ -171,7 +179,7 @@ interface NodeRow {
   id: string
   workflow_id: string
   number: number
-  kind: "text" | "decision"
+  kind: NodeKind
   name: string
   prompt: string
   account_id: string | null
@@ -201,6 +209,7 @@ interface ConnectionRow {
   from_node_id: string
   to_node_id: string
   option_id: string | null
+  output: ApprovalOutput | null
 }
 
 /** A folder name made from the workflow name, with a short unique tail. */
@@ -256,6 +265,7 @@ const versionGraph = (json: string): WorkflowGraph => {
       // A missing field and a null from versions saved while null meant follow both read as follow.
       silentLimit: (n.silentLimit as NodeSilentLimit | null | undefined) ?? "follow",
     })),
+    connections: graph.connections.map(connectionFromJson),
   }
 }
 
@@ -299,7 +309,12 @@ export const readGraph = (db: DatabaseService, workflowId: string): WorkflowGrap
       "SELECT * FROM workflow_connection WHERE workflow_id = ? ORDER BY rowid",
       workflowId,
     )
-    .map((c) => ({ id: c.id, from: c.from_node_id, to: c.to_node_id, optionId: c.option_id }))
+    .map((c) => ({
+      id: c.id,
+      from: c.from_node_id,
+      to: c.to_node_id,
+      source: sourceOfColumns(c.option_id, c.output),
+    }))
   return { nodes, connections }
 }
 
@@ -613,13 +628,15 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             })
           }
           for (const c of graph.connections) {
+            const columns = columnsOfSource(c.source)
             db.run(
-              "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id) VALUES (?, ?, ?, ?, ?)",
+              "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id, output) VALUES (?, ?, ?, ?, ?, ?)",
               c.id,
               id,
               c.from,
               c.to,
-              c.optionId,
+              columns.optionId,
+              columns.output,
             )
           }
           const back = new Set(graph.nodes.map((n) => n.id))
@@ -794,8 +811,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const options = input.options ?? []
             if (input.kind === "decision" && options.length < OPTIONS_MIN)
               return yield* new AppError({ code: "decision_options", detail: "options" })
-            if (input.kind === "text" && options.length > 0)
+            if (input.kind !== "decision" && options.length > 0)
               return yield* new AppError({ code: "text_node_options", detail: "options" })
+            if (input.kind === "approval" && (input.question ?? "").trim() === "")
+              return yield* new AppError({ code: "approval_question_empty", detail: "question" })
             const threshold = input.threshold ?? THRESHOLD_DEFAULT
             if (!(threshold >= 0 && threshold <= 1))
               return yield* new AppError({ code: "decision_threshold", detail: "threshold" })
@@ -852,6 +871,12 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               const fields = checkDecisionFields(patch)
               if (fields) return yield* fields
             }
+            if (
+              node.kind === "approval" &&
+              patch.question !== undefined &&
+              patch.question.trim() === ""
+            )
+              return yield* new AppError({ code: "approval_question_empty", detail: "question" })
             const pick = <T>(next: T | undefined, now: T) => (next === undefined ? now : next)
             // The backup model (spec 006, "Backup model"): the editor refuses the same account, model
             // and reasoning level as the main choice, and a backup on a node that has no main choice.
@@ -1023,7 +1048,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             changed(row.server_id)
             return nodeOf(option.node_id)
           }),
-        connect: (workflowId, from, to, optionId = null) =>
+        connect: (workflowId, from, to, source = { kind: "text" }) =>
           Effect.gen(function* () {
             const row = yield* findRow(workflowId)
             const busy = checkIdle(workflowId)
@@ -1041,40 +1066,60 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (!a || !b) return yield* new AppError({ code: "connection_node_missing" })
             if (from === to) return yield* new AppError({ code: "connection_to_self" })
             if (a.kind === "decision") {
-              const option = optionId
-                ? db.get(
-                    "SELECT 1 FROM workflow_option WHERE id = ? AND node_id = ?",
-                    optionId,
-                    from,
-                  )
-                : undefined
+              if (source.kind === "verdict")
+                return yield* new AppError({ code: "connection_output_unexpected" })
+              const option =
+                source.kind === "option"
+                  ? db.get(
+                      "SELECT 1 FROM workflow_option WHERE id = ? AND node_id = ?",
+                      source.optionId,
+                      from,
+                    )
+                  : undefined
               if (!option) return yield* new AppError({ code: "connection_option_missing" })
-            } else if (optionId !== null) {
-              return yield* new AppError({ code: "connection_option_unexpected" })
+            } else if (a.kind === "approval") {
+              if (source.kind === "option")
+                return yield* new AppError({ code: "connection_option_unexpected" })
+              if (source.kind !== "verdict" || !APPROVAL_OUTPUTS.includes(source.verdict))
+                return yield* new AppError({ code: "connection_output_missing" })
+            } else {
+              if (source.kind === "option")
+                return yield* new AppError({ code: "connection_option_unexpected" })
+              if (source.kind === "verdict")
+                return yield* new AppError({ code: "connection_output_unexpected" })
             }
-            // Each option has one outgoing connection (spec 010), and the same line is not made twice.
-            const taken = db.get(
-              optionId === null
-                ? "SELECT 1 FROM workflow_connection WHERE from_node_id = ? AND to_node_id = ? AND option_id IS NULL"
-                : "SELECT 1 FROM workflow_connection WHERE option_id = ?",
-              ...(optionId === null ? [from, to] : [optionId]),
-            )
+            const taken =
+              source.kind === "option"
+                ? db.get("SELECT 1 FROM workflow_connection WHERE option_id = ?", source.optionId)
+                : source.kind === "verdict"
+                  ? db.get(
+                      "SELECT 1 FROM workflow_connection WHERE from_node_id = ? AND output = ?",
+                      from,
+                      source.verdict,
+                    )
+                  : db.get(
+                      "SELECT 1 FROM workflow_connection WHERE from_node_id = ? AND to_node_id = ? AND option_id IS NULL AND output IS NULL",
+                      from,
+                      to,
+                    )
             if (taken) return yield* new AppError({ code: "connection_exists" })
             const id = randomUUID()
+            const columns = columnsOfSource(source)
             db.transaction(() => {
               keepVersion(workflowId, "editor")
               db.run(
-                "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO workflow_connection (id, workflow_id, from_node_id, to_node_id, option_id, output) VALUES (?, ?, ?, ?, ?, ?)",
                 id,
                 workflowId,
                 from,
                 to,
-                optionId,
+                columns.optionId,
+                columns.output,
               )
               touch(workflowId)
             })
             changed(row.server_id)
-            return { id, from, to, optionId }
+            return { id, from, to, source }
           }),
         disconnect: (connectionId) =>
           Effect.gen(function* () {

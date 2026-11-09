@@ -4,12 +4,14 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   type CheckOutcome,
+  type ConnectionSource,
   chatText,
   checkGraphKey,
+  QUEUE_SLOT,
   type RunDetail,
   type WorkflowNode,
 } from "@robot/shared"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import { GOOD_KEY, type MockProvider, startMockProvider } from "../../../e2e/mock-provider.ts"
 import { McpCallStopped } from "../connections/mcp.ts"
@@ -27,6 +29,7 @@ import { RunFacts } from "./RunFacts.ts"
 import { Runs, runClock } from "./Runs.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { TaskQueue } from "./TaskQueue.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -133,8 +136,13 @@ const setup = async (
         w.addNode(flow.id, { kind: "decision", name, question: "Which?", threshold, options }),
       ),
     )
-  const connect = (from: WorkflowNode, to: WorkflowNode, optionId: string | null = null) =>
-    run(Workflows.use((w) => w.connect(flow.id, from.id, to.id, optionId)))
+  const approvalNode = (name: string, question = "Ship it?") =>
+    run(Workflows.use((w) => w.addNode(flow.id, { kind: "approval", name, question })))
+  const connect = (
+    from: WorkflowNode,
+    to: WorkflowNode,
+    source: ConnectionSource = { kind: "text" },
+  ) => run(Workflows.use((w) => w.connect(flow.id, from.id, to.id, source)))
   const start = (trigger?: string) =>
     run(Runs.use((r) => r.start({ workflowId: flow.id, ...(trigger ? { trigger } : {}) })))
   const get = (id: string) => run(Runs.use((r) => r.get(id)))
@@ -180,6 +188,7 @@ const setup = async (
     account,
     node,
     decisionNode,
+    approvalNode,
     connect,
     start,
     get,
@@ -246,7 +255,10 @@ describe("a run of a workflow (spec 010)", () => {
     const d = await t.decisionNode("Choose", ["Yes", "No"])
     const a = await t.node({ name: "A", prompt: "x" })
     const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
-    await t.connect(d, a, graph.nodes.find((n) => n.id === d.id)?.options[0]?.id ?? null)
+    await t.connect(d, a, {
+      kind: "option",
+      optionId: graph.nodes.find((n) => n.id === d.id)?.options[0]?.id ?? "",
+    })
     expect(await refused(t)).toBe("run_check_problem")
   })
 
@@ -353,8 +365,8 @@ describe("the decision node (spec 010, 013)", () => {
     const no = await t.node({ name: "No path", prompt: "no path" })
     const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
     const [o1, o2] = graph.nodes.find((n) => n.id === d.id)?.options ?? []
-    await t.connect(d, yes, o1?.id ?? null)
-    await t.connect(d, no, o2?.id ?? null)
+    await t.connect(d, yes, { kind: "option", optionId: o1?.id ?? "" })
+    await t.connect(d, no, { kind: "option", optionId: o2?.id ?? "" })
     return { t, d, yes, no, o1, o2 }
   }
 
@@ -378,8 +390,8 @@ describe("the decision node (spec 010, 013)", () => {
     const after = await t.node({ name: "After", prompt: "after {{input}}" })
     const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
     const [o1, o2] = graph.nodes.find((n) => n.id === d.id)?.options ?? []
-    await t.connect(d, yes, o1?.id ?? null)
-    await t.connect(d, no, o2?.id ?? null)
+    await t.connect(d, yes, { kind: "option", optionId: o1?.id ?? "" })
+    await t.connect(d, no, { kind: "option", optionId: o2?.id ?? "" })
     await t.connect(yes, after)
     const run = await t.start()
     await until(async () => ((await t.get(run.id)).nodes[1]?.task?.result ?? "").includes("word1"))
@@ -426,14 +438,158 @@ describe("the decision node (spec 010, 013)", () => {
     const b = await t.node({ name: "B", prompt: "b" })
     const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
     const o = graph.nodes.find((n) => n.id === d.id)?.options ?? []
-    await t.connect(d, a, o[0]?.id ?? null)
+    await t.connect(d, a, { kind: "option", optionId: o[0]?.id ?? "" })
     // An option with no connection is a problem of the graph, and the run would not start.
-    await t.connect(d, b, o[1]?.id ?? null)
+    await t.connect(d, b, { kind: "option", optionId: o[1]?.id ?? "" })
     const run = await t.start()
     const card = await t.waitCard()
     expect(card.pickReason).toBe("off")
     await t.answer(card.id, { kind: "pick", optionId: o[0]?.id ?? "" })
     expect((await t.ended(run.id)).state).toBe("done")
+  })
+})
+
+describe("the approval node (spec 010)", () => {
+  const gate = async () => {
+    const t = await setup()
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const g = await t.approvalNode("Gate")
+    const ship = await t.node({ name: "Ship", prompt: "Ship {{input}}" })
+    await t.connect(first, g)
+    await t.connect(g, ship, { kind: "verdict", verdict: "approve" })
+    return { t, first, g, ship }
+  }
+
+  test("approve with a comment: the card shows the question and the input, the next node gets the comment", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    const card = await t.waitCard()
+    expect(card.kind).toBe("verdict")
+    expect(card.summary).toBe("Ship it?")
+    expect(card.input).toBe("You said: Draft")
+    expect((await t.get(run.id)).state).toBe("waiting")
+    await t.answer(card.id, { kind: "verdict", verdict: "approve", comment: "Shorter" })
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    expect(stateOf(d)).toEqual(["1:done", "2:done", "3:done"])
+    expect(d.nodes[2]?.task?.input.endsWith("Comment from the user:\nShorter")).toBe(true)
+    const approval = d.nodes[1]?.task?.approval
+    expect(approval?.verdict).toBe("approve")
+    expect(approval?.comment).toBe("Shorter")
+    expect(approval?.answeredAt).toBeGreaterThan(0)
+  })
+
+  test("all slots busy when the user answers: the stored answer time is the arrival time, not the slot time", async () => {
+    const { t } = await gate()
+    await t.run(SettingsStore.use((s) => s.update({ tasksAtOnce: 1 })))
+    const run = await t.start()
+    const card = await t.waitCard()
+    const scheduler = await t.run(TaskQueue.use((q) => Effect.sync(() => q.scheduler)))
+    const held = scheduler.enter({
+      taskId: "test-slot-holder",
+      workflowId: "test-slot-holder",
+      runId: "test-slot-holder",
+      source: "hand",
+      runSeq: 0,
+      nodeNumber: 0,
+      nodeName: "holder",
+      runStartedAt: Date.now(),
+    })
+    expect(held.granted).toBe(true)
+    const before = Date.now()
+    await t.answer(card.id, { kind: "verdict", verdict: "approve", comment: "Shorter" })
+    const answered = Date.now()
+    await until(async () => {
+      const row = (
+        await t.rows<{ state: string; error_code: string | null }>(
+          "SELECT state, error_code FROM task WHERE run_id = ? AND node_number = 2",
+          run.id,
+        )
+      )[0]
+      return row?.state === "queued" && row?.error_code === QUEUE_SLOT
+    })
+    await until(() => Date.now() > answered, 1000)
+    scheduler.release("test-slot-holder")
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    const approval = d.nodes[1]?.task?.approval
+    expect(approval?.answeredAt).toBeGreaterThanOrEqual(before)
+    expect(approval?.answeredAt).toBeLessThanOrEqual(answered)
+  })
+
+  test("reject with only Approve connected: the next node is skipped and the run ends", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    const card = await t.waitCard()
+    await t.answer(card.id, { kind: "verdict", verdict: "reject", comment: "" })
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    expect(stateOf(d)).toEqual(["1:done", "2:done", "3:skipped"])
+    expect(d.nodes[1]?.task?.approval).toMatchObject({ verdict: "reject", comment: null })
+  })
+
+  test("reject with both outputs connected: the approve branch is skipped, the reject branch runs", async () => {
+    const t = await setup()
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const g = await t.approvalNode("Gate")
+    const ship = await t.node({ name: "Ship", prompt: "Ship {{input}}" })
+    const rework = await t.node({ name: "Rework", prompt: "Rework {{input}}" })
+    await t.connect(first, g)
+    await t.connect(g, ship, { kind: "verdict", verdict: "approve" })
+    await t.connect(g, rework, { kind: "verdict", verdict: "reject" })
+    const run = await t.start()
+    const card = await t.waitCard()
+    await t.answer(card.id, { kind: "verdict", verdict: "reject", comment: "Too long" })
+    const d = await t.ended(run.id)
+    expect(stateOf(d)).toEqual(["1:done", "2:done", "3:skipped", "4:done"])
+    expect(d.nodes[3]?.task?.input).toContain("Too long")
+  })
+
+  test("a comment over 2,000 characters is refused and the card still waits", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    const card = await t.waitCard()
+    const exit = await t.runtime.runPromiseExit(
+      Cards.use((c) =>
+        c.answer(card.id, { kind: "verdict", verdict: "approve", comment: "x".repeat(2001) }),
+      ),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect((await t.cards()).length).toBe(1)
+    expect((await t.get(run.id)).state).toBe("waiting")
+    await t.answer(card.id, { kind: "verdict", verdict: "approve", comment: "x".repeat(2000) })
+    expect((await t.ended(run.id)).state).toBe("done")
+  })
+
+  test("stop while the run waits: the card goes away and the run ends as stopped", async () => {
+    const { t } = await gate()
+    const run = await t.start()
+    await t.waitCard()
+    await t.run(Runs.use((r) => r.stop(run.id)))
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("cancelled")
+    expect((await t.cards()).length).toBe(0)
+  })
+
+  test("a restart while the run waits: the run and the waiting task fail with The app stopped", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const g = await t.approvalNode("Gate")
+    await t.connect(first, g)
+    const run = await t.start()
+    await t.waitCard()
+    const again = testRuntime({ databaseFile: file })
+    const r = await again.runtime.runPromise(Runs.use((x) => x.get(run.id)))
+    expect(r.state).toBe("failed")
+    expect(r.reasonText).toBe("The app stopped")
+    expect(r.reasonCode).toBe("restart")
+    expect(r.nodes[1]?.task?.state).toBe("failed")
+    expect(r.nodes[1]?.task?.reasonText).toBe("The app stopped")
+    const left = await again.runtime.runPromise(
+      Cards.use((c) => Effect.sync(() => c.open(t.flow.id))),
+    )
+    expect(left).toEqual([])
   })
 })
 
@@ -1521,8 +1677,8 @@ describe("the tools of connections for a text node (spec 018)", () => {
     const no = await t.node({ name: "No path", prompt: "no path" })
     const graph = await t.run(Workflows.use((w) => w.graph(t.flow.id)))
     const [o1, o2] = graph.nodes.find((n) => n.id === d.id)?.options ?? []
-    await t.connect(d, yes, o1?.id ?? null)
-    await t.connect(d, no, o2?.id ?? null)
+    await t.connect(d, yes, { kind: "option", optionId: o1?.id ?? "" })
+    await t.connect(d, no, { kind: "option", optionId: o2?.id ?? "" })
     const run = await t.ended((await t.start()).id)
     expect(stateOf(run)).toEqual(["1:done", "2:done", "3:skipped"])
     expect(run.nodes[0]?.task?.connections).toEqual({ down: [], held: [], steps: [] })

@@ -162,6 +162,30 @@ describe("the requests of a linked device (spec 012)", () => {
   })
 })
 
+describe("the verdict answer at the boundary (spec 010)", () => {
+  test("a comment over 2,000 characters is refused; trailing space does not count", async () => {
+    const t = await setup()
+    expect(
+      await t.ask("cards.answer", {
+        cardId: "none",
+        answer: { kind: "verdict", verdict: "approve", comment: "x".repeat(2001) },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid_input" } })
+    expect(
+      await t.ask("cards.answer", {
+        cardId: "none",
+        answer: { kind: "verdict", verdict: "approve", comment: `${"x".repeat(1999)}  ` },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "card_gone" } })
+    expect(
+      await t.ask("cards.answer", {
+        cardId: "none",
+        answer: { kind: "verdict", verdict: "approve", comment: "x".repeat(2000) },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "card_gone" } })
+  })
+})
+
 describe("a keychain that cannot be read (spec 020)", () => {
   test("both vault lists fail with the keychain reason on the RPC path", async () => {
     // The identity of the device link loads at boot, so the store keeps values in memory and

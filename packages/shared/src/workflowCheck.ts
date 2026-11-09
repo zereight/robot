@@ -18,6 +18,8 @@ export interface CheckStep {
   /** `ran`: the node runs. A decision node also names the option that it takes. */
   readonly event: "ran" | "skipped"
   readonly optionId: string | null
+  /** An approval node that ran: the output that it took. */
+  readonly output: "approve" | "reject" | null
 }
 
 /** A problem that the check finds in the states of the TLA form. Each one has the shortest path. */
@@ -75,5 +77,13 @@ export const problemPath = (problem: CheckProblem): readonly CheckStep[] =>
 export const checkGraphKey = (graph: WorkflowGraph): string =>
   JSON.stringify([
     graph.nodes.map((n) => [n.id, n.kind, n.options.map((o) => o.id)]),
-    graph.connections.map((c) => [c.from, c.to, c.optionId]),
+    graph.connections.map((c) => [
+      c.from,
+      c.to,
+      c.source.kind === "option"
+        ? c.source.optionId
+        : c.source.kind === "verdict"
+          ? c.source.verdict
+          : null,
+    ]),
   ])

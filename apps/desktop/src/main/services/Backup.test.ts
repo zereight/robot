@@ -464,7 +464,7 @@ describe("a limit of the main model moves the turn to the backup (spec 006)", ()
         }),
       ),
     )
-    await t.run(Workflows.use((w) => w.connect(t.flow.id, t.node.id, other.id, null)))
+    await t.run(Workflows.use((w) => w.connect(t.flow.id, t.node.id, other.id)))
     await t.setBackup(t.node.id)
     // Node 1 is held; the stand-in answers node 2 again (it is on the same account as node 1's main).
     t.main.setFailure({ status: 429, message: PLAN, retryAfter: 3600 })

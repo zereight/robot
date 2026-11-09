@@ -677,4 +677,43 @@ export const migrations: readonly string[] = [
     DELETE FROM saved_login WHERE workflow_id = OLD.id;
   END;
   `,
+  `
+  CREATE TABLE workflow_node_new (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    number INTEGER NOT NULL CHECK (number >= 1),
+    kind TEXT NOT NULL CHECK (kind IN ('text', 'decision', 'approval')),
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL DEFAULT '',
+    account_id TEXT,
+    model TEXT,
+    effort TEXT,
+    permission TEXT CHECK (permission IS NULL OR permission IN ('read_only', 'ask_all', 'ask_risky', 'ask_unsure', 'full')),
+    continue_on_failure INTEGER NOT NULL DEFAULT 0 CHECK (continue_on_failure IN (0, 1)),
+    question TEXT NOT NULL DEFAULT '',
+    threshold REAL NOT NULL DEFAULT 0.9 CHECK (threshold >= 0 AND threshold <= 1),
+    x REAL NOT NULL DEFAULT 0,
+    y REAL NOT NULL DEFAULT 0,
+    backup_account_id TEXT,
+    backup_model TEXT,
+    backup_effort TEXT,
+    silent_limit INTEGER
+  );
+  INSERT INTO workflow_node_new (id, workflow_id, number, kind, name, prompt, account_id, model,
+    effort, permission, continue_on_failure, question, threshold, x, y, backup_account_id,
+    backup_model, backup_effort, silent_limit)
+  SELECT id, workflow_id, number, kind, name, prompt, account_id, model, effort, permission,
+    continue_on_failure, question, threshold, x, y, backup_account_id, backup_model, backup_effort,
+    silent_limit
+  FROM workflow_node;
+  DROP TABLE workflow_node;
+  ALTER TABLE workflow_node_new RENAME TO workflow_node;
+  CREATE INDEX workflow_node_workflow ON workflow_node (workflow_id, number);
+  ALTER TABLE workflow_connection ADD COLUMN output TEXT
+    CHECK (output IS NULL OR output IN ('approve', 'reject'));
+  CREATE UNIQUE INDEX workflow_connection_output ON workflow_connection (from_node_id, output)
+    WHERE output IS NOT NULL;
+  -- The stored answer of an approval node: the answer, the comment and the time, as JSON.
+  ALTER TABLE task ADD COLUMN verdict TEXT;
+  `,
 ]
