@@ -127,7 +127,9 @@ export const isInsideRepo = async (folder: string): Promise<boolean> => {
  * Makes a new linked worktree at `path` on a new `branch` from HEAD of the repository of `repo`.
  * Changes of the repository that are not committed are not in it. The path must not exist yet.
  * An aborted `signal` ends the whole process group and fails only after git has ended, so the
- * caller can remove the half-made folder without git still writing into it.
+ * caller can remove the half-made folder without git still writing into it. The timeout counts
+ * from the spawn of git, or from `armAfter` when given: a test arms it after its hook marker
+ * exists, so a slow machine cannot fire it before git runs.
  */
 export const createWorktree = async (
   repo: string,
@@ -135,6 +137,7 @@ export const createWorktree = async (
   branch: string,
   signal?: AbortSignal,
   timeoutMs = 120_000,
+  armAfter?: Promise<unknown>,
 ): Promise<void> => {
   signal?.throwIfAborted()
   return new Promise<void>((resolve, reject) => {
@@ -167,15 +170,21 @@ export const createWorktree = async (
       // Nothing waits on the pipes then: the rejection lands on the exit of git.
       child.stderr?.destroy()
     }
-    const timer = setTimeout(() => {
-      if (finished) return
-      killGroup()
-      child.stderr?.destroy()
-    }, timeoutMs)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const arm = () => {
+      if (finished || timer !== undefined) return
+      timer = setTimeout(() => {
+        if (finished) return
+        killGroup()
+        child.stderr?.destroy()
+      }, timeoutMs)
+    }
+    if (armAfter !== undefined) void armAfter.then(arm, arm)
+    else arm()
     const done = (work: () => void) => {
       if (finished) return
       finished = true
-      clearTimeout(timer)
+      if (timer !== undefined) clearTimeout(timer)
       signal?.removeEventListener("abort", onAbort)
       work()
     }

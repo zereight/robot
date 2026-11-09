@@ -301,17 +301,28 @@ describe("make worktree (spec 007, New worktree)", () => {
     const hook = join(dir, ".git", "hooks", "post-checkout")
     writeFileSync(
       hook,
-      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
     )
     chmodSync(hook, 0o755)
     const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
-    const made = createWorktree(dir, path, "robot/report-20261109-120000", undefined, 1500)
+    let arm!: () => void
+    const armed = new Promise<void>((resolve) => {
+      arm = resolve
+    })
+    const made = createWorktree(dir, path, "robot/report-20261109-120000", undefined, 1500, armed)
     try {
+      // The timeout starts counting only after the hook proves git is mid-flight, so a slow
+      // machine cannot fire it before git runs. The hook waits for the release that only the
+      // finally below writes, so the rejection must come from the timer.
       await untilFile(started)
+      arm()
       expect(await reasonOf(made)).not.toBe("made")
       await until(() => !pgrep(hook))
     } finally {
+      arm()
       writeFileSync(release, "go\n")
+      await until(() => !pgrep(hook))
+      expect(pgrep(hook)).toBe(false)
     }
   })
 })
