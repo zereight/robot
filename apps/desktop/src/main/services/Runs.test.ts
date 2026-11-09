@@ -2122,6 +2122,42 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect((await t.get(gone.id)).worktree?.removed).toBe(true)
   })
 
+  test("a Remove that git refuses fails with worktree_remove_failed and removes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    // Point the run at the main checkout: its status reads clean, but git refuses to remove it.
+    await t.sql("UPDATE run SET worktree_path = ? WHERE id = ?", dir, d.id)
+    const failure = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_remove_failed")
+    expect(failure?.detail).toContain("main working tree")
+    expect(existsSync(dir)).toBe(true)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+  })
+
+  test("a Remove that cannot read the worktree fails with worktree_remove_failed", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    rmSync(join(d.worktree?.path ?? "", ".git"))
+    const failure = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_remove_failed")
+    expect(failure?.detail?.length).toBeGreaterThan(0)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+  })
+
   test("remove of a run with no worktree fails", async () => {
     const t = await setup()
     await t.node({ name: "Say", prompt: "hello" })

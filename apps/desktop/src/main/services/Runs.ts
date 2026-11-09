@@ -1931,9 +1931,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           return r as RunRow & { worktree_path: string; worktree_branch: string }
         })
 
-      const gitFailed = (error: unknown) =>
+      const removeFailed = (error: unknown) =>
         new AppError({
-          code: "worktree_failed",
+          code: "worktree_remove_failed",
           detail: error instanceof Error ? error.message : String(error),
         })
 
@@ -1952,14 +1952,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           if (existsSync(r.worktree_path)) {
             const dirty = yield* Effect.tryPromise({
               try: () => isWorktreeDirty(r.worktree_path),
-              catch: gitFailed,
+              catch: removeFailed,
             })
             if (dirty && !confirmed) return "needs_confirm" as const
             // The removal anchors in the worktree itself, not in the folder of the workflow,
             // which the user may have changed since the run. The branch stays.
             yield* Effect.tryPromise({
               try: () => removeGitWorktree(r.worktree_path, r.worktree_path),
-              catch: gitFailed,
+              catch: removeFailed,
             })
           }
           db.run("UPDATE run SET worktree_removed = 1 WHERE id = ?", runId)
