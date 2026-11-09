@@ -432,6 +432,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           reasonText: r.reason,
           startedAt: r.started_at,
           finishedAt: r.finished_at,
+          worktree: null,
           ended: r.state === "done" ? total : (endedTasks ?? 0),
           total,
         }

@@ -352,6 +352,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           serverId: r.server_id,
           name: r.name,
           folder: r.folder,
+          newWorktree: false,
           permission: r.permission,
           selfImprovement: r.self_improvement === 1,
           proposals:
