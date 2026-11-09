@@ -5,6 +5,7 @@ import {
   type QueuedChatMessage,
   SKILL_PICKER_MAX,
   type Skill,
+  skillMatchesQuery,
   slashQuery,
   type WorkflowChatHistory,
   type WorkflowChatMessage,
@@ -23,6 +24,7 @@ import {
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, stageFile } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { clearSkillTry, skillTryRequest } from "../state/skillTry.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { compactOffKey } from "./ContextMeter.tsx"
@@ -68,10 +70,7 @@ export const Composer = (props: {
   const matches = createMemo(() => {
     const q = query()
     if (q === null) return []
-    const needle = q.toLowerCase()
-    return (skills() ?? [])
-      .filter((s) => s.name.toLowerCase().replace(/^\//, "").includes(needle))
-      .slice(0, SKILL_PICKER_MAX)
+    return (skills() ?? []).filter((s) => skillMatchesQuery(s.name, q)).slice(0, SKILL_PICKER_MAX)
   })
   // The one command, "compact", shows first (spec 003, flow 7). A linked computer and the phone have
   // no Compact control, so they have no command (spec 012).
@@ -87,6 +86,15 @@ export const Composer = (props: {
   }
   const total = () => commands().length + matches().length
   createEffect(on(query, () => setActive(0)))
+  // "Try it" of a saved skill (spec 017): its chip takes the box, with no text after it.
+  createEffect(() => {
+    const asked = skillTryRequest()
+    if (!asked || asked.workflowId !== props.history.workflowId) return
+    setSkill(asked.skill)
+    setText("")
+    clearSkillTry()
+    box?.focus()
+  })
 
   const fit = () => {
     if (!box) return
