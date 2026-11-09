@@ -291,7 +291,7 @@ user can read, edit and check the whole workflow.
 ## Surfaces
 
 - **Ways in**: "New workflow" on the workflow list, the card of a workflow, "Run" in the workflow
-  view, the trigger on the canvas, and the chat of a workflow for a new workflow (see "Assistant").
+  view, the trigger on the canvas, and the chat of a workflow for a new workflow (see "Assistant"), and "Make a skill" in the workflow view, which turns the nodes into a skill (017).
 - **Devices**: this computer shows and changes the workflow. A linked client (012) sees it, can
   start a run, and uses its chat. The phone has no workflow editor (011).
 - **Runtimes**: each text node uses the provider and the model that it names (006). A decision node

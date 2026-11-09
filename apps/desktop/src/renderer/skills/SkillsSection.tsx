@@ -1,4 +1,4 @@
-import type { Skill } from "@robot/shared"
+import type { Skill, SkillFactResult } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -8,6 +8,7 @@ import { useUi } from "../state/ui.tsx"
 import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
+import { SkillCheckDialog } from "./SkillCheck.tsx"
 import { editSkill, openSkillForm } from "./SkillForm.tsx"
 import styles from "./skills.module.css"
 
@@ -27,6 +28,10 @@ export const SkillsSection = () => {
   onCleanup(window.robot.on("skills.changed", () => void refetch()))
   const [error, setError] = createSignal<ErrorText>()
   const [deleting, setDeleting] = createSignal<string>()
+  const [checked, setChecked] = createSignal<{
+    readonly name: string
+    readonly facts: readonly SkillFactResult[]
+  }>()
 
   const run = async (action: () => Promise<unknown>) => {
     setError(undefined)
@@ -118,6 +123,19 @@ export const SkillsSection = () => {
                         >
                           {t("skills.duplicate")}
                         </Button>
+                        <Show when={ui.server()?.kind === "local"}>
+                          <Button
+                            onClick={() =>
+                              run(async () => {
+                                const facts = await call("skills.check", { id: skill.id })
+                                setChecked({ name: skill.name, facts })
+                              })
+                            }
+                            data-testid="skill-check-open"
+                          >
+                            {t("skills.check")}
+                          </Button>
+                        </Show>
                         <Button
                           variant="danger"
                           onClick={() => setDeleting(skill.id)}
@@ -149,6 +167,15 @@ export const SkillsSection = () => {
             )}
           </For>
         </ul>
+      </Show>
+      <Show when={checked()}>
+        {(result) => (
+          <SkillCheckDialog
+            name={result().name}
+            facts={result().facts}
+            onClose={() => setChecked(undefined)}
+          />
+        )}
       </Show>
     </div>
   )

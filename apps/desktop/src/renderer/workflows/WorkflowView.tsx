@@ -15,6 +15,7 @@ import {
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
+import { openSkillDraft } from "../skills/SkillForm.tsx"
 import { useApp } from "../state/app.tsx"
 import { improveRequest, openImprovement } from "../state/improve.ts"
 import { clearRunRequest, runRequest } from "../state/runTarget.ts"
@@ -141,6 +142,11 @@ export const WorkflowView = (props: {
     const current = runs().active()[0]
     if (current) void call("runs.stop", { runId: current.id }).catch(toastError)
   }
+  /** Opens the draft of a skill from this workflow (spec 017, flow 10). */
+  const makeSkill = () =>
+    call("skills.fromWorkflow", { workflowId: props.id })
+      .then((draft) => openSkillDraft(draft, props.id))
+      .catch(toastError)
   return (
     <>
       <header class={shell.header} data-testid="workflow-header">
@@ -175,6 +181,11 @@ export const WorkflowView = (props: {
           <Button variant="primary" onClick={start} data-testid="workflow-run">
             <Play size={14} /> {t("runs.start")}
           </Button>
+          <Show when={ui.server()?.kind === "local"}>
+            <Button onClick={makeSkill} data-testid="workflow-make-skill">
+              {t("skills.fromWorkflow")}
+            </Button>
+          </Show>
           <IconButton
             label={t("workflows.delete")}
             disabled={detail()?.running}

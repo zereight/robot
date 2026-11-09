@@ -1184,3 +1184,13 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 020, 012, 011 | What does a linked device or the phone show for the vault? | One muted line. Only the computer shows and manages the vault. To confirm. |
 | 020, glossary | What is the Korean word for Vault? | 보관함 (proposed). To confirm. |
 | 020, 007 | When the user renames a secret or a login, do the permission rules that name it move to the new name, or stay on the old name? | They move to the new name, so a Deny rule still stops the renamed row and the old name keeps no rule. To confirm. |
+
+## SK1: make a skill from a workflow (open points for 017, 010)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 017 | Does the diet use a model, or fixed cuts? | Fixed cuts. They need no account, send no text out, and give the same draft for the same workflow. A model that rewrites the steps stays open. To confirm. |
+| 017 | What does "skill eval" mean: test that a model picks the skill, or check that the app can find and load it? | The second. The skill check reads facts and asks no model, so it also runs with no account. A test that asks a model to pick the skill for sample tasks stays open. To confirm. |
+| 017 | Why 4000 characters for a lean skill? | It is a fifth of the form limit (20000) and holds about 40 short steps. A skill above it still works and shows "Long". To confirm. |
+| 017 | Does the skill follow the workflow when the workflow changes? | No. The skill is a copy with no link back. To confirm. |
+| 017 | Which Korean words for "Skill diet" and "Skill check"? | 스킬 다이어트 and 스킬 확인 (proposed). To confirm. |

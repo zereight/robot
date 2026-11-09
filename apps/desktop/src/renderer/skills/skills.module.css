@@ -221,3 +221,43 @@
 .instructions {
   min-height: 160px;
 }
+
+/* The result of the skill check (spec 017, "Skill check"): one line per fact. */
+.check {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.checkName {
+  font-weight: 500;
+}
+
+.checkStatus {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.checkRow[data-status="fail"] .checkStatus {
+  color: var(--c-danger);
+}
+
+.checkRow[data-status="ok"] .checkStatus {
+  color: var(--c-success);
+}
+
+.checkReason {
+  flex-basis: 100%;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}

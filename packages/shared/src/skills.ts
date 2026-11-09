@@ -68,6 +68,10 @@ export const copySkillName = (
   }
 }
 
+/** True when the slash list shows a skill for what the user typed after the slash. */
+export const skillMatchesQuery = (name: string, query: string) =>
+  name.toLowerCase().replace(/^\//, "").includes(query.toLowerCase())
+
 /** The problems of a skill form, in the order of the fields. Empty when it can be saved. */
 export const skillProblems = (input: SkillInput): readonly SkillProblem[] => {
   const problems: SkillProblem[] = []
