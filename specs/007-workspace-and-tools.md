@@ -13,6 +13,10 @@ can take the feedback of the user while the run works.
   workspace folder (013). The user can point the workflow at another folder, such as an existing
   project. Only the user changes the folder. A node cannot change it. A proposal for
   self-improvement cannot change it (010, "Folder and permission level").
+- **New worktree**: a switch of a workflow, "Work in a new worktree". It is off at first. The user
+  can turn it on only when the folder is inside a Git repository. While it is on, each run works
+  in its own new linked Git worktree of that repository, and not in the folder itself. See "New
+  worktree".
 - **Tools of a text node**: shell commands, files (read, write and search), the browser (with the
   fetch of web pages), and memory (008). A text node uses them in the folder and at the permission
   level of its workflow (010, "Tools"). A decision node uses no tool. A text node can also use computer
@@ -47,14 +51,39 @@ can take the feedback of the user while the run works.
 4. Browser: a text node can open a browser window that the user can watch. The user can take
    control, then give it back. Stop ends the browser work at once.
 5. Computer use: see "Computer use".
-6. Level and folder: the user picks the folder and the permission level of the workflow in the
-   editor, and can pick a stricter level for a node. The editor refuses a level for a node that is
+6. Level and folder: the user picks the folder, the permission level and the switch "Work in a new
+   worktree" of the workflow in the editor, and can pick a stricter level for a node. The editor refuses a level for a node that is
    looser than the level of the workflow. "Full access" asks for a confirm first (see "Permission
-   levels"). The editor is read-only while a run works (010), so the folder and the levels do not
-   change during a run.
+   levels"). The editor is read-only while a run works (010), so the folder, the switch and the levels
+   do not change during a run.
 7. Outside content: see "Outside content".
 8. Following a run: the user asks in the chat how far a run has gone, and gives feedback on a
    result (see "Following a run in the chat").
+9. New worktree: the user turns on "Work in a new worktree" and starts a run (see "New worktree").
+
+## New worktree
+
+- The switch "Work in a new worktree" is in the editor of the workflow, next to the folder. It is
+  off for a new workflow. When the folder is not inside a Git repository, the switch is off, the
+  user cannot turn it on, and one muted line says "The folder is not in a Git repository."
+- While the switch is on, the start of a run makes one new linked Git worktree of that repository.
+  It has a new branch. It holds the files of the last commit of the folder. Changes of the folder
+  that are not committed are not in it.
+- Every text node of the run works in that worktree, as it would in the folder. For the permission
+  levels and the risky steps (see "Rules"), the folder of the run is the worktree.
+- One run uses one worktree. "Keep going" on a task and a retry of a node use the same worktree. A
+  new run makes a new worktree, also a run that a trigger starts (010).
+- The run view shows one line "Worktree: <path>, branch <name>", with "Open" and "Remove". "Open"
+  shows the worktree in the system file browser. "Remove" asks first when the worktree holds
+  changes that are not committed. It deletes the folder of the worktree. The branch stays.
+- The worktree stays when the run ends. The app never removes it by itself.
+- The run does not start when the app cannot make the worktree, for example when the repository has
+  no commit or the disk is full. The run is failed with the reason "Could not make a new worktree:
+  <reason>" (010). The folder is not changed.
+- Only the user changes the switch. A node cannot change it. A proposal for self-improvement cannot
+  change it (010). A workflow that comes from an import (014) or from sync (019) has the switch off.
+- Setup actions (035) treat the new worktree as an own copy. A shared folder (025) does not
+  include it.
 
 ## Following a run in the chat
 
@@ -801,3 +830,12 @@ steer the node to an address that only this computer or its network can reach.
   fetch runs with no card.
 - Fetch: a test name leads to `127.0.0.1`. An Allow rule for the name exists. The fetch still asks.
 - Fetch: a public test address redirects to `http://169.254.169.254/`: the step is refused.
+- Turn on "Work in a new worktree" for a workflow whose folder is a Git repository, and run it
+  twice: the run view of each run shows its own worktree line, with two different paths and two
+  different branches. The folder keeps its files.
+- A run with the switch on: a text node writes `a.txt`. The file is in the worktree and not in the
+  folder. The worktree stays after the run, and "Remove" deletes its folder and keeps the branch.
+- The worktree has a change that is not committed. "Remove" asks first.
+- The folder is not in a Git repository: the switch is off and the muted line shows.
+- The repository has no commit, and the switch is on: the run is failed with "Could not make a new
+  worktree:" and the reason.

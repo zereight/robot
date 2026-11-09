@@ -74,6 +74,8 @@ change now, and refuses a file step on a file that another workflow holds.
   no part in claims.
 - The folder of a workflow changes only by the user (010). A change of the folder does not move a
   claim.
+- A run in a new worktree (007) works in a folder that no other workflow uses. Its tasks make no
+  claims and get no shared folder note.
 
 ## Surfaces
 
@@ -92,7 +94,8 @@ change now, and refuses a file step on a file that another workflow holds.
 ## Out of scope
 
 - A lock on a whole folder.
-- A separate copy of a repository for each workflow.
+- A separate copy of a repository for each workflow, except the switch "Work in a new worktree"
+  (007).
 - A message from a node to the holder. A workflow has no tool for it (007).
 
 ## Acceptance
@@ -110,3 +113,6 @@ change now, and refuses a file step on a file that another workflow holds.
   claims, newest first.
 - Two workflows have the default folders: the editor shows no "Shares this folder" line, and no
   claim refuses a step.
+- A workflow has the switch "Work in a new worktree" on, and a run starts. The task writes
+  `notes.md`, and a task of another workflow that uses the folder writes `notes.md` too: neither
+  is refused.

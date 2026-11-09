@@ -13,7 +13,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 003 | [Workflow chat: send, stream, stop, attach, reply, progress of a run, results and feedback, threads, context](003-direct-chat.md) | Draft |
 | 005 | [Tasks: one run of a node, queue, wait, finish, fail, retry, reasons and results](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a provider, model and reasoning level for each text node, backup model (to confirm), switch](006-providers.md) | Draft |
-| 007 | [Workflow folder and tools: files, shell, browser, approvals, permission rules, action log, computer use, and the tools of the chat for a run](007-workspace-and-tools.md) | Draft |
+| 007 | [Workflow folder and tools: files, shell, browser, approvals, permission rules, action log, computer use, a new worktree for each run, and the tools of the chat for a run](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what a workflow keeps between runs, how the user edits it, and memory proposals](008-memory.md) | Draft |
 | 010 | [Workflows: a graph of nodes with a responsible document, one chat and one memory, a TLA file, and a check of the TLA form](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, run workflows, ask and give feedback, read and send, notifications](011-phone-app.md) | Draft |

@@ -123,6 +123,9 @@ user can read, edit and check the whole workflow.
   node use neither.
 - Only the user changes the folder and the permission levels of a workflow. A node cannot change
   them. A proposal for self-improvement cannot change them.
+- A workflow has the switch "Work in a new worktree" (007, "New worktree"). It is off at first. A
+  run with the switch on works in a new worktree, and its text nodes use that worktree as their
+  folder. Only the user changes the switch.
 
 ## Silent limit of a node
 
@@ -348,7 +351,8 @@ user can read, edit and check the whole workflow.
 - Make a change that leaves a node that no run can reach: the check shows "Problem found" with the
   path, and the change does not save.
 - A rule that the user adds in the TLA module breaks a state: the check reports it.
-- A proposal to change the permission level or the folder is not offered.
+- A proposal to change the permission level, the folder or the switch "Work in a new worktree" is
+  not offered.
 - Accept a proposal, then undo it: the earlier text is back. A proposal that fails the check cannot
   be accepted.
 - While a run goes, the editor is read-only. Restart the app during the run: the run and its tasks
