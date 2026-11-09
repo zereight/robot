@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    // A short command of the main process: one keychain read or write, then the end.
+    // A short command of the main process: one secrets read or write, then the end.
     if args.first().map(String::as_str) == Some("secrets") {
         let code = robot_host::secrets::run(&args[1..], io::stdin(), io::stdout(), io::stderr());
         return ExitCode::from(code);
