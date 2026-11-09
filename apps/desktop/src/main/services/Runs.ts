@@ -1761,7 +1761,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
          */
         worktree?:
           | { kind: "fresh"; root: string; subfolder: string | null }
-          | { kind: "reuse"; path: string; branch: string; subfolder: string | null }
+          | { kind: "reuse"; path: string; branch: string; subfolder: string | null; made: number }
           | null,
       ) => {
         const waiting =
@@ -1816,7 +1816,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             path: worktree.path,
             branch: worktree.branch,
             subfolder: worktree.subfolder,
-            made: 1,
+            made: worktree.made,
           }
         db.run(
           `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at,
@@ -1987,6 +1987,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                   path: r.worktree_path,
                   branch: r.worktree_branch,
                   subfolder: r.worktree_subfolder,
+                  made: r.worktree_made,
                 }
               : null,
           )
