@@ -810,6 +810,29 @@ describe("a delete (spec 010)", () => {
     expect(await t.code((x) => x.get(gone.id))).toBe("workflow_not_found")
     expect((await t.w((x) => x.list(t.server.id))).map((f) => f.name)).toEqual(["Stay"])
   })
+
+  test("a delete keeps the worktrees of its runs on the disk (spec 007)", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const dir = gitRepo()
+    await t.w((x) => x.setFolder(flow.id, dir))
+    await t.w((x) => x.setNewWorktree(flow.id, true))
+    const path = join(mkdtempSync(join(tmpdir(), "robot-keep-")), "copy")
+    execFileSync("git", ["-C", dir, "worktree", "add", "-b", "robot/report-x", path, "HEAD"])
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, finished_at, worktree_path,
+         worktree_branch)
+       VALUES ('r1', ?, 'done', 'hand', 1, 2, ?, ?)`,
+      flow.id,
+      path,
+      "robot/report-x",
+    )
+    await t.w((x) => x.remove(flow.id))
+    expect(existsSync(path)).toBe(true)
+    expect(
+      execFileSync("git", ["-C", dir, "worktree", "list", "--porcelain"], { encoding: "utf8" }),
+    ).toContain(path)
+  })
 })
 
 describe("the switch Work in a new worktree (spec 007)", () => {
