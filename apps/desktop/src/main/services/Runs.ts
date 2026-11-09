@@ -1728,6 +1728,21 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const path = r.worktree_path
         const fresh = r.worktree_made === 0
         if (fresh) {
+          // The planned path already exists: someone else holds this folder. The attempt fails
+          // at once, before git runs, and removes nothing. The row is cleared so that no
+          // worktree points at the folder, and Remove can never delete it. Below this line
+          // the folder did not exist before the attempt, so the cleanup may remove what git
+          // half-made.
+          if (existsSync(path)) {
+            db.run("UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?", r.id)
+            setRun(
+              r.id,
+              "failed",
+              { text: `the folder ${path} already exists`, code: "worktree_failed" },
+              true,
+            )
+            return null
+          }
           // A leftover branch from an aborted creation must not fail the run: the name is free
           // against the branches of the repository too, not only against the rows.
           const branch = await uniqueBranch(detail.folder, r.worktree_branch)
@@ -2028,12 +2043,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           if (!detail.graph.nodes.some((node) => node.number === t.node_number))
             return yield* new AppError({ code: "cannot_retry_task" })
           // A retry of a removed worktree is refused with no run (spec 007, "New worktree"),
-          // and so is a retry while its removal is in flight. A worktree whose folder is gone is
-          // refused on the reuse path of `launch` below.
+          // and so is a retry while its removal is in flight. A retry of a run whose worktree
+          // was never made is refused too, with a leftover or not: the user starts a new run.
+          // A worktree whose folder is gone is refused on the reuse path of `launch` below.
           if (
             r.worktree_path !== null &&
             r.worktree_branch !== null &&
-            (r.worktree_removed === 1 || worktreeRemoving.has(r.worktree_path))
+            (r.worktree_removed === 1 ||
+              r.worktree_made === 0 ||
+              worktreeRemoving.has(r.worktree_path))
           )
             return yield* new AppError({ code: "worktree_unavailable" })
           // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the

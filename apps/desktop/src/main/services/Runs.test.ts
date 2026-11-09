@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
@@ -2678,6 +2679,85 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     )
     expect(existsSync(leftover)).toBe(false)
     expect((await again.runtime.runPromise(Runs.use((x) => x.get("r1")))).worktree).toBeNull()
+  })
+
+  test("a retry of a run whose worktree was never made is refused, and the leftover stays", async () => {
+    // The app quit during creation: the restart turns the queued first task into failed, and
+    // the user can Retry it. The retry is refused with no run; the user starts a new run.
+    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.node({ name: "Say", prompt: "hello" })
+    const leftover = join(mkdtempSync(join(tmpdir(), "robot-wt-leftover-")), "copy")
+    mkdirSync(leftover, { recursive: true })
+    writeFileSync(join(leftover, "notes.md"), "user edit\n")
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'running', 'hand', 1, ?, 'robot/report-20261109-120000', 0)`,
+      t.flow.id,
+      leftover,
+    )
+    await t.sql(
+      `INSERT INTO task (id, run_id, workflow_id, node_name, node_number, input, state, created_at)
+       VALUES ('q1', 'r1', ?, 'Say', 1, 'hello', 'queued', 1)`,
+      t.flow.id,
+    )
+    const again = testRuntime({ databaseFile: file })
+    const failed = await again.runtime.runPromise(Runs.use((x) => x.get("r1")))
+    expect(failed.state).toBe("failed")
+    expect(failed.reasonText).toBe("The app stopped")
+    const code = await again.runtime.runPromise(Runs.use((x) => x.retryTask("q1"))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect(
+      await again.runtime.runPromise(
+        Database.use((d) => Effect.sync(() => d.all<{ id: string }>("SELECT id FROM run"))),
+      ),
+    ).toEqual([{ id: "r1" }])
+    expect(readFileSync(join(leftover, "notes.md"), "utf8")).toBe("user edit\n")
+  })
+
+  test("a planned path that already exists fails the run and removes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    // Another worktree whose folder moved away: its entry is stale, not locked. A prune would
+    // drop it; the failed creation must leave it alone.
+    const otherPath = join(mkdtempSync(join(tmpdir(), "robot-wt-other-")), "userwt")
+    git(dir, "worktree", "add", "--quiet", "-b", "userwt-branch", otherPath)
+    renameSync(otherPath, join(mkdtempSync(join(tmpdir(), "robot-wt-moved-")), "userwt"))
+    expect(git(dir, "worktree", "list", "--porcelain")).toContain(otherPath)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    const planned = (
+      await t.rows<{ worktree_path: string; worktree_branch: string }>(
+        "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+        runB.id,
+      )
+    )[0] ?? { worktree_path: "", worktree_branch: "" }
+    expect(planned.worktree_path).not.toBe("")
+    // The user holds this folder: the creation must fail at once and touch nothing.
+    mkdirSync(planned.worktree_path, { recursive: true })
+    writeFileSync(join(planned.worktree_path, "user.md"), "user work\n")
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runA.id)
+    const failedB = await t.ended(runB.id)
+    expect(failedB.state).toBe("failed")
+    expect(failedB.reasonCode).toBe("worktree_failed")
+    expect(failedB.reasonText).toContain("already exists")
+    expect(failedB.worktree).toBeNull()
+    expect(readFileSync(join(planned.worktree_path, "user.md"), "utf8")).toBe("user work\n")
+    expect(await branchExists(dir, planned.worktree_branch)).toBe(false)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).toContain(otherPath)
+    expect(listed).not.toContain(planned.worktree_path)
   })
 
   test("a retry reuses the worktree of the run it retries", async () => {
