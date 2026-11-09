@@ -15,9 +15,10 @@ user can read, edit and check the whole workflow.
   workflow, its character and its limits. A workflow has one responsible document. A responsible
   document belongs to one workflow. The user edits it. The user cannot pick another responsible
   document. It changes only by a proposal that the user accepts (see "Self-improvement").
-- **Node**: one step of the graph. The word covers two kinds: a text node and a decision node. Each
-  node has a name and a number. The number is the place of the node in the list of nodes, counted
-  from 1. Moving a node on the canvas does not change its number. A node has no agent.
+- **Node**: one step of the graph. The word covers three kinds: a text node, a decision node and an
+  approval node. Each node has a name and a number. The number is the place of the node in the list
+  of nodes, counted from 1. Moving a node on the canvas does not change its number. A node has no
+  agent.
 - **Text node**: a node that writes text. It has a prompt, a provider, a model and a reasoning
   level (006). At run time it sends the responsible document and its own prompt to its model. Its
   prompt can include the text of a skill of the user (017). It can use tools (see "Folder and
@@ -25,8 +26,11 @@ user can read, edit and check the whole workflow.
 - **Decision node**: a node that asks a decision model one question with a fixed list of options,
   and follows the option that wins (see "Decision node rules"). It takes its model from 013. It has
   no reasoning level. It uses no tools and writes no text.
+- **Approval node**: a node that asks the user one question and waits for the answer. It has two
+  outputs, "Approve" and "Reject" (see "Approval node rules"). It uses no model and no tools.
 - **Connection**: a line from the output of one node to the input of another node. A decision node
-  has one output for each of its options.
+  has one output for each of its options. An approval node has one output for "Approve" and one for
+  "Reject".
 - **Trigger**: what starts a run. The user can start a run by hand. A schedule is a trigger too
   (see "Trigger").
 - **Chat**: the one chat of a workflow. The user talks to the workflow, and the responsible document
@@ -84,17 +88,26 @@ user can read, edit and check the whole workflow.
    - A scheduled run has no user at that moment. It waits as a task that waits for the user (005).
    - The words of the input go to the service of the choice. The settings text of 013 says so.
    - The check sees a decision node as a branch with one state for each option.
-7. Trigger: the user sets the trigger in the editor (see "Trigger").
-8. Self-improvement: after a run, the workflow can propose a change (see "Self-improvement").
-9. File: the workflow file is a TLA module that the user can edit (see "File").
+7. Approval node: the user writes the question in the node panel.
+   - At run time the node shows an approval card (007) with the question and its input. The run
+     waits for the answer. A scheduled run waits as a task that waits for the user (005).
+   - The card has "Approve", "Reject" and an optional comment. The run follows the connection of
+     the answer.
+   - The run view shows the answer, the comment and the time of the answer.
+8. Trigger: the user sets the trigger in the editor (see "Trigger").
+9. Self-improvement: after a run, the workflow can propose a change (see "Self-improvement").
+10. File: the workflow file is a TLA module that the user can edit (see "File").
 
 ## Node input and output
 
 - A node waits until each of its inputs has ended.
 - An input passes on when its node is done. It also passes on when its node failed and has the mark
-  "Continue on failure", or when a decision node chose the connection to this node.
+  "Continue on failure", or when a decision node or an approval node chose the connection to this
+  node.
 - The node runs when at least one input passes on. Its input is the results of the nodes that pass
   on. When no input passes on, the node is skipped. A node with no input runs when the run starts.
+- The result of an approval node is its input. A comment of the user goes at the end of it, after
+  the line "Comment from the user:".
 - `{{input}}` in a prompt is the joined result of the nodes before. `{{trigger}}` is the text that
   started the run. A prompt that does not hold `{{input}}` gets the input at its end.
 - A failed node stops the run, unless the node has the mark "Continue on failure". The reason of the
@@ -106,7 +119,8 @@ user can read, edit and check the whole workflow.
   the default workspace folder (013). It gets the default permission level, "Ask for risky steps"
   (007).
 - A text node uses the folder and the permission level of its workflow. A text node can pick a
-  stricter permission level than the workflow, never a looser one. A decision node uses neither.
+  stricter permission level than the workflow, never a looser one. A decision node and an approval
+  node use neither.
 - Only the user changes the folder and the permission levels of a workflow. A node cannot change
   them. A proposal for self-improvement cannot change them.
 
@@ -173,6 +187,17 @@ user can read, edit and check the whole workflow.
 - A decision node uses no tools and writes no text. It takes its model from 013 and has no reasoning
   level.
 
+## Approval node rules
+
+- An approval node needs a question. The editor refuses an approval node with an empty question.
+- An output of an approval node can have no connection. When the run takes that output, the nodes
+  that only that output reaches are skipped.
+- The comment has at most 2,000 characters.
+- Only the user answers. A model, a node, the chat of the workflow, an outside program (023) and
+  Teams (028) cannot answer the card. A linked client (012) answers it as it answers other approval
+  cards.
+- Stop ends a run that waits at an approval node (see "Surfaces", "Ways out").
+
 ## Trigger
 
 - A run starts when the user presses "Run" in the editor, or when a trigger starts it.
@@ -185,7 +210,7 @@ user can read, edit and check the whole workflow.
 - The check reads the TLA form of the workflow. It tries every way that a run can go. It reports a
   deadlock, a node that never runs, and a rule that a state breaks.
 - The app writes three standard rules: no deadlock, every node can run, and every approval node
-  (a node kind that is not decided, see the questions for 010) comes before its effect. The meaning of "effect" is not decided (see the questions for 010). The
+  comes before its effect. The meaning of "effect" is not decided (see the questions for 010). The
   user adds more rules in the TLA module. The check reports a state that breaks them.
 - The check needs no model and no other program. It starts no run and calls no model. It sends
   nothing out.
@@ -197,9 +222,10 @@ user can read, edit and check the whole workflow.
   node.
 - **Passed**: the panel says that the check found no problem in the nodes and connections.
 - After a fix, the user changes the graph, and the check runs again.
+- The check sees an approval node as a branch with two states, "Approve" and "Reject".
 - The check reads the shape of the workflow. It does not read what a model writes in a node, which
-  option a decision node takes for a given input, or whether a tool works. No text of the check says
-  that a workflow is proven, verified, correct or safe.
+  option a decision node takes for a given input, which answer the user gives, or whether a tool
+  works. No text of the check says that a workflow is proven, verified, correct or safe.
 - The texts of the check follow the language of the interface. The words `{{input}}` and
   `{{trigger}}` stay English, because they are the template of the file.
 
@@ -237,6 +263,7 @@ user can read, edit and check the whole workflow.
   - A connection names a node that does not exist.
   - A connection joins a node to itself.
   - A decision node has fewer than two options, or an option with no connection.
+  - An approval node has an empty question.
   - The workflow has more than 30 nodes.
   A loop of nodes is not decided (see the questions for 010).
 
@@ -268,7 +295,7 @@ user can read, edit and check the whole workflow.
 - **Devices**: this computer shows and changes the workflow. A linked client (012) sees it, can
   start a run, and uses its chat. The phone has no workflow editor (011).
 - **Runtimes**: each text node uses the provider and the model that it names (006). A decision node
-  uses the model of 013. The check reads no model.
+  uses the model of 013. An approval node uses no model. The check reads no model.
 - **Ways out**: the user can stop a run. A run that waits for the user ends with Stop too. The user
   can restore a version, undo an accepted proposal, and close the check panel. A delete asks first
   (000).
@@ -311,6 +338,13 @@ user can read, edit and check the whole workflow.
 - A decision node where no option reaches 0.9: an approval card asks the user to pick an option, the
   run waits, and it goes on after the answer.
 - A decision node with one option: the editor refuses it.
+- An approval node between node 1 and node 3: the run waits with an approval card that shows the
+  question and the result of node 1. Press "Approve" with the comment "Shorter": node 3 runs and
+  its input ends with "Comment from the user:" and "Shorter".
+- Press "Reject" on that card when only "Approve" has a connection: node 3 is skipped and the run
+  ends. The run view shows "Reject".
+- An approval node with an empty question: the editor refuses it.
+- Stop a run that waits at an approval node: the card goes away and the run ends as stopped.
 - Make a change that leaves a node that no run can reach: the check shows "Problem found" with the
   path, and the change does not save.
 - A rule that the user adds in the TLA module breaks a state: the check reports it.
