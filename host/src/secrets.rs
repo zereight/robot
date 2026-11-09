@@ -1,7 +1,3 @@
-//! Keys and tokens of the app. They live in one encrypted secrets file in the data folder
-//! of the profile, with one secrets key per profile in the system keychain. End-to-end tests on
-//! machines without a usable keychain use one plain file outside the data folder.
-//!
 //! The main process calls this part as a short command, and waits for it:
 //!
 //! ```text
@@ -10,14 +6,12 @@
 //! robot-host secrets remove <key> --vault <path> --profile <id>   no error when there is none
 //! robot-host secrets check --vault <path> --profile <id>          the vault can be used
 //! robot-host secrets destroy --vault <path> --profile <id>        removes the file and the key
-//! robot-host secrets get|set|remove|check|destroy [--key] --file <path>   tests only
+//! robot-host secrets get|set|remove <key> --file <path>           tests only
+//! robot-host secrets check|destroy --file <path>                  tests only
 //! ```
 //!
 //! Exit codes: 0 done, 1 the store failed (the reason on stderr, never a value), 2 bad
 //! arguments, 3 no value. `check` and `destroy` never exit with 3.
-//!
-//! `ROBOT_TEST_KEYCHAIN_SERVICE` names another keychain service. Tests of the real keychain use
-//! it, so they never touch the service of the app.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -98,7 +92,6 @@ impl Store for FileStore {
     }
 }
 
-/// Maps `VaultError` to stderr text. Never includes a value or key bytes.
 fn vault_reason(error: &VaultError) -> String {
     match error {
         VaultError::Keychain(code) => format!("keychain error {code}"),
@@ -143,7 +136,6 @@ enum Op {
     Destroy,
 }
 
-/// Locator of the secret store of one call. Exactly one of vault or file.
 enum Locator {
     Vault { path: PathBuf, profile: String },
     File { path: PathBuf },
@@ -187,7 +179,11 @@ fn parse(args: &[String]) -> Result<Command, String> {
             }
             "--vault" => {
                 at += 1;
-                vault = Some(PathBuf::from(args.get(at).ok_or("--vault needs a path")?));
+                let path = args.get(at).ok_or("--vault needs a path")?;
+                if path.is_empty() {
+                    return Err("--vault needs a path".into());
+                }
+                vault = Some(PathBuf::from(path));
             }
             "--profile" => {
                 at += 1;
@@ -219,9 +215,9 @@ pub fn run(
     mut output: impl Write,
     mut errors: impl Write,
 ) -> u8 {
-    let service =
-        std::env::var("ROBOT_TEST_KEYCHAIN_SERVICE").unwrap_or_else(|_| SERVICE.to_owned());
-    let keys = KeychainKeys { service };
+    let keys = KeychainKeys {
+        service: SERVICE.to_owned(),
+    };
     run_with_keys(args, input, &mut output, &mut errors, &keys)
 }
 
@@ -299,7 +295,7 @@ fn run_with(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vault::{BrokenKeys, EphemeralKeys, RefusingKeys};
+    use crate::vault::{BrokenKeys, EphemeralKeys, FailStoreKeys, RefusingKeys};
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
@@ -319,7 +315,6 @@ mod tests {
         )
     }
 
-    /// Runs a command against a vault with injected keys. No test touches the user keychain.
     fn run_vault<K: KeySource>(
         vault: &std::path::Path,
         keys: &K,
@@ -426,6 +421,36 @@ mod tests {
             run_vault(&file, &keys, &["get", "new"], ""),
             (0, "here".into(), "".into())
         );
+        assert_eq!(run_vault(&file, &keys, &["get", "old"], "").0, 3);
+    }
+
+    #[test]
+    fn a_set_that_cannot_store_its_key_leaves_missing_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = vault_file(&dir);
+        let keys = FailStoreKeys;
+        let (code, out, err) = run_vault(&file, &keys, &["set", "k"], "v");
+        assert_eq!(code, 1);
+        assert_eq!(out, "");
+        assert_eq!(err, "robot-host secrets: keychain error -1\n");
+        assert!(file.exists());
+        assert_eq!(run_vault(&file, &keys, &["get", "k"], "").0, 3);
+    }
+
+    #[test]
+    fn a_set_whose_write_fails_stores_no_key_and_keeps_missing_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = vault_file(&dir);
+        let keys = EphemeralKeys::default();
+        assert_eq!(run_vault(&file, &keys, &["set", "old"], "v").0, 0);
+        keys.remove("default").unwrap();
+        let before = std::fs::read(&file).unwrap();
+        let mut tmp = file.as_os_str().to_owned();
+        tmp.push(format!(".{}.tmp", std::process::id()));
+        std::fs::create_dir(&tmp).unwrap();
+        assert_eq!(run_vault(&file, &keys, &["set", "new"], "v2").0, 1);
+        assert_eq!(keys.load("default").unwrap(), None);
+        assert_eq!(std::fs::read(&file).unwrap(), before);
         assert_eq!(run_vault(&file, &keys, &["get", "old"], "").0, 3);
     }
 
@@ -548,6 +573,7 @@ mod tests {
             &["get", "k", "--file"][..],
             &["get", "k", "--vault"][..],
             &["get", "k", "--vault", "p"][..],
+            &["get", "k", "--vault", "", "--profile", "x"][..],
             &["get", "k", "--profile", "x"][..],
             &["get", "k", "--profile", ""][..],
             &["get", "k", "--vault", "p", "--profile", "x", "--file", "f"][..],

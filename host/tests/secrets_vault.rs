@@ -1,21 +1,15 @@
-//! Runs the built program against the real keychain, under a service of its own. Run it by
-//! hand on a Mac: `cargo test --manifest-path host/Cargo.toml -- --ignored`. It writes one
-//! secrets key and one secrets file, then removes both.
-
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Runs `robot-host secrets …` with the test service and returns the exit code, stdout, stderr.
-fn secrets(service: &str, vault: &Path, args: &[&str], input: &str) -> (i32, String, String) {
+fn secrets(vault: &Path, profile: &str, args: &[&str], input: &str) -> (i32, String, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_robot-host"))
         .arg("secrets")
         .args(args)
         .arg("--vault")
         .arg(vault)
         .arg("--profile")
-        .arg("default")
-        .env("ROBOT_TEST_KEYCHAIN_SERVICE", service)
+        .arg(profile)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -35,20 +29,27 @@ fn secrets(service: &str, vault: &Path, args: &[&str], input: &str) -> (i32, Str
     )
 }
 
-/// Writers from many processes lose no key, and `destroy` removes the file and the key.
+fn unique_profile() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("test-{}-{nanos}", std::process::id())
+}
+
 #[test]
 #[ignore = "uses the keychain of the user"]
 fn concurrent_writers_share_one_vault() {
-    let service = format!("ROBot test vault {}", std::process::id());
+    let profile = unique_profile();
     let dir = tempfile::tempdir().unwrap();
     let vault: PathBuf = dir.path().join("secrets.vault");
 
     std::thread::scope(|scope| {
         for task in 0..8 {
-            let (service, vault) = (service.clone(), vault.clone());
+            let (profile, vault) = (profile.clone(), vault.clone());
             scope.spawn(move || {
                 let key = format!("k{task}");
-                let (code, _, err) = secrets(&service, &vault, &["set", &key], "v");
+                let (code, _, err) = secrets(&vault, &profile, &["set", &key], "v");
                 assert_eq!((code, err), (0, String::new()));
             });
         }
@@ -56,22 +57,21 @@ fn concurrent_writers_share_one_vault() {
     for task in 0..8 {
         let key = format!("k{task}");
         assert_eq!(
-            secrets(&service, &vault, &["get", &key], ""),
+            secrets(&vault, &profile, &["get", &key], ""),
             (0, "v".into(), "".into())
         );
     }
-    assert_eq!(secrets(&service, &vault, &["check"], "").0, 0);
-    assert_eq!(secrets(&service, &vault, &["destroy"], "").0, 0);
+    assert_eq!(secrets(&vault, &profile, &["check"], "").0, 0);
+    assert_eq!(secrets(&vault, &profile, &["destroy"], "").0, 0);
     assert!(!vault.exists());
-    assert_eq!(secrets(&service, &vault, &["get", "k0"], "").0, 3);
-    // The secrets key is gone from the keychain too.
+    assert_eq!(secrets(&vault, &profile, &["get", "k0"], "").0, 3);
     let found = Command::new("security")
         .args([
             "find-generic-password",
             "-s",
-            &service,
+            "ROBot",
             "-a",
-            "vault:default",
+            &format!("vault:{profile}"),
         ])
         .output()
         .unwrap();
