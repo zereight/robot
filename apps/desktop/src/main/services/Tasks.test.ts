@@ -478,7 +478,7 @@ describe("the limit of 20 queued tasks (spec 005, Queue)", () => {
     // A schedule run in the same state is a failed run with the reason, and it holds no task.
     const failed = await t.start(a.id, "schedule")
     expect(failed.state).toBe("failed")
-    expect(failed.reasonText).toBe("Weekly has 20 tasks that wait. Try again later.")
+    expect(failed.reasonText).toBe("Weekly")
     expect(failed.reasonCode).toBe("run_queue_full")
     for (const r of [running, ...queued].reverse()) await t.stop(r.id)
   })

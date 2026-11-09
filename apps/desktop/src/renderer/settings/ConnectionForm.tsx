@@ -320,7 +320,10 @@ export const ConnectionFormDialog = (props: {
                 />
                 <span class={styles.secretSwitch}>
                   <Switch
-                    label={`${t("connections.form.entry.secret")}: ${line().name}`}
+                    label={t("connections.form.entry.secret.label", {
+                      secret: t("connections.form.entry.secret"),
+                      name: line().name,
+                    })}
                     checked={line().secret}
                     // A secret that is turned off has no saved value any more.
                     onChange={(secret) =>

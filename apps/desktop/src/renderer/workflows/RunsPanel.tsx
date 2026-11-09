@@ -143,7 +143,7 @@ const TaskConnections = (props: { task: RunTask; number: number }) => {
           })
     if (step.how === "level" || step.how === "none") return label
     const how = t(`runs.tool.how.${step.how}` as MessageKey)
-    return `${label} — ${how}`
+    return t("runs.tool.call.how", { line: label, how })
   }
   return (
     <Show when={any()}>

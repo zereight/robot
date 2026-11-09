@@ -709,7 +709,11 @@ export const GraphEditor = (props: {
             type="button"
             class={styles.zoomValue}
             title={t("graph.zoom.reset")}
-            aria-label={`${t("graph.zoom")} ${Math.round(view().zoom * 100)}%. ${t("graph.zoom.reset")}`}
+            aria-label={t("graph.zoom.label", {
+              zoom: t("graph.zoom"),
+              pct: Math.round(view().zoom * 100),
+              reset: t("graph.zoom.reset"),
+            })}
             onClick={() => setView(home())}
             data-testid="graph-zoom-reset"
           >
