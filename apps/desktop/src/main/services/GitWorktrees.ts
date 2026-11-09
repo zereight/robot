@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process"
+import { existsSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 
 /**
@@ -32,6 +34,20 @@ const gitReason = (error: unknown): string => {
       : ""
   const text = stderr !== "" ? stderr : error instanceof Error ? error.message : String(error)
   return text.length > REASON_MAX ? `${text.slice(0, REASON_MAX)}…` : text
+}
+
+/**
+ * True when the folder or a folder above it holds a `.git` entry. It spawns nothing, so the list
+ * of workflows can ask it for each workflow (the field `folderInGit`).
+ */
+export const folderHasGit = (folder: string): boolean => {
+  let at = folder
+  for (;;) {
+    if (existsSync(join(at, ".git"))) return true
+    const up = dirname(at)
+    if (up === at) return false
+    at = up
+  }
 }
 
 /** True when the folder is inside the work tree of a Git repository. */

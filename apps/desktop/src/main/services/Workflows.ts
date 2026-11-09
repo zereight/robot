@@ -50,7 +50,7 @@ import { Browsers } from "./Browsers.ts"
 import { Database, type DatabaseService } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
-import { isInsideRepo, slugOfName } from "./GitWorktrees.ts"
+import { folderHasGit, isInsideRepo, slugOfName } from "./GitWorktrees.ts"
 import { Platform } from "./Platform.ts"
 import { SettingsStore } from "./Settings.ts"
 import { sharingWorkflows } from "./sharedFolders.ts"
@@ -354,6 +354,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           name: r.name,
           folder: r.folder,
           newWorktree: r.new_worktree === 1,
+          folderInGit: folderHasGit(r.folder),
           permission: r.permission,
           selfImprovement: r.self_improvement === 1,
           proposals:
