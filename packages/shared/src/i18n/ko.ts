@@ -439,6 +439,7 @@ export const ko: Record<MessageKey, string> = {
   "error.worktree_failed": "새 워크트리를 만들지 못했어요: {detail}",
   "error.worktree_unavailable": "새 워크트리를 쓸 수 없어요.",
   "error.worktree_not_found": "이 실행에는 새 워크트리가 없어요.",
+  "error.worktree_not_in_commit": "새 워크트리를 만들지 못했어요: 이 폴더가 마지막 커밋에 없어요.",
   "error.worktree_in_use": "작업 중인 실행이 이 워크트리를 쓰고 있어요.",
   "error.worktree_remove_failed": "워크트리를 제거하지 못했어요: {detail}",
   "error.worktree_removed": "이 실행의 워크트리를 이미 제거했어요.",
