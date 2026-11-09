@@ -1678,7 +1678,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         device: string | null,
         only?: OnlyNode,
         /**
-         * The worktree of the run: made by `make` before the first task, or the worktree of the
+         * The worktree of the run: made by `make` after the row exists, or the worktree of the
          * run that a retry tries again. When `make` fails the run is failed and starts no task.
          */
         worktree?: RunWorktree | ((runId: string) => Promise<RunWorktree>) | null,
@@ -1710,53 +1710,73 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           workflowsChanged(workflowId)
           return { ok: true as const, id }
         }
-        let made: RunWorktree | null = null
+        const another = [...active.values()].some((e) => e.workflowId === workflowId)
+        const state = another || queue.scheduler.wouldWait(workflowId) ? "queued" : "running"
         if (typeof worktree === "function") {
+          // The row exists while the worktree is made (spec 007, "New worktree"): the run shows,
+          // the editor is read-only, and a worktree is never left without its row.
+          db.run(
+            `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at,
+               worktree_path, worktree_branch, worktree_removed)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)`,
+            id,
+            workflowId,
+            state,
+            source,
+            trigger,
+            device,
+            now,
+          )
+          changed(workflowId, id)
+          workflowsChanged(workflowId)
+          let made: RunWorktree
           try {
             made = await worktree(id)
           } catch (error) {
             // The run does not start: no task is made (spec 007, "New worktree").
             const reason = error instanceof Error ? error.message : String(error)
-            db.run(
-              `INSERT INTO run (id, workflow_id, state, source, trigger_text, reason, reason_code, started_at, finished_at)
-               VALUES (?, ?, 'failed', ?, ?, ?, 'worktree_failed', ?, ?)`,
+            setRun(
               id,
-              workflowId,
-              source,
-              trigger,
-              `Could not make a new worktree: ${reason}`,
-              now,
-              now,
+              "failed",
+              { text: `Could not make a new worktree: ${reason}`, code: "worktree_failed" },
+              true,
             )
-            changed(workflowId, id)
-            workflowsChanged(workflowId)
             return { ok: true as const, id }
           }
-        } else if (worktree) {
+          db.run(
+            "UPDATE run SET worktree_path = ?, worktree_branch = ? WHERE id = ?",
+            made.path,
+            made.branch,
+            id,
+          )
+          changed(workflowId, id)
+          // A stop while the worktree was made ends the run: no task starts (spec 005).
+          const stopped = runRow(id)
+          if (stopped && stopped.finished_at !== null) return { ok: true as const, id }
+        } else {
+          const reused = worktree ?? null
           // A stored worktree whose folder is gone refuses the start with no run (spec 007,
           // "New worktree"). The retry maps the refusal to `worktree_unavailable`.
-          if (!existsSync(worktree.path))
+          if (reused && !existsSync(reused.path))
             return { ok: false as const, name, code: "worktree_unavailable" as const }
-          made = worktree
+          db.run(
+            `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at,
+               worktree_path, worktree_branch, worktree_removed)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id,
+            workflowId,
+            state,
+            source,
+            trigger,
+            device,
+            now,
+            reused?.path ?? null,
+            reused?.branch ?? null,
+            reused?.removed === true ? 1 : 0,
+          )
+          changed(workflowId, id)
+          workflowsChanged(workflowId)
         }
-        const another = [...active.values()].some((e) => e.workflowId === workflowId)
-        db.run(
-          `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at,
-             worktree_path, worktree_branch, worktree_removed)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          id,
-          workflowId,
-          another || queue.scheduler.wouldWait(workflowId) ? "queued" : "running",
-          source,
-          trigger,
-          device,
-          now,
-          made?.path ?? null,
-          made?.branch ?? null,
-          made?.removed === true ? 1 : 0,
-        )
-        changed(workflowId, id)
-        workflowsChanged(workflowId)
         begin(id, only)
         return { ok: true as const, id }
       }

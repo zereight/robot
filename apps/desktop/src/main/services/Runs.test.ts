@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -1847,6 +1847,134 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect((await t.get(started.id)).nodes.map((n) => n.state)).toEqual(["not_reached"])
   })
 
+  test("the run shows while the worktree is made: read-only editor, no orphan, no task yet", async () => {
+    const t = await setup()
+    const dir = bigGitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const started = t.start()
+    let id = ""
+    await until(async () => {
+      const rows = await t.rows<{ id: string; worktree_path: string | null }>(
+        "SELECT id, worktree_path FROM run WHERE workflow_id = ? AND finished_at IS NULL",
+        t.flow.id,
+      )
+      if (rows.length === 1 && rows[0]?.worktree_path === null) {
+        id = rows[0].id
+        return true
+      }
+      return false
+    })
+    const mid = await t.get(id)
+    expect(mid.worktree).toBeNull()
+    expect(mid.finishedAt).toBeNull()
+    expect(
+      await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", id),
+    ).toEqual([{ n: 0 }])
+    expect((await t.run(Workflows.use((w) => w.get(t.flow.id)))).running).toBe(true)
+    const renameCode = await t.run(Workflows.use((w) => w.rename(t.flow.id, "Elsewhere"))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(renameCode).toBe("workflow_running")
+    const removeCode = await t.run(Workflows.use((w) => w.remove(t.flow.id))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(removeCode).toBe("workflow_running")
+    const done = await started
+    expect(done.id).toBe(id)
+    const d = await t.ended(done.id)
+    expect(d.state).toBe("done")
+    expect(d.worktree?.removed).toBe(false)
+    expect(existsSync(d.worktree?.path ?? "")).toBe(true)
+  }, 30000)
+
+  test("a stop while the worktree is made ends the run with no task and keeps the worktree", async () => {
+    const t = await setup()
+    const dir = bigGitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const run1 = await t.start()
+    await t.waitCard()
+    const started = t.start()
+    let id = ""
+    await until(async () => {
+      const rows = await t.rows<{ id: string; worktree_path: string | null }>(
+        "SELECT id, worktree_path FROM run WHERE workflow_id = ? AND id != ? AND finished_at IS NULL",
+        t.flow.id,
+        run1.id,
+      )
+      if (rows.length === 1 && rows[0]?.worktree_path === null) {
+        id = rows[0].id
+        return true
+      }
+      return false
+    })
+    await t.run(Runs.use((r) => r.stop(id)))
+    const done = await started
+    expect(done.id).toBe(id)
+    const d = await t.get(done.id)
+    expect(d.state).toBe("cancelled")
+    expect(
+      await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", id),
+    ).toEqual([{ n: 0 }])
+    expect(d.worktree?.removed).toBe(false)
+    expect(existsSync(d.worktree?.path ?? "")).toBe(true)
+    await t.run(Runs.use((r) => r.stop(run1.id)))
+  }, 30000)
+
+  test("the queue limit counts a run that still waits for its worktree", async () => {
+    const t = await setup()
+    await t.node({ name: "Say", prompt: "hello" })
+    for (let i = 0; i < 19; i++)
+      await t.sql(
+        "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES (?, ?, 'queued', 'hand', ?)",
+        `q${i}`,
+        t.flow.id,
+        i,
+      )
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('making', ?, 'queued', 'hand', 999)",
+      t.flow.id,
+    )
+    const code = await t.run(Runs.use((r) => r.start({ workflowId: t.flow.id }))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("run_queue_full")
+  })
+
+  test("a restart keeps the worktree columns of a run that has not ended", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch)
+       VALUES ('r1', ?, 'running', 'hand', 1, '/tmp/wt-1', 'robot/report-20261109-120000')`,
+      t.flow.id,
+    )
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r2', ?, 'running', 'hand', 2)",
+      t.flow.id,
+    )
+    const again = testRuntime({ databaseFile: file })
+    const r1 = await again.runtime.runPromise(Runs.use((x) => x.get("r1")))
+    expect(r1.state).toBe("failed")
+    expect(r1.reasonText).toBe("The app stopped")
+    expect(r1.worktree).toEqual({
+      path: "/tmp/wt-1",
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    const r2 = await again.runtime.runPromise(Runs.use((x) => x.get("r2")))
+    expect(r2.state).toBe("failed")
+    expect(r2.worktree).toBeNull()
+  })
+
   test("a retry reuses the worktree of the run it retries", async () => {
     const t = await setup()
     const dir = gitRepo()
@@ -2086,5 +2214,18 @@ const gitRepo = (committed = true) => {
     git(dir, "add", "notes.md")
     git(dir, "commit", "--quiet", "-m", "first")
   }
+  return dir
+}
+
+/** A repository whose checkout takes long enough to watch a run while its worktree is made. */
+const bigGitRepo = () => {
+  const dir = mkdtempSync(join(tmpdir(), "robot-run-big-"))
+  git(dir, "-c", "init.defaultBranch=main", "init", "--quiet")
+  git(dir, "config", "user.email", "test@robot.local")
+  git(dir, "config", "user.name", "ROBot test")
+  mkdirSync(join(dir, "bulk"))
+  for (let i = 0; i < 5000; i++) writeFileSync(join(dir, "bulk", `f${i}.txt`), `file ${i}\n`)
+  git(dir, "add", "-A")
+  git(dir, "commit", "--quiet", "-m", "bulk")
   return dir
 }
