@@ -394,7 +394,7 @@ const outsideAsk = async (locale: "en-US" | "ko-KR") => {
   await expect(page.getByTestId("proposal-outside")).toContainText(
     en
       ? "This work read outside content. Read the change before you accept."
-      : "이 작업은 외부 콘텐츠를 읽었습니다. 수락하기 전에 변경 내용을 읽어 보세요.",
+      : "이 작업은 바깥 내용을 읽었어요. 수락하기 전에 변경 내용을 읽어 보세요.",
   )
   await shot(page, en ? "w8-06-proposal-outside" : "w8-06-proposal-outside-ko")
   await page.getByTestId("tab-memory").click()

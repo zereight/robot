@@ -99,7 +99,8 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
       )
       const label = t(`providers.kind.${kind()}` as MessageKey)
       let fallback = label
-      for (let n = 2; taken.has(fallback); n++) fallback = `${label} ${n}`
+      for (let n = 2; taken.has(fallback); n++)
+        fallback = t("providers.account.numbered", { label, n })
       const accountName = name().trim() || fallback
       await call(
         "providers.connect",

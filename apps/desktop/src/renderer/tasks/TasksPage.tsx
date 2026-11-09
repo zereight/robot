@@ -110,10 +110,13 @@ const Moments = (props: { view: TaskView }) => {
   const text = (moment: TaskView["moments"][number]) => {
     switch (moment.kind) {
       case "given":
-        return `${t("tasks.moment.given")} · ${t("tasks.moment.given.by", {
-          time: formatDateTime(locale(), props.view.runStartedAt),
-          source: t(`tasks.source.${props.view.source}` as MessageKey),
-        })}`
+        return t("tasks.moment.given.full", {
+          given: t("tasks.moment.given"),
+          by: t("tasks.moment.given.by", {
+            time: formatDateTime(locale(), props.view.runStartedAt),
+            source: t(`tasks.source.${props.view.source}` as MessageKey),
+          }),
+        })
       case "started":
         return t("tasks.moment.started")
       case "ended":

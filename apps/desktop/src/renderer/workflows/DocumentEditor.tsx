@@ -32,7 +32,10 @@ const History = (props: {
   }
   const sourceText = (v: DocumentVersion) =>
     v.device
-      ? `${t(documentSourceKey(v.source))} ${t("workflows.document.source.device", { device: v.device })}`
+      ? t("workflows.document.source.withDevice", {
+          source: t(documentSourceKey(v.source)),
+          device: t("workflows.document.source.device", { device: v.device }),
+        })
       : t(documentSourceKey(v.source))
   return (
     <section class={styles.history} aria-label={t("workflows.document.history")}>

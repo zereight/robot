@@ -1616,7 +1616,6 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           // The queue of the workflow is full (spec 005, "Queue"): no task is made. A run that a
           // schedule starts is Failed with the reason; any other start shows the reason.
           if (source !== "schedule") return { ok: false as const, name }
-          const text = `${name} has ${RUN_QUEUE_MAX} tasks that wait. Try again later.`
           db.run(
             `INSERT INTO run (id, workflow_id, state, source, trigger_text, reason, reason_code, started_at, finished_at)
              VALUES (?, ?, 'failed', ?, ?, ?, 'run_queue_full', ?, ?)`,
@@ -1624,7 +1623,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             workflowId,
             source,
             trigger,
-            text,
+            name,
             now,
             now,
           )

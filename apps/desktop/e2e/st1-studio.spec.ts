@@ -161,7 +161,7 @@ test("studio: the run strip shows the runs below the canvas, and the check on it
 test("studio in Korean: the list, the canvas and the chat", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   await resizeWindow(app, 1280, 860)
-  await expect(page.getByTestId("studio-pick")).toHaveText("목록에서 워크플로우를 선택하세요.")
+  await expect(page.getByTestId("studio-pick")).toHaveText("목록에서 워크플로우를 선택해 주세요.")
   await newWorkflow(page, "주간 보고")
   await expect(page.getByTestId("studio-list")).toBeVisible()
   await expect(page.getByTestId("tab-graph")).toBeVisible()

@@ -24,7 +24,7 @@ describe("translation catalogues", () => {
   const NEGATED_KEY = "memory.hint"
   const NEGATED = {
     en: "ROBot does not train or change a model.",
-    ko: "ROBot은 모델을 학습시키거나 바꾸지 않습니다.",
+    ko: "ROBot은 모델을 학습시키거나 바꾸지 않아요.",
   } as const
 
   /** The text without the one negated sentence, which only the key `memory.hint` may hold, once. */
@@ -65,6 +65,25 @@ describe("translation catalogues", () => {
     // Every use of "train" is the sentence that says ROBot does not do it.
     const rest = readme.replace("ROBot does not train or change a model.", "")
     expect(rest).not.toMatch(/\b(train|trains|trained|training)\b/i)
+  })
+
+  test("Korean uses the polite informal form, not the formal one", () => {
+    const PROMPT_KEYS = ["workflows.document.default"]
+    const HANGUL_FIRST = 0xac00
+    const JONGSEONG_COUNT = 28
+    const JONGSEONG_BIEUP = 17
+    const formalQuestion = (text: string) =>
+      [...text.matchAll(/([\uAC00-\uD7A3])니까/g)].some(
+        (m) =>
+          (((m[1] ?? "").codePointAt(0) ?? 0) - HANGUL_FIRST) % JONGSEONG_COUNT === JONGSEONG_BIEUP,
+      )
+    for (const [key, text] of Object.entries(catalogues.ko)) {
+      if (PROMPT_KEYS.includes(key)) continue
+      expect({ key, formal: /(니다|시오)/.test(text) || formalQuestion(text) }).toEqual({
+        key,
+        formal: false,
+      })
+    }
   })
 
   test("fills placeholders", () => {

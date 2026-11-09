@@ -54,11 +54,8 @@ export const reasonText = (t: T, code: string | null, text: string | null): stri
   // A queued task waits for a free slot or behind a node (spec 005, "States and reasons").
   if (code === "slot") return t("tasks.reason.slot", { count: Number(text) || 0 })
   if (code === "behind") return t("tasks.reason.behindNode", { node: text ?? "" })
-  // A run over the limit of 20 queued tasks; the stored text starts with the name of the workflow.
-  if (code === "run_queue_full")
-    return t("error.run_queue_full", {
-      detail: (text ?? "").replace(/ has \d+ tasks that wait\. Try again later\.$/, ""),
-    })
+  if (code === "run_queue_full") return t("error.run_queue_full", { detail: text ?? "" })
+  if (code === "engine") return t("error.engine", { detail: text ?? "" })
   // A failure of the app has a code with words of its own, also in the other language.
   if (code && `error.${code}` in catalogues.en) return t(`error.${code}` as MessageKey)
   return text

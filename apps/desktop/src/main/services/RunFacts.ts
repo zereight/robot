@@ -5,6 +5,7 @@ import {
   type RunFact,
   type RunNodeFact,
   type RunNodeState,
+  translate,
   verdictAnswerOf,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -54,6 +55,7 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
         state: string
         source: string
         reason: string | null
+        reason_code: string | null
         started_at: number
         finished_at: number | null
       }
@@ -189,7 +191,10 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
         return {
           id: run.id,
           state: run.state,
-          reason: run.reason,
+          reason:
+            run.reason_code === "run_queue_full"
+              ? translate("en", "error.run_queue_full", { detail: run.reason ?? "" })
+              : run.reason,
           startedAt: run.started_at,
           finishedAt: run.finished_at,
           source: run.source,
