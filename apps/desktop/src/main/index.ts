@@ -73,7 +73,7 @@ const hostCommand = (dataDir: string) => ({ command: hostBinary(), args: ["--dat
 
 const makeRuntime = () => {
   const platform = electronPlatform()
-  // One profile keeps one secrets file until profiles (022) land. Tests keep the plain file.
+  // One profile keeps one secrets file. Tests keep the plain file.
   const testSecrets = process.env.ROBOT_TEST_SECRETS
   const secretsSource = testSecrets
     ? { file: testSecrets }

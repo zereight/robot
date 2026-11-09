@@ -4,13 +4,6 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { hostStore } from "./Secrets.ts"
 
-/**
- * A stand-in for `robot-host secrets …` with the same exit codes: it keeps each value in a file,
- * writes each call with its full flags to a log, and fails every call that names "broken" (as a
- * key or a profile). It is a shell script, not a program of Bun. Each call of the store starts
- * the program again, and when many test files start Bun programs at once, some of them do not
- * start for seconds, or never: the test waits for its time limit. A shell script starts at once.
- */
 const fakeHost = () => {
   const dir = mkdtempSync(join(tmpdir(), "robot-secrets-unit-"))
   const log = join(dir, "calls.log")
@@ -26,13 +19,14 @@ case "$op" in
   get) [ -e "$file" ] || exit 3; cat "$file" ;;
   set) cat > "$file" ;;
   remove) rm -f "$file" ;;
-  check) exit 0 ;;
+  check) [ -e "${dir}/check-broken" ] && exit 1; exit 0 ;;
 esac
 `,
   )
   chmodSync(command, 0o755)
   const calls = () => readFileSync(log, "utf8").trim().split("\n")
-  return { command, calls }
+  const breakCheck = () => writeFileSync(join(dir, "check-broken"), "")
+  return { command, calls, breakCheck }
 }
 
 const vault = { vault: { path: "/vault/secrets.vault", profile: "default" } }
@@ -61,6 +55,28 @@ test("a value that was read once comes from memory", () => {
     "secrets get k --vault /vault/secrets.vault --profile default",
     "secrets get none --vault /vault/secrets.vault --profile default",
   ])
+})
+
+test("a set drops every value that was read before", () => {
+  const host = fakeHost()
+  const store = hostStore(host.command, vault)
+  store.set("provider:a", "old")
+  expect(store.get("provider:a")).toBe("old")
+  hostStore(host.command, vault).remove("provider:a")
+  store.set("provider:b", "new")
+  expect(store.get("provider:a")).toBeNull()
+  expect(store.get("provider:b")).toBe("new")
+})
+
+test("a check that fails drops every value that was read before", () => {
+  const host = fakeHost()
+  const store = hostStore(host.command, vault)
+  store.set("k", "v")
+  expect(store.get("k")).toBe("v")
+  hostStore(host.command, vault).remove("k")
+  host.breakCheck()
+  expect(() => store.check()).toThrow("The keychain could not be read")
+  expect(store.get("k")).toBeNull()
 })
 
 test("a store that fails throws, and the message holds no value", () => {

@@ -5,7 +5,7 @@ export interface SecretsService {
   get(key: string): string | null
   set(key: string, value: string): void
   remove(key: string): void
-  /** Throws when the secrets file cannot be read (spec 020, "Keychain error"). */
+  /** Throws when the secrets file cannot be read (see 014, states Locked and Damaged). */
   check(): void
 }
 
@@ -46,7 +46,7 @@ export const hostStore = (command: string, source: SecretsSource): SecretsServic
       return value
     },
     set: (key, value) => {
-      known.delete(key)
+      known.clear()
       try {
         run(["set", key], value)
       } catch {
@@ -67,6 +67,7 @@ export const hostStore = (command: string, source: SecretsSource): SecretsServic
       try {
         run(["check"])
       } catch {
+        known.clear()
         throw new Error("The keychain could not be read")
       }
     },
@@ -79,7 +80,8 @@ export class Secrets extends Context.Service<Secrets, SecretsService>()("robot/m
    * The store of the host program (`host/src/secrets.rs`): the secrets file of one profile, or
    * with `file` the plain store of end-to-end tests. Each read or write is one short run of the
    * host that the main process waits for, so the calls stay synchronous. Values that were read
-   * once are kept in memory: only this app writes them.
+   * once are kept in memory. Every `set` and every failed `check` drops them all, so a replaced
+   * file never shows an old value.
    */
   static readonly host = (command: string, source: SecretsSource) =>
     Layer.sync(Secrets, () => Secrets.of(hostStore(command, source)))

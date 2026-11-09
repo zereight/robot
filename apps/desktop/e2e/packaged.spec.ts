@@ -28,8 +28,6 @@ test("packaged app: starts, shows its version, and carries the host that keeps t
   const host = join(info.resources, "robot-host")
   expect(existsSync(host)).toBe(true)
   expect(existsSync(join(info.resources, "app.asar.unpacked/node_modules/@napi-rs"))).toBe(false)
-  // The host reads the store of this test run: the file of the harness. It checks out, and
-  // it holds no "probe".
   const file = `${userData}-secrets.json`
   const check = spawnSync(host, ["secrets", "check", "--file", file])
   expect(check.status).toBe(0)
