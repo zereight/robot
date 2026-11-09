@@ -26,6 +26,9 @@ const GIT_ENV_FALLBACK = [
   "GIT_WORK_TREE",
   "GIT_COMMON_DIR",
   "GIT_CEILING_DIRECTORIES",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_COUNT",
+  "GIT_SHALLOW_FILE",
 ] as const
 
 /** The names that the one query of git returned, asked once and kept. */
@@ -123,8 +126,8 @@ export const isInsideRepo = async (folder: string): Promise<boolean> => {
 /**
  * Makes a new linked worktree at `path` on a new `branch` from HEAD of the repository of `repo`.
  * Changes of the repository that are not committed are not in it. The path must not exist yet.
- * An aborted `signal` ends git and fails only after git has ended, so the caller can remove the
- * half-made folder without git still writing into it.
+ * An aborted `signal` ends the whole process group and fails only after git has ended, so the
+ * caller can remove the half-made folder without git still writing into it.
  */
 export const createWorktree = async (
   repo: string,
@@ -140,49 +143,75 @@ export const createWorktree = async (
       timeout: 120_000,
       killSignal: "SIGKILL",
       windowsHide: true,
+      // Its own process group: an abort ends a slow hook with git, not only git.
+      detached: true,
     })
     let stderr = ""
     child.stderr?.on("data", (chunk: Buffer) => {
       if (stderr.length < REASON_MAX * 4) stderr += chunk.toString()
     })
-    const kill = () => {
+    let finished = false
+    const onAbort = () => {
+      if (finished) return
       try {
-        child.kill("SIGKILL")
+        if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL")
       } catch {
-        // The process is gone already.
+        try {
+          child.kill("SIGKILL")
+        } catch {
+          // The process is gone already.
+        }
       }
+      // Nothing waits on the pipes then: the rejection lands on the exit of git.
+      child.stderr?.destroy()
     }
-    const onAbort = () => kill()
-    if (signal) {
-      if (signal.aborted) kill()
-      else signal.addEventListener("abort", onAbort, { once: true })
+    const done = (work: () => void) => {
+      if (finished) return
+      finished = true
+      signal?.removeEventListener("abort", onAbort)
+      work()
     }
-    child.on("error", (e) => {
-      signal?.removeEventListener("abort", onAbort)
-      const text = stderr.trim()
-      reject(new Error(text !== "" ? capReason(text) : e.message))
-    })
-    // `close` fires after the process has ended: on an abort nothing still writes then.
-    child.on("close", (code) => {
-      signal?.removeEventListener("abort", onAbort)
-      if (signal?.aborted) {
-        reject(
-          signal.reason instanceof Error ? signal.reason : new Error("The operation was aborted"),
-        )
-        return
-      }
+    const abortError = () =>
+      signal?.reason instanceof Error ? signal.reason : new Error("The operation was aborted")
+    // The end is decided by the exit of git, not by the close of the pipes: a hook child that
+    // outlives git keeps the pipes open. A git that exited 0 is a success even when the abort
+    // came late; the caller ends the stopped run with its made worktree.
+    child.on("exit", (code) => {
+      if (code === 0) return done(resolve)
+      if (signal?.aborted) return done(() => reject(abortError()))
       if (code === null) {
         const text = stderr.trim()
-        reject(new Error(text !== "" ? capReason(text) : "git did not answer in time"))
-        return
+        return done(() =>
+          reject(new Error(text !== "" ? capReason(text) : "git did not answer in time")),
+        )
       }
-      if (code !== 0) {
+      // A failure carries the reason from git: the last of it may still be in flight, so wait
+      // for the pipes, briefly, before the rejection. The bound is for a hook child that holds
+      // a pipe after a failed git.
+      const fail = () => {
+        clearTimeout(timer)
+        if (signal?.aborted) return done(() => reject(abortError()))
         const text = stderr.trim()
-        reject(new Error(text !== "" ? capReason(text) : `git exited with code ${code}`))
-        return
+        done(() =>
+          reject(new Error(text !== "" ? capReason(text) : `git exited with code ${code}`)),
+        )
       }
-      resolve()
+      const timer = setTimeout(() => {
+        child.stderr?.destroy()
+        fail()
+      }, 2000)
+      if (child.stderr === null || child.stderr.readableEnded) return fail()
+      child.stderr.once("end", fail)
+      child.stderr.once("close", fail)
     })
+    child.on("error", (e) => {
+      const text = stderr.trim()
+      done(() => reject(new Error(text !== "" ? capReason(text) : e.message)))
+    })
+    if (signal) {
+      if (signal.aborted) onAbort()
+      else signal.addEventListener("abort", onAbort, { once: true })
+    }
   })
 }
 
@@ -268,6 +297,23 @@ export const branchExists = async (repo: string, branch: string): Promise<boolea
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * The branch name with `-2` and up while the repository already holds the name: a leftover
+ * branch from an aborted creation must not fail the next run (spec 007, "New worktree").
+ */
+export const uniqueBranch = async (repo: string, branch: string): Promise<string> => {
+  let out = branch
+  for (;;) {
+    if (!(await branchExists(repo, out))) return out
+    // The counter `-2` and up sits after the stamp; the stamp itself is not a counter.
+    const counter = /-\d{8}-\d{6}-(\d+)$/.exec(out)
+    out =
+      counter?.[1] !== undefined
+        ? `${out.slice(0, -counter[1].length)}${Number(counter[1]) + 1}`
+        : `${out}-2`
   }
 }
 

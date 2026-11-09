@@ -419,6 +419,19 @@ describe("the program of a connection", () => {
     const spec2 = fake.state.opened.at(-1)
     expect(spec2?.kind === "program" && spec2.cwd).toBe(t.homeDir)
   })
+
+  test("a program gets no git variables from the environment", async () => {
+    process.env.GIT_DIR = "pinned"
+    process.env.GIT_INDEX_FILE = "pinned"
+    env.push("GIT_DIR", "GIT_INDEX_FILE")
+    const { connections, fake } = setup()
+    await connections.save(saving({ folder: "/tmp" }))
+    await connections.test({ id: (await connections.list())[0]?.id as string })
+    const spec = fake.state.opened.at(-1)
+    if (spec?.kind !== "program") throw new Error("not a program")
+    expect(spec.env.GIT_DIR).toBeUndefined()
+    expect(spec.env.GIT_INDEX_FILE).toBeUndefined()
+  })
 })
 
 describe("the tools of a turn", () => {

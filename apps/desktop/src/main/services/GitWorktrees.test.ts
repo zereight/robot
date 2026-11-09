@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -22,6 +23,7 @@ import {
   repoRoot,
   scrubGitEnv,
   slugOfName,
+  uniqueBranch,
   worktreeStamp,
 } from "./GitWorktrees.ts"
 
@@ -54,6 +56,15 @@ const reasonOf = async (work: Promise<unknown>) => {
     return error instanceof Error ? error.message : String(error)
   }
   return "made"
+}
+
+const untilFile = async (file: string, ms = 10000) => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (existsSync(file)) return
+    await new Promise((r) => setTimeout(r, 15))
+  }
+  throw new Error(`missing file: ${file}`)
 }
 
 describe("is-inside-repo (spec 007, New worktree)", () => {
@@ -111,6 +122,9 @@ describe("the scrub of git variables", () => {
         "GIT_WORK_TREE",
         "GIT_COMMON_DIR",
         "GIT_CEILING_DIRECTORIES",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_SHALLOW_FILE",
       ]),
     ]
     expect(names.length).toBeGreaterThan(4)
@@ -224,6 +238,26 @@ describe("make worktree (spec 007, New worktree)", () => {
     await new Promise((r) => setTimeout(r, 500))
     expect(count()).toBe(first)
   })
+
+  test("an abort after git exited 0 keeps the finished worktree", async () => {
+    const dir = repo()
+    const started = join(dir, "hook-started")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    // The hook exits at once, but a background child holds the stderr pipe for 8 seconds: the
+    // close of the pipes lands long after the exit of git.
+    writeFileSync(hook, `#!/bin/sh\n(sleep 8 >&2 &)\ntouch ${started}\n`)
+    chmodSync(hook, 0o755)
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    const controller = new AbortController()
+    const made = createWorktree(dir, path, "robot/report-20261109-120000", controller.signal)
+    await untilFile(started)
+    // Git has exited; the pipes are still open. The abort comes late.
+    await new Promise((r) => setTimeout(r, 1000))
+    controller.abort()
+    await made
+    expect(readFileSync(join(path, "notes.md"), "utf8")).toBe("first\n")
+    expect(git(dir, "worktree", "list", "--porcelain")).toContain(path)
+  })
 })
 
 describe("dirty and remove (spec 007, New worktree)", () => {
@@ -272,5 +306,17 @@ describe("names (spec 007, New worktree)", () => {
 
   test("the stamp is the local time as yyyyMMdd-HHmmss", () => {
     expect(worktreeStamp(new Date(2026, 10, 9, 8, 5, 4))).toBe("20261109-080504")
+  })
+
+  test("the branch takes -2 and up while the repository holds the name", async () => {
+    const dir = repo()
+    git(dir, "branch", "robot/report-20261109-120000")
+    git(dir, "branch", "robot/report-20261109-120000-2")
+    expect(await uniqueBranch(dir, "robot/report-20261109-120000")).toBe(
+      "robot/report-20261109-120000-3",
+    )
+    expect(await uniqueBranch(dir, "robot/other-20261109-120000")).toBe(
+      "robot/other-20261109-120000",
+    )
   })
 })

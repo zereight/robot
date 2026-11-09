@@ -196,9 +196,11 @@ export class RunFacts extends Context.Service<RunFacts, RunFactsService>()("robo
               ? translate("en", "error.run_queue_full", { detail: run.reason ?? "" })
               : run.reason_code === "worktree_failed"
                 ? translate("en", "error.worktree_failed", { detail: run.reason ?? "" })
-                : run.reason_code === "worktree_unavailable"
-                  ? translate("en", "error.worktree_unavailable")
-                  : run.reason,
+                : run.reason_code === "worktree_not_in_commit"
+                  ? translate("en", "error.worktree_not_in_commit")
+                  : run.reason_code === "worktree_unavailable"
+                    ? translate("en", "error.worktree_unavailable")
+                    : run.reason,
           startedAt: run.started_at,
           finishedAt: run.finished_at,
           source: run.source,

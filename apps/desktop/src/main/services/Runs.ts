@@ -80,6 +80,7 @@ import {
   removeWorktree as removeGitWorktree,
   repoRoot,
   slugOfName,
+  uniqueBranch,
   worktreeStamp,
 } from "./GitWorktrees.ts"
 import { appendLog } from "./logs.ts"
@@ -324,6 +325,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       let runCounter = 0
       /** The tasks that the user stopped one by one: their reason is "Stopped by you". */
       const stoppedTasks = new Set<string>()
+      /** The runs whose first task makes the planned worktree right now: Stop waits for that. */
+      const worktreeCreating = new Set<string>()
+      /** The worktree paths with a removal in flight: no retry or second removal starts on them. */
+      const worktreeRemoving = new Set<string>()
 
       const changed = (workflowId: string, runId: string | null) => {
         bus.emit("runs.changed", { workflowId, runId })
@@ -646,11 +651,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const trigger = r.trigger_text
         // Every text node of a run with a new worktree works in it as its folder (spec 007,
         // "New worktree"): the tools, the permission rules and the vendor programs all read it.
-        // When the folder is a subfolder of the repository, the run works in the same
-        // subfolder of the worktree. Null when the run ended here and starts no task.
-        const folder = await prepareRunWorktree(r, detail, runSignal)
-        if (folder === null) return
-        const runDetail = { ...detail, folder }
+        // The run makes its worktree when it starts, after the first task got its slot; the
+        // first task writes the folder here before any node works.
+        const runDetail = { ...detail }
 
         let stop: { state: TaskState; text: string | null; code: string | null } | null = null
 
@@ -694,10 +697,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             trigger,
             signal: runSignal,
             ...(only ? { fixedInput: only.input, retryOf: only.retryOf } : {}),
-            ...(firstTask ? { worktreeGate: true as const } : {}),
+            ...(firstTask ? { firstTask: true as const } : {}),
           })
           firstTask = false
-          // The worktree went away while the first task waited: the run already ended as failed.
+          // The worktree could not be made or went away: the run already ended as failed.
           if (done.kind === "runFailed") return
           if (done.kind === "cancelled") {
             stop = { state: "cancelled", text: "Stopped by you", code: "user" }
@@ -764,7 +767,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
       interface NodeRun {
         readonly run: RunRow
-        readonly detail: WorkflowDetail
+        /**
+         * The workflow with the folder of the run: the first task writes the made worktree here
+         * before any node works (spec 007, "New worktree").
+         */
+        readonly detail: Omit<WorkflowDetail, "folder"> & { folder: string }
         readonly node: WorkflowNode
         readonly inputs: readonly Done[]
         readonly marks: TaskMarks
@@ -774,14 +781,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         readonly fixedInput?: string
         readonly retryOf?: string
         /**
-         * The first task of the run checks that a made worktree is still there when its turn
-         * comes: a retry may have waited in the queue while the folder went away (spec 007).
+         * The first task of the run: after it got its slot it makes the planned worktree, or
+         * checks that the reused worktree is still there (spec 007, "New worktree").
          */
-        readonly worktreeGate?: boolean
+        readonly firstTask?: boolean
       }
 
-      const insertTask = (n: NodeRun, input: string): string => {
-        const id = randomUUID()
+      const insertTask = (n: NodeRun, input: string, id: string = randomUUID()): string => {
         const now = Date.now()
         db.run(
           `INSERT INTO task (id, run_id, workflow_id, node_id, node_name, node_number, input, state,
@@ -869,7 +875,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         // The run was stopped while the node got its input: it makes no task.
         if (n.signal.aborted) return { kind: "cancelled", done: none }
-        const taskId = insertTask(n, input)
+        // A fresh worktree is made after the first task got its slot, not while the run waits
+        // in the queue (spec 007, "New worktree"). Its task row is made after the worktree, so
+        // Stop during creation leaves no task. A retry inserts its row first, as before.
+        const planned = runRow(n.run.id)
+        const freshWorktree =
+          n.firstTask === true && planned?.worktree_path != null && planned.worktree_made === 0
+        const taskId = freshWorktree ? randomUUID() : insertTask(n, input)
         const marks: TaskMarks = { ...n.marks }
         let end: End
         try {
@@ -892,30 +904,55 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             refreshWaits()
           }
           await place.ready
-          if (n.worktreeGate) {
-            // The folder went away while the task waited in the queue: the run fails and the
-            // task never starts, so nothing is written under the removed path (spec 007).
-            const kept = runRow(n.run.id)?.worktree_path ?? null
-            if (kept !== null && !existsSync(kept)) {
-              const failed: Done = {
-                node: n.node,
-                taskId,
-                state: "failed",
-                result: "",
-                optionId: null,
-                output: null,
-                marks,
+          const current = n.firstTask === true ? (runRow(n.run.id) ?? n.run) : null
+          if (current?.worktree_path != null) {
+            // The run starts now: it holds the workflow. A fresh run makes its planned
+            // worktree; a retry checks that its worktree is still there. When the run ended
+            // there the task never starts, so nothing is written under a missing path (spec
+            // 007, "New worktree"). Each exit frees the slot that the task holds.
+            if (freshWorktree) worktreeCreating.add(n.run.id)
+            try {
+              const folder = await prepareRunWorktree(current, n.detail, n.signal)
+              if (folder === null) {
+                if (!freshWorktree) {
+                  const failed: Done = {
+                    node: n.node,
+                    taskId,
+                    state: "failed",
+                    result: "",
+                    optionId: null,
+                    output: null,
+                    marks,
+                  }
+                  saveMarks(taskId, marks)
+                  finishTask(taskId, {
+                    state: "failed",
+                    code: "worktree_unavailable",
+                    text: "The new worktree is not available.",
+                    result: taskRow(taskId)?.result ?? "",
+                  })
+                  queue.scheduler.release(taskId)
+                  stoppedTasks.delete(taskId)
+                  changed(n.run.workflow_id, n.run.id)
+                  return { kind: "runFailed" as const, done: failed }
+                }
+                queue.scheduler.release(taskId)
+                stoppedTasks.delete(taskId)
+                return { kind: "runFailed" as const, done: none }
               }
-              saveMarks(taskId, marks)
-              finishTask(taskId, {
-                state: "failed",
-                code: "worktree_unavailable",
-                text: "The new worktree is not available.",
-                result: taskRow(taskId)?.result ?? "",
-              })
-              setRun(n.run.id, "failed", { text: null, code: "worktree_unavailable" }, true)
-              changed(n.run.workflow_id, n.run.id)
-              return { kind: "runFailed" as const, done: failed }
+              if (freshWorktree && n.signal.aborted) {
+                // Git exited 0 and then Stop came: the run ends as stopped, and the made
+                // worktree stays on the row so Remove can delete it.
+                queue.scheduler.release(taskId)
+                stoppedTasks.delete(taskId)
+                setRun(n.run.id, "cancelled", { text: "Stopped by you", code: "user" }, true)
+                changed(n.run.workflow_id, n.run.id)
+                return { kind: "cancelled" as const, done: none }
+              }
+              n.detail.folder = folder
+              if (freshWorktree) insertTask(n, input, taskId)
+            } finally {
+              if (freshWorktree) worktreeCreating.delete(n.run.id)
             }
           }
           markRunning(n.run.id, taskId)
@@ -1655,10 +1692,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         )
 
       /**
-       * The folder of a run with a new worktree (spec 007, "New worktree"): the run makes its
-       * planned worktree when it starts, with its own abort signal, and works in the stored
-       * subfolder of it. A run whose worktree is already made (a retry) checks that the folder is
-       * still there. Null when the run ended here: it starts no task.
+       * The folder of a run with a new worktree (spec 007, "New worktree"): the first task calls
+       * it after it got its slot. A fresh run makes its planned worktree with its own abort
+       * signal, and works in the stored subfolder of it. A run whose worktree is already made
+       * (a retry) checks that the folder is still there. Null when the run ended here: it starts
+       * no task.
        */
       const prepareRunWorktree = async (
         r: RunRow,
@@ -1669,9 +1707,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const path = r.worktree_path
         const fresh = r.worktree_made === 0
         if (fresh) {
+          // A leftover branch from an aborted creation must not fail the run: the name is free
+          // against the branches of the repository too, not only against the rows.
+          const branch = await uniqueBranch(detail.folder, r.worktree_branch)
+          if (branch !== r.worktree_branch)
+            db.run("UPDATE run SET worktree_branch = ? WHERE id = ?", branch, r.id)
           try {
             mkdirSync(dirname(path), { recursive: true })
-            await createWorktree(detail.folder, path, r.worktree_branch, signal)
+            await createWorktree(detail.folder, path, branch, signal)
           } catch (error) {
             if (signal.aborted) {
               // Stop during creation ends the run as stopped and starts no task. The half-made
@@ -1694,18 +1737,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             return null
           }
           db.run("UPDATE run SET worktree_made = 1 WHERE id = ?", r.id)
-        } else if (!existsSync(path)) {
+        } else if (!existsSync(path) || worktreeRemoving.has(path)) {
           setRun(r.id, "failed", { text: null, code: "worktree_unavailable" }, true)
           return null
         }
         const sub = r.worktree_subfolder
         if (fresh && sub !== null && !existsSync(join(path, sub))) {
-          setRun(
-            r.id,
-            "failed",
-            { text: "the folder is not in the last commit.", code: "worktree_failed" },
-            true,
-          )
+          setRun(r.id, "failed", { text: null, code: "worktree_not_in_commit" }, true)
           return null
         }
         return sub === null ? path : join(path, sub)
@@ -1793,9 +1831,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         }
         const another = [...active.values()].some((e) => e.workflowId === workflowId)
         const state = another || queue.scheduler.wouldWait(workflowId) ? "queued" : "running"
-        // A reused worktree whose folder is gone refuses the start with no run (spec 007,
-        // "New worktree"). The retry maps the refusal to `worktree_unavailable`.
-        if (worktree?.kind === "reuse" && !existsSync(worktree.path))
+        // A reused worktree whose folder is gone, or whose removal is in flight, refuses
+        // the start with no run (spec 007, "New worktree"). The retry maps the refusal to
+        // `worktree_unavailable`.
+        if (
+          worktree?.kind === "reuse" &&
+          (!existsSync(worktree.path) || worktreeRemoving.has(worktree.path))
+        )
           return { ok: false as const, name, code: "worktree_unavailable" as const }
         // The row exists with the planned worktree before the run starts (spec 007): the run
         // shows, the editor is read-only, and a worktree is never left without its row.
@@ -1930,13 +1972,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           // Stop during worktree creation: the run aborts git, removes the half-made folder and
           // ends as stopped with no task. Its end waits for that; endWaiting would finish it
           // first with the reason of a queued run.
-          if (
-            active.has(runId) &&
-            r.worktree_path !== null &&
-            r.worktree_branch !== null &&
-            r.worktree_made === 0
-          )
-            return
+          if (worktreeCreating.has(runId)) return
           endWaiting(runId)
         })
 
@@ -1961,9 +1997,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const detail = yield* preflight(r.workflow_id)
           if (!detail.graph.nodes.some((node) => node.number === t.node_number))
             return yield* new AppError({ code: "cannot_retry_task" })
-          // A retry of a removed worktree is refused with no run (spec 007, "New worktree"). A
-          // worktree whose folder is gone is refused on the reuse path of `launch` below.
-          if (r.worktree_path !== null && r.worktree_branch !== null && r.worktree_removed === 1)
+          // A retry of a removed worktree is refused with no run (spec 007, "New worktree"),
+          // and so is a retry while its removal is in flight. A worktree whose folder is gone is
+          // refused on the reuse path of `launch` below.
+          if (
+            r.worktree_path !== null &&
+            r.worktree_branch !== null &&
+            (r.worktree_removed === 1 || worktreeRemoving.has(r.worktree_path))
+          )
             return yield* new AppError({ code: "worktree_unavailable" })
           // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the
           // marks of the task that it tries again (spec 007, "Outside content"), and it copies
@@ -2034,6 +2075,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         Effect.gen(function* () {
           const r = yield* worktreeRow(runId)
           if (r.worktree_removed === 1) return "removed" as const
+          // A removal in flight owns the path: a second Remove is refused, and no retry starts
+          // on it (spec 007, "New worktree").
+          if (worktreeRemoving.has(r.worktree_path))
+            return yield* new AppError({ code: "worktree_in_use" })
           // Remove is refused while a run that uses the worktree works or waits: a retry shares
           // the path of the run it retries (spec 007, "New worktree").
           const users = db.all<{ id: string }>(
@@ -2043,7 +2088,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           )
           if (users.length > 0) return yield* new AppError({ code: "worktree_in_use" })
           // A folder that is already gone counts as removed.
-          if (existsSync(r.worktree_path)) {
+          if (!existsSync(r.worktree_path)) {
+            db.run("UPDATE run SET worktree_removed = 1 WHERE worktree_path = ?", r.worktree_path)
+            changed(r.workflow_id, runId)
+            return "removed" as const
+          }
+          // The claim is set before the first await, so a retry that starts now is refused and
+          // works in no folder that is being deleted.
+          worktreeRemoving.add(r.worktree_path)
+          try {
             // Git cannot read the folder (a half-made worktree): it may hold changes.
             const status = yield* Effect.tryPromise({
               try: () => isWorktreeDirty(r.worktree_path),
@@ -2070,6 +2123,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               // A half-made worktree is not registered: remove what exists.
               rmSync(r.worktree_path, { recursive: true, force: true })
             }
+          } finally {
+            worktreeRemoving.delete(r.worktree_path)
           }
           // A retry shares the path, so Remove marks every run of that worktree as removed.
           db.run("UPDATE run SET worktree_removed = 1 WHERE worktree_path = ?", r.worktree_path)

@@ -54,6 +54,7 @@ import type { ToolDef } from "../providers/chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { scrubGitEnv } from "./GitWorktrees.ts"
 import { Platform } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
@@ -434,7 +435,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
 
         // -- How a connection is reached. --
 
-        /** The environment of a program: the normal one, minus what is the app's own, plus the values of the user. */
+        /** The environment of a program: the normal one, minus what is the app's own, plus the values of the user, with the git variables scrubbed so a `git` it runs cannot reach another repository. */
         const programEnv = (values: Readonly<Record<string, string>>): NodeJS.ProcessEnv => {
           const env: NodeJS.ProcessEnv = {}
           for (const [key, value] of Object.entries(process.env)) {
@@ -444,7 +445,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
           }
           // The home folder of the app: a test run has one of its own.
           env.HOME = platform.homeDir
-          return { ...env, ...values }
+          return scrubGitEnv({ ...env, ...values })
         }
 
         const folderOf = (folder: string) => {
