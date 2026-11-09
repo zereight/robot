@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -196,6 +203,26 @@ describe("make worktree (spec 007, New worktree)", () => {
     )
     expect(reason).not.toBe("made")
     expect(existsSync(path)).toBe(false)
+  })
+
+  test("an abort mid-way ends git before it fails: nothing is written after the failure", async () => {
+    const dir = emptyRepo()
+    mkdirSync(join(dir, "bulk"))
+    for (let i = 0; i < 3000; i++) writeFileSync(join(dir, "bulk", `f${i}.txt`), `file ${i}\n`)
+    git(dir, "add", "-A")
+    git(dir, "commit", "--quiet", "-m", "bulk")
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    const controller = new AbortController()
+    const made = createWorktree(dir, path, "robot/report-20261109-120000", controller.signal)
+    await new Promise((r) => setTimeout(r, 100))
+    controller.abort()
+    expect(await reasonOf(made)).not.toBe("made")
+    // Git has ended: the half-made folder stops growing.
+    const count = () =>
+      existsSync(join(path, "bulk")) ? readdirSync(join(path, "bulk")).length : -1
+    const first = count()
+    await new Promise((r) => setTimeout(r, 500))
+    expect(count()).toBe(first)
   })
 })
 

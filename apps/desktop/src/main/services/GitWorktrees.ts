@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import { existsSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
@@ -81,13 +81,16 @@ export const gitScrubReady = (): Promise<void> => fillScrubNames()
 /** The longest reason that a failure carries. Git can write pages; the run view shows one line. */
 const REASON_MAX = 500
 
+const capReason = (text: string): string =>
+  text.length > REASON_MAX ? `${text.slice(0, REASON_MAX)}…` : text
+
 const gitReason = (error: unknown): string => {
   const stderr =
     error && typeof error === "object" && "stderr" in error
       ? String((error as { stderr: unknown }).stderr).trim()
       : ""
   const text = stderr !== "" ? stderr : error instanceof Error ? error.message : String(error)
-  return text.length > REASON_MAX ? `${text.slice(0, REASON_MAX)}…` : text
+  return capReason(text)
 }
 
 /**
@@ -120,7 +123,8 @@ export const isInsideRepo = async (folder: string): Promise<boolean> => {
 /**
  * Makes a new linked worktree at `path` on a new `branch` from HEAD of the repository of `repo`.
  * Changes of the repository that are not committed are not in it. The path must not exist yet.
- * An aborted `signal` ends git; the caller removes the half-made folder.
+ * An aborted `signal` ends git and fails only after git has ended, so the caller can remove the
+ * half-made folder without git still writing into it.
  */
 export const createWorktree = async (
   repo: string,
@@ -128,15 +132,58 @@ export const createWorktree = async (
   branch: string,
   signal?: AbortSignal,
 ): Promise<void> => {
-  try {
-    await runFile("git", ["-C", repo, "worktree", "add", "-b", branch, path, "HEAD"], {
-      timeout: 120_000,
+  signal?.throwIfAborted()
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn("git", ["-C", repo, "worktree", "add", "-b", branch, path, "HEAD"], {
       env: gitEnv(),
-      ...(signal ? { signal } : {}),
+      stdio: ["ignore", "ignore", "pipe"],
+      timeout: 120_000,
+      killSignal: "SIGKILL",
+      windowsHide: true,
     })
-  } catch (error) {
-    throw new Error(gitReason(error))
-  }
+    let stderr = ""
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderr.length < REASON_MAX * 4) stderr += chunk.toString()
+    })
+    const kill = () => {
+      try {
+        child.kill("SIGKILL")
+      } catch {
+        // The process is gone already.
+      }
+    }
+    const onAbort = () => kill()
+    if (signal) {
+      if (signal.aborted) kill()
+      else signal.addEventListener("abort", onAbort, { once: true })
+    }
+    child.on("error", (e) => {
+      signal?.removeEventListener("abort", onAbort)
+      const text = stderr.trim()
+      reject(new Error(text !== "" ? capReason(text) : e.message))
+    })
+    // `close` fires after the process has ended: on an abort nothing still writes then.
+    child.on("close", (code) => {
+      signal?.removeEventListener("abort", onAbort)
+      if (signal?.aborted) {
+        reject(
+          signal.reason instanceof Error ? signal.reason : new Error("The operation was aborted"),
+        )
+        return
+      }
+      if (code === null) {
+        const text = stderr.trim()
+        reject(new Error(text !== "" ? capReason(text) : "git did not answer in time"))
+        return
+      }
+      if (code !== 0) {
+        const text = stderr.trim()
+        reject(new Error(text !== "" ? capReason(text) : `git exited with code ${code}`))
+        return
+      }
+      resolve()
+    })
+  })
 }
 
 /** True when the worktree holds changes that are not committed, including new files. */
