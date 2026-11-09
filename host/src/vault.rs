@@ -1,33 +1,13 @@
-//! All secrets of one profile in one encrypted file. The file lives in the data folder of
-//! the profile. One 32-byte secrets key per profile lives in the system keychain. A copy of the
-//! file without the key shows no value.
-//!
-//! The file holds `RBV1 | nonce (12 bytes) | ciphertext`. The sealed text is the JSON of the map
-//! of names to values. One seal covers all names and values. Each write uses a fresh nonce.
-//!
-//! The secrets key is a generic password with the service [`SERVICE`] and the account
-//! `vault:<profile>`. No old per-secret entry uses that account form, so the key never meets one.
-//! Old entries are never read, never moved and never removed.
-//!
-//! One lock file (`<secrets file>.lock`) guards every run. Reads and writes hold one exclusive
-//! lock for the full run. A short process lock guards threads of this process too, because a file
-//! lock does not stop two threads of one process on macOS. Each write goes to a temp file in the
-//! same folder first, then moves over the target with one rename. A crash leaves the old file.
-//!
-//! A missing file is an empty vault. A file without its secrets key reads as empty too. The first
-//! `set` then makes a new key and a new file, and the old file is replaced. A file that the key
-//! cannot open is corrupt, and no run overwrites it. [`VaultError`] holds no value and no key
-//! bytes, so stderr cannot leak them.
-
 use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+#[cfg(test)]
+use std::sync::Mutex;
 
-use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
 /// The name under which the app keeps its secrets keys in the keychain.
@@ -88,7 +68,6 @@ pub struct KeychainKeys {
 mod keychain {
     use super::{KeySource, KeychainKeys, VaultError};
 
-    /// The keychain account of one profile. TypeScript never builds this string.
     fn account(profile: &str) -> String {
         format!("vault:{profile}")
     }
@@ -144,7 +123,6 @@ impl KeySource for KeychainKeys {
     }
 }
 
-/// In-memory keys. Tests only. Never ships.
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub struct EphemeralKeys {
@@ -166,7 +144,6 @@ impl KeySource for EphemeralKeys {
     }
 }
 
-/// A key source that fails every run, like a locked keychain. Tests only.
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub struct BrokenKeys;
@@ -184,7 +161,6 @@ impl KeySource for BrokenKeys {
     }
 }
 
-/// A key source that panics when read. Tests use it to prove that a run reads no key.
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub struct RefusingKeys;
@@ -202,26 +178,71 @@ impl KeySource for RefusingKeys {
     }
 }
 
-/// Serializes vault runs of this process. The file lock below stops two processes. It does not
-/// stop two threads of one process, so this mutex does.
-static SERIAL: Mutex<()> = Mutex::new(());
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub struct FailStoreKeys;
 
-/// Both locks of one run. Dropping them ends the run.
-struct Locked {
-    _serial: MutexGuard<'static, ()>,
-    _file: File,
+#[cfg(test)]
+impl KeySource for FailStoreKeys {
+    fn load(&self, _profile: &str) -> Result<Option<[u8; 32]>, VaultError> {
+        Ok(None)
+    }
+    fn store(&self, _profile: &str, _key: &[u8; 32]) -> Result<(), VaultError> {
+        Err(VaultError::Keychain("-1".into()))
+    }
+    fn remove(&self, _profile: &str) -> Result<(), VaultError> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+pub struct FileKeys {
+    pub path: PathBuf,
+}
+
+#[cfg(test)]
+impl KeySource for FileKeys {
+    fn load(&self, _profile: &str) -> Result<Option<[u8; 32]>, VaultError> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) => bytes
+                .try_into()
+                .map(Some)
+                .map_err(|_| VaultError::Corrupt("the stored secrets key is not 32 bytes")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(reason(e)),
+        }
+    }
+    fn store(&self, _profile: &str, key: &[u8; 32]) -> Result<(), VaultError> {
+        std::fs::write(&self.path, key).map_err(reason)
+    }
+    fn remove(&self, _profile: &str) -> Result<(), VaultError> {
+        remove_missing(&self.path)
+    }
 }
 
 fn reason(error: impl std::fmt::Display) -> VaultError {
     VaultError::Io(error.to_string())
 }
 
-/// One encrypted vault. One secrets file plus one secrets key, for one profile. Owns format,
-/// crypto, lock and atomic write end to end.
 pub struct Vault<K: KeySource> {
     path: PathBuf,
     profile: String,
     keys: K,
+}
+
+/// A `Made` key reaches the keychain only after its file lands, so a crash leaves Missing key.
+enum KeyState {
+    Loaded([u8; 32]),
+    Made([u8; 32]),
+}
+
+impl KeyState {
+    fn secret(&self) -> &[u8; 32] {
+        match self {
+            KeyState::Loaded(secret) | KeyState::Made(secret) => secret,
+        }
+    }
 }
 
 impl<K: KeySource> Vault<K> {
@@ -237,8 +258,6 @@ impl<K: KeySource> Vault<K> {
         })
     }
 
-    /// Reads one value under the lock. A missing file reads as no value, without a keychain
-    /// read. A file without its secrets key reads as no value too.
     pub fn get(&self, key: &str) -> Result<Option<String>, VaultError> {
         let _locked = self.lock()?;
         let Some(bytes) = read_file(&self.path)? else {
@@ -250,31 +269,28 @@ impl<K: KeySource> Vault<K> {
         Ok(open(&bytes, &secret)?.remove(key))
     }
 
-    /// Sets one value under the lock. Makes the secrets key and the file when missing. When the
-    /// file has no key, the new file replaces it and its old values are gone. When the file has
-    /// a key but does not open, the run fails and the bytes stay unchanged.
     pub fn set(&self, key: &str, value: &str) -> Result<(), VaultError> {
         let _locked = self.lock()?;
-        let (secret, fresh) = match self.keys.load(&self.profile)? {
-            Some(secret) => (secret, false),
+        let state = match self.keys.load(&self.profile)? {
+            Some(secret) => KeyState::Loaded(secret),
             None => {
-                let mut made = [0u8; KEY_LEN];
-                getrandom::fill(&mut made).map_err(reason)?;
-                self.keys.store(&self.profile, &made)?;
-                (made, true)
+                let mut secret = [0u8; KEY_LEN];
+                getrandom::fill(&mut secret).map_err(reason)?;
+                KeyState::Made(secret)
             }
         };
-        // A new key cannot open the old file. The new file replaces it.
-        let mut values = match read_file(&self.path)? {
-            Some(bytes) if !fresh => open(&bytes, &secret)?,
+        let mut values = match (read_file(&self.path)?, &state) {
+            (Some(bytes), KeyState::Loaded(secret)) => open(&bytes, secret)?,
             _ => BTreeMap::new(),
         };
         values.insert(key.to_owned(), value.to_owned());
-        atomic_write(&self.path, &seal(&values, &secret)?)
+        atomic_write(&self.path, &seal(&values, state.secret())?)?;
+        if let KeyState::Made(secret) = &state {
+            self.keys.store(&self.profile, secret)?;
+        }
+        Ok(())
     }
 
-    /// Removes one value under the lock. A missing file, a missing key and a missing secrets key
-    /// are all success with no rewrite.
     pub fn remove(&self, key: &str) -> Result<(), VaultError> {
         let _locked = self.lock()?;
         let Some(bytes) = read_file(&self.path)? else {
@@ -290,8 +306,6 @@ impl<K: KeySource> Vault<K> {
         Ok(())
     }
 
-    /// Proves the vault can be used. Opens the file when it has a key. A missing file and a
-    /// missing secrets key are healthy when the keychain answers. Never makes the key or file.
     pub fn check(&self) -> Result<(), VaultError> {
         let _locked = self.lock()?;
         let secret = self.keys.load(&self.profile)?;
@@ -301,22 +315,18 @@ impl<K: KeySource> Vault<K> {
         }
     }
 
-    /// Deletes the secrets file (plus temp and lock files) and the secrets key. Missing is
-    /// success. Never touches old per-secret keychain entries.
+    /// Deletes the secrets file (plus temp files) and the secrets key. Keeps the lock file, so a
+    /// run that waits on it keeps waiting on the same file. Missing is success. Never touches old
+    /// per-secret keychain entries.
     pub fn destroy(&self) -> Result<(), VaultError> {
-        let locked = self.lock()?;
+        let _locked = self.lock()?;
         remove_missing(&self.path)?;
         self.sweep_temps();
         self.keys.remove(&self.profile)?;
-        drop(locked);
-        let _ = std::fs::remove_file(self.lock_path());
         Ok(())
     }
 
-    fn lock(&self) -> Result<Locked, VaultError> {
-        let serial = SERIAL
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+    fn lock(&self) -> Result<File, VaultError> {
         let file = File::options()
             .create(true)
             .truncate(false)
@@ -325,10 +335,7 @@ impl<K: KeySource> Vault<K> {
             .map_err(reason)?;
         use fs2::FileExt;
         file.lock_exclusive().map_err(reason)?;
-        Ok(Locked {
-            _serial: serial,
-            _file: file,
-        })
+        Ok(file)
     }
 
     fn lock_path(&self) -> PathBuf {
@@ -337,7 +344,6 @@ impl<K: KeySource> Vault<K> {
         PathBuf::from(name)
     }
 
-    /// Removes temp files of crashed runs. Best effort. They hold sealed bytes only.
     fn sweep_temps(&self) {
         let Some(dir) = self.path.parent() else {
             return;
@@ -363,7 +369,6 @@ impl<K: KeySource> Vault<K> {
     }
 }
 
-/// Reads the file. A missing file is `Ok(None)`.
 fn read_file(path: &Path) -> Result<Option<Vec<u8>>, VaultError> {
     match std::fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
@@ -380,13 +385,18 @@ fn remove_missing(path: &Path) -> Result<(), VaultError> {
     }
 }
 
-/// Seals the map: fresh random nonce per call, `MAGIC | nonce | ciphertext`.
 fn seal(values: &BTreeMap<String, String>, key: &[u8; 32]) -> Result<Vec<u8>, VaultError> {
     let text = serde_json::to_vec(values).map_err(reason)?;
     let mut nonce = [0u8; NONCE_LEN];
     getrandom::fill(&mut nonce).map_err(reason)?;
     let body = ChaCha20Poly1305::new(Key::from_slice(key))
-        .encrypt(Nonce::from_slice(&nonce), text.as_ref())
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &text,
+                aad: MAGIC.as_slice(),
+            },
+        )
         .map_err(|_| VaultError::Io("cannot seal the secrets file".into()))?;
     let mut out = Vec::with_capacity(MAGIC.len() + NONCE_LEN + body.len());
     out.extend_from_slice(MAGIC);
@@ -395,7 +405,6 @@ fn seal(values: &BTreeMap<String, String>, key: &[u8; 32]) -> Result<Vec<u8>, Va
     Ok(out)
 }
 
-/// Opens sealed bytes. Any format or authentication failure is `Corrupt`.
 fn open(bytes: &[u8], key: &[u8; 32]) -> Result<BTreeMap<String, String>, VaultError> {
     if bytes.len() < MAGIC.len() + NONCE_LEN + TAG_LEN {
         return Err(VaultError::Corrupt("the secrets file is too short"));
@@ -406,15 +415,16 @@ fn open(bytes: &[u8], key: &[u8; 32]) -> Result<BTreeMap<String, String>, VaultE
     let plain = ChaCha20Poly1305::new(Key::from_slice(key))
         .decrypt(
             Nonce::from_slice(&bytes[MAGIC.len()..MAGIC.len() + NONCE_LEN]),
-            &bytes[MAGIC.len() + NONCE_LEN..],
+            Payload {
+                msg: &bytes[MAGIC.len() + NONCE_LEN..],
+                aad: MAGIC.as_slice(),
+            },
         )
         .map_err(|_| VaultError::Corrupt("the secrets file fails authentication"))?;
     serde_json::from_slice(&plain)
         .map_err(|_| VaultError::Corrupt("the secrets file holds bad JSON"))
 }
 
-/// Writes bytes atomically: temp file (mode 0600) in the same folder, fsync, rename. A best
-/// effort fsync of the folder follows.
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(format!(".{}.tmp", std::process::id()));
@@ -632,14 +642,14 @@ mod tests {
     }
 
     #[test]
-    fn destroy_removes_the_file_the_key_and_the_lock() {
+    fn destroy_removes_the_file_and_the_key_but_keeps_the_lock() {
         let dir = tempfile::tempdir().unwrap();
         let keys = EphemeralKeys::default();
         let store = vault(dir.path(), &keys);
         store.set("k", "v").unwrap();
         store.destroy().unwrap();
         assert!(!dir.path().join("secrets.vault").exists());
-        assert!(!dir.path().join("secrets.vault.lock").exists());
+        assert!(dir.path().join("secrets.vault.lock").exists());
         assert_eq!(keys.load("default").unwrap(), None);
         assert_eq!(store.get("k").unwrap(), None);
         store.destroy().unwrap();
@@ -687,20 +697,129 @@ mod tests {
         assert_eq!(mode & 0o077, 0);
     }
 
-    /// Writes, reads and removes a secrets key in the real keychain, under a service of its own.
-    /// Run it by hand on a Mac: `cargo test --manifest-path host/Cargo.toml -- --ignored`.
+    #[test]
+    fn two_seals_of_one_map_share_no_nonce_and_no_ciphertext() {
+        let mut values = BTreeMap::new();
+        values.insert("k".to_owned(), "v".to_owned());
+        let key = [3u8; KEY_LEN];
+        let first = seal(&values, &key).unwrap();
+        let second = seal(&values, &key).unwrap();
+        assert_ne!(
+            &first[MAGIC.len()..MAGIC.len() + NONCE_LEN],
+            &second[MAGIC.len()..MAGIC.len() + NONCE_LEN]
+        );
+        assert_ne!(
+            &first[MAGIC.len() + NONCE_LEN..],
+            &second[MAGIC.len() + NONCE_LEN..]
+        );
+    }
+
+    #[test]
+    fn a_changed_header_byte_and_a_wrong_aad_are_corrupt() {
+        let dir = tempfile::tempdir().unwrap();
+        let keys = EphemeralKeys::default();
+        let store = vault(dir.path(), &keys);
+        store.set("k", "v").unwrap();
+        let path = dir.path().join("secrets.vault");
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[0] ^= 0x01;
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(matches!(store.get("k"), Err(VaultError::Corrupt(_))));
+        let secret = keys.load("default").unwrap().unwrap();
+        let body = ChaCha20Poly1305::new(Key::from_slice(&secret))
+            .encrypt(
+                Nonce::from_slice(&[0u8; NONCE_LEN]),
+                Payload {
+                    msg: &b"{}"[..],
+                    aad: b"XXXX",
+                },
+            )
+            .unwrap();
+        let mut plain = Vec::new();
+        plain.extend_from_slice(MAGIC);
+        plain.extend_from_slice(&[0u8; NONCE_LEN]);
+        plain.extend_from_slice(&body);
+        std::fs::write(&path, &plain).unwrap();
+        assert!(matches!(store.get("k"), Err(VaultError::Corrupt(_))));
+        assert!(matches!(store.check(), Err(VaultError::Corrupt(_))));
+    }
+
+    #[test]
+    fn vault_child_writes_one_key() {
+        let (Some(vault), Some(keyfile), Some(key)) = (
+            std::env::var("ROBOT_VAULT_CHILD_VAULT").ok(),
+            std::env::var("ROBOT_VAULT_CHILD_KEYFILE").ok(),
+            std::env::var("ROBOT_VAULT_CHILD_KEY").ok(),
+        ) else {
+            return;
+        };
+        Vault::new(
+            PathBuf::from(vault),
+            "default".into(),
+            FileKeys {
+                path: PathBuf::from(keyfile),
+            },
+        )
+        .unwrap()
+        .set(&key, "v")
+        .unwrap();
+    }
+
+    #[test]
+    fn writers_from_many_processes_lose_no_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("secrets.vault");
+        let keyfile = dir.path().join("test.key");
+        let mut key = [0u8; KEY_LEN];
+        getrandom::fill(&mut key).unwrap();
+        std::fs::write(&keyfile, key).unwrap();
+        let mut children = Vec::new();
+        for task in 0..8 {
+            children.push(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", "vault::tests::vault_child_writes_one_key"])
+                    .env("ROBOT_VAULT_CHILD_VAULT", &vault)
+                    .env("ROBOT_VAULT_CHILD_KEYFILE", &keyfile)
+                    .env("ROBOT_VAULT_CHILD_KEY", format!("p{task}"))
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+        for child in &mut children {
+            assert!(child.wait().unwrap().success());
+        }
+        let store = Vault::new(vault, "default".into(), FileKeys { path: keyfile }).unwrap();
+        for task in 0..8 {
+            assert_eq!(store.get(&format!("p{task}")).unwrap(), Some("v".into()));
+        }
+    }
+
     #[test]
     #[ignore = "uses the keychain of the user"]
     fn the_keychain_keeps_a_secrets_key() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let profile = format!("test-{}-{nanos}", std::process::id());
         let keys = KeychainKeys {
-            service: format!("ROBot test {}", std::process::id()),
+            service: SERVICE.to_owned(),
         };
-        assert_eq!(keys.load("default").unwrap(), None);
-        keys.store("default", &[7u8; 32]).unwrap();
-        keys.store("default", &[9u8; 32]).unwrap();
-        assert_eq!(keys.load("default").unwrap(), Some([9u8; 32]));
-        keys.remove("default").unwrap();
-        keys.remove("default").unwrap();
-        assert_eq!(keys.load("default").unwrap(), None);
+        assert_eq!(keys.load(&profile).unwrap(), None);
+        let dir = tempfile::tempdir().unwrap();
+        let store = Vault::new(
+            dir.path().join("secrets.vault"),
+            profile.clone(),
+            KeychainKeys {
+                service: SERVICE.to_owned(),
+            },
+        )
+        .unwrap();
+        store.set("k", "v").unwrap();
+        store.set("k", "v2").unwrap();
+        assert_eq!(store.get("k").unwrap(), Some("v2".into()));
+        store.destroy().unwrap();
+        assert_eq!(keys.load(&profile).unwrap(), None);
+        assert!(!dir.path().join("secrets.vault").exists());
     }
 }
