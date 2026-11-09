@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
-import { readFileSync, statSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { basename, dirname } from "node:path"
 import { createInterface } from "node:readline"
+import { ownTempRoot } from "../stale-temp.ts"
 import {
   type BridgeGrant,
   type BridgeHandler,
@@ -10,6 +12,7 @@ import {
   grantBridge,
   MUSE_AUTH_VARIABLE,
   museBridge,
+  removeAllStaged,
   SHIM,
   type Staged,
   stage,
@@ -256,6 +259,41 @@ describe("files of a run", () => {
     const file = staged.accessFile
     staged.remove()
     expect(() => statSync(file)).toThrow()
+  })
+
+  test("stand in the folder of the app, and the name of the folder holds the process number", async () => {
+    grant = await grantBridge(handler)
+    staged = stage(grant)
+    const folder = dirname(staged.accessFile)
+    expect(dirname(folder)).toBe(ownTempRoot() as string)
+    // A later start reads the number to tell that a folder of a killed app is dead.
+    expect(basename(folder)).toMatch(new RegExp(`^robot-bridge-${process.pid}-[A-Za-z0-9]{6}$`))
+  })
+
+  test("a file that cannot be written leaves no folder with a token", async () => {
+    grant = await grantBridge(handler)
+    const root = ownTempRoot() as string
+    const before = readdirSync(root).sort()
+    // A value that JSON cannot hold: the second file fails after the first one is written.
+    const broken = {
+      ...grant,
+      tools: [{ ...handler.tools[0], schema: 1n }],
+    } as unknown as BridgeGrant
+    expect(() => stage(broken)).toThrow()
+    expect(readdirSync(root).sort()).toEqual(before)
+  })
+
+  test("the quit removes the folders of the runs that are still going, and no other", async () => {
+    grant = await grantBridge(handler)
+    const going = [stage(grant), stage(grant)]
+    const ended = stage(grant)
+    ended.remove()
+    const other = stage(grant)
+    expect(going.every((s) => existsSync(s.accessFile))).toBe(true)
+    removeAllStaged()
+    for (const s of [...going, other]) expect(existsSync(s.accessFile)).toBe(false)
+    // A second call, with nothing left, does nothing.
+    expect(() => removeAllStaged()).not.toThrow()
   })
 
   test("the token is in no argument of a program", async () => {

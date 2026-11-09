@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { rmSync, writeFileSync } from "node:fs"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { TEAM_TOOL_NAMES } from "@robot/shared"
+import { makeOwnedFolder } from "../stale-temp.ts"
 
 /**
  * Tools of the app for an agent runtime. A vendor program (Claude Code, Codex, Pi, Muse Code)
@@ -360,30 +360,59 @@ export interface Staged {
   remove(): void
 }
 
+/**
+ * The folders of the runs that are still going. The files hold the address and the token of the
+ * tools of the app, so no folder may stay when the app quits: `removeAllStaged` is the last step of
+ * the quit. A kill skips the quit; the next start removes what the killed process left
+ * (stale-temp.ts).
+ */
+const staging = new Set<Staged>()
+
+/** Removes the folders of all runs that are still going. The app calls it when it quits. */
+export const removeAllStaged = () => {
+  for (const staged of [...staging]) staged.remove()
+}
+
 export const stage = (access: BridgeAccess): Staged => {
-  const dir = mkdtempSync(join(tmpdir(), "robot-bridge-"))
+  // The name holds the process number, so that a start after a kill can tell the folder is dead.
+  const dir = makeOwnedFolder("robot-bridge-")
+  const remove = () => rmSync(dir, { recursive: true, force: true })
   const write = (name: string, text: string) => {
     const path = join(dir, name)
     writeFileSync(path, text, { mode: 0o600 })
     return path
   }
-  const accessFile = write("access.json", JSON.stringify({ url: access.url, token: access.token }))
-  return {
-    accessFile,
-    claudeConfig: write(
-      "claude.json",
-      JSON.stringify({
-        mcpServers: {
-          [BRIDGE_SERVER]: {
-            type: "http",
-            url: access.url,
-            headers: { Authorization: `Bearer ${access.token}` },
+  try {
+    const accessFile = write(
+      "access.json",
+      JSON.stringify({ url: access.url, token: access.token }),
+    )
+    const staged: Staged = {
+      accessFile,
+      claudeConfig: write(
+        "claude.json",
+        JSON.stringify({
+          mcpServers: {
+            [BRIDGE_SERVER]: {
+              type: "http",
+              url: access.url,
+              headers: { Authorization: `Bearer ${access.token}` },
+            },
           },
-        },
-      }),
-    ),
-    piExtension: write("pi.mjs", piExtensionSource(access.tools, accessFile)),
-    remove: () => rmSync(dir, { recursive: true, force: true }),
+        }),
+      ),
+      piExtension: write("pi.mjs", piExtensionSource(access.tools, accessFile)),
+      remove: () => {
+        staging.delete(staged)
+        remove()
+      },
+    }
+    staging.add(staged)
+    return staged
+  } catch (error) {
+    // A file that cannot be written must not leave the folder with a token behind.
+    remove()
+    throw error
   }
 }
 

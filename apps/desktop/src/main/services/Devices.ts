@@ -1,7 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto"
-import { mkdtempSync, rmSync } from "node:fs"
-import { networkInterfaces, tmpdir } from "node:os"
-import { join as joinPath } from "node:path"
+import { rmSync } from "node:fs"
+import { networkInterfaces } from "node:os"
 import { DECISION_MS, type JoinResult, type PairDevice } from "@robot/link"
 import {
   ACCESS_EVENT,
@@ -37,6 +36,7 @@ import { deviceIdOf, fromB64, type Identity, loadIdentity } from "../link/identi
 import { Nearby, type OpenSocket } from "../link/nearby.ts"
 import { type ClientSession, type LinkHost, LinkServer, type ServerOffer } from "../link/server.ts"
 import { Uploads } from "../link/uploads.ts"
+import { makeOwnedFolder } from "../stale-temp.ts"
 import type { Actor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -197,7 +197,8 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
         const secrets = yield* Secrets
         const settings = yield* SettingsStore
         const platform = yield* Platform
-        const uploadRoot = mkdtempSync(joinPath(tmpdir(), "robot-uploads-"))
+        // The folder holds the process number, so that a start after a kill removes it (stale-temp.ts).
+        const uploadRoot = makeOwnedFolder("robot-uploads-")
         const uploads = new Uploads(uploadRoot)
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => rmSync(uploadRoot, { recursive: true, force: true })),

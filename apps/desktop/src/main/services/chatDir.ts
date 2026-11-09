@@ -1,6 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { existsSync, mkdirSync } from "node:fs"
+import { makeOwnedFolder } from "../stale-temp.ts"
 
 let dir: string | null = null
 
@@ -11,7 +10,7 @@ let dir: string | null = null
  */
 export const chatDir = (): string => {
   if (dir !== null && existsSync(dir)) return dir
-  const made = mkdtempSync(join(tmpdir(), "robot-chat-"))
+  const made = makeOwnedFolder("robot-chat-")
   // `mkdtemp` makes the folder with mode 0700; this keeps it so on any system.
   mkdirSync(made, { recursive: true, mode: 0o700 })
   dir = made
