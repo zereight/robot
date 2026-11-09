@@ -50,6 +50,7 @@ import { Browsers } from "./Browsers.ts"
 import { Database, type DatabaseService } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { slugOfName } from "./GitWorktrees.ts"
 import { Platform } from "./Platform.ts"
 import { SettingsStore } from "./Settings.ts"
 import { sharingWorkflows } from "./sharedFolders.ts"
@@ -214,15 +215,8 @@ interface ConnectionRow {
 }
 
 /** A folder name made from the workflow name, with a short unique tail. */
-export const workflowFolderName = (name: string, id: string) => {
-  const slug = name
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 24)
-  return `${slug || "workflow"}-${id.slice(0, 6)}`
-}
+export const workflowFolderName = (name: string, id: string) =>
+  `${slugOfName(name) || "workflow"}-${id.slice(0, 6)}`
 
 /** The stricter of two levels. The level of a node never loosens the level of its workflow. */
 export const effectivePermission = (
