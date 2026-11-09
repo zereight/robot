@@ -121,11 +121,13 @@ slash in another chat. The skill is a copy. It has no link back to the workflow.
    - The description: the first sentence of the responsible document. If that text is empty, the
      description is "Do the steps of the workflow NAME." It holds at most 140 characters.
    - The instructions: one numbered step for each node, in the order of the node numbers.
-     - A text node: its prompt.
+     - A text node: its prompt. A text node with no prompt gives its name.
      - A decision node: its question, and for each option the number of the step that it goes to,
        as in "If the answer is "Yes", go to step 4."
      - An approval node: "Ask the user: QUESTION. If the user rejects it, go to step N." When the
-       rejection has no connection, the step says "If the user rejects it, stop."
+       rejection has no connection, the step says "If the user rejects it, stop." When the approval
+       goes to a step other than the next one, the step also says "If the user approves it, go to
+       step N."
    - The draft holds no folder path, no provider, no model, no reasoning level, no mark and no
      schedule of the workflow.
 3. Diet: the app cuts the draft before it shows it. The cuts are:
@@ -134,8 +136,9 @@ slash in another chat. The skill is a copy. It has no link back to the workflow.
      Spaces at the end of a line and doubled spaces go away.
    - Text that looks like a secret (see 014) becomes `[redacted]`.
    - The instructions hold at most 4000 characters. When they are longer, each step keeps its first
-     sentences, up to an equal share of the 4000 characters, and a cut step ends with "…". A step
-     that is within its share stays whole.
+     sentences, up to an equal share of the 4000 characters that the shorter steps leave, and a cut
+     step ends with "…". A step that is within its share stays whole. The lines that name the next
+     step of a decision or an approval are never cut.
    The card shows the length before the diet, the length after it, and the saved part in percent. A
    draft that the diet did not change says "Nothing to cut."
 4. Review: the draft shows as a card with the three fields, which the user can edit, and with the
@@ -174,11 +177,12 @@ the skill and about the other skills of the server. It asks no model.
    - **Lean**: the description holds at most 140 characters, and the instructions hold at most 4000.
      A longer text shows "Long" with its length, and says that the skill still works. "Long" is not
      a failure.
-3. The result is a list of lines, one for each fact. A reason is a short sentence. The result stays
+3. If "Saved" fails (the skill was deleted), the other facts show "Not checked".
+4. The result is a list of lines, one for each fact. A reason is a short sentence. The result stays
    on the screen until the user closes it, and it is not stored.
-4. The check changes nothing. It never deletes, edits or turns on a skill. A failed fact leaves the
+5. The check changes nothing. It never deletes, edits or turns on a skill. A failed fact leaves the
    skill as it is.
-5. The words of the check say what it saw. They do not say that the skill "works", "is verified" or
+6. The words of the check say what it saw. They do not say that the skill "works", "is verified" or
    "is correct". The check does not test that a model picks the skill for a task.
 
 ## Skills and self-improvement
