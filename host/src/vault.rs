@@ -45,7 +45,8 @@ const TAG_LEN: usize = 16;
 /// Failure of the vault. No variant holds a value or key bytes, so stderr cannot leak them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VaultError {
-    /// The keychain refused the run (locked, denied). Holds the framework code only.
+    /// The keychain refused the run (locked, denied), or there is none. Holds the framework code or
+    /// a fixed reason only.
     Keychain(String),
     /// Bad magic, version, JSON, or authentication failure.
     Corrupt(&'static str),
@@ -79,17 +80,18 @@ impl<K: KeySource> KeySource for &K {
 /// The keychain of the user: service [`SERVICE`], account `vault:<profile>`.
 /// macOS only. Other systems fail with "no keychain on this system".
 pub struct KeychainKeys {
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub service: String,
-}
-
-/// The keychain account of one profile. TypeScript never builds this string.
-fn account(profile: &str) -> String {
-    format!("vault:{profile}")
 }
 
 #[cfg(target_os = "macos")]
 mod keychain {
-    use super::{KeySource, KeychainKeys, VaultError, account};
+    use super::{KeySource, KeychainKeys, VaultError};
+
+    /// The keychain account of one profile. TypeScript never builds this string.
+    fn account(profile: &str) -> String {
+        format!("vault:{profile}")
+    }
 
     use security_framework::passwords::{
         delete_generic_password, get_generic_password, set_generic_password,
@@ -132,13 +134,13 @@ mod keychain {
 #[cfg(not(target_os = "macos"))]
 impl KeySource for KeychainKeys {
     fn load(&self, _profile: &str) -> Result<Option<[u8; 32]>, VaultError> {
-        Err(VaultError::Io("no keychain on this system".into()))
+        Err(VaultError::Keychain("no keychain on this system".into()))
     }
     fn store(&self, _profile: &str, _key: &[u8; 32]) -> Result<(), VaultError> {
-        Err(VaultError::Io("no keychain on this system".into()))
+        Err(VaultError::Keychain("no keychain on this system".into()))
     }
     fn remove(&self, _profile: &str) -> Result<(), VaultError> {
-        Err(VaultError::Io("no keychain on this system".into()))
+        Err(VaultError::Keychain("no keychain on this system".into()))
     }
 }
 
