@@ -137,22 +137,13 @@ const stepsOf = (graph: WorkflowGraph, clean: (text: string) => string): Step[] 
   })
 }
 
-const firstSentence = (document: string) => {
-  const text = document
-    .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*#+\s*/, "").trim())
-    .find((l) => l !== "")
-  if (text === undefined) return ""
-  return (text.match(SENTENCE)?.[0] ?? text).trim()
-}
-
 /**
  * The draft skill of a workflow (spec 017, "Make a skill from a workflow"): the name, the
  * description, and one step for each node, cut by the diet. `taken` tells whether a skill name is in
  * use, ignoring case. It asks no model and sends nothing out.
  */
 export const draftSkillFromWorkflow = (
-  workflow: { readonly name: string; readonly document: string; readonly graph: WorkflowGraph },
+  workflow: { readonly name: string; readonly graph: WorkflowGraph },
   taken: (name: string) => boolean,
 ): SkillDraft => {
   const base = cut(skillName(workflow.name), SKILL_NAME_MAX).trimEnd()
@@ -162,13 +153,17 @@ export const draftSkillFromWorkflow = (
     name = cut(base, SKILL_NAME_MAX - chars(tail)).trimEnd() + tail
   }
 
-  const described = redactSecrets(firstSentence(workflow.document)).replace(/\s+/g, " ").trim()
+  const stepNames = [...workflow.graph.nodes]
+    .sort((x, y) => x.number - y.number)
+    .map((n) => n.name.trim())
+    .filter((n) => n !== "")
+  const described = redactSecrets(
+    `Do the steps of the workflow ${base}${stepNames.length > 0 ? `: ${stepNames.join(", ")}` : ""}.`,
+  )
   const description =
-    described === ""
-      ? cut(`Do the steps of the workflow ${base}.`, SKILL_DESCRIPTION_MAX)
-      : chars(described) > SKILL_DESCRIPTION_MAX
-        ? `${cut(described, SKILL_DESCRIPTION_MAX - 1).trimEnd()}…`
-        : described
+    chars(described) > SKILL_DESCRIPTION_MAX
+      ? `${cut(described, SKILL_DESCRIPTION_MAX - 1).trimEnd()}…`
+      : described
 
   const raw = stepsOf(workflow.graph, (t) => t.trim())
   const before = raw.map((s, i) => stepText(i + 1, s, s.body)).join("\n")

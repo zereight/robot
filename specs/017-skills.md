@@ -118,8 +118,10 @@ slash in another chat. The skill is a copy. It has no link back to the workflow.
    needs no account and no key. The draft has three fields:
    - The name: the name of the workflow, cut to 40 characters. A name that is taken gets a number
      (flow 3 of this spec).
-   - The description: the first sentence of the responsible document. If that text is empty, the
-     description is "Do the steps of the workflow NAME." It holds at most 140 characters.
+   - The description: "Do the steps of the workflow NAME: " and the names of the nodes in the order
+     of their numbers, separated by commas, and a full stop. A workflow whose nodes have no name
+     gives "Do the steps of the workflow NAME." It holds at most 140 characters, and a longer text
+     ends with "…".
    - The instructions: one numbered step for each node, in the order of the node numbers.
      - A text node: its prompt. A text node with no prompt gives its name.
      - A decision node: its question, and for each option the number of the step that it goes to,

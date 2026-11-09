@@ -31,13 +31,13 @@ const line = (from: string, to: string) => ({
   source: { kind: "text" as const },
 })
 
-const flow = (name: string, document: string, graph: WorkflowGraph) => ({ name, document, graph })
+const flow = (name: string, graph: WorkflowGraph) => ({ name, graph })
 const free = () => false
 
 describe("draftSkillFromWorkflow: the draft (spec 017)", () => {
   test("one numbered step for each node, without template words", () => {
     const draft = draftSkillFromWorkflow(
-      flow("Weekly", "Write the weekly report. Keep it short.", {
+      flow("Weekly", {
         nodes: [
           node(1, { prompt: "Collect the news." }),
           node(2, { prompt: "Summarize {{input}} for the team." }),
@@ -48,14 +48,14 @@ describe("draftSkillFromWorkflow: the draft (spec 017)", () => {
       free,
     )
     expect(draft.name).toBe("Weekly")
-    expect(draft.description).toBe("Write the weekly report.")
+    expect(draft.description).toBe("Do the steps of the workflow Weekly: Node 1, Node 2, Node 3.")
     expect(draft.instructions).toBe("1. Collect the news.\n2. Summarize for the team.\n3. Send")
     expect(draft.instructions).not.toContain("{{")
   })
 
   test("a decision and an approval name the step that each answer goes to", () => {
     const draft = draftSkillFromWorkflow(
-      flow("Review", "", {
+      flow("Review", {
         nodes: [
           node(1, {
             kind: "decision",
@@ -86,12 +86,12 @@ describe("draftSkillFromWorkflow: the draft (spec 017)", () => {
         "3. Rewrite it.",
       ].join("\n"),
     )
-    expect(draft.description).toBe("Do the steps of the workflow Review.")
+    expect(draft.description).toBe("Do the steps of the workflow Review: Node 1, Node 2, Node 3.")
   })
 
   test("a rejection with no connection stops, and an approval that skips ahead says so", () => {
     const draft = draftSkillFromWorkflow(
-      flow("Gate", "", {
+      flow("Gate", {
         nodes: [
           node(1, { kind: "approval", question: "Go?" }),
           node(2, { prompt: "Skipped." }),
@@ -109,7 +109,7 @@ describe("draftSkillFromWorkflow: the draft (spec 017)", () => {
 
   test("a node with no prompt gives its name", () => {
     const draft = draftSkillFromWorkflow(
-      flow("X", "", { nodes: [node(1, { name: "Fetch" })], connections: [] }),
+      flow("X", { nodes: [node(1, { name: "Fetch" })], connections: [] }),
       free,
     )
     expect(draft.instructions).toBe("1. Fetch")
@@ -118,26 +118,23 @@ describe("draftSkillFromWorkflow: the draft (spec 017)", () => {
   test("a taken name gets a number inside the 40 characters", () => {
     const long = "w".repeat(60)
     const taken = new Set(["w".repeat(40)])
-    const draft = draftSkillFromWorkflow(
-      flow(long, "", { nodes: [node(1)], connections: [] }),
-      (n) => taken.has(n),
+    const draft = draftSkillFromWorkflow(flow(long, { nodes: [node(1)], connections: [] }), (n) =>
+      taken.has(n),
     )
     expect([...draft.name].length).toBeLessThanOrEqual(40)
     expect(draft.name.endsWith(" 2")).toBe(true)
   })
 
   test("the description holds at most 140 characters", () => {
-    const draft = draftSkillFromWorkflow(
-      flow("X", `${"long ".repeat(60)}.`, { nodes: [node(1)], connections: [] }),
-      free,
-    )
+    const long = node(1, { name: "long ".repeat(60) })
+    const draft = draftSkillFromWorkflow(flow("X", { nodes: [long], connections: [] }), free)
     expect([...draft.description].length).toBeLessThanOrEqual(140)
     expect(draft.description.endsWith("…")).toBe(true)
   })
 
   test("the draft holds no model, folder or mark of the workflow", () => {
     const draft = draftSkillFromWorkflow(
-      flow("X", "", {
+      flow("X", {
         nodes: [
           node(1, { prompt: "Do it.", model: "opus-9", effort: "high", continueOnFailure: true }),
         ],
@@ -152,7 +149,7 @@ describe("draftSkillFromWorkflow: the draft (spec 017)", () => {
 describe("draftSkillFromWorkflow: the diet (spec 017)", () => {
   test("repeated lines, empty lines and doubled spaces go away, and the lengths show it", () => {
     const draft = draftSkillFromWorkflow(
-      flow("X", "", {
+      flow("X", {
         nodes: [
           node(1, { prompt: "Be  brief.\n\nBe brief.\nBe BRIEF." }),
           node(2, { prompt: "Be brief.\nCheck the facts." }),
@@ -167,7 +164,7 @@ describe("draftSkillFromWorkflow: the diet (spec 017)", () => {
 
   test("a secret becomes [redacted]", () => {
     const draft = draftSkillFromWorkflow(
-      flow("X", "", {
+      flow("X", {
         nodes: [
           node(1, { prompt: "Use the key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 now." }),
         ],
@@ -181,7 +178,7 @@ describe("draftSkillFromWorkflow: the diet (spec 017)", () => {
 
   test("a draft that the diet did not change has equal lengths", () => {
     const draft = draftSkillFromWorkflow(
-      flow("X", "", { nodes: [node(1, { prompt: "Do it." })], connections: [] }),
+      flow("X", { nodes: [node(1, { prompt: "Do it." })], connections: [] }),
       free,
     )
     expect(draft.after).toBe(draft.before)
@@ -195,7 +192,7 @@ describe("draftSkillFromWorkflow: the diet (spec 017)", () => {
       node(3, { prompt: sentence.replace("filler", "second").repeat(120) }),
       node(4, { prompt: "Another short step." }),
     ]
-    const draft = draftSkillFromWorkflow(flow("X", "", { nodes, connections: [] }), free)
+    const draft = draftSkillFromWorkflow(flow("X", { nodes, connections: [] }), free)
     expect(draft.after).toBeLessThanOrEqual(SKILL_LEAN_MAX)
     expect(draft.instructions).toContain("1. Short step.")
     expect(draft.instructions).toContain("4. Another short step.")
@@ -209,7 +206,7 @@ describe("draftSkillFromWorkflow: the diet (spec 017)", () => {
   test("the lines that name the next step are never cut", () => {
     const filler = "A filler sentence that repeats. ".repeat(300)
     const draft = draftSkillFromWorkflow(
-      flow("X", "", {
+      flow("X", {
         nodes: [
           node(1, {
             kind: "decision",
