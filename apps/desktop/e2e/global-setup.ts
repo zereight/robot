@@ -27,10 +27,9 @@ export const RUN_ROOT_PREFIX = "robot-e2e-run-"
  * then leaves this ONE folder, not thousands. Remove it by hand: its name starts with
  * `robot-e2e-run-`.
  *
- * Two things stay outside this folder on purpose:
- * - The cache of the Playwright code transform (`playwright-transform-cache-<user>`). Playwright
- *   picks it before it reads this file. It is one folder that every run reuses, so it does not grow.
- * - The short folder of `s33-island.spec.ts` (see there).
+ * One thing stays outside this folder on purpose: the cache of the Playwright code transform
+ * (`playwright-transform-cache-<user>`). Playwright picks it before it reads this file. It is one
+ * folder that every run reuses, so it does not grow.
  */
 export default function globalSetup() {
   const root = mkdtempSync(join(tmpdir(), RUN_ROOT_PREFIX))
