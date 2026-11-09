@@ -70,6 +70,61 @@ describe("is-inside-repo (spec 007, New worktree)", () => {
   })
 })
 
+describe("the scrub of git variables", () => {
+  test("gitEnv removes every variable that git rev-parse --local-env-vars prints, and the fallback", () => {
+    const printed = execFileSync("git", ["rev-parse", "--local-env-vars"], {
+      encoding: "utf8",
+      env: gitEnv(),
+    })
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "")
+    const names = [
+      ...new Set([
+        ...printed,
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_NAMESPACE",
+        "GIT_PREFIX",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_CEILING_DIRECTORIES",
+      ]),
+    ]
+    expect(names.length).toBeGreaterThan(4)
+    const before = new Map(names.map((name) => [name, process.env[name]] as const))
+    for (const name of names) process.env[name] = "pinned"
+    try {
+      const env = gitEnv()
+      for (const name of names) expect(env[name]).toBeUndefined()
+    } finally {
+      for (const [name, value] of before) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+    }
+  })
+
+  test("a GIT_INDEX_FILE in the environment does not move the index of the repository", async () => {
+    const dir = repo()
+    const stray = join(mkdtempSync(join(tmpdir(), "robot-idx-")), "stray-index")
+    const before = process.env.GIT_INDEX_FILE
+    process.env.GIT_INDEX_FILE = stray
+    try {
+      const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+      await createWorktree(dir, path, "robot/report-20261109-120000")
+      expect(readFileSync(join(path, "notes.md"), "utf8")).toBe("first\n")
+      expect(git(dir, "status", "--porcelain")).toBe("")
+      expect(existsSync(stray)).toBe(false)
+    } finally {
+      if (before === undefined) delete process.env.GIT_INDEX_FILE
+      else process.env.GIT_INDEX_FILE = before
+    }
+  })
+})
+
 describe("make worktree (spec 007, New worktree)", () => {
   test("it holds the files of the last commit on a new branch, without uncommitted changes", async () => {
     const dir = repo()

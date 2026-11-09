@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process"
+import { execFile, execFileSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
@@ -12,15 +12,53 @@ import { promisify } from "node:util"
 const runFile = promisify(execFile)
 
 /**
+ * The git variables that always go, even when git cannot be asked (git is missing or too old
+ * for `rev-parse --local-env-vars`). `GIT_NAMESPACE` and `GIT_CEILING_DIRECTORIES` are not local
+ * to one repository, so git never prints them.
+ */
+const GIT_ENV_FALLBACK = [
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_CEILING_DIRECTORIES",
+] as const
+
+/** The names that one query of git returned, asked once and kept. */
+let scrubNames: readonly string[] | null = null
+
+const scrubbedNames = (): readonly string[] => {
+  if (scrubNames) return scrubNames
+  const fallback = { ...process.env }
+  for (const name of GIT_ENV_FALLBACK) delete fallback[name]
+  try {
+    const printed = execFileSync("git", ["rev-parse", "--local-env-vars"], {
+      encoding: "utf8",
+      timeout: 30_000,
+      env: fallback,
+    })
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "")
+    scrubNames =
+      printed.length > 0 ? [...new Set([...printed, ...GIT_ENV_FALLBACK])] : [...GIT_ENV_FALLBACK]
+  } catch {
+    scrubNames = [...GIT_ENV_FALLBACK]
+  }
+  return scrubNames
+}
+
+/**
  * The environment for a git call: without the variables that pin git to another repository.
  * A git hook runs with `GIT_DIR` set, and it would win over `-C`, so every spawn scrubs them.
  */
 export const gitEnv = (): NodeJS.ProcessEnv => {
   const env = { ...process.env }
-  delete env.GIT_DIR
-  delete env.GIT_WORK_TREE
-  delete env.GIT_CEILING_DIRECTORIES
-  delete env.GIT_COMMON_DIR
+  for (const name of scrubbedNames()) delete env[name]
   return env
 }
 
