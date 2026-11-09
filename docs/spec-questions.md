@@ -1201,3 +1201,9 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 017 | Why 4000 characters for a lean skill? | It is a fifth of the form limit (20000) and holds about 40 short steps. A skill above it still works and shows "Long". To confirm. |
 | 017 | Does the skill follow the workflow when the workflow changes? | No. The skill is a copy with no link back. To confirm. |
 | 017 | Which Korean words for "Skill diet" and "Skill check"? | 스킬 다이어트 and 스킬 확인 (proposed). To confirm. |
+
+## M1: Quint models (open point for 005)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 005 | A task that waited for the user is queued again after the answer when no slot is free. The queue holds at most 20 queued tasks, and a task that waits for the user does not count. Does the queued-again task count, so that the queue can hold 21? | It counts as a queued task, as 005 reads now. The queue can hold 21 until the spec says otherwise. `models/005-tasks.qnt` shows this in `heldTaskExceedsQueueLimitTest`. To confirm. |

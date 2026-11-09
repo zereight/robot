@@ -21,10 +21,12 @@
     "e2e": "bun run --cwd apps/desktop e2e",
     "dist": "bun run --cwd apps/desktop dist",
     "version": "bun apps/desktop/scripts/version.ts",
-    "sizes": "bun apps/desktop/scripts/sizes.ts"
+    "sizes": "bun apps/desktop/scripts/sizes.ts",
+    "models:check": "quint typecheck models/005-tasks.qnt && quint test models/005-tasks.qnt --main=scenarios && quint run models/005-tasks.qnt --main=check --invariants slotsHold oneAtATime finalsStay finalsClosed heldOnlyQueued --max-samples=10000 --max-steps=25 --seed=1 --verbosity=1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
+    "@informalsystems/quint": "0.33.1",
     "@types/bun": "^1.4.4",
     "typescript": "^7.0.2"
   }
