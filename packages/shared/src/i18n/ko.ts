@@ -537,7 +537,8 @@ export const ko: Record<MessageKey, string> = {
   "decision.test.reason.not_set_up":
     "아직 설정하지 않았어요. OpenRouter에서 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
   "decision.test.reason.timeout": "3초 안에 답이 오지 않았어요.",
-  "decision.test.reason.network_error": "네트워크 오류예요. ROBot이 OpenRouter에 연결하지 못했어요.",
+  "decision.test.reason.network_error":
+    "네트워크 오류예요. ROBot이 OpenRouter에 연결하지 못했어요.",
   "decision.test.reason.service_error":
     "OpenRouter가 요청을 거부했어요 (오류 코드 {code}). 키와 모델 이름을 확인해 주세요.",
   "decision.test.reason.unreadable": "답을 읽을 수 없었어요.",
@@ -572,7 +573,8 @@ export const ko: Record<MessageKey, string> = {
   "decision.checks": "권한 판단",
   "decision.checks.hint":
     '"확실하지 않을 때만 확인" 수준의 에이전트는 확인이 필요한 작업 전에 결정 모델에 물어봐요. 그 턴에서 내가 쓴 글과 명령어, 호스트, 도구 이름이 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. 기본값은 꺼짐이에요.',
-  "decision.checks.needsSetup": "켜려면 OpenRouter에서 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
+  "decision.checks.needsSetup":
+    "켜려면 OpenRouter에서 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
   "permissions.log.decided.check": "권한 판단",
   "permissions.log.check.allowed": "권한 판단이 확신했어요: {percent}%",
   "permissions.log.check.sent": "권한 판단이 이 작업을 나에게 넘겼어요: {reason}",
@@ -860,7 +862,8 @@ export const ko: Record<MessageKey, string> = {
   "graph.add.text": "텍스트 노드 추가",
   "graph.add.decision": "결정 노드 추가",
   "graph.add.approval": "승인 노드 추가",
-  "graph.empty": "그래프에 노드가 없어요. 텍스트 노드, 결정 노드, 승인 노드 중 하나를 추가해 주세요.",
+  "graph.empty":
+    "그래프에 노드가 없어요. 텍스트 노드, 결정 노드, 승인 노드 중 하나를 추가해 주세요.",
   "graph.canvas": "그래프 캔버스예요. 빈 곳을 끌면 화면이 움직이고, 노드를 끌면 노드가 옮겨져요.",
   "graph.zoom": "확대",
   "graph.zoom.in": "확대하기",
@@ -906,7 +909,8 @@ export const ko: Record<MessageKey, string> = {
   "check.stopped.time": "검사가 {seconds}초 뒤에 멈췄어요. 워크플로우를 더 작게 나눠 주세요.",
   "check.stopped.states":
     "이 워크플로우는 실행 경로가 너무 많아요. 검사는 {seconds}초 뒤에, 또는 상태를 약 {states}개 살펴보면 그 전에 멈춰요. 워크플로우를 더 작게 나눠 주세요.",
-  "check.stopped.memory": "검사가 메모리를 너무 많이 써서 멈췄어요. 워크플로우를 더 작게 나눠 주세요.",
+  "check.stopped.memory":
+    "검사가 메모리를 너무 많이 써서 멈췄어요. 워크플로우를 더 작게 나눠 주세요.",
   "check.failed":
     "검사가 워크플로우를 읽지 못했어요. 워크플로우의 문제가 아니라 앱의 문제예요. 나중에 다시 검사해 주세요.",
   "graph.panel.empty": "고칠 노드를 골라 주세요.",
@@ -957,7 +961,7 @@ export const ko: Record<MessageKey, string> = {
   "node.silentLimit": "무응답 제한",
   "node.silentLimit.follow": "설정과 같게",
   "node.silentLimit.hint":
-    "이 노드의 작업에서 아무 반응이 없을 때 앱이 작업을 멈추기까지 기다리는 시간이에요.",
+    "이 노드의 작업에서 아무 응답이 없을 때 앱이 작업을 멈추기까지 기다리는 시간이에요.",
   "node.continue": "실패해도 계속",
   "node.continue.hint": "이 노드가 실패해도 다음 노드로 실행을 이어가요.",
   "node.question": "질문",
@@ -1111,7 +1115,7 @@ export const ko: Record<MessageKey, string> = {
   "cards.control.page": "입력란이 페이지 안에 있어요.",
   "cards.control.frame": "입력란이 {site} 사이트의 프레임 안에 있어요.",
   "cards.control.hint":
-    "브라우저가 채팅 아래에 보여요. 노드가 부탁한 일을 하고 ‘돌려주기’를 누르세요.",
+    "브라우저가 채팅 아래에 보여요. 노드가 부탁한 일을 하고 ‘돌려주기’를 눌러 주세요.",
   "cards.control.giveBack": "돌려주기",
   "cards.answered.control": "브라우저를 돌려줌",
   "runs.reason.control": "브라우저를 직접 쓰는 동안 기다려요.",
@@ -1144,7 +1148,7 @@ export const ko: Record<MessageKey, string> = {
   "cards.approve": "승인",
   "cards.reject": "거부",
   "cards.comment.placeholder": "의견 (선택 사항)",
-  "cards.question.placeholder": "답을 입력하세요",
+  "cards.question.placeholder": "답을 입력해 주세요",
   "cards.question.send": "답하기",
   "cards.question.hint": "메시지 입력란에 답해도 돼요.",
   "cards.pick.reason.threshold": "{threshold}에 이른 선택지가 없어요.",
@@ -1167,12 +1171,12 @@ export const ko: Record<MessageKey, string> = {
     "이 채팅의 표시를 지울까요? 표시 때문에 묻던 단계는 앞으로 권한 수준에 따라 실행돼요.",
   "chat.marks.clear.confirm": "표시 지우기",
   "error.engine": "엔진에 오류가 생겼어요: {detail}",
-  "error.run_empty": "이 워크플로우에 노드가 없어요. 먼저 노드를 추가하세요.",
+  "error.run_empty": "이 워크플로우에 노드가 없어요. 먼저 노드를 추가해 주세요.",
   "error.run_loop": "이 워크플로우의 노드가 고리를 이뤄요. 실행을 시작할 수 없어요.",
-  "error.run_check_problem": "검사에서 문제를 찾았어요. 워크플로우를 열어 확인하세요.",
+  "error.run_check_problem": "검사에서 문제를 찾았어요. 워크플로우를 열어 확인해 주세요.",
   "error.run_no_ready_node":
     "시작할 수 있는 노드가 없고, 실행되지 않은 노드가 남았어요. 연결이 고리를 이루었을 수 있어요.",
-  "error.run_queue_full": "{detail}에 대기 중인 작업이 20개 있어요. 나중에 다시 시도하세요.",
+  "error.run_queue_full": "{detail}에 대기 중인 작업이 20개 있어요. 나중에 다시 시도해 주세요.",
   "error.run_not_found": "이 실행은 더 이상 없어요.",
   "error.card_gone": "이 카드를 기다리는 곳이 더 이상 없어요.",
   "chat.copyCode": "복사",
@@ -1216,7 +1220,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.tool.wanted.read_run_result": "노드 {node}번의 결과 읽기",
   "chat.tool.notRun": "하지 않음",
   "chat.notAllowed":
-    "허용되지 않아요. {server}에서 이 기기의 워크플로우 변경을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 켜세요.",
+    "허용되지 않아요. {server}에서 이 기기의 워크플로우 변경을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 켜 주세요.",
   "cards.run.start": "이 워크플로우를 처음부터 실행해요.",
   "cards.run.trigger": "트리거 글:",
   "cards.run.noTrigger": "트리거 글이 없어요.",
@@ -1296,12 +1300,12 @@ export const ko: Record<MessageKey, string> = {
   "chat.compact.off.working":
     "압축할 수 없어요: 담당 문서가 작업 중이거나, 메시지나 카드가 대기 중이에요.",
   "chat.compact.off.too_short": "압축할 수 없어요: 대화가 2턴 이하예요.",
-  "error.compact_not_connected": "이 채팅에 답하는 계정이 없어요. 먼저 계정을 연결하세요.",
+  "error.compact_not_connected": "이 채팅에 답하는 계정이 없어요. 먼저 계정을 연결해 주세요.",
   "error.compact_self_compacts":
     "답하는 프로그램이 자기 컨텍스트를 직접 관리해서 요약을 쓸 수 없어요.",
   "error.compact_size_unknown": "이 모델의 컨텍스트 크기를 알 수 없어요.",
   "error.compact_working":
-    "채팅이 바빠요. 담당 문서의 작업이 끝나고 대기 중인 메시지나 카드가 없을 때까지 기다리세요.",
+    "채팅이 바빠요. 담당 문서의 작업이 끝나고 대기 중인 메시지나 카드가 없을 때까지 기다려 주세요.",
   "error.compact_too_short": "대화가 2턴 이하라서 압축할 것이 없어요.",
   "error.compact_empty": "모델이 요약을 쓰지 않았어요.",
   "error.compact_timeout": "모델이 요약을 쓰는 데 너무 오래 걸렸어요.",
@@ -1312,8 +1316,8 @@ export const ko: Record<MessageKey, string> = {
   "settings.duringTurn.queue": "대기열에서 기다리기",
   "settings.stepLimit": "작업의 단계 한도",
   "settings.stepLimit.hint":
-    "작업이 이 단계 수에 이르면 실패로 멈춰요. 20에서 2000 사이의 정수를 쓰세요.",
-  "settings.stepLimit.invalid": "20에서 2000 사이의 정수를 입력하세요.",
+    "작업이 이 단계 수에 이르면 실패로 멈춰요. 20에서 2000 사이의 정수를 써 주세요.",
+  "settings.stepLimit.invalid": "20에서 2000 사이의 정수를 입력해 주세요.",
   "settings.silentLimit": "응답이 없는 작업을 멈추는 시간",
   "settings.silentLimit.hint":
     "작업에서 아무 응답이 없을 때 앱이 작업을 멈추기까지 기다리는 시간이에요. 작업이 나를 기다리는 시간은 세지 않아요.",
@@ -1390,7 +1394,7 @@ export const ko: Record<MessageKey, string> = {
   "memory.history.after": "이후",
   "memory.history.redacted": "[가림]",
   "memory.history.undo": "되돌리기",
-  "memory.history.undoBlocked.newer": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌리세요.",
+  "memory.history.undoBlocked.newer": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌려 주세요.",
   "memory.history.undoBlocked.redacted":
     "비밀처럼 보이는 텍스트는 보관하지 않아요. 되돌리기를 쓸 수 없어요.",
   "memory.history.undoBlocked.undone": "되돌림.",
@@ -1457,9 +1461,9 @@ export const ko: Record<MessageKey, string> = {
   "improve.edit.cancel": "취소",
   "improve.reject": "거절",
   "improve.undo": "되돌리기",
-  "improve.acceptBlock.run_working": "실행이 끝나면 수락하세요.",
-  "improve.undoBlock.run_working": "실행이 끝나면 되돌리세요.",
-  "improve.undoBlock.newer": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌리세요.",
+  "improve.acceptBlock.run_working": "실행이 끝나면 수락해 주세요.",
+  "improve.undoBlock.run_working": "실행이 끝나면 되돌려 주세요.",
+  "improve.undoBlock.newer": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌려 주세요.",
   "improve.state.waiting": "대기 중",
   "improve.state.applied": "적용됨",
   "improve.state.rejected": "거절됨",
@@ -1492,12 +1496,13 @@ export const ko: Record<MessageKey, string> = {
   "error.memory_text_long": "텍스트가 너무 길어요.",
   "error.memory_not_found": "이 항목은 더 이상 없어요.",
   "error.history_not_found": "이 기록은 더 이상 없어요.",
-  "error.memory_undo_blocked": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌리세요.",
+  "error.memory_undo_blocked": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌려 주세요.",
   "error.proposal_not_found": "이 제안은 더 이상 없어요.",
   "error.proposal_not_waiting": "이 제안은 더 이상 대기 중이 아니에요.",
-  "error.proposal_run_working": "이 워크플로우의 실행이 진행 중이에요. 끝난 뒤에 다시 시도하세요.",
+  "error.proposal_run_working":
+    "이 워크플로우의 실행이 진행 중이에요. 끝난 뒤에 다시 시도해 주세요.",
   "error.proposal_check_problem": "검사에서 새 그래프의 문제를 찾았으므로 수락할 수 없어요.",
-  "error.proposal_undo_blocked": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌리세요.",
+  "error.proposal_undo_blocked": "더 새로운 변경이 있어요. 먼저 그 변경을 되돌려 주세요.",
   "error.proposal_secret": "비밀처럼 보이는 텍스트예요. 비밀은 빼 주세요.",
   "page.tasks": "작업",
   "tasks.source.hand": "직접 실행",
@@ -1535,9 +1540,9 @@ export const ko: Record<MessageKey, string> = {
   "tasks.openRun": "실행 열기",
   "tasks.retryOf": "이전 작업을 다시 시도한 작업이에요.",
   "tasks.progress.not_sent": "요청이 모델에 가지 않았어요. 다시 시도해도 안전해요.",
-  "tasks.progress.sent": "모델이 시작했을 수 있어요. 다시 시도하기 전에 폴더를 확인하세요.",
+  "tasks.progress.sent": "모델이 시작했을 수 있어요. 다시 시도하기 전에 폴더를 확인해 주세요.",
   "tasks.progress.started":
-    "노드가 일을 시작했어요. 일부 단계가 실행됐을 수 있어요. 다시 시도하기 전에 폴더를 확인하세요.",
+    "노드가 일을 시작했어요. 일부 단계가 실행됐을 수 있어요. 다시 시도하기 전에 폴더를 확인해 주세요.",
   "tasks.times": "시간",
   "tasks.times.wait": "대기",
   "tasks.times.firstReply": "첫 답변",
@@ -1572,7 +1577,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.tasksAtOnce": "동시에 실행하는 작업 수",
   "settings.tasksAtOnce.hint":
     "동시에 실행하는 작업의 최대 수예요. 1에서 8까지 정할 수 있고, 내 답을 기다리는 작업은 실행 자리를 쓰지 않아요.",
-  "settings.tasksAtOnce.invalid": "1에서 8 사이의 정수를 입력하세요.",
+  "settings.tasksAtOnce.invalid": "1에서 8 사이의 정수를 입력해 주세요.",
   "error.task_not_found": "이 작업은 더 이상 없어요.",
   "error.cannot_retry_task": "실패하거나 막히거나 취소된 작업만 다시 시도할 수 있어요.",
   "error.cannot_run_next": "먼저 실행은 시작을 기다리는 작업에만 쓸 수 있어요.",

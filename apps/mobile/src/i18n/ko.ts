@@ -47,7 +47,8 @@ export const ko: Record<MessageKey, string> = {
     "컴퓨터가 연결을 받지 않아요. 컴퓨터에서 “다른 기기의 연결 허용”을 켜 주세요.",
   "error.same_device": "같은 기기예요. 컴퓨터와 연결해 주세요.",
   "error.denied": "컴퓨터가 이 휴대폰을 허용하지 않았어요.",
-  "error.limit": "연결 한도를 채웠어요. 컴퓨터 한 대에는 기기 10대, 휴대폰 한 대에는 서버 10개까지예요.",
+  "error.limit":
+    "연결 한도를 채웠어요. 컴퓨터 한 대에는 기기 10대, 휴대폰 한 대에는 서버 10개까지예요.",
   "error.update_app.this": "이 휴대폰의 앱을 업데이트해 주세요.",
   "error.update_app.server": "컴퓨터의 앱을 업데이트해 주세요.",
   "error.invalid_link": "ROBot 연결용 QR 코드가 아니에요.",

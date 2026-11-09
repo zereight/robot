@@ -18,7 +18,7 @@ describe("the reason of a run", () => {
       "Weekly has 20 tasks that wait. Try again later.",
     )
     expect(reasonText(t("ko"), "run_queue_full", "Weekly")).toBe(
-      "Weekly에 대기 중인 작업이 20개 있어요. 나중에 다시 시도하세요.",
+      "Weekly에 대기 중인 작업이 20개 있어요. 나중에 다시 시도해 주세요.",
     )
   })
 })
