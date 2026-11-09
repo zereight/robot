@@ -2361,6 +2361,39 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(existsSync(leftover)).toBe(false)
   })
 
+  test("a removed leftover worktree still shows as removed; a bare plan shows none", async () => {
+    const t = await setup()
+    const leftover = join(mkdtempSync(join(tmpdir(), "robot-wt-leftover-")), "copy")
+    mkdirSync(leftover, { recursive: true })
+    writeFileSync(join(leftover, "notes.md"), "leftover\n")
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'failed', 'hand', 1, ?, 'robot/report-20261109-120000', 0)`,
+      t.flow.id,
+      leftover,
+    )
+    expect((await t.get("r1")).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    expect(await t.run(Runs.use((r) => r.removeWorktree("r1", true)))).toBe("removed")
+    expect(existsSync(leftover)).toBe(false)
+    expect((await t.get("r1")).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: true,
+    })
+    // A never-made plan with no folder that was never removed shows none.
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r2', ?, 'failed', 'hand', 2, ?, 'robot/report-20261109-120001', 0)`,
+      t.flow.id,
+      join(mkdtempSync(join(tmpdir(), "robot-wt-missing-")), "copy"),
+    )
+    expect((await t.get("r2")).worktree).toBeNull()
+  })
+
   test("a waiting run shows its first task; when its worktree cannot be made the task goes and no node runs", async () => {
     const t = await setup()
     const dir = gitRepo()
@@ -2858,12 +2891,17 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const r2 = await again.runtime.runPromise(Runs.use((x) => x.get("r2")))
     expect(r2.state).toBe("failed")
     expect(r2.worktree).toBeNull()
-    // The planned path and branch stay, so Remove can delete the leftover.
+    // The planned path and branch stay, so Remove can delete the leftover. The removed
+    // leftover keeps showing as removed, with its branch.
     expect(await again.runtime.runPromise(Runs.use((x) => x.removeWorktree("r1", true)))).toBe(
       "removed",
     )
     expect(existsSync(leftover)).toBe(false)
-    expect((await again.runtime.runPromise(Runs.use((x) => x.get("r1")))).worktree).toBeNull()
+    expect((await again.runtime.runPromise(Runs.use((x) => x.get("r1")))).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: true,
+    })
   })
 
   test("a retry of a run whose worktree was never made is refused, and the leftover stays", async () => {

@@ -478,7 +478,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           worktree:
             r.worktree_path !== null &&
             r.worktree_branch !== null &&
-            (r.worktree_made === 1 || existsSync(r.worktree_path))
+            (r.worktree_made === 1 || r.worktree_removed === 1 || existsSync(r.worktree_path))
               ? {
                   path: r.worktree_path,
                   branch: r.worktree_branch,
