@@ -10,6 +10,7 @@ import {
   isInsideRepo,
   isWorktreeDirty,
   removeWorktree,
+  repoRoot,
   slugOfName,
   worktreeStamp,
 } from "./GitWorktrees.ts"
@@ -53,6 +54,13 @@ describe("is-inside-repo (spec 007, New worktree)", () => {
     expect(await isInsideRepo(join(dir, "inner"))).toBe(true)
     expect(await isInsideRepo(mkdtempSync(join(tmpdir(), "robot-plain-")))).toBe(false)
     expect(await isInsideRepo(join(dir, "missing"))).toBe(false)
+  })
+
+  test("repoRoot names the root from the root and from a folder inside it", async () => {
+    const dir = repo()
+    mkdirSync(join(dir, "inner"))
+    expect(await repoRoot(join(dir, "inner"))).toBe(await repoRoot(dir))
+    expect(await reasonOf(repoRoot(mkdtempSync(join(tmpdir(), "robot-plain-"))))).not.toBe("made")
   })
 
   test("a GIT_DIR in the environment does not pin git to another repository", async () => {

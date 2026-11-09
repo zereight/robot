@@ -1820,6 +1820,62 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(second.worktree?.branch).not.toBe(wt?.branch)
   })
 
+  test("a run whose folder is a subfolder works in the same subfolder of the worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "sub"))
+    writeFileSync(join(dir, "sub", "kept.md"), "kept\n")
+    git(dir, "add", "sub")
+    git(dir, "commit", "--quiet", "-m", "sub")
+    const sub = join(dir, "sub")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, sub)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from subfolder"}',
+    })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("done")
+    const wt = d.worktree
+    expect(wt?.removed).toBe(false)
+    expect(wt?.path.endsWith("/sub")).toBe(false)
+    expect(readFileSync(join(wt?.path ?? "", "sub", "notes.md"), "utf8")).toBe("from subfolder")
+    expect(readFileSync(join(wt?.path ?? "", "notes.md"), "utf8")).toBe("first\n")
+    expect(existsSync(join(sub, "notes.md"))).toBe(false)
+  })
+
+  test("a retry of a subfolder run writes into the same subfolder of the worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "sub"))
+    writeFileSync(join(dir, "sub", "kept.md"), "kept\n")
+    git(dir, "add", "sub")
+    git(dir, "commit", "--quiet", "-m", "sub")
+    const sub = join(dir, "sub")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, sub)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from subfolder"}',
+    })
+    mock.setFailure({ status: 500, message: "mock failure" }, 1)
+    let first: RunDetail
+    try {
+      first = await t.ended((await t.start()).id)
+    } finally {
+      mock.setFailure(null)
+    }
+    expect(first.state).toBe("failed")
+    const target = join(first.worktree?.path ?? "", "sub", "notes.md")
+    expect(readFileSync(target, "utf8")).toBe("from subfolder")
+    rmSync(target)
+    const retryId = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? "")))
+    const retry = await t.ended(retryId)
+    expect(retry.state).toBe("done")
+    expect(retry.worktree).toEqual(first.worktree)
+    expect(readFileSync(target, "utf8")).toBe("from subfolder")
+  })
+
   test("a run with the switch off works in the folder and has no worktree", async () => {
     const t = await setup()
     const dir = gitRepo()

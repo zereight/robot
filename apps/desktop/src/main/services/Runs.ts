@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, mkdirSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, mkdirSync, realpathSync } from "node:fs"
+import { join, relative } from "node:path"
 import {
   type ApprovalOutput,
   addSpent,
@@ -79,6 +79,7 @@ import {
   createWorktree,
   isWorktreeDirty,
   removeWorktree as removeGitWorktree,
+  repoRoot,
   slugOfName,
   worktreeStamp,
 } from "./GitWorktrees.ts"
@@ -644,7 +645,15 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const trigger = r.trigger_text
         // Every text node of a run with a new worktree works in it as its folder (spec 007,
         // "New worktree"): the tools, the permission rules and the vendor programs all read it.
-        const runDetail = { ...detail, folder: r.worktree_path ?? detail.folder }
+        // When the folder is a subfolder of the repository, the run works in the same
+        // subfolder of the worktree.
+        const runDetail = {
+          ...detail,
+          folder:
+            r.worktree_path === null
+              ? detail.folder
+              : await worktreeRunFolder(detail.folder, r.worktree_path),
+        }
 
         let stop: { state: TaskState; text: string | null; code: string | null } | null = null
 
@@ -1996,6 +2005,22 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       })
     }),
   )
+}
+
+/**
+ * The folder of a run with a new worktree (spec 007, "New worktree"): the same relative
+ * subfolder inside the worktree as the folder of the workflow inside its repository. The root
+ * itself when the folder is the root, and also when the root cannot be read: the run then works
+ * where it always did. Both sides resolve links first, so a folder under a link still matches.
+ */
+const worktreeRunFolder = async (folder: string, worktree: string): Promise<string> => {
+  try {
+    const rel = relative(realpathSync(await repoRoot(folder)), realpathSync(folder))
+    if (rel === "" || rel.startsWith("..")) return worktree
+    return join(worktree, rel)
+  } catch {
+    return worktree
+  }
 }
 
 /** True when the connections of the graph make a loop of nodes (docs/spec-questions.md, 010). */

@@ -144,6 +144,19 @@ export const removeWorktree = async (repo: string, path: string): Promise<void> 
   }
 }
 
+/** The root of the repository that holds the folder. It throws the reason from git. */
+export const repoRoot = async (folder: string): Promise<string> => {
+  try {
+    const { stdout } = await runFile("git", ["-C", folder, "rev-parse", "--show-toplevel"], {
+      timeout: 30_000,
+      env: gitEnv(),
+    })
+    return stdout.trim()
+  } catch (error) {
+    throw new Error(gitReason(error))
+  }
+}
+
 /** True when the repository has a branch of this name. */
 export const branchExists = async (repo: string, branch: string): Promise<boolean> => {
   try {
