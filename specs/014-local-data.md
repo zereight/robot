@@ -65,6 +65,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   - access keys of outside programs
   - saved secrets (020)
   - saved logins (020)
+
   Secrets are in the secrets file of their profile.
   The file is encrypted, and it is in the data folder of the profile. Secrets are never
   in the database, the logs, an export or a sync, and never in plain text on the disk. A
@@ -94,6 +95,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   - removing a secret value in a connection edit
   - removing an outside program
   - Remove access of a linked device
+
   Nothing is overwritten. Retry works again when the state is Readable.
 - Missing key means no secrets key exists for this profile, while a secrets file exists. This
   happens on a new computer, with a folder copied from another computer, or with a cleared
@@ -108,8 +110,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   secret succeeds and writes nothing.
 - In Readable and Missing key, the app makes a new device identity at start when it
   finds none. In Locked and Damaged it makes none, because a save is refused. The app
-  also makes it when Retry or a later start finds Readable or Missing key. Every linked
-  device is then treated as if the user had chosen Remove access (012). This also holds
+  also makes it when Retry or a later start finds Readable or Missing key and finds no
+  device identity. Every linked device is then treated as if the user had chosen Remove
+  access (012). This also holds
   after the user deleted a Damaged secrets file by hand. The state is then Readable.
 - Damaged means the secrets file cannot be opened with the secrets key of this profile. This
   covers a changed or broken file. It also covers a file made with another secrets key. For
