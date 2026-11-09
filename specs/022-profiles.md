@@ -70,7 +70,8 @@ apart").
    runs in this profile stops, and that the folders of its workflows stay on the disk. The
    app does not remove or move them. The user types the name of the profile to confirm.
 3. After the delete, each linked device is treated as if the user had chosen "Remove access" for
-   it (012). If the open profile was deleted, the app opens another profile.
+   it (012). Deleting a profile deletes its saved-secrets file and its key. If the open profile
+   was deleted, the app opens another profile.
 
 ### Pair a phone or a computer
 
@@ -106,8 +107,8 @@ apart").
   chats of their own profile.
 - All settings belong to the profile, except the list of profiles, "start at login" and "Show in
   the menu bar", which belong to the computer. The menu bar item shows the open profile (015).
-- A new profile has no model account. The keys and tokens of each profile are in the keychain,
-  apart from the others (014). A separate sign-in of a vendor runtime (006) belongs to the
+- A new profile has no model account. Each profile has its own saved-secrets file and its own
+  key, apart from the others (014). A separate sign-in of a vendor runtime (006) belongs to the
   profile where the user made it.
 - Each profile has its own default workspace folder (013), its own logs, and its own database.
   Export and import are for one profile (014).

@@ -45,8 +45,9 @@ them (010). A decision node uses the decision model of 013 and no account of thi
    - A variable of this list wins over the same name in the vendor's own settings file.
    - A name that the app needs for itself is refused when the user types it. The message names
      the row.
-   - A value that is not a secret is stored as text and shows again. A secret value is stored in
-     the system keychain (see 014), is never sent back to the settings page, and shows as hidden.
+   - A value that is not a secret is stored as text and shows again. A secret value is saved
+     encrypted on this computer (see 014), is never sent back to the settings page, and shows as
+     hidden.
      A row saved without a new value keeps the old value. To show a secret again, the user types
      the value again.
    - A saved name that a later version of the app refuses is dropped when the list loads, so the
@@ -262,7 +263,8 @@ not sign in for it. The sign-in stays in the program on this computer.
 
 ## Rules
 
-- Keys and tokens are stored in the system keychain, never in the database or logs.
+- Keys and tokens are saved encrypted on this computer, in the data folder of its profile.
+  They are never in the database or the logs.
 - The app shows usage that the provider reports (tokens, cost if known, plan limits) on the usage
   page, per workflow and per day (see the questions for 006).
 - A runtime that has skills (named sets of instructions) can report them, and the command list

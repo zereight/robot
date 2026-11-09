@@ -17,7 +17,8 @@ That turn has none of the tools of the chat (007, 010), under the rules of 007 (
   and the time it was last used.
 - **Helper**: a small program that comes with ROBot. The outside program starts it as an MCP server
   of the kind "program on this computer". The helper talks only to ROBot on this computer.
-- **Access key**: a secret that tells ROBot which entry calls. It is in the system keychain (014).
+- **Access key**: a secret that tells ROBot which entry calls. It is saved encrypted on this
+  computer (014).
 
 ## Flows
 

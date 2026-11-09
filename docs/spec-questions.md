@@ -1184,3 +1184,9 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 020, 012, 011 | What does a linked device or the phone show for the vault? | One muted line. Only the computer shows and manages the vault. To confirm. |
 | 020, glossary | What is the Korean word for Vault? | 보관함 (proposed). To confirm. |
 | 020, 007 | When the user renames a secret or a login, do the permission rules that name it move to the new name, or stay on the old name? | They move to the new name, so a Deny rule still stops the renamed row and the old name keeps no rule. To confirm. |
+
+## Secrets in file (open points for 014)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 014 | Values saved by an earlier version in the keychain. Does the app move them to the saved-secrets file? | No. The app does not move them. The user types them again. This matches the owner decision of the workflow-first reset. To confirm. |

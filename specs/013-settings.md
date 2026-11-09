@@ -98,9 +98,9 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   terms. The app does not store the answers.
 - The settings text says that the words of the input of a decision node go to the service of the
   choice (010).
-- Keys are stored in the system keychain (see 014). The settings page only learns whether a
-  key is saved. A save names the keys it changes: a key that is not named stays, and the user can
-  remove a key. A key that this computer cannot read counts as no key.
+- Keys are saved encrypted on this computer (see 014). The settings page only learns whether
+  a key is saved. A save names the keys it changes. A key that is not named stays, and the user
+  can remove a key. A key that this computer cannot read counts as no key.
 - A choice that lacks its key, account or model asks nobody. The app acts as if the choice were
   off: a decision node asks the user to pick an option (010).
 - "Test" sends one real request with three made-up options to the saved choice. It shows which

@@ -12,8 +12,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   rules, the action log (007), skills (017) and connections (018). Attachments are files next to
   it.
 - The data folder is in the system's app data location under the name "ROBot".
-- Each profile (022) has its own database, attachments, logs and keychain entries, apart from
-  the other profiles. The rules of this spec hold for each profile.
+- Each profile (022) has its own database, attachments, logs, saved-secrets file and key, apart
+  from the other profiles. The rules of this spec hold for each profile.
 - The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
   (019) each hold a full copy of the shared data. Both are sources of truth, and the rules of
   019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
@@ -56,13 +56,19 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up, to a page that a node visits, or to a download that the user starts (see the
   download exception below).
-- Secrets (keys, tokens, secret values of environment variables, secret values of a connection)
-  are in the system keychain. Logs and exports redact anything that looks like a secret. A text
-  looks like a secret when it equals a stored key, or holds a key or token of a known form: for
-  example a long string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to
-  "PRIVATE KEY-----". The keys of device links are secrets. A linked device never receives
-  provider keys. The values of saved secrets (020), and the user names and passwords of saved logins, are in the
-  keychain too.
+- Secrets (keys, tokens, secret values of environment variables, secret values of a
+  connection, keys of device links, access keys of outside programs, saved secrets and saved
+  logins (020)) are saved encrypted on this computer, in the data folder of its profile. They
+  are never in the database, the logs, an export or a sync, and never in plain text on the disk.
+  The key that opens the saved secrets stays in the system keychain of this computer. A copy of
+  the saved-secrets file on another computer, or without the keychain, shows no value. When the
+  key cannot be read, nothing that needs a secret can run. A value that the user deletes leaves
+  the file at once. Deleting a profile deletes its file and its key. Values saved by an earlier
+  version in the keychain are not moved. The user types them again. Logs and exports redact
+  anything that looks like a secret. A text looks like a secret when it equals a stored key, or
+  holds a key or token of a known form. For example a long string that starts with "sk-",
+  "ghp_" or "xox", or a block from "-----BEGIN" to "PRIVATE KEY-----". A linked device never
+  receives provider keys.
 - A service that a saved secret (020) is for gets what a text node writes in a request with that
   secret. The app sends it nothing else.
 - The local database also holds the earlier versions of each workflow (010), with the text of its
