@@ -86,6 +86,7 @@ import {
   repoRoot,
   slugOfName,
   uniqueBranch,
+  worktreeEntryExists,
   worktreeLockReason,
   worktreeStamp,
 } from "./GitWorktrees.ts"
@@ -938,7 +939,11 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 // Any throw in preparation fails the run closed: no node runs, never in the user
                 // folder (spec 007). The reason is bare; the screen adds the sentence once.
                 const reason = error instanceof Error ? error.message : String(error)
-                if (current.worktree_path !== null && !existsSync(current.worktree_path))
+                if (
+                  current.worktree_path !== null &&
+                  !existsSync(current.worktree_path) &&
+                  !(await worktreeEntryExists(n.detail.folder, current.worktree_path))
+                )
                   db.run(
                     "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
                     current.id,
@@ -1768,10 +1773,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               void (async () => {
                 await removeAttemptWorktree(folder, path)
                 await deleteAttemptBranch(folder, branch, branchExistedBefore, baseCommit)
-                db.run(
-                  "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
-                  runId,
-                )
+                // A cleanup that failed keeps the row, so Remove can still reach what is
+                // left. The row goes only when the folder is gone and no admin entry of
+                // the path stays.
+                if (!existsSync(path) && !(await worktreeEntryExists(folder, path)))
+                  db.run(
+                    "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
+                    runId,
+                  )
               })().catch((error) => {
                 console.error("runs: cleanup of a stopped worktree failed:", error)
               })
@@ -1780,7 +1789,14 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             const reason = error instanceof Error ? error.message : String(error)
             await removeAttemptWorktree(detail.folder, path)
             await deleteAttemptBranch(detail.folder, branch, branchExistedBefore, baseCommit)
-            db.run("UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?", r.id)
+            // A cleanup that failed keeps the row, so Remove can still reach what is
+            // left. The row goes only when the folder is gone and no admin entry of
+            // the path stays.
+            if (!existsSync(path) && !(await worktreeEntryExists(detail.folder, path)))
+              db.run(
+                "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
+                r.id,
+              )
             setRun(r.id, "failed", { text: reason, code: "worktree_failed" }, true)
             return null
           }

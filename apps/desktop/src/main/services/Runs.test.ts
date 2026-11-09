@@ -2045,6 +2045,58 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(d.worktree).toBeNull()
   })
 
+  test("a cleanup that cannot delete the folder keeps the row, so Remove still reaches it", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    // The hook makes the new worktree read-only and fails the creation: git leaves the
+    // folder behind, and the cleanup cannot delete it.
+    writeFileSync(hook, "#!/bin/sh\nchmod -R a-w .\nexit 1\n")
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    const planned = (
+      await t.rows<{ worktree_path: string; worktree_branch: string }>(
+        "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+        run.id,
+      )
+    )[0] ?? { worktree_path: "", worktree_branch: "" }
+    expect(planned.worktree_path).not.toBe("")
+    const writable = () => {
+      try {
+        execFileSync("chmod", ["-R", "u+w", planned.worktree_path])
+      } catch {
+        // Already gone, or never made: the removal below says what is left.
+      }
+    }
+    try {
+      const d = await t.ended(run.id)
+      expect(d.state).toBe("failed")
+      expect(d.reasonCode).toBe("worktree_failed")
+      // The folder is still there: the row keeps the path and the branch. The entry went
+      // with the cleanup; only the folder stayed.
+      expect(existsSync(planned.worktree_path)).toBe(true)
+      expect(d.worktree).toEqual({
+        path: planned.worktree_path,
+        branch: planned.worktree_branch,
+        removed: false,
+      })
+      expect(git(dir, "worktree", "list", "--porcelain")).not.toContain(planned.worktree_path)
+      // With the permissions back, Remove deletes the leftover. The entry went with
+      // the cleanup, so the status cannot be read and Remove asks first.
+      writable()
+      expect(await t.run(Runs.use((r) => r.removeWorktree(run.id, false)))).toBe("needs_confirm")
+      expect(existsSync(planned.worktree_path)).toBe(true)
+      expect(await t.run(Runs.use((r) => r.removeWorktree(run.id, true)))).toBe("removed")
+      expect(existsSync(planned.worktree_path)).toBe(false)
+    } finally {
+      writable()
+      rmSync(planned.worktree_path, { recursive: true, force: true })
+    }
+  })
+
   test("a throw in worktree preparation fails the run closed: no node runs, never in the user folder", async () => {
     const t = await setup()
     const dir = gitRepo()
