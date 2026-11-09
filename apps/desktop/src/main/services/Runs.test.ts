@@ -2469,6 +2469,50 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     }
   })
 
+  test("a stopped creation keeps a planned branch whose tip moved past its base commit", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    writeFileSync(join(dir, "second.md"), "second\n")
+    git(dir, "add", "second.md")
+    git(dir, "commit", "--quiet", "-m", "second")
+    const first = git(dir, "rev-parse", "HEAD~1").trim()
+    const base = git(dir, "rev-parse", "HEAD").trim()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned =
+        (
+          await t.rows<{ worktree_branch: string }>(
+            "SELECT worktree_branch FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_branch ?? ""
+      expect(planned).not.toBe("")
+      expect(git(dir, "rev-parse", planned).trim()).toBe(base)
+      // Someone moves the branch while the creation hangs in its hook.
+      git(dir, "update-ref", `refs/heads/${planned}`, first)
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      expect(await branchExists(dir, planned)).toBe(true)
+      expect(git(dir, "rev-parse", planned).trim()).toBe(first)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+    }
+  })
+
   test("a run that waited counts as running while its worktree is made", async () => {
     const t = await setup()
     const dir = gitRepo()

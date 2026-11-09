@@ -76,7 +76,8 @@ import { FileClaims } from "./FileClaims.ts"
 import {
   branchExists,
   createWorktree,
-  deleteBranchIfUnused,
+  deleteAttemptBranch,
+  headCommit,
   isWorktreeDirty,
   isWorktreeRegistered,
   removeAttemptWorktree,
@@ -1749,6 +1750,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           if (branch !== r.worktree_branch)
             db.run("UPDATE run SET worktree_branch = ? WHERE id = ?", branch, r.id)
           const branchExistedBefore = await branchExists(detail.folder, branch)
+          const baseCommit = await headCommit(detail.folder)
           try {
             mkdirSync(dirname(path), { recursive: true })
             await createWorktree(detail.folder, path, branch, signal)
@@ -1756,9 +1758,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             if (signal.aborted) {
               // Stop during creation ends the run as stopped and starts no task. What this
               // attempt made goes: the half-made folder, its own registration, and the planned
-              // branch when it did not exist before and no worktree uses it.
+              // branch when it is still exactly what this attempt made.
               await removeAttemptWorktree(detail.folder, path)
-              if (!branchExistedBefore) await deleteBranchIfUnused(detail.folder, branch)
+              await deleteAttemptBranch(detail.folder, branch, branchExistedBefore, baseCommit)
               db.run(
                 "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
                 r.id,
@@ -1768,7 +1770,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             }
             const reason = error instanceof Error ? error.message : String(error)
             await removeAttemptWorktree(detail.folder, path)
-            if (!branchExistedBefore) await deleteBranchIfUnused(detail.folder, branch)
+            await deleteAttemptBranch(detail.folder, branch, branchExistedBefore, baseCommit)
             db.run("UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?", r.id)
             setRun(r.id, "failed", { text: reason, code: "worktree_failed" }, true)
             return null

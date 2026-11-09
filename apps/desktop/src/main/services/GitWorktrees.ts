@@ -320,17 +320,53 @@ const removeOwnWorktreeEntry = async (repo: string, path: string): Promise<void>
 }
 
 /**
- * Deletes the branch when no worktree uses it. Best effort: a branch that does not exist, or
- * that a worktree still holds, stays. The caller only names a branch that its own attempt made.
+ * Deletes the planned branch of one attempt, only when (i) it did not exist before the attempt,
+ * (ii) its tip still equals the commit the attempt created it from, and (iii) no worktree has
+ * it checked out. A branch that cannot be verified stays. Best effort: it never throws.
  */
-export const deleteBranchIfUnused = async (repo: string, branch: string): Promise<void> => {
+export const deleteAttemptBranch = async (
+  repo: string,
+  branch: string,
+  existedBefore: boolean,
+  baseCommit: string | null,
+): Promise<void> => {
   try {
+    if (existedBefore || baseCommit === null) return
+    const { stdout: tipOut } = await runFile(
+      "git",
+      ["-C", repo, "rev-parse", "--verify", `refs/heads/${branch}`],
+      { timeout: 30_000, env: gitEnv() },
+    )
+    if (tipOut.trim() !== baseCommit) return
+    const { stdout: listed } = await runFile(
+      "git",
+      ["-C", repo, "worktree", "list", "--porcelain"],
+      {
+        timeout: 30_000,
+        env: gitEnv(),
+      },
+    )
+    if (listed.split("\n").some((line) => line.trim() === `branch refs/heads/${branch}`)) return
     await runFile("git", ["-C", repo, "branch", "-D", branch], {
       timeout: 30_000,
       env: gitEnv(),
     })
   } catch {
-    // Used, missing, or unreadable: the branch stays.
+    // Unverifiable or already gone: the branch stays.
+  }
+}
+
+/** The commit that HEAD names, or null when git cannot tell (then no branch is deleted). */
+export const headCommit = async (repo: string): Promise<string | null> => {
+  try {
+    const { stdout } = await runFile("git", ["-C", repo, "rev-parse", "HEAD"], {
+      timeout: 30_000,
+      env: gitEnv(),
+    })
+    const sha = stdout.trim()
+    return sha !== "" ? sha : null
+  } catch {
+    return null
   }
 }
 
@@ -378,18 +414,35 @@ export const isWorktreeRegistered = async (path: string): Promise<boolean> => {
   }
 }
 
-/** True when the repository has a branch of this name. */
-export const branchExists = async (repo: string, branch: string): Promise<boolean> => {
+/**
+ * The state of a branch: "exists", "missing" (git says no with exit code 1), or "unknown"
+ * when git cannot be asked at all.
+ */
+const branchState = async (
+  repo: string,
+  branch: string,
+): Promise<"exists" | "missing" | "unknown"> => {
   try {
-    await runFile("git", ["-C", repo, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], {
+    await runFile("git", ["-C", repo, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
       timeout: 30_000,
       env: gitEnv(),
     })
-    return true
-  } catch {
-    return false
+    return "exists"
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? (error as { code: unknown }).code
+        : undefined
+    return code === 1 ? "missing" : "unknown"
   }
 }
+
+/**
+ * True when the repository has a branch of this name, or when git cannot tell: a failure reads
+ * as exists, so the cleanup never deletes a branch it cannot verify (spec 007).
+ */
+export const branchExists = async (repo: string, branch: string): Promise<boolean> =>
+  (await branchState(repo, branch)) !== "missing"
 
 /**
  * The branch name with `-2` and up while the repository already holds the name: a leftover
@@ -398,7 +451,9 @@ export const branchExists = async (repo: string, branch: string): Promise<boolea
 export const uniqueBranch = async (repo: string, branch: string): Promise<string> => {
   let out = branch
   for (;;) {
-    if (!(await branchExists(repo, out))) return out
+    // Unknown (git cannot be asked) counts as free: the creation fails next with the reason
+    // from git, instead of this loop spinning forever.
+    if ((await branchState(repo, out)) !== "exists") return out
     // The counter `-2` and up sits after the stamp; the stamp itself is not a counter.
     const counter = /-\d{8}-\d{6}-(\d+)$/.exec(out)
     out =

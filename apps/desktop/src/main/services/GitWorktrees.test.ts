@@ -14,8 +14,10 @@ import { join } from "node:path"
 import {
   branchExists,
   createWorktree,
+  deleteAttemptBranch,
   gitEnv,
   gitScrubReady,
+  headCommit,
   isInsideRepo,
   isWorktreeDirty,
   isWorktreeRegistered,
@@ -391,6 +393,69 @@ describe("remove one attempt (spec 007, New worktree)", () => {
   test("it throws nothing for a missing folder with no entry", async () => {
     const dir = repo()
     await removeAttemptWorktree(dir, join(mkdtempSync(join(tmpdir(), "robot-wt-")), "missing"))
+  })
+})
+
+describe("delete one attempt branch (spec 007, New worktree)", () => {
+  const headOf = (dir: string) => git(dir, "rev-parse", "HEAD").trim()
+
+  test("it deletes a branch the attempt made and left alone", async () => {
+    const dir = repo()
+    const base = headOf(dir)
+    expect(await headCommit(dir)).toBe(base)
+    git(dir, "branch", "robot/mine-20261109-120000")
+    await deleteAttemptBranch(dir, "robot/mine-20261109-120000", false, base)
+    expect(await branchExists(dir, "robot/mine-20261109-120000")).toBe(false)
+  })
+
+  test("it keeps a branch that existed before the attempt", async () => {
+    const dir = repo()
+    git(dir, "branch", "robot/old-20261109-120000")
+    await deleteAttemptBranch(dir, "robot/old-20261109-120000", true, headOf(dir))
+    expect(await branchExists(dir, "robot/old-20261109-120000")).toBe(true)
+  })
+
+  test("it keeps a branch whose tip moved past the base commit", async () => {
+    const dir = repo()
+    writeFileSync(join(dir, "second.md"), "second\n")
+    git(dir, "add", "second.md")
+    git(dir, "commit", "--quiet", "-m", "second")
+    const first = git(dir, "rev-parse", "HEAD~1").trim()
+    git(dir, "branch", "robot/mine-20261109-120000", first)
+    await deleteAttemptBranch(dir, "robot/mine-20261109-120000", false, headOf(dir))
+    expect(await branchExists(dir, "robot/mine-20261109-120000")).toBe(true)
+    expect(git(dir, "rev-parse", "robot/mine-20261109-120000").trim()).toBe(first)
+  })
+
+  test("it keeps a branch that a worktree has checked out", async () => {
+    const dir = repo()
+    git(dir, "branch", "robot/mine-20261109-120000")
+    const other = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "other")
+    git(dir, "worktree", "add", "--quiet", other, "robot/mine-20261109-120000")
+    await deleteAttemptBranch(dir, "robot/mine-20261109-120000", false, headOf(dir))
+    expect(await branchExists(dir, "robot/mine-20261109-120000")).toBe(true)
+  })
+
+  test("it keeps a branch when the base commit is unknown, and throws nothing when it is missing", async () => {
+    const dir = repo()
+    git(dir, "branch", "robot/mine-20261109-120000")
+    await deleteAttemptBranch(dir, "robot/mine-20261109-120000", false, null)
+    expect(await branchExists(dir, "robot/mine-20261109-120000")).toBe(true)
+    expect(await headCommit(mkdtempSync(join(tmpdir(), "robot-plain-")))).toBeNull()
+    await deleteAttemptBranch(dir, "robot/missing-20261109-120000", false, headOf(dir))
+  })
+
+  test("branchExists reads a failure as exists, so no failure deletes a branch", async () => {
+    const dir = repo()
+    expect(await branchExists(dir, "main")).toBe(true)
+    expect(await branchExists(dir, "missing")).toBe(false)
+    expect(await branchExists(mkdtempSync(join(tmpdir(), "robot-plain-")), "missing")).toBe(true)
+  })
+
+  test("uniqueBranch takes the name when git cannot be asked, instead of spinning", async () => {
+    expect(await uniqueBranch(mkdtempSync(join(tmpdir(), "robot-plain-")), "robot/x")).toBe(
+      "robot/x",
+    )
   })
 })
 
