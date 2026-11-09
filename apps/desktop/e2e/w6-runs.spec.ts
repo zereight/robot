@@ -378,7 +378,7 @@ const markLine = async (locale: "en-US" | "ko-KR") => {
   await expect(page.getByTestId("run-node-outside-1")).toContainText(
     locale === "en-US"
       ? "Holds outside content: the web page 127.0.0.1"
-      : "바깥 내용을 갖고 있어요: 웹 페이지 127.0.0.1",
+      : "바깥 내용을 포함해요: 웹 페이지 127.0.0.1",
   )
   await expect(page.getByTestId("run-node-marks-2")).toHaveCount(0)
   await shot(page, locale === "en-US" ? "w6-10-run-mark-line" : "w6-10-run-mark-line-ko")
