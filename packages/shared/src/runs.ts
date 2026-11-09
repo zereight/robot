@@ -195,6 +195,8 @@ export interface RunFeedback {
 export interface RunWorktree {
   readonly path: string
   readonly branch: string
+  /** True after the user chose "Remove". The folder is gone and the branch stays. */
+  readonly removed: boolean
 }
 
 export interface RunSummary {
