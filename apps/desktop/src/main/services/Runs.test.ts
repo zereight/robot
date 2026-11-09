@@ -2045,6 +2045,22 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(d.worktree).toBeNull()
   })
 
+  test("a relative workspace root fails the run before git runs and removes nothing", async () => {
+    const t = await setup()
+    // No commit: git itself would fail with its own reason. The absolute-path check
+    // fires first, so the reason below proves the run never reached git.
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, gitRepo(false))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.run(SettingsStore.use((s) => s.update({ workspaceRoot: "relative-root" })))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("failed")
+    expect(d.reasonCode).toBe("worktree_failed")
+    expect(d.reasonText).toBe("the workspace folder is not an absolute path")
+    expect(d.worktree).toBeNull()
+    expect(existsSync(join(process.cwd(), "relative-root"))).toBe(false)
+  })
+
   test("a cleanup that cannot delete the folder keeps the row, so Remove still reaches it", async () => {
     const t = await setup()
     const dir = gitRepo()

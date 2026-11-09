@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
-import { dirname, join, relative, sep } from "node:path"
+import { dirname, isAbsolute, join, relative, sep } from "node:path"
 import {
   type ApprovalOutput,
   addSpent,
@@ -1736,6 +1736,20 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         const path = r.worktree_path
         const fresh = r.worktree_made === 0
         if (fresh) {
+          // A workspace root that is not absolute would resolve the exists-check and the
+          // cleanup against the process folder while git resolves against the repository.
+          // The run fails before git runs, and removes nothing. The planned path is
+          // meaningless, so the row is cleared and Remove can never reach it.
+          if (!isAbsolute(path)) {
+            db.run("UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?", r.id)
+            setRun(
+              r.id,
+              "failed",
+              { text: "the workspace folder is not an absolute path", code: "worktree_failed" },
+              true,
+            )
+            return null
+          }
           // The planned path already exists: someone else holds this folder. The attempt fails
           // at once, before git runs, and removes nothing. The row is cleared so that no
           // worktree points at the folder, and Remove can never delete it. Below this line
