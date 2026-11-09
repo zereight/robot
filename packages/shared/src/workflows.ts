@@ -68,6 +68,8 @@ export interface Workflow {
   readonly serverId: string
   readonly name: string
   readonly folder: string
+  /** The switch "Work in a new worktree" (spec 007, "New worktree"). Off at first. */
+  readonly newWorktree: boolean
   readonly permission: PermissionLevel
   readonly selfImprovement: boolean
   /** The proposals of self-improvement that wait for the user (spec 002). The list shows that one waits. */
