@@ -3353,6 +3353,49 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect((await t.get(gone.id)).worktree?.removed).toBe(true)
   })
 
+  test("remove of a worktree the user locked fails and deletes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    git(dir, "worktree", "lock", "--reason", "user work", path)
+    // The `.git` file is gone too, so the status cannot be read and git refuses the
+    // removal: the fallback must still see the lock of the user and delete nothing.
+    rmSync(join(path, ".git"))
+    const failure = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_remove_failed")
+    expect(failure?.detail).toContain("locked")
+    expect(existsSync(path)).toBe(true)
+    expect(git(dir, "worktree", "list", "--porcelain")).toContain(path)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+  })
+
+  test("remove of a worktree git cannot remove deletes the folder and its own entry", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    const branch = d.worktree?.branch ?? ""
+    // The `.git` file is gone, so git refuses the removal: the fallback removes the
+    // folder and this path's own admin entry, so the branch can be used again.
+    rmSync(join(path, ".git"))
+    expect(await t.run(Runs.use((r) => r.removeWorktree(d.id, true)))).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).not.toContain(path)
+    expect(listed).not.toContain("prunable")
+    expect((await t.get(d.id)).worktree).toEqual({ path, branch, removed: true })
+  })
+
   test("a Remove that git refuses fails with worktree_remove_failed and removes nothing", async () => {
     const t = await setup()
     const dir = gitRepo()

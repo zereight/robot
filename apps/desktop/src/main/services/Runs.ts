@@ -82,9 +82,11 @@ import {
   isWorktreeRegistered,
   removeAttemptWorktree,
   removeWorktree as removeGitWorktree,
+  removeOwnWorktreeEntry,
   repoRoot,
   slugOfName,
   uniqueBranch,
+  worktreeLockReason,
   worktreeStamp,
 } from "./GitWorktrees.ts"
 import { appendLog } from "./logs.ts"
@@ -2176,13 +2178,52 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 Effect.orElseSucceed((error) => error),
               )
               if (removal !== null) {
+                // The folder of the workflow is the second anchor, for a worktree whose own
+                // `.git` file is gone: git cannot be asked from the worktree itself then. Both
+                // anchors only ever name this path, so a folder that the user changed since
+                // cannot mislead them.
+                const folder =
+                  (yield* workflows.get(r.workflow_id).pipe(Effect.orElseSucceed(() => null)))
+                    ?.folder ?? null
+                const lockReason = yield* Effect.promise(async () => {
+                  for (const anchor of folder === null
+                    ? [r.worktree_path]
+                    : [r.worktree_path, folder]) {
+                    const reason = await worktreeLockReason(anchor, r.worktree_path)
+                    if (reason !== null) return reason
+                  }
+                  return null
+                })
+                // A worktree the user locked stays, whatever else is broken about it. Only a
+                // lock from a creation of the app itself ("initializing") may go with the
+                // fallback below. Nothing is deleted here.
+                if (lockReason !== null && lockReason !== "initializing")
+                  return yield* new AppError({
+                    code: "worktree_remove_failed",
+                    detail:
+                      lockReason === ""
+                        ? "the worktree is locked"
+                        : `the worktree is locked: ${lockReason}`,
+                  })
                 if (
                   !unreadable &&
                   (yield* Effect.promise(() => isWorktreeRegistered(r.worktree_path)))
                 )
                   return yield* removeFailed(removal)
-                // A half-made worktree is not registered: remove what exists.
-                rmSync(r.worktree_path, { recursive: true, force: true })
+                // A half-made worktree is not registered: remove what exists, the folder and
+                // this path's own admin entry, never anything else.
+                const cleaned: unknown = yield* Effect.tryPromise({
+                  try: async () => {
+                    rmSync(r.worktree_path, { recursive: true, force: true })
+                    await removeOwnWorktreeEntry(r.worktree_path, r.worktree_path)
+                    if (folder !== null) await removeOwnWorktreeEntry(folder, r.worktree_path)
+                  },
+                  catch: (error) => error,
+                }).pipe(
+                  Effect.map(() => null),
+                  Effect.orElseSucceed((error) => error),
+                )
+                if (cleaned !== null) return yield* removeFailed(cleaned)
               }
               // A retry shares the path, so Remove marks every run of that worktree as removed.
               db.run("UPDATE run SET worktree_removed = 1 WHERE worktree_path = ?", r.worktree_path)

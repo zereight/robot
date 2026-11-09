@@ -299,11 +299,12 @@ const keyOfWorktreePath = (path: string): string => {
 }
 
 /**
- * Deletes only the admin entry of `path` under `<git-common-dir>/worktrees/`: the entry whose
- * `gitdir` file points at `<path>/.git`. Every other entry stays, stale or not. Best effort:
- * it never throws.
+ * The admin folders of `path` under `<git-common-dir>/worktrees/`: the entries whose `gitdir`
+ * file points at `<path>/.git`. Every other entry is left out, stale or not. Empty when none
+ * is found, or when git cannot be asked.
  */
-const removeOwnWorktreeEntry = async (repo: string, path: string): Promise<void> => {
+const ownWorktreeEntryDirs = async (repo: string, path: string): Promise<string[]> => {
+  const found: string[] = []
   try {
     const { stdout } = await runFile("git", ["-C", repo, "rev-parse", "--git-common-dir"], {
       timeout: 30_000,
@@ -324,15 +325,51 @@ const removeOwnWorktreeEntry = async (repo: string, path: string): Promise<void>
       const absolute = isAbsolute(content) ? content : join(join(dir, entry), content)
       if (basename(absolute) !== ".git") continue
       if (keyOfWorktreePath(dirname(absolute)) !== want) continue
-      try {
-        rmSync(join(dir, entry), { recursive: true, force: true })
-      } catch {
-        // Another cleanup won the entry, or it cannot be read: nothing else may go.
-      }
+      found.push(join(dir, entry))
     }
   } catch {
-    // The common dir cannot be read: no entry is touched.
+    // The common dir cannot be read: no entry is named.
   }
+  return found
+}
+
+/**
+ * Deletes only the admin entry of `path` under `<git-common-dir>/worktrees/`: the entry whose
+ * `gitdir` file points at `<path>/.git`. Every other entry stays, stale or not. Best effort:
+ * it never throws.
+ */
+export const removeOwnWorktreeEntry = async (repo: string, path: string): Promise<void> => {
+  for (const entry of await ownWorktreeEntryDirs(repo, path)) {
+    try {
+      rmSync(entry, { recursive: true, force: true })
+    } catch {
+      // Another cleanup won the entry, or it cannot be read: nothing else may go.
+    }
+  }
+}
+
+/**
+ * True when an admin entry of `path` is still there. A cleanup that cannot remove the folder
+ * keeps the row when the entry stays, so Remove can still reach it (spec 007, "New worktree").
+ * False when git cannot be asked: then the folder alone decides.
+ */
+export const worktreeEntryExists = async (repo: string, path: string): Promise<boolean> =>
+  (await ownWorktreeEntryDirs(repo, path)).length > 0
+
+/**
+ * The reason the worktree is locked with (`git worktree lock`), or null when it is not locked
+ * or no entry of it is found. An empty reason is still a lock: only the absence of the
+ * `locked` file reads as unlocked.
+ */
+export const worktreeLockReason = async (repo: string, path: string): Promise<string | null> => {
+  for (const entry of await ownWorktreeEntryDirs(repo, path)) {
+    try {
+      return readFileSync(join(entry, "locked"), "utf8").trim()
+    } catch {
+      // This entry is not locked; another entry of the same path may still be.
+    }
+  }
+  return null
 }
 
 /**

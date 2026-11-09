@@ -27,6 +27,7 @@ import {
   scrubGitEnv,
   slugOfName,
   uniqueBranch,
+  worktreeLockReason,
   worktreeStamp,
 } from "./GitWorktrees.ts"
 
@@ -456,6 +457,16 @@ describe("remove one attempt (spec 007, New worktree)", () => {
   test("it throws nothing for a missing folder with no entry", async () => {
     const dir = repo()
     await removeAttemptWorktree(dir, join(mkdtempSync(join(tmpdir(), "robot-wt-")), "missing"))
+  })
+
+  test("a locked worktree names its reason; an unlocked one has none", async () => {
+    const dir = repo()
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    await createWorktree(dir, path, "robot/report-20261109-120000")
+    expect(await worktreeLockReason(dir, path)).toBeNull()
+    git(dir, "worktree", "lock", "--reason", "user work", path)
+    expect(await worktreeLockReason(dir, path)).toBe("user work")
+    expect(await worktreeLockReason(dir, join(dir, "missing"))).toBeNull()
   })
 })
 
