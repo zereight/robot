@@ -24,6 +24,7 @@ import {
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, stageFile } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { clearSkillTry, skillTryRequest } from "../state/skillTry.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { compactOffKey } from "./ContextMeter.tsx"
@@ -85,6 +86,15 @@ export const Composer = (props: {
   }
   const total = () => commands().length + matches().length
   createEffect(on(query, () => setActive(0)))
+  // "Try it" of a saved skill (spec 017): its chip takes the box, with no text after it.
+  createEffect(() => {
+    const asked = skillTryRequest()
+    if (!asked || asked.workflowId !== props.history.workflowId) return
+    setSkill(asked.skill)
+    setText("")
+    clearSkillTry()
+    box?.focus()
+  })
 
   const fit = () => {
     if (!box) return
