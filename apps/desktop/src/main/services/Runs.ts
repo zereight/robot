@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto"
+import { mkdirSync } from "node:fs"
+import { join } from "node:path"
 import {
   type ApprovalOutput,
   addSpent,
@@ -33,6 +35,7 @@ import {
   type RunStart,
   type RunSummary,
   type RunTask,
+  type RunWorktree,
   redactSecrets,
   type SensitiveLabel,
   TASK_CONNECTION_STEPS_MAX,
@@ -71,6 +74,7 @@ import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { FileClaims } from "./FileClaims.ts"
+import { branchExists, createWorktree, slugOfName, worktreeStamp } from "./GitWorktrees.ts"
 import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
@@ -621,6 +625,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           .filter((n) => !only || n.number === only.nodeNumber)
           .sort((a, b) => a.number - b.number)
         const trigger = r.trigger_text
+        // Every text node of a run with a new worktree works in it as its folder (spec 007,
+        // "New worktree"): the tools, the permission rules and the vendor programs all read it.
+        const runDetail = { ...detail, folder: r.worktree_path ?? detail.folder }
 
         let stop: { state: TaskState; text: string | null; code: string | null } | null = null
 
@@ -656,7 +663,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const marks = only ? { ...only.marks } : mergeMarks(results)
           const done = await runNode({
             run: r,
-            detail,
+            detail: runDetail,
             node: ready,
             inputs: results,
             marks,
@@ -1322,7 +1329,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             folder: n.detail.folder,
             tools: true,
             memory: memoryOn,
-            sharedFolderNote: claims.note(n.run.workflow_id),
+            // A run with a new worktree works where no other workflow does: no note (025).
+            sharedFolderNote: n.run.worktree_path !== null ? null : claims.note(n.run.workflow_id),
             // A program has no tools of the app (spec 018). After a switch to a backup of another
             // kind the rule follows the model that answers now, not the one that began the task.
             connectionRule: connectionsOf && !isProgram ? connectionsOf.turn.rule() : "",
@@ -1573,6 +1581,43 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
 
       // --- starting and stopping ----------------------------------------------------------
 
+      /**
+       * Makes the new worktree of a run with the switch on (spec 007, "New worktree"): a folder
+       * in the default workspace folder named after the workflow and the run time, on a new
+       * branch `robot/<slug>-<stamp>` from HEAD. Two runs in one second share a branch name: the
+       * next free number wins. A failure throws the reason from git.
+       */
+      const makeRunWorktree = async (
+        detail: WorkflowDetail,
+        runId: string,
+      ): Promise<RunWorktree> => {
+        const setting = await Effect.runPromise(settings.get)
+        const root = setting.workspaceRoot || platform.defaultWorkspaceRoot
+        mkdirSync(root, { recursive: true })
+        const slug = slugOfName(detail.name) || "workflow"
+        const stamp = worktreeStamp(new Date())
+        const path = join(root, `${slug}-${stamp}-${runId.slice(0, 6)}`)
+        let branch = `robot/${slug}-${stamp}`
+        for (let n = 2; ; n++) {
+          try {
+            await createWorktree(detail.folder, path, branch)
+            return { path, branch, removed: false }
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error)
+            // The branch is taken but the path is this run's own: try the next number.
+            if (
+              n <= 10 &&
+              /already exists/.test(reason) &&
+              (await branchExists(detail.folder, branch))
+            ) {
+              branch = `robot/${slug}-${stamp}-${n}`
+              continue
+            }
+            throw new Error(reason)
+          }
+        }
+      }
+
       const begin = (runId: string, only?: OnlyNode) => {
         const r = runRow(runId)
         if (!r) return
@@ -1608,13 +1653,18 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       }
 
       /** Makes a run and lets it work. A run that must wait starts as "queued" (spec 005). */
-      const launch = (
+      const launch = async (
         workflowId: string,
         name: string,
         source: RunSource,
         trigger: string,
         device: string | null,
         only?: OnlyNode,
+        /**
+         * The worktree of the run: made by `make` before the first task, or the worktree of the
+         * run that a retry tries again. When `make` fails the run is failed and starts no task.
+         */
+        worktree?: RunWorktree | ((runId: string) => Promise<RunWorktree>) | null,
       ) => {
         const waiting =
           db.get<{ n: number }>(
@@ -1642,10 +1692,34 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           workflowsChanged(workflowId)
           return { ok: true as const, id }
         }
+        let made: RunWorktree | null = null
+        if (typeof worktree === "function") {
+          try {
+            made = await worktree(id)
+          } catch (error) {
+            // The run does not start: no task is made (spec 007, "New worktree").
+            const reason = error instanceof Error ? error.message : String(error)
+            db.run(
+              `INSERT INTO run (id, workflow_id, state, source, trigger_text, reason, reason_code, started_at, finished_at)
+               VALUES (?, ?, 'failed', ?, ?, ?, 'worktree_failed', ?, ?)`,
+              id,
+              workflowId,
+              source,
+              trigger,
+              `Could not make a new worktree: ${reason}`,
+              now,
+              now,
+            )
+            changed(workflowId, id)
+            workflowsChanged(workflowId)
+            return { ok: true as const, id }
+          }
+        } else if (worktree) made = worktree
         const another = [...active.values()].some((e) => e.workflowId === workflowId)
         db.run(
-          `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at,
+             worktree_path, worktree_branch, worktree_removed)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           workflowId,
           another || queue.scheduler.wouldWait(workflowId) ? "queued" : "running",
@@ -1653,6 +1727,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           trigger,
           device,
           now,
+          made?.path ?? null,
+          made?.branch ?? null,
+          made?.removed === true ? 1 : 0,
         )
         changed(workflowId, id)
         workflowsChanged(workflowId)
@@ -1682,7 +1759,19 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
       const start = (input: RunStart, source: RunSource = "hand", device: string | null = null) =>
         Effect.gen(function* () {
           const detail = yield* preflight(input.workflowId)
-          const made = launch(input.workflowId, detail.name, source, input.trigger ?? "", device)
+          // With the switch on, the run works in its own new worktree, made before the first
+          // task. A failure fails the run and starts no task (spec 007, "New worktree").
+          const made = yield* Effect.promise(() =>
+            launch(
+              input.workflowId,
+              detail.name,
+              source,
+              input.trigger ?? "",
+              device,
+              undefined,
+              detail.newWorktree ? (runId: string) => makeRunWorktree(detail, runId) : null,
+            ),
+          )
           if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
           return summaryOf(runRow(made.id) as RunRow)
         })
@@ -1753,19 +1842,29 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           if (!detail.graph.nodes.some((node) => node.number === t.node_number))
             return yield* new AppError({ code: "cannot_retry_task" })
           // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the
-          // marks of the task that it tries again (spec 007, "Outside content").
-          const made = launch(
-            r.workflow_id,
-            detail.name,
-            r.source as RunSource,
-            r.trigger_text,
-            device,
-            {
-              nodeNumber: t.node_number,
-              input: t.input,
-              retryOf: t.id,
-              marks: marksOf(t),
-            },
+          // marks of the task that it tries again (spec 007, "Outside content"), and it uses the
+          // same worktree as the run it tries again (spec 007, "New worktree").
+          const made = yield* Effect.promise(() =>
+            launch(
+              r.workflow_id,
+              detail.name,
+              r.source as RunSource,
+              r.trigger_text,
+              device,
+              {
+                nodeNumber: t.node_number,
+                input: t.input,
+                retryOf: t.id,
+                marks: marksOf(t),
+              },
+              r.worktree_path !== null && r.worktree_branch !== null
+                ? {
+                    path: r.worktree_path,
+                    branch: r.worktree_branch,
+                    removed: r.worktree_removed === 1,
+                  }
+                : null,
+            ),
           )
           if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
           return made.id
