@@ -5,6 +5,7 @@ import {
   type QueuedChatMessage,
   SKILL_PICKER_MAX,
   type Skill,
+  skillMatchesQuery,
   slashQuery,
   type WorkflowChatHistory,
   type WorkflowChatMessage,
@@ -68,10 +69,7 @@ export const Composer = (props: {
   const matches = createMemo(() => {
     const q = query()
     if (q === null) return []
-    const needle = q.toLowerCase()
-    return (skills() ?? [])
-      .filter((s) => s.name.toLowerCase().replace(/^\//, "").includes(needle))
-      .slice(0, SKILL_PICKER_MAX)
+    return (skills() ?? []).filter((s) => skillMatchesQuery(s.name, q)).slice(0, SKILL_PICKER_MAX)
   })
   // The one command, "compact", shows first (spec 003, flow 7). A linked computer and the phone have
   // no Compact control, so they have no command (spec 012).
