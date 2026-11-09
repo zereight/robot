@@ -1964,6 +1964,72 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     )
     expect(code).toBe("worktree_not_found")
   })
+
+  test("a run with a new worktree makes no claim and gets no shared folder note (spec 025)", async () => {
+    const t = await setup({ level: "ask_all" })
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const server = await t.run(Servers.use((s) => s.local))
+    const other = await t.run(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Other" })),
+    )
+    await t.run(Workflows.use((w) => w.setFolder(other.id, dir)))
+    await t.run(Workflows.use((w) => w.setSelfImprovement(other.id, false)))
+    await t.run(Memory.use((m) => m.setEnabled(other.id, false)))
+    await t.run(Workflows.use((w) => w.setPermission(other.id, "ask_all")))
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(other.id, {
+          kind: "text",
+          name: "Also write",
+          prompt: 'tools 2 write_file {"path":"notes.md","content":"from Other"}',
+          accountId: t.account.id,
+          model: "mock-fast",
+        }),
+      ),
+    )
+    await t.node({
+      name: "Write",
+      prompt: 'tools 2 write_file {"path":"notes.md","content":"from worktree"}',
+    })
+    // The editor shows the folder as shared.
+    expect((await t.run(Workflows.use((w) => w.get(t.flow.id)))).sharedWith).toEqual(["Other"])
+    // Other writes notes.md twice: the first card is allowed, the second waits with the claim.
+    const otherRun = await t.run(Runs.use((r) => r.start({ workflowId: other.id })))
+    const openOf = (workflowId: string) =>
+      t.run(Cards.use((c) => Effect.sync(() => c.open(workflowId))))
+    await until(async () => (await openOf(other.id)).length > 0)
+    await t.answer((await openOf(other.id))[0]?.id ?? "", { kind: "approval", answer: "allow" })
+    await until(async () => (await t.run(Runs.use((r) => r.get(otherRun.id)))).state === "waiting")
+    // The worktree run writes the same name twice: the first card is allowed, the second waits.
+    // While it waits it holds no claim, although the folder is shared.
+    const run = await t.start()
+    await t.answer((await t.waitCard()).id, { kind: "approval", answer: "allow" })
+    await until(async () => (await t.get(run.id)).state === "waiting")
+    const waiting = await t.get(run.id)
+    expect(waiting.nodes[0]?.task?.claims.count).toBe(0)
+    expect(
+      await t.rows<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM file_claim WHERE task_id = ?",
+        waiting.nodes[0]?.task?.id ?? "",
+      ),
+    ).toEqual([{ n: 0 }])
+    await t.answer((await t.waitCard()).id, { kind: "approval", answer: "allow" })
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    expect(d.nodes[0]?.task?.result).not.toContain("Refused:")
+    // Its request carried no shared folder note.
+    const request = mock.requests
+      .filter((r) => JSON.stringify(r.body.messages).includes("from worktree"))
+      .at(-1)
+    const system = String(request?.body.messages.find((m) => m.role === "system")?.content)
+    expect(system).not.toContain("Shared folder")
+    // Other ends: nothing of the worktree run refused it.
+    await t.answer((await openOf(other.id))[0]?.id ?? "", { kind: "approval", answer: "allow" })
+    await until(async () => (await t.run(Runs.use((r) => r.get(otherRun.id)))).finishedAt !== null)
+    expect((await t.run(Runs.use((r) => r.get(otherRun.id)))).state).toBe("done")
+  })
 })
 
 const git = (dir: string, ...args: string[]) =>
