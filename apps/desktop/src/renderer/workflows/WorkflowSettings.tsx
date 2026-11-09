@@ -13,6 +13,7 @@ import { useApp } from "../state/app.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./graph.module.css"
+import { worktreeSwitch } from "./worktreeSwitch.ts"
 
 /** The folder and the permission level of the workflow. Only the user changes them (spec 010). */
 export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
@@ -95,11 +96,11 @@ export const WorkflowSettings = (props: { workflow: WorkflowDetail }) => {
             label={t("workflow.newWorktree")}
             testId="workflow-new-worktree"
             checked={props.workflow.newWorktree}
-            disabled={props.workflow.running}
+            disabled={worktreeSwitch(props.workflow).disabled}
             onChange={setWorktree}
           />
         </div>
-        <Show when={notGit()}>
+        <Show when={worktreeSwitch(props.workflow).showNotGit || notGit()}>
           <p class={styles.hintText} data-testid="workflow-new-worktree-not-git">
             {t("error.worktree_not_git")}
           </p>

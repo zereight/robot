@@ -407,7 +407,11 @@ const WorktreeLine = (props: { runId: string; worktree: RunWorktree; onChanged: 
         <Button onClick={() => void open()} data-testid="run-worktree-open">
           {t("runs.worktree.open")}
         </Button>{" "}
-        <Button onClick={() => void remove(false)} data-testid="run-worktree-remove">
+        <Button
+          variant="danger"
+          onClick={() => void remove(false)}
+          data-testid="run-worktree-remove"
+        >
           {t("runs.worktree.remove")}
         </Button>
         <Show when={asking()}>
