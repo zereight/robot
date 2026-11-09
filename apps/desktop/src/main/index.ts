@@ -73,13 +73,17 @@ const hostCommand = (dataDir: string) => ({ command: hostBinary(), args: ["--dat
 
 const makeRuntime = () => {
   const platform = electronPlatform()
+  const testSecrets = process.env.ROBOT_TEST_SECRETS
+  const secretsSource = testSecrets
+    ? { file: testSecrets }
+    : { vault: { path: join(platform.dataDir, "secrets.vault"), profile: "default" } }
   return ManagedRuntime.make(
     appLayer({
       platform,
       host: Host.process(hostCommand(platform.dataDir)),
       localServerName: hostname().replace(/\.local$/, ""),
       emit: broadcast,
-      secrets: Secrets.host(hostBinary(), process.env.ROBOT_TEST_SECRETS),
+      secrets: Secrets.host(hostBinary(), secretsSource),
       // Only a test run may send the decision model to another address (spec 013).
       ...(isTestRun && process.env.ROBOT_TEST_DECISION_URL
         ? { decisionUrl: process.env.ROBOT_TEST_DECISION_URL }

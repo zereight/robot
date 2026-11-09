@@ -29,11 +29,15 @@ A new word goes here in the same pull request as the spec that brings it.
 | Undone | The state of a change log row after the user pressed "Undo" on it (002). | 되돌림 (proposed) | reverted, rolled back |
 | Knowledge | Linked articles that an agent writes and reads again (016). | 지식 | memory, wiki |
 | Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the Soul of an agent (소울). | 스킬 | plugin, tool |
+| Skill diet | The cuts that the app makes to the draft of a skill from a workflow: template words, empty and repeated lines, secrets and a length limit of 4000 characters (017). | 스킬 다이어트 (proposed) | compress, optimize, summarize (the diet does not rewrite) |
+| Skill check | The list of facts about a saved skill: saved, on, listed, slash, loads, no secret, lean. Each shows "OK" or a reason (017). It does not test a model. | 스킬 확인 | test, eval, verify, validate (the check does not prove that a model picks the skill) |
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
 | Tool search | The step "Search tools", with which an agent finds the tools of its connections when it may use more than 20 (018). | 도구 검색 (proposed) | lookup, discover, browse |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
 | Vault | The saved secrets and saved logins of one workflow, in its Secrets tab (020). | 보관함 (proposed) | safe, store |
 | Saved login | A user name and a password for a site, which the browser of an agent fills in. The model never sees them (020). | 저장된 로그인 (proposed) | credential, account |
+| Secrets file | The encrypted file of a profile that holds every secret (014). | 비밀 파일 (proposed) | store, vault (that is one workflow, 020) |
+| Secrets key | The key that opens the secrets file of a profile. It stays in the system keychain (014). | 비밀 키 (proposed) | key (alone: that is a provider key or API key) |
 | Model account | A provider or a vendor program that the user signed in to (006). | 모델 계정 | provider (in interface text), subscription |
 | Backup model | The model that an agent uses while its main model is held (006). | 백업 모델 (proposed) | fallback, failover |
 | Held model | A main model that the app does not use until a reset time, because its limit is spent (006). | 보류된 모델 (proposed) | blocked, banned |
