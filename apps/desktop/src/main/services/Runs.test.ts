@@ -2131,6 +2131,44 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(await codeOf("missing")).toBe("run_not_found")
   })
 
+  test("open of a worktree whose folder is gone fails with worktree_unavailable", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    rmSync(d.worktree?.path ?? "", { recursive: true, force: true })
+    const seen: string[] = []
+    t.platform.openPath = async (p: string) => {
+      seen.push(p)
+    }
+    const code = await t.run(Runs.use((r) => r.openWorktree(d.id))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect(seen).toEqual([])
+  })
+
+  test("open of a worktree that cannot be shown fails with the reason", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    t.platform.openPath = async () => {
+      throw new Error("no file browser")
+    }
+    const failure = await t.run(Runs.use((r) => r.openWorktree(d.id))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_unavailable")
+    expect(failure?.detail).toBe("no file browser")
+  })
+
   test("remove asks first when dirty; otherwise it removes the folder and keeps the branch", async () => {
     const t = await setup()
     const dir = gitRepo()

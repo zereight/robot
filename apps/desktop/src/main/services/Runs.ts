@@ -1950,7 +1950,16 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         Effect.gen(function* () {
           const r = yield* worktreeRow(runId)
           if (r.worktree_removed === 1) return yield* new AppError({ code: "worktree_removed" })
-          yield* Effect.promise(() => platform.openPath(r.worktree_path))
+          if (!existsSync(r.worktree_path))
+            return yield* new AppError({ code: "worktree_unavailable" })
+          yield* Effect.tryPromise({
+            try: () => platform.openPath(r.worktree_path),
+            catch: (error) =>
+              new AppError({
+                code: "worktree_unavailable",
+                detail: error instanceof Error ? error.message : String(error),
+              }),
+          })
         })
 
       const removeWorktree = (runId: string, confirmed: boolean) =>
