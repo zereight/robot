@@ -8,9 +8,10 @@ import {
   type RunNode,
   type RunSummary,
   type RunTask,
+  type RunWorktree,
   type TaskConnectionStep,
 } from "@robot/shared"
-import { createResource, For, onCleanup, Show } from "solid-js"
+import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -18,6 +19,7 @@ import { outsideText, reasonText, sensitiveText } from "../lib/runText.ts"
 import { useApp } from "../state/app.tsx"
 import { openImprovement } from "../state/improve.ts"
 import { useUi } from "../state/ui.tsx"
+import { Confirm } from "../ui/Confirm.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Keyed } from "../ui/Keyed.tsx"
 import { Spinner } from "../ui/Spinner.tsx"
@@ -363,7 +365,74 @@ const NodeCard = (props: { node: RunNode; workflowId: string; hold?: NodeHold | 
   )
 }
 
-const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void }) => {
+/**
+ * The worktree line of a run (spec 007, "New worktree"): its path and branch, with "Open" and
+ * "Remove". A removed worktree names its branch and offers no buttons. "Remove" asks first when
+ * the worktree holds changes that are not committed.
+ */
+const WorktreeLine = (props: { runId: string; worktree: RunWorktree; onChanged: () => void }) => {
+  const { t } = useApp()
+  const [asking, setAsking] = createSignal(false)
+  const fail = (e: unknown) => {
+    const text = describeError(e)
+    showToast("error", text.key, text.params)
+  }
+  const open = () => call("runs.worktree.open", { runId: props.runId }).catch(fail)
+  const remove = (confirmed: boolean) =>
+    call("runs.worktree.remove", { runId: props.runId, confirmed })
+      .then((result) => {
+        if (result === "needs_confirm") setAsking(true)
+        else {
+          setAsking(false)
+          props.onChanged()
+        }
+      })
+      .catch(fail)
+  return (
+    <Show
+      when={!props.worktree.removed}
+      fallback={
+        <p class={styles.muted} data-testid="run-worktree-removed">
+          {t("runs.worktree.removed", { branch: plainLine(props.worktree.branch) })}
+        </p>
+      }
+    >
+      <div data-testid="run-worktree">
+        <span>
+          {t("runs.worktree", {
+            path: plainLine(props.worktree.path),
+            branch: plainLine(props.worktree.branch),
+          })}
+        </span>{" "}
+        <Button onClick={() => void open()} data-testid="run-worktree-open">
+          {t("runs.worktree.open")}
+        </Button>{" "}
+        <Button onClick={() => void remove(false)} data-testid="run-worktree-remove">
+          {t("runs.worktree.remove")}
+        </Button>
+        <Show when={asking()}>
+          <Confirm
+            ask={t("runs.worktree.remove.ask", { path: plainLine(props.worktree.path) })}
+            confirm={t("runs.worktree.remove")}
+            keep={t("common.keep")}
+            testId="run-worktree-remove-ask"
+            confirmTestId="run-worktree-remove-confirm"
+            keepTestId="run-worktree-remove-keep"
+            onKeep={() => setAsking(false)}
+            onConfirm={() => void remove(true)}
+          />
+        </Show>
+      </div>
+    </Show>
+  )
+}
+
+const RunView = (props: {
+  run: RunDetail
+  onBack: () => void
+  onStop: () => void
+  onChanged: () => void
+}) => {
   const { t, locale } = useApp()
   // The holds of the main models of the nodes: "Backup until <time>" shows on the node (spec 006).
   const holds = createHolds(() => props.run.workflowId)
@@ -398,6 +467,11 @@ const RunView = (props: { run: RunDetail; onBack: () => void; onStop: () => void
       </Show>
       <Show when={props.run.stoppedAt !== null}>
         <p class={styles.reason}>{t("runs.stoppedAt", { number: props.run.stoppedAt ?? 0 })}</p>
+      </Show>
+      <Show when={props.run.worktree}>
+        {(worktree) => (
+          <WorktreeLine runId={props.run.id} worktree={worktree()} onChanged={props.onChanged} />
+        )}
       </Show>
       <ol class={styles.nodes}>
         <Keyed each={props.run.nodes} by={(node) => node.number}>
@@ -532,6 +606,7 @@ export const RunsPanel = (props: {
             run={run()}
             onBack={() => props.onSelect(undefined)}
             onStop={() => stop(run().id)}
+            onChanged={() => void refetch()}
           />
         )}
       </Show>
