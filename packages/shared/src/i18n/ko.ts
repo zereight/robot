@@ -50,7 +50,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.data.open": "폴더 열기",
   "settings.data.report": "진단 보고서",
   "settings.data.report.hint":
-    "앱의 어느 곳이나 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱이 보고서를 어디로 보내지 않아요.",
+    "앱의 어떤 부분이나 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여 넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱은 보고서를 어디에도 보내지 않아요.",
   "settings.data.report.button": "진단 보고서 복사",
   "settings.data.report.copied": "복사했어요",
   "settings.data.report.failed": "보고서를 만들지 못했어요.",
@@ -231,7 +231,7 @@ export const ko: Record<MessageKey, string> = {
   "error.runtime_repair_unreadable":
     "프로그램을 복구해야 해요. 프로그램의 응답을 읽을 수 없어요. 모델 제공자를 열어 '복구'를 눌러 주세요.",
   "error.decision_not_set_up":
-    "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
+    "결정 모델이 설정되지 않았어요. ‘OpenRouter의 Jev’를 고르고 키와 모델 이름을 저장해 주세요.",
   "error.read_only_unsupported":
     "이 노드는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 골라 주세요.",
   "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인해 주세요.",
@@ -327,7 +327,7 @@ export const ko: Record<MessageKey, string> = {
   "vault.empty.secrets":
     "저장된 비밀 값이 없어요. 저장된 비밀 값은 텍스트 노드가 하나의 웹 서비스에 쓰는 키나 비밀번호예요. 모델은 값을 절대 보지 않아요.",
   "vault.empty.logins":
-    "저장된 로그인이 없어요. 저장된 로그인은 브라우저가 사이트의 로그인 양식에 채워넣는 사용자 이름과 비밀번호예요. 모델은 값을 절대 보지 않아요.",
+    "저장된 로그인이 없어요. 저장된 로그인은 브라우저가 사이트의 로그인 양식에 채워 넣는 사용자 이름과 비밀번호예요. 모델은 값을 절대 보지 않아요.",
   "vault.remote": "이 워크플로의 보관함은 {name}에서 열 수 있어요.",
   "vault.loading": "불러오는 중…",
   "vault.unreadable": "보관함을 읽을 수 없어요.",
@@ -443,7 +443,7 @@ export const ko: Record<MessageKey, string> = {
     "꺼 두면 이 컴퓨터는 어떤 연결도 받지 않아요. 이미 연결한 기기도 마찬가지예요.",
   "devices.pair": "기기 연결하기",
   "devices.vpn":
-    "다른 네트워크에서 이 컴퓨터에 연결하려면 두 기기를 같은 VPN(예: Tailscale)에 넣어 주세요. ROBot은 VPN을 설정하지 않아요.",
+    "다른 네트워크에서 이 컴퓨터에 연결하려면 두 기기를 같은 VPN(예: Tailscale)에 연결해 주세요. ROBot은 VPN을 설정하지 않아요.",
   "devices.clients": "이 컴퓨터를 열 수 있는 기기",
   "devices.clients.empty": "이 컴퓨터를 열 수 있는 기기가 없어요.",
   "devices.count": "{count}/{max}",
@@ -524,7 +524,7 @@ export const ko: Record<MessageKey, string> = {
   "decision.key": "OpenRouter API 키",
   "decision.key.saved": "이 컴퓨터에 키가 저장돼 있어요.",
   "decision.key.none": "저장된 키가 없어요.",
-  "decision.key.field": "키를 붙여넣어 주세요",
+  "decision.key.field": "키를 붙여 넣어 주세요",
   "decision.key.save": "키 저장",
   "decision.key.remove": "키 지우기",
   "decision.model": "모델 이름",
@@ -535,7 +535,7 @@ export const ko: Record<MessageKey, string> = {
   "decision.test.running": "테스트하는 중…",
   "decision.test.ok": "{member}을(를) 골랐어요 ({percent}%, {ms}ms).",
   "decision.test.reason.not_set_up":
-    "아직 설정하지 않았어요. OpenRouter에서 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
+    "아직 설정하지 않았어요. ‘OpenRouter의 Jev’를 고르고 키와 모델 이름을 저장해 주세요.",
   "decision.test.reason.timeout": "3초 안에 답이 오지 않았어요.",
   "decision.test.reason.network_error":
     "네트워크 오류예요. ROBot이 OpenRouter에 연결하지 못했어요.",
@@ -574,7 +574,7 @@ export const ko: Record<MessageKey, string> = {
   "decision.checks.hint":
     '"확실하지 않을 때만 확인" 수준의 에이전트는 확인이 필요한 작업 전에 결정 모델에 물어봐요. 그 턴에서 내가 쓴 글과 명령어, 호스트, 도구 이름이 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. 기본값은 꺼짐이에요.',
   "decision.checks.needsSetup":
-    "켜려면 OpenRouter에서 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
+    "켜려면 ‘OpenRouter의 Jev’를 고르고 키와 모델 이름을 저장해 주세요.",
   "permissions.log.decided.check": "권한 판단",
   "permissions.log.check.allowed": "권한 판단이 확신했어요: {percent}%",
   "permissions.log.check.sent": "권한 판단이 이 작업을 나에게 넘겼어요: {reason}",
@@ -1058,7 +1058,7 @@ export const ko: Record<MessageKey, string> = {
   "runs.reason.no_model": "이 노드에는 제공자와 모델이 없어요. 노드에서 골라 주세요.",
   "runs.reason.approval": "다음 단계의 승인을 기다려요: {step}",
   "runs.reason.question": "질문의 답을 기다려요: {step}",
-  "runs.reason.pick": "선택지를 골라 주기를 기다려요.",
+  "runs.reason.pick": "내가 선택지를 고르기를 기다려요.",
   "runs.reason.verdict": "승인이나 거부를 기다려요.",
   "runs.reason.silent": "{count}분 동안 응답이 없었어요.",
   "runs.reason.steps": "단계 한도에 이르렀어요 ({count}).",
@@ -1125,7 +1125,7 @@ export const ko: Record<MessageKey, string> = {
   "browser.page": "브라우저 페이지",
   "browser.unloaded": "내려 둠. 노드가 쓰면 다시 불러와요.",
   "browser.held": "브라우저를 직접 쓰는 중이에요.",
-  "cards.title.pick": "선택지를 고르세요",
+  "cards.title.pick": "선택지를 골라 주세요",
   "cards.from": "노드 {number} “{name}”",
   "cards.fromChat": "이 채팅",
   "cards.step.file": "파일",
@@ -1325,7 +1325,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.silentLimit.never": "안 함",
   "settings.keepGoing": "열린 단계가 있으면 이어서 진행",
   "settings.keepGoing.hint":
-    "프로그램이 작업을 끝냈는데 단계 목록에 끝나지 않은 단계가 있으면, 앱이 한 작업에 최대 8번까지 이어서 하라고 요청해요. 단계 목록을 알려 주는 프로그램에서만 돼요.",
+    "프로그램이 작업을 끝냈는데 단계 목록에 끝나지 않은 단계가 있으면, 앱이 한 작업에 최대 8번까지 이어서 하라고 요청해요. 단계 목록을 알려 주는 프로그램에서만 동작해요.",
   "settings.autoCompact": "긴 채팅 자동 압축",
   "settings.autoCompact.hint":
     "턴을 시작하기 전에 모델 컨텍스트의 85% 또는 400000토큰을 쓰는 채팅은 앞부분을 요약으로 바꿔요.",
@@ -1364,7 +1364,7 @@ export const ko: Record<MessageKey, string> = {
   "memory.mode.hint":
     "“먼저 물어보기”: 노드는 사실을 제안만 하고 내가 결정해요. “바로 저장”: 노드가 사실을 저장해요. 되돌리기는 그대로 쓸 수 있어요.",
   "memory.mode.needsImprovement":
-    "“바로 저장”은 자기 개선이 켜져 있을 때만 돼요. 지금은 새 사실이 제안으로 들어와요.",
+    "“바로 저장”은 자기 개선이 켜져 있을 때만 적용돼요. 지금은 새 사실이 제안으로 들어와요.",
   "memory.proposals": "제안 ({n})",
   "memory.tabs": "메모리의 구성",
   "memory.tab.items": "항목",
