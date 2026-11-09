@@ -28,7 +28,8 @@ Settings.
   "Cancel".
 
 The command starts in the folder of the workflow. The environment variable `ROBOT_WORKSPACE` is
-that folder. `ROBOT_ORIGIN` is the main checkout when the folder is a linked worktree, and is
+that folder. At the start of a task in a run with a new worktree (007), that folder is the
+worktree. `ROBOT_ORIGIN` is the main checkout when the folder is a linked worktree, and is
 absent otherwise.
 
 ## Flows
@@ -50,7 +51,8 @@ absent otherwise.
    every action marked for an own copy before the actions of flow 3. An action that already ran at
    this start does not run again. A later task in the same copy does not run the own-copy actions
    again, while the list is unchanged. A failure is the same line as in flow 3, and the next task
-   tries those actions again.
+   tries those actions again. A new worktree that the switch "Work in a new worktree" makes (007)
+   is such a folder, so the first task of the run runs these actions.
 5. Manage in the workflow view: the menu of flow 1 has "Manage setup actions". It opens the editor
    for the file of the folder of this workflow. The editor lists the actions. Each row runs its
    action, shows the name and the start of the command, and opens the row for a change. "Add

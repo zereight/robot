@@ -95,7 +95,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Blocked | A task that ended because the agent could not do the work (005). | 막힘 | failed (a blocked task did not fail) |
 | Shared folder | The folder of a workflow that is the folder of another workflow of the profile, is inside it, or holds it (025). | 공유 폴더 (proposed) | shared workspace, project |
 | File claim | The mark that a task of a workflow holds on a file that its text node changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
-| Own copy | A workspace that is a linked Git worktree (035). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
+| Own copy | A workspace that is a linked Git worktree (035). | 별도 사본 (proposed) | clone, fork (a fork is a chat copy, 003), sandbox |
+| New worktree | The switch of a workflow. With it on, each run works in its own new linked Git worktree of the repository of the folder (007). | 새 워크트리에서 작업 (switch label) | own copy (that is the workspace, 035), clone, fork, sandbox |
 | Setup action | A named command in `robot.json` that the app can run from the chat, at the start of a turn, or on the first turn in an own copy (035). | 준비 동작 (proposed) | script, hook, task |
 | Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |
 | Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |

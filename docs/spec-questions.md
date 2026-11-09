@@ -1184,7 +1184,10 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 020, 012, 011 | What does a linked device or the phone show for the vault? | One muted line. Only the computer shows and manages the vault. To confirm. |
 | 020, glossary | What is the Korean word for Vault? | 보관함 (proposed). To confirm. |
 | 020, 007 | When the user renames a secret or a login, do the permission rules that name it move to the new name, or stay on the old name? | They move to the new name, so a Deny rule still stops the renamed row and the old name keeps no rule. To confirm. |
-
+| 007 | Where does the app put a new worktree, and what is the name of its branch? | In the default workspace folder (013), in a folder named after the workflow and the time of the run. The branch is `robot/<workflow>-<time>`. |
+| 007 | May the user remove the worktrees of old runs together? | No. One at a time, from the run view. |
+| 007, 019 | Which computer makes the worktree when a run works on a linked computer? | The computer that holds the folder (019), because the work runs there. |
+| 035, 000 | The glossary now allows the word "worktree" for the new switch. The mark in 035 still says "on an own copy". Should the mark say "in a new worktree"? | Keep "on an own copy" until the owner decides. |
 ## Secrets in file (open points for 014)
 
 | Spec | Question | Choice for now |
