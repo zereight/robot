@@ -101,9 +101,12 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Keys are in the secrets file (see 014). The settings page only learns whether a key is
   saved. A save names the keys it changes. A key that is not named stays, and the user can
   remove a key. A missing secrets key counts as no key (see 014). When Locked or Damaged,
-  the page shows "Cannot read the vault." and a save is refused.
+  the page shows "Cannot read the vault." with Retry, and a save is refused.
 - A choice that lacks its key, account or model asks nobody. The app acts as if the choice were
-  off: a decision node asks the user to pick an option (010).
+  off: a decision node asks the user to pick an option (010). When Locked or Damaged, the
+  choice cannot run, so a decision node asks the user to pick an option (010) with "Cannot
+  read the vault." on the card, and the permission check "Ask when unsure" asks the user in
+  the same way.
 - "Test" sends one real request with three made-up options to the saved choice. It shows which
   option was chosen and the time taken, or the reason: wrong key (an error code from the service),
   timeout, network error, unsure answer, or not set up.
@@ -144,8 +147,13 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   `http://127.0.0.1:8000`: the app accepts it.
 - Save a key for the decision model, reload the settings page: the page shows "saved" and not
   the key.
-- With the secrets key locked, the decision model page shows "Cannot read the vault." A save
-  of a key is refused with that reason.
+- With the secrets key locked, the decision model page shows "Cannot read the vault." with
+  Retry. A save of a key is refused with that reason.
+- With the secrets key locked, start a run with a decision node. The node asks the user to pick
+  an option, and the card says "Cannot read the vault."
+- Delete the secrets key and keep the secrets file. Start the app. The decision model key shows
+  its normal "no key" state. Start a run with a decision node. The node asks the user to pick
+  an option, and no request goes to any service.
 - Set the decision model to "Off" and start a run with a decision node: the node asks the user to
   pick an option, and no request goes to any service.
 - Change the default workspace folder, then make a new workflow: its empty folder is in the new

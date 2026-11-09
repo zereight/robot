@@ -263,7 +263,8 @@ not sign in for it. The sign-in stays in the program on this computer.
 ## Rules
 
 - Keys and tokens are saved in the secrets file (014). They are never in the database or
-  the logs. See 014 for a key that cannot be read.
+  the logs. In the states of 014, a provider key and an env row follow 014. When Locked or
+  Damaged, the row shows "Cannot read the vault." with Retry and a save is refused.
 - The app shows usage that the provider reports (tokens, cost if known, plan limits) on the usage
   page, per workflow and per day (see the questions for 006).
 - A runtime that has skills (named sets of instructions) can report them, and the command list

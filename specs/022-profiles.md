@@ -70,8 +70,9 @@ apart").
    runs in this profile stops, and that the folders of its workflows stay on the disk. The
    app does not remove or move them. The user types the name of the profile to confirm.
 3. After the delete, each linked device is treated as if the user had chosen "Remove access" for
-   it (012). Deleting a profile deletes its secrets file and its secrets key. If the open
-   profile was deleted, the app opens another profile.
+   it (012). Deleting a profile deletes its secrets file at once. It removes the secrets key
+   of the profile when the keychain answers, and at the latest at the next start (see 014).
+   If the open profile was deleted, the app opens another profile.
 
 ### Pair a phone or a computer
 
@@ -172,8 +173,9 @@ The profiles of one computer share these things:
   approval, and phone B gets its notice.
 - Delete "Parents" and type its name. Phone B shows "Pair again". The folders of its
   workflows stay where they were. The first profile and phone A are as they were.
-- Delete "Parents": its secrets file and its secrets key are gone. The first profile keeps
-  its own secrets.
+- Delete "Parents": its secrets file is gone at once. Its secrets key is gone when the
+  keychain answers, and at the latest at the next start. The first profile keeps its own
+  secrets.
 - Point a workflow of "Parents" at an existing project folder, then delete "Parents". The project
   folder and its files are as they were. A folder that the user chose is never removed.
 - Quit and start the app: both profiles run, and the profile that was open is open.

@@ -282,7 +282,9 @@ accept connections, this is the same computer.
 - A server needs a running app to answer. A sleeping or closed computer is offline.
 - A server holds back the notices to its phones while its computer is in use (015, "Phone notices
   while the user works"). The data still reaches the phone.
-- The identity key of this computer is a secret and follows 014.
+- The identity key of this computer is a secret, and in the states of 014 this follows 014.
+  When Locked or Damaged, the Devices page in Settings and the tile of a linked server show
+  "Cannot read the vault." with Retry, and saving a pairing is refused.
 
 ## Out of scope
 
