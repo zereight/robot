@@ -1756,16 +1756,23 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             await createWorktree(detail.folder, path, branch, signal)
           } catch (error) {
             if (signal.aborted) {
-              // Stop during creation ends the run as stopped and starts no task. What this
-              // attempt made goes: the half-made folder, its own registration, and the planned
-              // branch when it is still exactly what this attempt made.
-              await removeAttemptWorktree(detail.folder, path)
-              await deleteAttemptBranch(detail.folder, branch, branchExistedBefore, baseCommit)
-              db.run(
-                "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
-                r.id,
-              )
+              // Stop during creation ends the run as stopped and starts no task. The run is
+              // marked stopped first; the cleanup of what this attempt made runs in the
+              // background with the same safety rules, and it cannot fail the stop. The row
+              // is cleared last, so a crash still leaves a row that Remove can delete.
               setRun(r.id, "cancelled", { text: "Stopped by you", code: "user" }, true)
+              const folder = detail.folder
+              const runId = r.id
+              void (async () => {
+                await removeAttemptWorktree(folder, path)
+                await deleteAttemptBranch(folder, branch, branchExistedBefore, baseCommit)
+                db.run(
+                  "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
+                  runId,
+                )
+              })().catch((error) => {
+                console.error("runs: cleanup of a stopped worktree failed:", error)
+              })
               return null
             }
             const reason = error instanceof Error ? error.message : String(error)

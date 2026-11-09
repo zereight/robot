@@ -2156,10 +2156,89 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(
       await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
     ).toEqual([{ n: 0 }])
-    expect(existsSync(planned)).toBe(false)
+    // The cleanup runs in the background: the folder goes and the row is cleared after.
+    await until(() => !existsSync(planned))
+    await until(
+      async () =>
+        (
+          await t.rows<{ worktree_path: string | null }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            started.id,
+          )
+        )[0]?.worktree_path == null,
+    )
     // Nothing was made, so the planned path and branch are cleared.
-    expect(d.worktree).toBeNull()
+    expect((await t.get(started.id)).worktree).toBeNull()
   }, 30000)
+
+  test("a stop during creation ends the run before the cleanup ends", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    // A git that gates `worktree remove` on a file: the cleanup blocks in it while the test
+    // reads the run. Every other call passes through to the real git.
+    const realGit = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim()
+    const bin = mkdtempSync(join(tmpdir(), "robot-gitbin-"))
+    const entered = join(bin, "remove-entered")
+    const go = join(bin, "remove-release")
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\nhit=no\nprev=\nfor a in "$@"; do if [ "$prev" = "worktree" ] && [ "$a" = "remove" ]; then hit=yes; break; fi; prev="$a"; done\nif [ "$hit" = "yes" ]; then touch ${entered}; n=0; while [ ! -f ${go} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done; fi\nexec ${realGit} "$@"\n`,
+    )
+    chmodSync(join(bin, "git"), 0o755)
+    const pathBefore = process.env.PATH ?? ""
+    process.env.PATH = `${bin}${pathBefore === "" ? "" : `:${pathBefore}`}`
+    try {
+      await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+      await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+      await t.node({ name: "Say", prompt: "hello" })
+      const run = await t.start()
+      await until(() => existsSync(started))
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      // The cleanup reached `worktree remove` and blocks there: the run is already ended.
+      await until(() => existsSync(entered))
+      const stopped = await t.get(run.id)
+      expect(stopped.state).toBe("cancelled")
+      expect(stopped.reasonText).toBe("Stopped by you")
+      expect(stopped.finishedAt).not.toBeNull()
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_path ?? ""
+      expect(planned).not.toBe("")
+      expect(existsSync(planned)).toBe(true)
+      // Release the cleanup: it ends with the folder, the entry and the row cleared.
+      writeFileSync(go, "go\n")
+      await until(() => !existsSync(planned))
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(git(dir, "worktree", "list", "--porcelain")).not.toContain(planned)
+      expect((await t.get(run.id)).worktree).toBeNull()
+    } finally {
+      process.env.PATH = pathBefore
+      writeFileSync(release, "go\n")
+      writeFileSync(go, "go\n")
+      await until(() => !pgrep(hook))
+      expect(pgrep(hook)).toBe(false)
+    }
+  })
 
   test("a run that waits in the queue makes its worktree only when it starts", async () => {
     const t = await setup()
@@ -2404,8 +2483,18 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       await t.run(Runs.use((r) => r.stop(run.id)))
       const stopped = await t.ended(run.id)
       expect(stopped.state).toBe("cancelled")
+      // The cleanup runs in the background: it ends with the row cleared.
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
       expect(existsSync(planned.worktree_path)).toBe(false)
-      expect(stopped.worktree).toBeNull()
+      expect((await t.get(run.id)).worktree).toBeNull()
       const listed = git(dir, "worktree", "list", "--porcelain")
       expect(listed).not.toContain(planned.worktree_path)
       expect(listed).not.toContain("prunable")
