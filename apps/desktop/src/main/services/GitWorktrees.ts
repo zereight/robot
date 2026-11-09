@@ -1,5 +1,5 @@
-import { execFile, execFileSync } from "node:child_process"
-import { existsSync } from "node:fs"
+import { execFile } from "node:child_process"
+import { existsSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 
@@ -28,39 +28,55 @@ const GIT_ENV_FALLBACK = [
   "GIT_CEILING_DIRECTORIES",
 ] as const
 
-/** The names that one query of git returned, asked once and kept. */
+/** The names that the one query of git returned, asked once and kept. */
 let scrubNames: readonly string[] | null = null
+let scrubFill: Promise<void> | null = null
+
+/**
+ * Asks git once for its local variables, without blocking: the fixed fallback scrubs until the
+ * answer lands, so the first call never holds the main process.
+ */
+const fillScrubNames = (): Promise<void> =>
+  (scrubFill ??= (async () => {
+    const fallback = { ...process.env }
+    for (const name of GIT_ENV_FALLBACK) delete fallback[name]
+    try {
+      const { stdout } = await runFile("git", ["rev-parse", "--local-env-vars"], {
+        timeout: 30_000,
+        env: fallback,
+      })
+      const printed = stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+      scrubNames =
+        printed.length > 0 ? [...new Set([...printed, ...GIT_ENV_FALLBACK])] : [...GIT_ENV_FALLBACK]
+    } catch {
+      scrubNames = [...GIT_ENV_FALLBACK]
+    }
+  })())
 
 const scrubbedNames = (): readonly string[] => {
-  if (scrubNames) return scrubNames
-  const fallback = { ...process.env }
-  for (const name of GIT_ENV_FALLBACK) delete fallback[name]
-  try {
-    const printed = execFileSync("git", ["rev-parse", "--local-env-vars"], {
-      encoding: "utf8",
-      timeout: 30_000,
-      env: fallback,
-    })
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "")
-    scrubNames =
-      printed.length > 0 ? [...new Set([...printed, ...GIT_ENV_FALLBACK])] : [...GIT_ENV_FALLBACK]
-  } catch {
-    scrubNames = [...GIT_ENV_FALLBACK]
-  }
-  return scrubNames
+  void fillScrubNames()
+  return scrubNames ?? GIT_ENV_FALLBACK
 }
 
 /**
- * The environment for a git call: without the variables that pin git to another repository.
- * A git hook runs with `GIT_DIR` set, and it would win over `-C`, so every spawn scrubs them.
+ * The environment without the variables that pin git to another repository. A git hook runs with
+ * `GIT_DIR` set, and it would win over `-C`, so every spawn scrubs them. Shell commands and vendor
+ * programs use it too, so a `git` they run cannot reach another repository.
  */
-export const gitEnv = (): NodeJS.ProcessEnv => {
-  const env = { ...process.env }
-  for (const name of scrubbedNames()) delete env[name]
-  return env
+export const scrubGitEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  const out = { ...env }
+  for (const name of scrubbedNames()) delete out[name]
+  return out
 }
+
+/** The environment for a git call: the process environment with the git variables scrubbed. */
+export const gitEnv = (): NodeJS.ProcessEnv => scrubGitEnv(process.env)
+
+/** Waits for the one query of git behind the scrub. Tests await it; the app never blocks on it. */
+export const gitScrubReady = (): Promise<void> => fillScrubNames()
 
 /** The longest reason that a failure carries. Git can write pages; the run view shows one line. */
 const REASON_MAX = 500
@@ -104,12 +120,19 @@ export const isInsideRepo = async (folder: string): Promise<boolean> => {
 /**
  * Makes a new linked worktree at `path` on a new `branch` from HEAD of the repository of `repo`.
  * Changes of the repository that are not committed are not in it. The path must not exist yet.
+ * An aborted `signal` ends git; the caller removes the half-made folder.
  */
-export const createWorktree = async (repo: string, path: string, branch: string): Promise<void> => {
+export const createWorktree = async (
+  repo: string,
+  path: string,
+  branch: string,
+  signal?: AbortSignal,
+): Promise<void> => {
   try {
     await runFile("git", ["-C", repo, "worktree", "add", "-b", branch, path, "HEAD"], {
       timeout: 120_000,
       env: gitEnv(),
+      ...(signal ? { signal } : {}),
     })
   } catch (error) {
     throw new Error(gitReason(error))
@@ -154,6 +177,37 @@ export const repoRoot = async (folder: string): Promise<string> => {
     return stdout.trim()
   } catch (error) {
     throw new Error(gitReason(error))
+  }
+}
+
+/**
+ * True when git lists `path` as a worktree of its own repository. The main checkout counts.
+ * False when git cannot tell, for example for a half-made worktree. The removal of a worktree
+ * deletes the folder itself when the path is not registered, and keeps the failure otherwise.
+ */
+export const isWorktreeRegistered = async (path: string): Promise<boolean> => {
+  let real: string
+  try {
+    real = realpathSync(path)
+  } catch {
+    return false
+  }
+  try {
+    const { stdout } = await runFile("git", ["-C", path, "worktree", "list", "--porcelain"], {
+      timeout: 30_000,
+      env: gitEnv(),
+    })
+    return stdout.split("\n").some((line) => {
+      const listed = line.startsWith("worktree ") ? line.slice("worktree ".length).trim() : null
+      if (!listed) return false
+      try {
+        return realpathSync(listed) === real
+      } catch {
+        return listed === path
+      }
+    })
+  } catch {
+    return false
   }
 }
 

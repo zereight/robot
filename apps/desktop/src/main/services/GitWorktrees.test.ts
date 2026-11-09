@@ -7,10 +7,13 @@ import {
   branchExists,
   createWorktree,
   gitEnv,
+  gitScrubReady,
   isInsideRepo,
   isWorktreeDirty,
+  isWorktreeRegistered,
   removeWorktree,
   repoRoot,
+  scrubGitEnv,
   slugOfName,
   worktreeStamp,
 } from "./GitWorktrees.ts"
@@ -79,7 +82,9 @@ describe("is-inside-repo (spec 007, New worktree)", () => {
 })
 
 describe("the scrub of git variables", () => {
-  test("gitEnv removes every variable that git rev-parse --local-env-vars prints, and the fallback", () => {
+  test("gitEnv removes every variable that git rev-parse --local-env-vars prints, and the fallback", async () => {
+    // The list from git fills in without blocking; the fallback scrubs until it lands.
+    await gitScrubReady()
     const printed = execFileSync("git", ["rev-parse", "--local-env-vars"], {
       encoding: "utf8",
       env: gitEnv(),
@@ -113,6 +118,22 @@ describe("the scrub of git variables", () => {
         else process.env[name] = value
       }
     }
+  })
+
+  test("scrubGitEnv removes the git variables from a given environment and keeps the rest", async () => {
+    await gitScrubReady()
+    const env = scrubGitEnv({
+      GIT_DIR: "pinned",
+      GIT_INDEX_FILE: "pinned",
+      GIT_WORK_TREE: "pinned",
+      HOME: "/home/a",
+      KEEP: "yes",
+    })
+    expect(env.GIT_DIR).toBeUndefined()
+    expect(env.GIT_INDEX_FILE).toBeUndefined()
+    expect(env.GIT_WORK_TREE).toBeUndefined()
+    expect(env.HOME).toBe("/home/a")
+    expect(env.KEEP).toBe("yes")
   })
 
   test("a GIT_INDEX_FILE in the environment does not move the index of the repository", async () => {
@@ -166,6 +187,16 @@ describe("make worktree (spec 007, New worktree)", () => {
       await reasonOf(createWorktree(dir, join(root, "first"), "robot/other-20261109-120000")),
     ).not.toBe("made")
   })
+
+  test("it makes nothing when the signal is already aborted", async () => {
+    const dir = repo()
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    const reason = await reasonOf(
+      createWorktree(dir, path, "robot/report-20261109-120000", AbortSignal.abort()),
+    )
+    expect(reason).not.toBe("made")
+    expect(existsSync(path)).toBe(false)
+  })
 })
 
 describe("dirty and remove (spec 007, New worktree)", () => {
@@ -191,6 +222,16 @@ describe("dirty and remove (spec 007, New worktree)", () => {
     expect(existsSync(path)).toBe(false)
     expect(await branchExists(dir, "robot/report-20261109-120000")).toBe(true)
     expect(git(dir, "worktree", "list", "--porcelain").trim()).not.toContain(path)
+  })
+
+  test("a worktree and the main checkout are registered; a plain or missing folder is not", async () => {
+    const dir = repo()
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    await createWorktree(dir, path, "robot/report-20261109-120000")
+    expect(await isWorktreeRegistered(path)).toBe(true)
+    expect(await isWorktreeRegistered(dir)).toBe(true)
+    expect(await isWorktreeRegistered(mkdtempSync(join(tmpdir(), "robot-plain-")))).toBe(false)
+    expect(await isWorktreeRegistered(join(dir, "missing"))).toBe(false)
   })
 })
 
