@@ -56,27 +56,32 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up, to a page that a node visits, or to a download that the user starts (see the
   download exception below).
-- Secrets (keys, tokens, secret values of environment variables, secret values of a
-  connection, keys of device links, access keys of outside programs, saved secrets and saved
-  logins (020)) are in the secrets file of their profile. The file is encrypted, and it is in
-  the data folder of the profile. Secrets are never in the database, the logs, an export or a
-  sync, and never in plain text on the disk. A value that the user deletes leaves the secrets
-  file at once when the state is Readable. Deleting a profile deletes its secrets file at
-  once. A linked device never receives provider keys. A vendor sign-in that stays in the
-  program on this computer (006) is not a secret of the app and is not in the secrets file.
+- These are secrets: keys, tokens, secret values of environment variables, secret
+  values of a connection, keys of device links, access keys of outside programs, saved
+  secrets and saved logins (020). Secrets are in the secrets file of their profile.
+  The file is encrypted, and it is in the data folder of the profile. Secrets are never
+  in the database, the logs, an export or a sync, and never in plain text on the disk. A
+  value that the user deletes leaves the secrets file at once when the state is Readable.
+  Deleting a profile deletes its secrets file at once. A linked device never receives
+  provider keys. A vendor sign-in that stays in its program on this computer (006) is
+  not a secret of the app. It is not in the secrets file.
 - Each profile has one secrets key. It opens the secrets file of the profile. It stays in the
   system keychain of this computer. The state Readable means the secrets key opens the
-  secrets file, or no secrets file exists yet. A profile with no secrets file is Readable.
-- Locked means the secrets key cannot be read now. The keychain is locked or denied. Nothing
-  that needs a secret runs. A request fails with "Cannot read the vault." A sign-in fill
-  fails with that reason. A provider call fails with that reason. A connection call fails
-  with that reason. A save of any secret is refused with that reason. For example, a
-  protected card Save, a vault Add or Replace, a key in Settings, or a provider key. An env
-  row, a connection value, an outside program add, or a new access key are also saves. A
-  refused save does not touch the file. A screen that shows whether a secret is saved shows
-  "Cannot read the vault." with Retry. Forget, vault Delete, connection Remove, provider
-  Disconnect and removing an outside program are refused with that reason. Nothing is
-  overwritten. Retry works again when the state is Readable.
+  secrets file. A profile with no secrets file is Readable, except when the keychain
+  refuses a new secrets key (see Locked).
+- Locked means the secrets key cannot be read now. The keychain is locked or denied.
+  When no secrets file exists and the keychain refuses a new secrets key, the state is
+  Locked and the save is refused. Nothing that needs a secret runs. A request fails with
+  "Cannot read the vault." A sign-in fill fails with that reason. A provider call fails
+  with that reason. A connection call fails with that reason. A save of any secret is
+  refused with that reason. For example, a protected card Save, a vault Add or Replace, a
+  key in Settings, or a provider key. An env row, a connection value, an outside program
+  add, or a new access key are also saves. A refused save does not touch the file. A
+  screen that shows whether a secret is saved shows "Cannot read the vault." with Retry.
+  Every delete of a secret is refused with that reason, for example Forget, vault Delete,
+  connection Remove, provider Disconnect, removing a decision model key, removing a secret
+  value in a connection edit, removing an outside program, and Remove access of a linked
+  device. Nothing is overwritten. Retry works again when the state is Readable.
 - Missing key means no secrets key exists for this profile, while a secrets file exists. This
   happens on a new computer, with a folder copied from another computer, or with a cleared
   keychain. Every secret counts as missing. Vault rows, connection values and env rows show
@@ -86,9 +91,11 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   save. So at start it makes the new secrets key and a new secrets file. It replaces the old
   file. Every linked device is treated as if the user had chosen "Remove access" (012). The
   state is Missing key only until the next start finishes. A later save of any secret also
-  works. The other secrets stay missing until the user saves them. Forget, vault Delete,
-  connection Remove, provider Disconnect and removing an outside program succeed. They write
-  nothing.
+  works. The other secrets stay missing until the user saves them. Every delete of a
+  secret succeeds and writes nothing.
+- When the app starts and finds no device identity, it makes a new one. Every linked
+  device is then treated as if the user had chosen Remove access (012). This also holds
+  after the user deleted a Damaged secrets file by hand.
 - Damaged means the secrets file cannot be opened with the secrets key of this profile. This
   covers a changed or broken file. It also covers a file made with another secrets key. For
   example a folder copied onto a computer that has its own secrets key for this profile. The
@@ -97,7 +104,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - Deleting a workflow deletes its database rows at once. Its secrets leave the secrets file at
   the next time the state is Readable. Deleting a profile deletes its secrets file at once.
   This needs no secrets key. It removes the secrets key of the profile when the keychain
-  answers. At the latest it removes the secrets key at the next start.
+  answers. At the latest it removes the secrets key at the first start at which the
+  keychain answers.
 - Values that an earlier version saved in the keychain are never read, never moved and never
   removed. They stay in the keychain. The user types them again.
 - Logs and exports redact anything that looks like a secret. A text looks like a secret when
@@ -187,7 +195,7 @@ makes anything. The user sees each part that the file holds and picks what to ke
   holds no plain text of a saved secret.
 - With the secrets key locked, the vault shows "Cannot read the vault." A request with a
   secret fails with that reason. A save is refused with that reason. Unlock the keychain and
-  press Retry, then the vault reads again and the request runs.
+  press Retry, then the vault reads again and a new request with the secret runs.
 - With the secrets key locked, let a text node ask for a secret. The protected card shows.
   Press Save. The save is refused with "Cannot read the vault."
 - With the secrets key locked, let a text node sign in with a login. The fill fails with

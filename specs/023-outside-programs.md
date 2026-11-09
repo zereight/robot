@@ -151,10 +151,10 @@ cannot allow it.
   task, and the result. It holds no message text and no key. It keeps 90 days.
 - Entries and keys are local. They do not sync (019). An export (014) holds no entry and no key.
   An import of data brings no entry back.
-- In the states of 014, calls, "Add program" and "Make a new key" follow 014, and when
-  Locked or Damaged the page shows "Cannot read the vault." with Retry, a call fails with that
-  reason, and "Add program" and "Make a new key" are refused. In Missing key, an entry shows
-  that its access key is missing, and the user makes a new key.
+- In the states of 014, calls, "Add program", "Make a new key" and "Remove" follow
+  014. When Locked or Damaged the page shows "Cannot read the vault." with Retry. A call
+  fails with that reason. "Add program", "Make a new key" and "Remove" are refused. In
+  Missing key, an entry shows that its access key is missing, and the user makes a new key.
 - Only the computer shows this part of settings. A linked device (012) and the phone (011) do not
   show it, and cannot turn it on. A message of an outside program shows on them with its mark.
 - The model that answers in the chat may be on a vendor runtime (006). It gets the message of an
