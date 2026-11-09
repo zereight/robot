@@ -79,7 +79,7 @@ import {
   deleteBranchIfUnused,
   isWorktreeDirty,
   isWorktreeRegistered,
-  pruneWorktrees,
+  removeAttemptWorktree,
   removeWorktree as removeGitWorktree,
   repoRoot,
   slugOfName,
@@ -1755,10 +1755,9 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           } catch (error) {
             if (signal.aborted) {
               // Stop during creation ends the run as stopped and starts no task. What this
-              // attempt made goes: the half-made folder, the stale registration, and the planned
+              // attempt made goes: the half-made folder, its own registration, and the planned
               // branch when it did not exist before and no worktree uses it.
-              rmSync(path, { recursive: true, force: true })
-              await pruneWorktrees(detail.folder)
+              await removeAttemptWorktree(detail.folder, path)
               if (!branchExistedBefore) await deleteBranchIfUnused(detail.folder, branch)
               db.run(
                 "UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?",
@@ -1768,8 +1767,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
               return null
             }
             const reason = error instanceof Error ? error.message : String(error)
-            rmSync(path, { recursive: true, force: true })
-            await pruneWorktrees(detail.folder)
+            await removeAttemptWorktree(detail.folder, path)
             if (!branchExistedBefore) await deleteBranchIfUnused(detail.folder, branch)
             db.run("UPDATE run SET worktree_path = NULL, worktree_branch = NULL WHERE id = ?", r.id)
             setRun(r.id, "failed", { text: reason, code: "worktree_failed" }, true)

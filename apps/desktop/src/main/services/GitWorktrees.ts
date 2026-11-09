@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process"
-import { existsSync, realpathSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs"
+import { basename, dirname, isAbsolute, join } from "node:path"
 import { promisify } from "node:util"
 
 /**
@@ -251,15 +251,71 @@ export const removeWorktree = async (repo: string, path: string): Promise<void> 
   }
 }
 
-/** Drops the stale entries of worktrees whose folders are gone. Best effort: it never throws. */
-export const pruneWorktrees = async (repo: string): Promise<void> => {
+/**
+ * Removes one half-made worktree: its folder and its own git entry, nothing else. The caller
+ * has checked that the folder is this attempt's (it did not exist before it). A `git worktree
+ * prune` would drop every stale entry, including the worktrees of the user (spec 007), so the
+ * cleanup removes only the entry of this path. Best effort: it never throws, so the cleanup
+ * cannot mask the failure that caused it.
+ */
+export const removeAttemptWorktree = async (repo: string, path: string): Promise<void> => {
   try {
-    await runFile("git", ["-C", repo, "worktree", "prune"], {
+    await runFile("git", ["-C", repo, "worktree", "remove", "--force", path], {
+      timeout: 120_000,
+      env: gitEnv(),
+    })
+    return
+  } catch {
+    // Not registered, or the folder is already gone: remove what is left below.
+  }
+  try {
+    rmSync(path, { recursive: true, force: true })
+  } catch {
+    // Gone or unreadable: the entry below may still need to go.
+  }
+  await removeOwnWorktreeEntry(repo, path)
+}
+
+/** The path with links in its parent resolved, so two spellings of one folder compare equal. */
+const keyOfWorktreePath = (path: string): string => {
+  try {
+    return join(realpathSync(dirname(path)), basename(path))
+  } catch {
+    return path
+  }
+}
+
+/**
+ * Deletes only the admin entry of `path` under `<git-common-dir>/worktrees/`: the entry whose
+ * `gitdir` file points at `<path>/.git`. Every other entry stays, stale or not. Best effort:
+ * it never throws.
+ */
+const removeOwnWorktreeEntry = async (repo: string, path: string): Promise<void> => {
+  try {
+    const { stdout } = await runFile("git", ["-C", repo, "rev-parse", "--git-common-dir"], {
       timeout: 30_000,
       env: gitEnv(),
     })
+    const printed = stdout.trim()
+    const dir = join(isAbsolute(printed) ? printed : join(repo, printed), "worktrees")
+    const want = keyOfWorktreePath(path)
+    for (const entry of readdirSync(dir)) {
+      let content: string
+      try {
+        content = readFileSync(join(dir, entry, "gitdir"), "utf8").trim()
+      } catch {
+        continue
+      }
+      if (!isAbsolute(content) || basename(content) !== ".git") continue
+      if (keyOfWorktreePath(dirname(content)) !== want) continue
+      try {
+        rmSync(join(dir, entry), { recursive: true, force: true })
+      } catch {
+        // Another cleanup won the entry, or it cannot be read: nothing else may go.
+      }
+    }
   } catch {
-    // The cleanup must not mask the failure that caused it.
+    // The common dir cannot be read: no entry is touched.
   }
 }
 

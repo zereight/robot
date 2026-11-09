@@ -2417,6 +2417,58 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     }
   })
 
+  test("a stopped creation drops only its own worktree entry, never another stale one", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    // Another worktree whose folder moved away: its entry is stale, not locked.
+    const otherPath = join(mkdtempSync(join(tmpdir(), "robot-wt-other-")), "userwt")
+    git(dir, "worktree", "add", "--quiet", "-b", "userwt-branch", otherPath)
+    renameSync(otherPath, join(mkdtempSync(join(tmpdir(), "robot-wt-moved-")), "userwt"))
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nwhile [ ! -f ${release} ]; do sleep 0.05; done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_path ?? ""
+      expect(planned).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      // The cleanup ends with the row cleared: only then is the list read.
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(existsSync(planned)).toBe(false)
+      const listed = git(dir, "worktree", "list", "--porcelain")
+      expect(listed).not.toContain(planned)
+      expect(listed).toContain(otherPath)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+    }
+  })
+
   test("a run that waited counts as running while its worktree is made", async () => {
     const t = await setup()
     const dir = gitRepo()

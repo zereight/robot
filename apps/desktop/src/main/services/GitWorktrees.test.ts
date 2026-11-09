@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -11,6 +19,7 @@ import {
   isInsideRepo,
   isWorktreeDirty,
   isWorktreeRegistered,
+  removeAttemptWorktree,
   removeWorktree,
   repoRoot,
   scrubGitEnv,
@@ -338,6 +347,50 @@ describe("dirty and remove (spec 007, New worktree)", () => {
     expect(await isWorktreeRegistered(dir)).toBe(true)
     expect(await isWorktreeRegistered(mkdtempSync(join(tmpdir(), "robot-plain-")))).toBe(false)
     expect(await isWorktreeRegistered(join(dir, "missing"))).toBe(false)
+  })
+})
+
+describe("remove one attempt (spec 007, New worktree)", () => {
+  test("it removes a registered folder and its entry", async () => {
+    const dir = repo()
+    const mine = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "mine")
+    await createWorktree(dir, mine, "robot/mine-20261109-120000")
+    writeFileSync(join(mine, "half.md"), "half\n")
+    await removeAttemptWorktree(dir, mine)
+    expect(existsSync(mine)).toBe(false)
+    expect(git(dir, "worktree", "list", "--porcelain")).not.toContain(mine)
+  })
+
+  test("it drops only its own stale entry and keeps another one", async () => {
+    const dir = repo()
+    const root = mkdtempSync(join(tmpdir(), "robot-wt-"))
+    const mine = join(root, "mine")
+    await createWorktree(dir, mine, "robot/mine-20261109-120000")
+    const other = join(root, "other")
+    git(dir, "worktree", "add", "--quiet", "-b", "robot/other-20261109-120000", other)
+    // Both folders go away: both entries are stale. A prune would drop both.
+    rmSync(mine, { recursive: true, force: true })
+    rmSync(other, { recursive: true, force: true })
+    await removeAttemptWorktree(dir, mine)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).not.toContain(mine)
+    expect(listed).toContain(other)
+  })
+
+  test("it removes an unregistered half-made folder and touches no entry", async () => {
+    const dir = repo()
+    const half = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "half")
+    mkdirSync(half, { recursive: true })
+    writeFileSync(join(half, "half.md"), "half\n")
+    const before = git(dir, "worktree", "list", "--porcelain")
+    await removeAttemptWorktree(dir, half)
+    expect(existsSync(half)).toBe(false)
+    expect(git(dir, "worktree", "list", "--porcelain")).toBe(before)
+  })
+
+  test("it throws nothing for a missing folder with no entry", async () => {
+    const dir = repo()
+    await removeAttemptWorktree(dir, join(mkdtempSync(join(tmpdir(), "robot-wt-")), "missing"))
   })
 })
 
