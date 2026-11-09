@@ -50,6 +50,26 @@ describe("runtimeEnv", () => {
     expect(env.OPENAI_API_KEY).toBeUndefined()
   })
 
+  test("git variables are removed, so a git of the program cannot reach another repository", () => {
+    for (const kind of [undefined, "pi", "opencode"] as const) {
+      const env = runtimeEnv(
+        {
+          PATH: "/usr/bin",
+          GIT_DIR: "pinned",
+          GIT_INDEX_FILE: "pinned",
+          GIT_WORK_TREE: "pinned",
+          KEEP: "yes",
+        },
+        "/home/a",
+        kind,
+      )
+      expect(env.GIT_DIR).toBeUndefined()
+      expect(env.GIT_INDEX_FILE).toBeUndefined()
+      expect(env.GIT_WORK_TREE).toBeUndefined()
+      expect(env.KEEP).toBe("yes")
+    }
+  })
+
   test("the usual tool folders are added to a short PATH", () => {
     if (process.platform === "win32") return
     const env = runtimeEnv({ PATH: "/usr/bin" }, "/home/a")

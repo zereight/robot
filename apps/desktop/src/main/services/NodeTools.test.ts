@@ -258,6 +258,28 @@ describe("Read only (spec 007)", () => {
   })
 })
 
+describe("the shell of a node (spec 007)", () => {
+  test("a command runs without the git variables of the environment", async () => {
+    const t = await setup()
+    const beforeDir = process.env.GIT_DIR
+    const beforeIndex = process.env.GIT_INDEX_FILE
+    process.env.GIT_DIR = "/tmp/pinned.git"
+    process.env.GIT_INDEX_FILE = "/tmp/pinned-index"
+    try {
+      const out = await t.call(t.make("full"), "run_command", {
+        command: `printf '[%s][%s]' "$GIT_DIR" "$GIT_INDEX_FILE"`,
+      })
+      expect(out.failed).toBe(false)
+      expect(out.output).toContain("[][]")
+    } finally {
+      if (beforeDir === undefined) delete process.env.GIT_DIR
+      else process.env.GIT_DIR = beforeDir
+      if (beforeIndex === undefined) delete process.env.GIT_INDEX_FILE
+      else process.env.GIT_INDEX_FILE = beforeIndex
+    }
+  })
+})
+
 describe("fetch and marks (spec 007)", () => {
   test("a fetch gives the outside mark with the host of the page", async () => {
     const t = await setup()
