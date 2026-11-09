@@ -158,14 +158,7 @@ describe("end-to-end tests, performance run and scripts", () => {
 
   // A literal place in /tmp or /var is outside the run folder: a folder made there stays for
   // ever. Each exception says why it is not a folder that the test makes, or why it must be there.
-  const fixedPlaces: Record<string, string> = {
-    "apps/desktop/e2e/s33-island.spec.ts | /tmp/s33-":
-      "The island card cuts a line at 90 characters. The run folder is too long for that: the file name is cut off (checked). The spec removes its own folder when each test ends.",
-    "apps/desktop/e2e/s30-permission-rules.spec.ts | /tmp/robot-shared":
-      "The text of a permission rule that the test types. No folder is made.",
-    "apps/desktop/e2e/s24-linked-agents.spec.ts | /tmp":
-      "A workspace value in a message of a stand-in linked computer. No folder is made.",
-  }
+  const fixedPlaces: Record<string, string> = {}
 
   describe("no fixed place in /tmp or /var", () => {
     const allowed = new Set(Object.keys(fixedPlaces))
@@ -215,6 +208,8 @@ describe("the app", () => {
     "apps/desktop/src/main/stale-temp.ts": "It is the one place that makes the folders of the app.",
     "apps/desktop/src/main/test-preload.ts":
       "It gives each process of the unit tests a temporary folder of its own and removes it.",
+    "apps/desktop/src/main/staging.ts":
+      "A pasted file waits there until the user sends it, also across a restart. The code removes each staged file that is older than a day.",
     "apps/desktop/src/main/services/testing.ts":
       "Support code of the unit tests. Its folders stand in the folder of the test process, which the preload removes.",
   }

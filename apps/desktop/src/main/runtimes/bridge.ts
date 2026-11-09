@@ -3,8 +3,8 @@ import { rmSync, writeFileSync } from "node:fs"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
 import { join } from "node:path"
-import { makeOwnedFolder } from "../stale-temp.ts"
 import { TEAM_TOOL_NAMES } from "@robot/shared"
+import { makeOwnedFolder } from "../stale-temp.ts"
 
 /**
  * Tools of the app for an agent runtime. A vendor program (Claude Code, Codex, Pi, Muse Code)
