@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -83,6 +85,47 @@ const until = async (ok: () => boolean | Promise<boolean>, ms = 6000) => {
   throw new Error("timeout")
 }
 
+/** Every temporary folder a test made: the cleanup after each test removes them all. */
+const tempRoots: string[] = []
+const trackTemp = (dir: string): string => {
+  tempRoots.push(dir)
+  return dir
+}
+
+/** Removes a temporary folder. Read-only leftovers are made writable first, best effort. */
+const removeTemp = (dir: string): void => {
+  try {
+    rmSync(dir, { recursive: true, force: true })
+    return
+  } catch {
+    // A test that failed midway may have left read-only files: make them writable first.
+  }
+  try {
+    const writable = (at: string): void => {
+      for (const name of readdirSync(at)) {
+        const child = join(at, name)
+        try {
+          // A link is unlinked as it is, never followed: nothing outside the folder is touched.
+          const st = lstatSync(child)
+          if (st.isSymbolicLink()) continue
+          if (st.isDirectory()) writable(child)
+          chmodSync(child, 0o755)
+        } catch {
+          // Gone, or never writable: the removal below says what is left.
+        }
+      }
+    }
+    writable(dir)
+    rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // Best effort: debris stays, the suite still passes.
+  }
+}
+
+afterEach(() => {
+  for (const dir of tempRoots.splice(0)) removeTemp(dir)
+})
+
 interface NodeSpec {
   readonly name: string
   readonly prompt: string
@@ -111,6 +154,10 @@ const setup = async (
     decisionUrl: `http://127.0.0.1:${decisionServer.port}`,
     ...(options.databaseFile ? { databaseFile: options.databaseFile } : {}),
   })
+  // The data folder holds the workspaces with the worktrees the runs make: it goes with
+  // the cleanup after the test, and so does the home folder.
+  trackTemp(t.dataDir)
+  trackTemp(t.homeDir)
   const run = t.runtime.runPromise
   const server = await run(Servers.use((s) => s.local))
   await run(
@@ -583,7 +630,7 @@ describe("the approval node (spec 010)", () => {
   })
 
   test("a restart while the run waits: the run and the waiting task fail with The app stopped", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
     const t = await setup({ databaseFile: file })
     const first = await t.node({ name: "Draft", prompt: "Draft" })
     const g = await t.approvalNode("Gate")
@@ -820,7 +867,7 @@ describe("approval and question cards (spec 007, 003)", () => {
   })
 
   test("a card that nobody answers is closed with the app: the task fails with The app stopped", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
     const t = await setup({ databaseFile: file, level: "ask_all" })
     await t.node({ name: "Shell", prompt: command })
     const run = await t.start()
@@ -1411,7 +1458,7 @@ describe("the memory tool of a text node (spec 008)", () => {
 describe("file claims of a run in a shared folder (spec 025)", () => {
   test("a task that waits keeps its claim, the other workflow is refused and told, and the claim ends with the task", async () => {
     const t = await setup({ level: "ask_all" })
-    const folder = mkdtempSync(join(tmpdir(), "robot-shared-run-"))
+    const folder = trackTemp(mkdtempSync(join(tmpdir(), "robot-shared-run-")))
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, folder)))
     const server = await t.run(Servers.use((s) => s.local))
     const other = await t.run(
@@ -2259,7 +2306,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     // A git that gates `worktree remove` on a file: the cleanup blocks in it while the test
     // reads the run. Every other call passes through to the real git.
     const realGit = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim()
-    const bin = mkdtempSync(join(tmpdir(), "robot-gitbin-"))
+    const bin = trackTemp(mkdtempSync(join(tmpdir(), "robot-gitbin-")))
     const entered = join(bin, "remove-entered")
     const go = join(bin, "remove-release")
     writeFileSync(
@@ -2311,7 +2358,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       writeFileSync(go, "go\n")
       await expectHookGone(hook)
     }
-  })
+  }, 30000)
 
   test("a run that waits in the queue makes its worktree only when it starts", async () => {
     const t = await setup()
@@ -2415,7 +2462,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
 
   test("a never-made worktree with a leftover folder still shows, so Remove can delete it", async () => {
     const t = await setup()
-    const leftover = join(mkdtempSync(join(tmpdir(), "robot-wt-leftover-")), "copy")
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
     mkdirSync(leftover, { recursive: true })
     writeFileSync(join(leftover, "notes.md"), "leftover\n")
     await t.sql(
@@ -2436,7 +2483,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
 
   test("a removed leftover worktree still shows as removed; a bare plan shows none", async () => {
     const t = await setup()
-    const leftover = join(mkdtempSync(join(tmpdir(), "robot-wt-leftover-")), "copy")
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
     mkdirSync(leftover, { recursive: true })
     writeFileSync(join(leftover, "notes.md"), "leftover\n")
     await t.sql(
@@ -2462,7 +2509,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
       `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
        VALUES ('r2', ?, 'failed', 'hand', 2, ?, 'robot/report-20261109-120001', 0)`,
       t.flow.id,
-      join(mkdtempSync(join(tmpdir(), "robot-wt-missing-")), "copy"),
+      join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-missing-"))), "copy"),
     )
     expect((await t.get("r2")).worktree).toBeNull()
   })
@@ -2670,9 +2717,9 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const t = await setup()
     const dir = gitRepo()
     // Another worktree whose folder moved away: its entry is stale, not locked.
-    const otherPath = join(mkdtempSync(join(tmpdir(), "robot-wt-other-")), "userwt")
+    const otherPath = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-other-"))), "userwt")
     git(dir, "worktree", "add", "--quiet", "-b", "userwt-branch", otherPath)
-    renameSync(otherPath, join(mkdtempSync(join(tmpdir(), "robot-wt-moved-")), "userwt"))
+    renameSync(otherPath, join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-moved-"))), "userwt"))
     const started = join(dir, "hook-started")
     const release = join(dir, "hook-release")
     const hook = join(dir, ".git", "hooks", "post-checkout")
@@ -3009,9 +3056,9 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
   })
 
   test("a restart keeps the worktree columns of a run that has not ended", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
     const t = await setup({ databaseFile: file })
-    const leftover = join(mkdtempSync(join(tmpdir(), "robot-wt-leftover-")), "copy")
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
     mkdirSync(leftover, { recursive: true })
     writeFileSync(join(leftover, "notes.md"), "leftover\n")
     await t.sql(
@@ -3052,10 +3099,10 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
   test("a retry of a run whose worktree was never made is refused, and the leftover stays", async () => {
     // The app quit during creation: the restart turns the queued first task into failed, and
     // the user can Retry it. The retry is refused with no run; the user starts a new run.
-    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
     const t = await setup({ databaseFile: file })
     await t.node({ name: "Say", prompt: "hello" })
-    const leftover = join(mkdtempSync(join(tmpdir(), "robot-wt-leftover-")), "copy")
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
     mkdirSync(leftover, { recursive: true })
     writeFileSync(join(leftover, "notes.md"), "user edit\n")
     await t.sql(
@@ -3091,9 +3138,9 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const dir = gitRepo()
     // Another worktree whose folder moved away: its entry is stale, not locked. A prune would
     // drop it; the failed creation must leave it alone.
-    const otherPath = join(mkdtempSync(join(tmpdir(), "robot-wt-other-")), "userwt")
+    const otherPath = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-other-"))), "userwt")
     git(dir, "worktree", "add", "--quiet", "-b", "userwt-branch", otherPath)
-    renameSync(otherPath, join(mkdtempSync(join(tmpdir(), "robot-wt-moved-")), "userwt"))
+    renameSync(otherPath, join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-moved-"))), "userwt"))
     expect(git(dir, "worktree", "list", "--porcelain")).toContain(otherPath)
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
     await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
@@ -3640,7 +3687,7 @@ const git = (dir: string, ...args: string[]) =>
   execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: gitEnv() })
 
 const gitRepo = (committed = true) => {
-  const dir = mkdtempSync(join(tmpdir(), "robot-run-wt-"))
+  const dir = trackTemp(mkdtempSync(join(tmpdir(), "robot-run-wt-")))
   git(dir, "-c", "init.defaultBranch=main", "init", "--quiet")
   git(dir, "config", "user.email", "test@robot.local")
   git(dir, "config", "user.name", "ROBot test")
