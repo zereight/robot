@@ -150,15 +150,6 @@ pub struct EphemeralKeys {
 }
 
 #[cfg(test)]
-impl EphemeralKeys {
-    pub fn named(profile: &str, key: &[u8; 32]) -> Self {
-        let keys = Self::default();
-        keys.store(profile, key).unwrap();
-        keys
-    }
-}
-
-#[cfg(test)]
 impl KeySource for EphemeralKeys {
     fn load(&self, profile: &str) -> Result<Option<[u8; 32]>, VaultError> {
         Ok(self.keys.lock().unwrap().get(profile).copied())
@@ -326,6 +317,7 @@ impl<K: KeySource> Vault<K> {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let file = File::options()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(self.lock_path())
             .map_err(reason)?;
@@ -433,10 +425,10 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
     file.sync_all().map_err(reason)?;
     drop(file);
     std::fs::rename(&tmp, path).map_err(reason)?;
-    if let Some(dir) = path.parent() {
-        if let Ok(dir) = File::open(dir) {
-            let _ = dir.sync_all();
-        }
+    if let Some(dir) = path.parent()
+        && let Ok(dir) = File::open(dir)
+    {
+        let _ = dir.sync_all();
     }
     Ok(())
 }
