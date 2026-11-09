@@ -100,7 +100,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   choice (010).
 - Keys are in the secrets file (see 014). The settings page only learns whether a key is
   saved. A save names the keys it changes. A key that is not named stays, and the user can
-  remove a key. A key that this computer cannot read counts as no key.
+  remove a key. A missing secrets key counts as no key (see 014). When Locked or Damaged,
+  the page shows "Cannot read the vault." and a save is refused.
 - A choice that lacks its key, account or model asks nobody. The app acts as if the choice were
   off: a decision node asks the user to pick an option (010).
 - "Test" sends one real request with three made-up options to the saved choice. It shows which
@@ -143,6 +144,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   `http://127.0.0.1:8000`: the app accepts it.
 - Save a key for the decision model, reload the settings page: the page shows "saved" and not
   the key.
+- With the secrets key locked, the decision model page shows "Cannot read the vault." A save
+  of a key is refused with that reason.
 - Set the decision model to "Off" and start a run with a decision node: the node asks the user to
   pick an option, and no request goes to any service.
 - Change the default workspace folder, then make a new workflow: its empty folder is in the new

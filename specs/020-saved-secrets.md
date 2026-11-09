@@ -149,14 +149,15 @@ the user name or the password.
   a saved secret is. With no saved login, the "Saved logins" list shows one muted line that says
   what a saved login is.
 - Loading: while the vault reads the saved secrets, it shows "Loading…".
-- Locked secrets key: when the secrets key is locked or denied, the vault shows "Cannot read
-  the vault." with Retry. A request with a secret then fails with that reason. Retry works
-  when the keychain answers again.
+- Locked secrets key: when the secrets key is locked or denied (see 014), the vault shows
+  "Cannot read the vault." with Retry. A request with a secret then fails with that reason.
+  Add and Replace are refused with that reason. Retry works again when the state is Readable.
 - Missing secrets key: when the secrets file exists but the secrets key does not, every row
-  shows "Value missing" (014). The user can save new secrets. A request fails with that
+  shows "Value missing" (see 014). The user can save new secrets. A request fails with that
   reason until the user saves a new value.
-- Damaged secrets file: when the app cannot open the secrets file with a good secrets key,
-  the vault shows "Cannot read the vault." with Retry. Nothing is overwritten (014).
+- Damaged secrets file: when the app cannot open the secrets file with the secrets key of
+  this profile (see 014), the vault shows "Cannot read the vault." with Retry. Add and
+  Replace are refused with that reason. Nothing is overwritten.
 - A secret whose value is missing (for example after an import, see 014) shows "Value missing".
   A request with it fails with that reason until the user replaces the value.
 - A protected card that waits counts as a question for the island and the notifications (see
@@ -291,3 +292,8 @@ All checks use a small test web service, written for the test.
 - Rename a workflow that holds a secret: the vault shows the same rows under the new name.
   Settings → Permissions shows the counts of each workflow with "Open vault", and no value.
 - A decision node and the responsible document have no tool of this spec.
+- Delete the secrets key and keep the secrets file. A request with a secret fails with
+  "Value missing" until the user saves a new value.
+- With the secrets key locked, Add and Replace in the vault are refused with "Cannot read
+  the vault." Change the secrets file so the app cannot open it. Add and Replace are refused
+  with that reason.
