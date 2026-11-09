@@ -83,9 +83,9 @@ manages the API keys and passwords of that workflow.
      metadata addresses, and the time limit of 30 seconds. It never shows the value. Test does
      not change the date last used. The result stays on the row until the next Test. Logins have
      no Test button: the fill at run time is the test.
-   - Delete: the user deletes a secret or a login after a confirm (000). The value
-     leaves the secrets file at once when the state is Readable (see 014). A request that has
-     already started can end.
+   - Delete: the user deletes a secret or a login after a confirm (000). In Locked
+     and Damaged a Delete is refused (see 014). The value leaves the secrets file at
+     once only when the state is Readable. A request that has already started can end.
    - Settings → Permissions holds an overview, "Saved secrets". It lists each workflow that holds
      a secret or a login: the name of the workflow, the count of secrets, the count of logins, and
      a link "Open vault" that opens the vault of that workflow. It shows no value, and the user
@@ -153,13 +153,14 @@ the user name or the password.
 - Loading: while the vault reads the saved secrets, it shows "Loading…".
 - Locked secrets key: when the secrets key is locked or denied (see 014), the vault shows
   "Cannot read the vault." with Retry. A request with a secret then fails with that reason.
-  Add and Replace are refused with that reason. Retry works again when the state is Readable.
+  Add, Replace, Delete and Forget are refused with that reason. Retry works again when the
+  state is Readable.
 - Missing secrets key: when the secrets file exists but the secrets key does not, every row
   shows "Value missing" (see 014). The user can save new secrets. A request fails with that
   reason until the user saves a new value.
 - Damaged secrets file: when the app cannot open the secrets file with the secrets key of
-  this profile (see 014), the vault shows "Cannot read the vault." with Retry. Add and
-  Replace are refused with that reason. Nothing is overwritten.
+  this profile (see 014), the vault shows "Cannot read the vault." with Retry. Add,
+  Replace, Delete and Forget are refused with that reason. Nothing is overwritten.
 - A secret whose value is missing (for example after an import, see 014) shows "Value missing".
   A request with it fails with that reason until the user replaces the value.
 - A protected card that waits counts as a question for the island and the notifications (see

@@ -101,7 +101,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Keys are in the secrets file (see 014). The settings page only learns whether a key is
   saved. A save names the keys it changes. A key that is not named stays, and the user can
   remove a key. A missing secrets key counts as no key (see 014). When Locked or Damaged,
-  the page shows "Cannot read the vault." with Retry, and a save is refused.
+  the page shows "Cannot read the vault." with Retry, and a save is refused. Removing a key
+  follows 014.
 - A choice that lacks its key, account or model asks nobody. The app acts as if the choice were
   off: a decision node asks the user to pick an option (010). When Locked or Damaged, the
   choice cannot run, so a decision node asks the user to pick an option (010) with "Cannot

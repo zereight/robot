@@ -11,9 +11,11 @@ through, and is never stored on, a third-party server.
 ## Concepts
 
 - **Device**: a phone or a computer that runs ROBot. It has a name that the user chooses, a kind
-  (phone or computer), and an identity that the app makes on first start. A computer is a Mac with Apple
-  silicon. A phone is an iPhone or a phone with Android. The link and its messages are the same for both
-  phone systems.
+  (phone or computer), and an identity that the app makes on first start. When the app starts
+  and finds no device identity, it makes a new one (014). Every linked device is then treated
+  as if the user had chosen Remove access. A computer is a Mac with Apple silicon. A phone is
+  an iPhone or a phone with Android. The link and its messages are the same for both phone
+  systems.
 - **Server**: a profile on a computer, and its workflows (see 000 and 022). Every profile is a
   server for its own workflows. A phone is never a server.
 - **Client**: a device that opens a server. A phone is always a client. A computer is a client
@@ -284,7 +286,8 @@ accept connections, this is the same computer.
   while the user works"). The data still reaches the phone.
 - The identity key of this computer is a secret, and in the states of 014 this follows 014.
   When Locked or Damaged, the Devices page in Settings and the tile of a linked server show
-  "Cannot read the vault." with Retry, and saving a pairing is refused.
+  "Cannot read the vault." with Retry, and saving a pairing is refused. Remove access and
+  Remove follow 014.
 
 ## Out of scope
 

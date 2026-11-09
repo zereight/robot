@@ -106,7 +106,8 @@ built-in tools.
   redirect to another host.
 - Secret values are in the secrets file (see 014). They are not in the database, the logs,
   the export, or the action log. A row with a missing value shows "Value missing". When
-  Locked or Damaged, the row shows "Cannot read the vault." with Retry (see 014).
+  Locked or Damaged, the row shows "Cannot read the vault." with Retry (see 014). Remove
+  and removing a secret value in an edit follow 014.
 - With "Trust read-only marks" on, a call of a tool with the read-only mark is not a risky step.
   It runs with no card at "Ask for risky steps" and at "Ask when unsure", and its tool card shows
   "Read only, as the connection says". At "Ask for everything" it still asks. At "Read only" it is
