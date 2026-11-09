@@ -77,7 +77,8 @@ can take the feedback of the user while the run works.
   new run makes a new worktree, also a run that a trigger starts (010).
 - The run view shows one line "Worktree: <path>, branch <name>", with "Open" and "Remove". "Open"
   shows the worktree in the system file browser. "Remove" asks first when the worktree holds
-  changes that are not committed. It deletes the folder of the worktree. The branch stays.
+  changes that are not committed, or files that Git ignores, or when the app cannot tell. It
+  deletes the folder of the worktree. The branch stays.
 - The worktree stays when the run ends. The app never removes it by itself.
 - A run makes its worktree when the run starts, not while it waits in the queue. While the app
   makes the worktree, the run shows in the run view and the workflow counts as running, so the
@@ -91,6 +92,9 @@ can take the feedback of the user while the run works.
   the same subfolder as the run it retries, also when the user changed the folder since.
 - A retry of a node uses the worktree of its run. When that worktree is removed, or its folder is
   gone, the retry is refused with "The new worktree is not available." The user starts a new run.
+  The same holds for a retry of a run whose worktree was never made, for example after the app
+  stopped while it made the worktree. A retry of a run that started while the switch was off
+  works in the folder of the workflow, also when the switch is on now.
 - "Remove" is refused while a run that uses the worktree works or waits: "The worktree is in use
   by a run that works." A retry uses the worktree of the run it retries, so "Remove" marks every
   run of that worktree as removed.
@@ -854,7 +858,7 @@ steer the node to an address that only this computer or its network can reach.
   different branches. The folder keeps its files.
 - A run with the switch on: a text node writes `a.txt`. The file is in the worktree and not in the
   folder. The worktree stays after the run, and "Remove" deletes its folder and keeps the branch.
-- The worktree has a change that is not committed. "Remove" asks first.
+- The worktree has a change that is not committed, or a file that Git ignores. "Remove" asks first.
 - The folder is not in a Git repository: the switch is off and the muted line shows.
 - The repository has no commit, and the switch is on: the run is failed with "Could not make a new
   worktree:" and the reason.
@@ -863,7 +867,7 @@ steer the node to an address that only this computer or its network can reach.
   with "The new worktree is not available." and nothing is written.
 - A run works in its worktree. The user presses "Remove" on the run line: it is refused with "The
   worktree is in use by a run that works." The folder stays.
-- A retry of a node waits in the queue behind another run. The user removes the worktree: the
-  retry is failed with "The new worktree is not available." and nothing is written under the
+- A retry of a node waits in the queue behind another run. The folder of the worktree is gone
+  (the user deleted it by hand, because "Remove" is refused while the retry waits): the retry is failed with "The new worktree is not available." and nothing is written under the
   removed path.
 - The user presses Stop while the worktree is made: the run ends as stopped and no task starts.
