@@ -50,7 +50,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.data.open": "폴더 열기",
   "settings.data.report": "진단 보고서",
   "settings.data.report.hint":
-    "앱의 어떤 부분이나 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여 넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱은 보고서를 어디에도 보내지 않아요.",
+    "앱의 어떤 부분이나 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여 넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수가 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱은 보고서를 어디에도 보내지 않아요.",
   "settings.data.report.button": "진단 보고서 복사",
   "settings.data.report.copied": "복사했어요",
   "settings.data.report.failed": "보고서를 만들지 못했어요.",
