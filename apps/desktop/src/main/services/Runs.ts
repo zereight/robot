@@ -1744,12 +1744,7 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           } catch (error) {
             // The run does not start: no task is made (spec 007, "New worktree").
             const reason = error instanceof Error ? error.message : String(error)
-            setRun(
-              id,
-              "failed",
-              { text: `Could not make a new worktree: ${reason}`, code: "worktree_failed" },
-              true,
-            )
+            setRun(id, "failed", { text: reason, code: "worktree_failed" }, true)
             return { ok: true as const, id }
           }
           db.run(

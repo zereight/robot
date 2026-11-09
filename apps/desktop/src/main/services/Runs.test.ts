@@ -1898,7 +1898,9 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const started = await t.start()
     expect(started.state).toBe("failed")
     expect(started.reasonCode).toBe("worktree_failed")
-    expect(started.reasonText?.startsWith("Could not make a new worktree: ")).toBe(true)
+    // The text is the reason of git alone: the screen adds the sentence of spec 007 once.
+    expect(started.reasonText).toBeTruthy()
+    expect(started.reasonText).not.toContain("Could not make a new worktree")
     expect(started.finishedAt).not.toBeNull()
     expect((await t.get(started.id)).nodes.map((n) => n.state)).toEqual(["not_reached"])
   })
