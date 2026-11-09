@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdirSync } from "node:fs"
+import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import {
   type ApprovalOutput,
@@ -74,7 +74,14 @@ import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { FileClaims } from "./FileClaims.ts"
-import { branchExists, createWorktree, slugOfName, worktreeStamp } from "./GitWorktrees.ts"
+import {
+  branchExists,
+  createWorktree,
+  isWorktreeDirty,
+  removeWorktree as removeGitWorktree,
+  slugOfName,
+  worktreeStamp,
+} from "./GitWorktrees.ts"
 import { appendLog } from "./logs.ts"
 import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
@@ -142,6 +149,16 @@ export interface RunsService {
   ) => Effect.Effect<string, AppError>
   readonly list: (workflowId: string) => Effect.Effect<readonly RunSummary[]>
   readonly get: (runId: string) => Effect.Effect<RunDetail, AppError>
+  /** Shows the new worktree of a run in the system file browser (spec 007). */
+  readonly openWorktree: (runId: string) => Effect.Effect<void, AppError>
+  /**
+   * Removes the folder of the new worktree of a run and keeps its branch (spec 007). With
+   * changes that are not committed and `confirmed` false it removes nothing and says so.
+   */
+  readonly removeWorktree: (
+    runId: string,
+    confirmed: boolean,
+  ) => Effect.Effect<"removed" | "needs_confirm", AppError>
   /** True while a run of the workflow works, waits or is queued. */
   readonly active: (workflowId: string) => boolean
   /**
@@ -1870,11 +1887,59 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           return made.id
         })
 
+      /** The run with its worktree, or the reason it has none to show or remove. */
+      const worktreeRow = (runId: string) =>
+        Effect.gen(function* () {
+          const r = runRow(runId)
+          if (!r) return yield* new AppError({ code: "run_not_found" })
+          if (r.worktree_path === null || r.worktree_branch === null)
+            return yield* new AppError({ code: "worktree_not_found" })
+          return r as RunRow & { worktree_path: string; worktree_branch: string }
+        })
+
+      const gitFailed = (error: unknown) =>
+        new AppError({
+          code: "worktree_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        })
+
+      const openWorktree = (runId: string) =>
+        Effect.gen(function* () {
+          const r = yield* worktreeRow(runId)
+          if (r.worktree_removed === 1) return yield* new AppError({ code: "worktree_removed" })
+          yield* Effect.promise(() => platform.openPath(r.worktree_path))
+        })
+
+      const removeWorktree = (runId: string, confirmed: boolean) =>
+        Effect.gen(function* () {
+          const r = yield* worktreeRow(runId)
+          if (r.worktree_removed === 1) return "removed" as const
+          // A folder that is already gone counts as removed.
+          if (existsSync(r.worktree_path)) {
+            const dirty = yield* Effect.tryPromise({
+              try: () => isWorktreeDirty(r.worktree_path),
+              catch: gitFailed,
+            })
+            if (dirty && !confirmed) return "needs_confirm" as const
+            // The removal anchors in the worktree itself, not in the folder of the workflow,
+            // which the user may have changed since the run. The branch stays.
+            yield* Effect.tryPromise({
+              try: () => removeGitWorktree(r.worktree_path, r.worktree_path),
+              catch: gitFailed,
+            })
+          }
+          db.run("UPDATE run SET worktree_removed = 1 WHERE id = ?", runId)
+          changed(r.workflow_id, runId)
+          return "removed" as const
+        })
+
       return Runs.of({
         start,
         stop,
         stopTask,
         retryTask,
+        openWorktree,
+        removeWorktree,
         list: (workflowId) =>
           Effect.sync(() =>
             db

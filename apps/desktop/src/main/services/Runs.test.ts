@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -1882,6 +1882,87 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     const d = await t.ended(run.id)
     expect(d.worktree).not.toBeNull()
     expect(readFileSync(join(dir, "notes.md"), "utf8")).toBe("first\n")
+  })
+
+  test("open shows the worktree in the system file browser", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.worktree).not.toBeNull()
+    const seen: string[] = []
+    t.platform.openPath = async (p: string) => {
+      seen.push(p)
+    }
+    await t.run(Runs.use((r) => r.openWorktree(d.id)))
+    expect(seen).toEqual([d.worktree?.path ?? ""])
+    const codeOf = (runId: string) =>
+      t.run(Runs.use((r) => r.openWorktree(runId))).then(
+        () => "ok",
+        (e: { code?: string }) => e.code,
+      )
+    expect(await codeOf("missing")).toBe("run_not_found")
+  })
+
+  test("remove asks first when dirty; otherwise it removes the folder and keeps the branch", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"changed"}',
+    })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    const branch = d.worktree?.branch ?? ""
+    const remove = (confirmed: boolean) => t.run(Runs.use((r) => r.removeWorktree(d.id, confirmed)))
+    // The node changed a file without committing: not confirmed removes nothing.
+    expect(await remove(false)).toBe("needs_confirm")
+    expect(existsSync(path)).toBe(true)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+    expect(await remove(true)).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+    expect(git(dir, "rev-parse", "--verify", branch).trim()).toBeTruthy()
+    expect(git(dir, "worktree", "list", "--porcelain").trim()).not.toContain(path)
+    expect((await t.get(d.id)).worktree).toEqual({ path, branch, removed: true })
+    // Removing again is fine, but opening a removed worktree fails.
+    expect(await remove(false)).toBe("removed")
+    const opened = await t.run(Runs.use((r) => r.openWorktree(d.id))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(opened).toBe("worktree_removed")
+  })
+
+  test("remove of a clean worktree needs no confirm; a missing folder counts as removed", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const clean = await t.ended((await t.start()).id)
+    expect(await t.run(Runs.use((r) => r.removeWorktree(clean.id, false)))).toBe("removed")
+    expect(existsSync(clean.worktree?.path ?? "")).toBe(false)
+    expect((await t.get(clean.id)).worktree?.removed).toBe(true)
+    const gone = await t.ended((await t.start()).id)
+    rmSync(gone.worktree?.path ?? "", { recursive: true, force: true })
+    expect(await t.run(Runs.use((r) => r.removeWorktree(gone.id, false)))).toBe("removed")
+    expect((await t.get(gone.id)).worktree?.removed).toBe(true)
+  })
+
+  test("remove of a run with no worktree fails", async () => {
+    const t = await setup()
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.worktree).toBeNull()
+    const code = await t.run(Runs.use((r) => r.removeWorktree(d.id, false))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_not_found")
   })
 })
 
