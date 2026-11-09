@@ -8,6 +8,7 @@ import { CLIENT_METHODS } from "@robot/shared"
 import { Effect, Layer } from "effect"
 import { handlers, runRequest } from "./rpc.ts"
 import { Database } from "./services/Database.ts"
+import { gitEnv } from "./services/GitWorktrees.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { testRuntime } from "./services/testing.ts"
@@ -242,7 +243,7 @@ describe("the worktree of a run over rpc (spec 007)", () => {
     const t = await setup()
     const dir = mkdtempSync(join(tmpdir(), "robot-rpc-wt-"))
     const git = (...args: string[]) =>
-      execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" })
+      execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: gitEnv() })
     git("-c", "init.defaultBranch=main", "init", "--quiet")
     git("config", "user.email", "test@robot.local")
     git("config", "user.name", "ROBot test")

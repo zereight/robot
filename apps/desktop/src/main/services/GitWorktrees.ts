@@ -9,6 +9,19 @@ import { promisify } from "node:util"
 
 const runFile = promisify(execFile)
 
+/**
+ * The environment for a git call: without the variables that pin git to another repository.
+ * A git hook runs with `GIT_DIR` set, and it would win over `-C`, so every spawn scrubs them.
+ */
+export const gitEnv = (): NodeJS.ProcessEnv => {
+  const env = { ...process.env }
+  delete env.GIT_DIR
+  delete env.GIT_WORK_TREE
+  delete env.GIT_CEILING_DIRECTORIES
+  delete env.GIT_COMMON_DIR
+  return env
+}
+
 /** The longest reason that a failure carries. Git can write pages; the run view shows one line. */
 const REASON_MAX = 500
 
@@ -26,6 +39,7 @@ export const isInsideRepo = async (folder: string): Promise<boolean> => {
   try {
     const { stdout } = await runFile("git", ["-C", folder, "rev-parse", "--is-inside-work-tree"], {
       timeout: 30_000,
+      env: gitEnv(),
     })
     return stdout.trim() === "true"
   } catch {
@@ -41,6 +55,7 @@ export const createWorktree = async (repo: string, path: string, branch: string)
   try {
     await runFile("git", ["-C", repo, "worktree", "add", "-b", branch, path, "HEAD"], {
       timeout: 120_000,
+      env: gitEnv(),
     })
   } catch (error) {
     throw new Error(gitReason(error))
@@ -52,6 +67,7 @@ export const isWorktreeDirty = async (path: string): Promise<boolean> => {
   try {
     const { stdout } = await runFile("git", ["-C", path, "status", "--porcelain"], {
       timeout: 60_000,
+      env: gitEnv(),
     })
     return stdout.trim() !== ""
   } catch (error) {
@@ -67,6 +83,7 @@ export const removeWorktree = async (repo: string, path: string): Promise<void> 
   try {
     await runFile("git", ["-C", repo, "worktree", "remove", "--force", path], {
       timeout: 120_000,
+      env: gitEnv(),
     })
   } catch (error) {
     throw new Error(gitReason(error))
@@ -78,6 +95,7 @@ export const branchExists = async (repo: string, branch: string): Promise<boolea
   try {
     await runFile("git", ["-C", repo, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], {
       timeout: 30_000,
+      env: gitEnv(),
     })
     return true
   } catch {

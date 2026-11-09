@@ -7,6 +7,7 @@ import { catalogues, DOCUMENT_MAX, DOCUMENT_VERSIONS_MAX, NODES_MAX } from "@rob
 import { Effect, Exit } from "effect"
 import { ActionLog } from "./ActionLog.ts"
 import { Database } from "./Database.ts"
+import { gitEnv } from "./GitWorktrees.ts"
 import { Rules } from "./Rules.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -818,7 +819,9 @@ describe("a delete (spec 010)", () => {
     await t.w((x) => x.setFolder(flow.id, dir))
     await t.w((x) => x.setNewWorktree(flow.id, true))
     const path = join(mkdtempSync(join(tmpdir(), "robot-keep-")), "copy")
-    execFileSync("git", ["-C", dir, "worktree", "add", "-b", "robot/report-x", path, "HEAD"])
+    execFileSync("git", ["-C", dir, "worktree", "add", "-b", "robot/report-x", path, "HEAD"], {
+      env: gitEnv(),
+    })
     await t.sql(
       `INSERT INTO run (id, workflow_id, state, source, started_at, finished_at, worktree_path,
          worktree_branch)
@@ -830,7 +833,10 @@ describe("a delete (spec 010)", () => {
     await t.w((x) => x.remove(flow.id))
     expect(existsSync(path)).toBe(true)
     expect(
-      execFileSync("git", ["-C", dir, "worktree", "list", "--porcelain"], { encoding: "utf8" }),
+      execFileSync("git", ["-C", dir, "worktree", "list", "--porcelain"], {
+        encoding: "utf8",
+        env: gitEnv(),
+      }),
     ).toContain(path)
   })
 })
@@ -905,7 +911,8 @@ describe("the switch Work in a new worktree (spec 007)", () => {
 
 const gitRepo = () => {
   const dir = mkdtempSync(join(tmpdir(), "robot-worktree-"))
-  const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" })
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: gitEnv() })
   git("-c", "init.defaultBranch=main", "init", "--quiet")
   git("config", "user.email", "test@robot.local")
   git("config", "user.name", "ROBot test")

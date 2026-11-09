@@ -6,6 +6,7 @@ import { join } from "node:path"
 import {
   branchExists,
   createWorktree,
+  gitEnv,
   isInsideRepo,
   isWorktreeDirty,
   removeWorktree,
@@ -17,7 +18,7 @@ import {
 // temporary git repositories.
 
 const git = (cwd: string, ...args: string[]) =>
-  execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
+  execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", env: gitEnv() })
 
 const emptyRepo = () => {
   const dir = mkdtempSync(join(tmpdir(), "robot-git-"))
@@ -52,6 +53,20 @@ describe("is-inside-repo (spec 007, New worktree)", () => {
     expect(await isInsideRepo(join(dir, "inner"))).toBe(true)
     expect(await isInsideRepo(mkdtempSync(join(tmpdir(), "robot-plain-")))).toBe(false)
     expect(await isInsideRepo(join(dir, "missing"))).toBe(false)
+  })
+
+  test("a GIT_DIR in the environment does not pin git to another repository", async () => {
+    // A git hook runs with GIT_DIR set. It would win over -C without the scrub.
+    const dir = repo()
+    const before = process.env.GIT_DIR
+    process.env.GIT_DIR = join(dir, "..", "missing.git")
+    try {
+      expect(await isInsideRepo(dir)).toBe(true)
+      expect(await isInsideRepo(mkdtempSync(join(tmpdir(), "robot-plain-")))).toBe(false)
+    } finally {
+      if (before === undefined) delete process.env.GIT_DIR
+      else process.env.GIT_DIR = before
+    }
   })
 })
 

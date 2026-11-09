@@ -23,6 +23,7 @@ import { Chat } from "./Chat.ts"
 import { Connections, type ConnectionsOptions } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
+import { gitEnv } from "./GitWorktrees.ts"
 import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
@@ -2033,7 +2034,7 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
 })
 
 const git = (dir: string, ...args: string[]) =>
-  execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" })
+  execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: gitEnv() })
 
 const gitRepo = (committed = true) => {
   const dir = mkdtempSync(join(tmpdir(), "robot-run-wt-"))
