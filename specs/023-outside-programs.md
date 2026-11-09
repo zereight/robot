@@ -17,7 +17,8 @@ That turn has none of the tools of the chat (007, 010), under the rules of 007 (
   and the time it was last used.
 - **Helper**: a small program that comes with ROBot. The outside program starts it as an MCP server
   of the kind "program on this computer". The helper talks only to ROBot on this computer.
-- **Access key**: a secret that tells ROBot which entry calls. It is in the system keychain (014).
+- **Access key**: a secret that tells ROBot which entry calls. It is in the secrets file
+  (014).
 
 ## Flows
 
@@ -29,11 +30,12 @@ That turn has none of the tools of the chat (007, 010), under the rules of 007 (
    the app never shows the key again.
 3. Use: the outside program calls the tools of the helper (see "Tools"). The row of the entry shows
    the time it was last used.
-4. New key: "Make a new key" shows a new setup text. The old key stops at once.
+4. New key: "Make a new key" shows a new setup text. The old key stops at once when the new
+   key is saved (see 014).
 5. Change access: the user picks one of the three accesses on the row. It counts from the
    next call.
-6. Remove: after a confirm. The key stops at once. A turn that a message of the program started
-   goes on. The user can stop it.
+6. Remove: after a confirm. The key stops at once when the entry is removed (see 014). A
+   turn that a message of the program started goes on. The user can stop it.
 7. Turn off: the switch "Allow outside programs" off stops every key at once. The entries stay.
    On again, the same keys work.
 
@@ -149,6 +151,10 @@ cannot allow it.
   task, and the result. It holds no message text and no key. It keeps 90 days.
 - Entries and keys are local. They do not sync (019). An export (014) holds no entry and no key.
   An import of data brings no entry back.
+- In the states of 014, calls, "Add program", "Make a new key" and "Remove" follow
+  014. When Locked or Damaged the page shows "Cannot read the vault." with Retry. A call
+  fails with that reason. "Add program", "Make a new key" and "Remove" are refused. In
+  Missing key, an entry shows that its access key is missing, and the user makes a new key.
 - Only the computer shows this part of settings. A linked device (012) and the phone (011) do not
   show it, and cannot turn it on. A message of an outside program shows on them with its mark.
 - The model that answers in the chat may be on a vendor runtime (006). It gets the message of an
