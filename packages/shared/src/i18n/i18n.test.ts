@@ -24,7 +24,7 @@ describe("translation catalogues", () => {
   const NEGATED_KEY = "memory.hint"
   const NEGATED = {
     en: "ROBot does not train or change a model.",
-    ko: "ROBot은 모델을 학습시키거나 바꾸지 않습니다.",
+    ko: "ROBot은 모델을 학습시키거나 바꾸지 않아요.",
   } as const
 
   /** The text without the one negated sentence, which only the key `memory.hint` may hold, once. */
