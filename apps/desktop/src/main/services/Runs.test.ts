@@ -1866,6 +1866,46 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     ).toHaveLength(2)
   })
 
+  test("a retry after Remove is refused with worktree_unavailable and makes no run", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    expect(await t.run(Runs.use((r) => r.removeWorktree(first.id, true)))).toBe("removed")
+    const runs = () =>
+      t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM run WHERE workflow_id = ?", t.flow.id)
+    const before = (await runs())[0]?.n ?? 0
+    const code = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? ""))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect((await runs())[0]?.n).toBe(before)
+  })
+
+  test("a retry when the worktree folder is gone is refused with worktree_unavailable and makes no run", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    rmSync(first.worktree?.path ?? "", { recursive: true, force: true })
+    const runs = () =>
+      t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM run WHERE workflow_id = ?", t.flow.id)
+    const before = (await runs())[0]?.n ?? 0
+    const code = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? ""))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect((await runs())[0]?.n).toBe(before)
+  })
+
   test("for the permission rules the folder of the run is the worktree", async () => {
     const t = await setup()
     const dir = gitRepo()

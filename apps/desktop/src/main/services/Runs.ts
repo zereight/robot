@@ -1693,7 +1693,8 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
         if (waiting >= RUN_QUEUE_MAX) {
           // The queue of the workflow is full (spec 005, "Queue"): no task is made. A run that a
           // schedule starts is Failed with the reason; any other start shows the reason.
-          if (source !== "schedule") return { ok: false as const, name }
+          if (source !== "schedule")
+            return { ok: false as const, name, code: "run_queue_full" as const }
           db.run(
             `INSERT INTO run (id, workflow_id, state, source, trigger_text, reason, reason_code, started_at, finished_at)
              VALUES (?, ?, 'failed', ?, ?, ?, 'run_queue_full', ?, ?)`,
@@ -1731,7 +1732,13 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
             workflowsChanged(workflowId)
             return { ok: true as const, id }
           }
-        } else if (worktree) made = worktree
+        } else if (worktree) {
+          // A stored worktree whose folder is gone refuses the start with no run (spec 007,
+          // "New worktree"). The retry maps the refusal to `worktree_unavailable`.
+          if (!existsSync(worktree.path))
+            return { ok: false as const, name, code: "worktree_unavailable" as const }
+          made = worktree
+        }
         const another = [...active.values()].some((e) => e.workflowId === workflowId)
         db.run(
           `INSERT INTO run (id, workflow_id, state, source, trigger_text, device, started_at,
@@ -1858,6 +1865,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
           const detail = yield* preflight(r.workflow_id)
           if (!detail.graph.nodes.some((node) => node.number === t.node_number))
             return yield* new AppError({ code: "cannot_retry_task" })
+          // A retry of a removed worktree is refused with no run (spec 007, "New worktree"). A
+          // worktree whose folder is gone is refused on the reuse path of `launch` below.
+          if (r.worktree_path !== null && r.worktree_branch !== null && r.worktree_removed === 1)
+            return yield* new AppError({ code: "worktree_unavailable" })
           // Retry follows the rule of the source of the run (spec 005, "Queue"). It holds the
           // marks of the task that it tries again (spec 007, "Outside content"), and it uses the
           // same worktree as the run it tries again (spec 007, "New worktree").
@@ -1883,7 +1894,10 @@ export class Runs extends Context.Service<Runs, RunsService>()("robot/main/Runs"
                 : null,
             ),
           )
-          if (!made.ok) return yield* new AppError({ code: "run_queue_full", detail: made.name })
+          if (!made.ok)
+            return yield* made.code === "worktree_unavailable"
+              ? new AppError({ code: "worktree_unavailable" })
+              : new AppError({ code: "run_queue_full", detail: made.name })
           return made.id
         })
 
