@@ -56,6 +56,7 @@ export const reasonText = (t: T, code: string | null, text: string | null): stri
   if (code === "behind") return t("tasks.reason.behindNode", { node: text ?? "" })
   if (code === "run_queue_full") return t("error.run_queue_full", { detail: text ?? "" })
   if (code === "engine") return t("error.engine", { detail: text ?? "" })
+  if (code === "worktree_failed") return t("error.worktree_failed", { detail: text ?? "" })
   // A failure of the app has a code with words of its own, also in the other language.
   if (code && `error.${code}` in catalogues.en) return t(`error.${code}` as MessageKey)
   return text

@@ -1,5 +1,6 @@
 import { delimiter } from "node:path"
 import type { RuntimeKind } from "@robot/shared"
+import { scrubGitEnv } from "../services/GitWorktrees.ts"
 
 /**
  * Variables that make a vendor program use an API key, a gateway or a cloud account instead of
@@ -25,7 +26,8 @@ const EXTRA_PATH = ["/opt/homebrew/bin", "/usr/local/bin"]
 /**
  * The environment for a vendor program. pi and opencode are the exceptions: they serve the models
  * that the user set up in them, with keys from the environment among them, so their environment
- * is left alone.
+ * is left alone. The git variables go for every kind, so a `git` of the program cannot reach
+ * another repository through an inherited `GIT_DIR` or `GIT_INDEX_FILE`.
  */
 export const runtimeEnv = (
   base: NodeJS.ProcessEnv = process.env,
@@ -46,5 +48,5 @@ export const runtimeEnv = (
     )
     env.PATH = [...have.filter(Boolean), ...extra].join(delimiter)
   }
-  return env
+  return scrubGitEnv(env)
 }

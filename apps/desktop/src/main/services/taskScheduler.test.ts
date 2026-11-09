@@ -328,4 +328,13 @@ describe("one run holds its workflow until it ends (spec 005, Rules; 010)", () =
     expect(await result).toBe("stopped")
     expect(s.queuedCount("w")).toBe(0)
   })
+
+  test("endRun frees a slot that a task of the run still holds", async () => {
+    const { s, enter } = make(1)
+    enter(node("w", 1, 1))
+    await flush()
+    // The task missed its release: the end of the run frees the slot anyway.
+    s.endRun("run-1")
+    expect(enter(ticket("other")).granted).toBe(true)
+  })
 })

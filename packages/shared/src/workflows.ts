@@ -68,6 +68,10 @@ export interface Workflow {
   readonly serverId: string
   readonly name: string
   readonly folder: string
+  /** The switch "Work in a new worktree" (spec 007, "New worktree"). Off at first. */
+  readonly newWorktree: boolean
+  /** True when the folder is inside a Git repository. The switch cannot turn on when it is false. */
+  readonly folderInGit: boolean
   readonly permission: PermissionLevel
   readonly selfImprovement: boolean
   /** The proposals of self-improvement that wait for the user (spec 002). The list shows that one waits. */

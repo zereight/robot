@@ -191,6 +191,14 @@ export interface RunFeedback {
   readonly nodes: readonly number[]
 }
 
+/** The new Git worktree of a run, made when the switch "Work in a new worktree" was on (spec 007). */
+export interface RunWorktree {
+  readonly path: string
+  readonly branch: string
+  /** True after the user chose "Remove". The folder is gone and the branch stays. */
+  readonly removed: boolean
+}
+
 export interface RunSummary {
   readonly id: string
   readonly workflowId: string
@@ -202,6 +210,8 @@ export interface RunSummary {
   readonly reasonText: string | null
   readonly startedAt: number
   readonly finishedAt: number | null
+  /** The new worktree of the run, or null when the run has none (spec 007, "New worktree"). */
+  readonly worktree: RunWorktree | null
   /** The number of nodes that ended (done, failed, blocked, cancelled or skipped), and all nodes. */
   readonly ended: number
   readonly total: number

@@ -135,6 +135,13 @@ export class TaskScheduler {
       this.known.delete(w.ticket.taskId)
       w.fail(new Error("stopped"))
     }
+    // A slot that a task of the run still holds is freed too: each exit of a task releases
+    // its own slot, and this is the net for one that missed it.
+    for (const [taskId, ticket] of this.known)
+      if (ticket.runId === runId) {
+        this.running.delete(taskId)
+        this.known.delete(taskId)
+      }
     for (const [workflowId, holder] of this.held)
       if (holder.runId === runId) this.held.delete(workflowId)
     this.pump()

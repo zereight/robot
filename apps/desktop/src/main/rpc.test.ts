@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { Workflow } from "@robot/shared"
 import { CLIENT_METHODS } from "@robot/shared"
 import { Effect, Layer } from "effect"
 import { handlers, runRequest } from "./rpc.ts"
 import { Database } from "./services/Database.ts"
+import { gitEnv } from "./services/GitWorktrees.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { testRuntime } from "./services/testing.ts"
@@ -212,6 +217,78 @@ describe("a keychain that cannot be read (spec 020)", () => {
       ok: false,
       error: { code: "secret_keychain_read" },
     })
+  })
+})
+
+describe("the switch Work in a new worktree over rpc (spec 007)", () => {
+  test("workflows.setNewWorktree reaches the service: on fails outside git, off works", async () => {
+    const t = await setup()
+    const created = await t.ask("workflows.create", { serverId: t.server.id, name: "Report" })
+    expect(created.ok).toBe(true)
+    const id = (created as { value: Workflow }).value.id
+    // The default folder is not inside a git repository.
+    expect(await t.ask("workflows.setNewWorktree", { id, on: true })).toMatchObject({
+      ok: false,
+      error: { code: "worktree_not_git" },
+    })
+    expect(await t.ask("workflows.setNewWorktree", { id, on: false })).toMatchObject({
+      ok: true,
+      value: { newWorktree: false },
+    })
+  })
+})
+
+describe("the worktree of a run over rpc (spec 007)", () => {
+  test("open shows and remove deletes the folder of the worktree", async () => {
+    const t = await setup()
+    const dir = mkdtempSync(join(tmpdir(), "robot-rpc-wt-"))
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: gitEnv() })
+    git("-c", "init.defaultBranch=main", "init", "--quiet")
+    git("config", "user.email", "test@robot.local")
+    git("config", "user.name", "ROBot test")
+    writeFileSync(join(dir, "notes.md"), "first\n")
+    git("add", "notes.md")
+    git("commit", "--quiet", "-m", "first")
+    const path = join(mkdtempSync(join(tmpdir(), "robot-rpc-copy-")), "copy")
+    git("worktree", "add", "-b", "robot/report-20261109-120000", path, "HEAD")
+    const created = await t.ask("workflows.create", { serverId: t.server.id, name: "Report" })
+    const id = (created as { value: Workflow }).value.id
+    await t.runtime.runPromise(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.run(
+            `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch)
+             VALUES ('r1', ?, 'done', 'hand', 1, ?, ?)`,
+            id,
+            path,
+            "robot/report-20261109-120000",
+          ),
+        ),
+      ),
+    )
+    const seen: string[] = []
+    t.platform.openPath = async (p: string) => {
+      seen.push(p)
+    }
+    expect(await t.ask("runs.worktree.open", { runId: "r1" })).toMatchObject({ ok: true })
+    expect(seen).toEqual([path])
+    expect(await t.ask("runs.worktree.remove", { runId: "r1", confirmed: true })).toEqual({
+      ok: true,
+      value: "removed",
+    })
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test("open and remove of a missing run fail with run_not_found", async () => {
+    const t = await setup()
+    expect(await t.ask("runs.worktree.open", { runId: "missing" })).toMatchObject({
+      ok: false,
+      error: { code: "run_not_found" },
+    })
+    expect(
+      await t.ask("runs.worktree.remove", { runId: "missing", confirmed: false }),
+    ).toMatchObject({ ok: false, error: { code: "run_not_found" } })
   })
 })
 

@@ -1316,7 +1316,8 @@ export const electronPlatform = (): PlatformService => {
           appendFileSync(process.env.ROBOT_TEST_OPEN_LOG, `${path}\n`)
         return
       }
-      await shell.openPath(path)
+      const failure = await shell.openPath(path)
+      if (failure) throw new Error(failure)
     },
     openFile: async (path) => {
       // A test run writes the path to a log: no program starts.

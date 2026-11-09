@@ -716,4 +716,17 @@ export const migrations: readonly string[] = [
   -- The stored answer of an approval node: the answer, the comment and the time, as JSON.
   ALTER TABLE task ADD COLUMN verdict TEXT;
   `,
+  `
+  -- The switch "Work in a new worktree" of a workflow, and the new worktree of a run (spec 007,
+  -- "New worktree"). The switch is off at first. A run with no worktree keeps NULL columns;
+  -- "removed" is true after the user chose "Remove" (the folder is gone and the branch stays).
+  -- A run with the switch on stores the planned path and branch at launch and the subfolder of
+  -- the workflow folder at launch; "made" is true after git made the worktree.
+  ALTER TABLE workflow ADD COLUMN new_worktree INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE run ADD COLUMN worktree_path TEXT;
+  ALTER TABLE run ADD COLUMN worktree_branch TEXT;
+  ALTER TABLE run ADD COLUMN worktree_removed INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE run ADD COLUMN worktree_subfolder TEXT;
+  ALTER TABLE run ADD COLUMN worktree_made INTEGER NOT NULL DEFAULT 0;
+  `,
 ]

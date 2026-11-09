@@ -342,6 +342,11 @@ export interface RpcMethods {
   /** Only the user changes the level and the folder of a workflow (spec 010). */
   "workflows.setPermission": { input: { id: string; level: PermissionLevel }; output: Workflow }
   "workflows.setFolder": { input: { id: string; folder: string }; output: Workflow }
+  /**
+   * The switch "Work in a new worktree" (spec 007, "New worktree"). Turning it on fails with the
+   * error code `worktree_not_git` when the folder is not inside a Git repository.
+   */
+  "workflows.setNewWorktree": { input: { id: string; on: boolean }; output: Workflow }
   /** Opens the system folder dialog for the folder of the workflow. Cancel changes nothing. */
   "workflows.pickFolder": { input: { id: string }; output: Workflow }
   /** The graph editor (spec 010). Each change that is not a move keeps the graph as a version. */
@@ -406,6 +411,16 @@ export interface RpcMethods {
   "runs.start": { input: RunStart; output: RunSummary }
   /** Stops a run: its tasks are cancelled, a card that waits goes away (spec 005, 010). */
   "runs.stop": { input: { runId: string }; output: undefined }
+  /** Shows the new worktree of a run in the system file browser (spec 007). */
+  "runs.worktree.open": { input: { runId: string }; output: undefined }
+  /**
+   * Removes the folder of the new worktree of a run and keeps its branch (spec 007). With changes
+   * that are not committed and `confirmed` false it removes nothing and returns "needs_confirm".
+   */
+  "runs.worktree.remove": {
+    input: { runId: string; confirmed: boolean }
+    output: "removed" | "needs_confirm"
+  }
   /** The runs of a workflow, newest first. */
   "runs.list": { input: { workflowId: string }; output: readonly RunSummary[] }
   /** One run with its nodes, tasks, results, feedback and usage. */

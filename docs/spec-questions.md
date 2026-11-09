@@ -1188,6 +1188,9 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | 007 | May the user remove the worktrees of old runs together? | No. One at a time, from the run view. |
 | 007, 019 | Which computer makes the worktree when a run works on a linked computer? | The computer that holds the folder (019), because the work runs there. |
 | 035, 000 | The glossary now allows the word "worktree" for the new switch. The mark in 035 still says "on an own copy". Should the mark say "in a new worktree"? | Keep "on an own copy" until the owner decides. |
+| 007 | The workspace root can be inside the repository of the folder. The new worktree is then an untracked folder in the main checkout. | Not guarded for now. The owner decides if the app should put it elsewhere. |
+| 007 | A worktree that fails in the middle (for example a full disk) can leave its new branch behind. | The app removes the half-made folder and its own git entry, and deletes the branch only when this attempt made it and no worktree uses it. It never touches another worktree or branch. |
+
 ## Secrets in file (open points for 014)
 
 | Spec | Question | Choice for now |

@@ -1,5 +1,17 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
+import { execFileSync } from "node:child_process"
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -22,11 +34,12 @@ import { Chat } from "./Chat.ts"
 import { Connections, type ConnectionsOptions } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
+import { branchExists, gitEnv, worktreeStamp } from "./GitWorktrees.ts"
 import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { RunFacts } from "./RunFacts.ts"
-import { Runs, runClock } from "./Runs.ts"
+import { Runs, runClock, runWorktreeTest } from "./Runs.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { TaskQueue } from "./TaskQueue.ts"
@@ -72,6 +85,47 @@ const until = async (ok: () => boolean | Promise<boolean>, ms = 6000) => {
   throw new Error("timeout")
 }
 
+/** Every temporary folder a test made: the cleanup after each test removes them all. */
+const tempRoots: string[] = []
+const trackTemp = (dir: string): string => {
+  tempRoots.push(dir)
+  return dir
+}
+
+/** Removes a temporary folder. Read-only leftovers are made writable first, best effort. */
+const removeTemp = (dir: string): void => {
+  try {
+    rmSync(dir, { recursive: true, force: true })
+    return
+  } catch {
+    // A test that failed midway may have left read-only files: make them writable first.
+  }
+  try {
+    const writable = (at: string): void => {
+      for (const name of readdirSync(at)) {
+        const child = join(at, name)
+        try {
+          // A link is unlinked as it is, never followed: nothing outside the folder is touched.
+          const st = lstatSync(child)
+          if (st.isSymbolicLink()) continue
+          if (st.isDirectory()) writable(child)
+          chmodSync(child, 0o755)
+        } catch {
+          // Gone, or never writable: the removal below says what is left.
+        }
+      }
+    }
+    writable(dir)
+    rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // Best effort: debris stays, the suite still passes.
+  }
+}
+
+afterEach(() => {
+  for (const dir of tempRoots.splice(0)) removeTemp(dir)
+})
+
 interface NodeSpec {
   readonly name: string
   readonly prompt: string
@@ -100,6 +154,10 @@ const setup = async (
     decisionUrl: `http://127.0.0.1:${decisionServer.port}`,
     ...(options.databaseFile ? { databaseFile: options.databaseFile } : {}),
   })
+  // The data folder holds the workspaces with the worktrees the runs make: it goes with
+  // the cleanup after the test, and so does the home folder.
+  trackTemp(t.dataDir)
+  trackTemp(t.homeDir)
   const run = t.runtime.runPromise
   const server = await run(Servers.use((s) => s.local))
   await run(
@@ -572,7 +630,7 @@ describe("the approval node (spec 010)", () => {
   })
 
   test("a restart while the run waits: the run and the waiting task fail with The app stopped", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
     const t = await setup({ databaseFile: file })
     const first = await t.node({ name: "Draft", prompt: "Draft" })
     const g = await t.approvalNode("Gate")
@@ -809,7 +867,7 @@ describe("approval and question cards (spec 007, 003)", () => {
   })
 
   test("a card that nobody answers is closed with the app: the task fails with The app stopped", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "robot-run-")), "robot.db")
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
     const t = await setup({ databaseFile: file, level: "ask_all" })
     await t.node({ name: "Shell", prompt: command })
     const run = await t.start()
@@ -1400,7 +1458,7 @@ describe("the memory tool of a text node (spec 008)", () => {
 describe("file claims of a run in a shared folder (spec 025)", () => {
   test("a task that waits keeps its claim, the other workflow is refused and told, and the claim ends with the task", async () => {
     const t = await setup({ level: "ask_all" })
-    const folder = mkdtempSync(join(tmpdir(), "robot-shared-run-"))
+    const folder = trackTemp(mkdtempSync(join(tmpdir(), "robot-shared-run-")))
     await t.run(Workflows.use((w) => w.setFolder(t.flow.id, folder)))
     const server = await t.run(Servers.use((s) => s.local))
     const other = await t.run(
@@ -1751,3 +1809,2014 @@ describe("the tools of connections for a text node (spec 018)", () => {
     ).toEqual(["user", "allow_rule"])
   })
 })
+
+describe("the worktree of a run (spec 007, New worktree)", () => {
+  test("a run with no worktree shows none", async () => {
+    const t = await setup()
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'done', 'hand', 1)",
+      t.flow.id,
+    )
+    expect((await t.get("r1")).worktree).toBeNull()
+  })
+
+  test("a run with worktree columns shows path, branch and removed", async () => {
+    const t = await setup()
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'done', 'hand', 1, '/tmp/wt-1', 'robot/report-20261109-120000', 1)`,
+      t.flow.id,
+    )
+    expect((await t.get("r1")).worktree).toEqual({
+      path: "/tmp/wt-1",
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    await t.sql("UPDATE run SET worktree_removed = 1 WHERE id = 'r1'")
+    expect((await t.get("r1")).worktree).toEqual({
+      path: "/tmp/wt-1",
+      branch: "robot/report-20261109-120000",
+      removed: true,
+    })
+  })
+
+  test("a run with the switch on works in its own new worktree; a new run in a new one", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const a = await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from worktree"}',
+    })
+    const b = await t.node({
+      name: "Again",
+      prompt: 'tool write_file {"path":"second.md","content":"also worktree"}',
+    })
+    // Two nodes with no connection both run, each with an empty input.
+    expect([a.number, b.number]).toEqual([1, 2])
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("done")
+    const wt = first.worktree
+    expect(wt?.removed).toBe(false)
+    expect(wt?.branch).toMatch(/^robot\/report-\d{8}-\d{6}$/)
+    expect(wt?.path.startsWith(`${t.platform.defaultWorkspaceRoot}/`)).toBe(true)
+    expect(existsSync(wt?.path ?? "")).toBe(true)
+    // Every text node of the run wrote into the worktree, and the folder is unchanged.
+    expect(readFileSync(join(wt?.path ?? "", "notes.md"), "utf8")).toBe("from worktree")
+    expect(readFileSync(join(wt?.path ?? "", "second.md"), "utf8")).toBe("also worktree")
+    expect(readFileSync(join(dir, "notes.md"), "utf8")).toBe("first\n")
+    expect(git(dir, "rev-parse", "--verify", wt?.branch ?? "").trim()).toBe(
+      git(dir, "rev-parse", "HEAD").trim(),
+    )
+    const second = await t.ended((await t.start()).id)
+    expect(second.state).toBe("done")
+    expect(second.worktree).not.toBeNull()
+    expect(second.worktree?.path).not.toBe(wt?.path)
+    expect(second.worktree?.branch).not.toBe(wt?.branch)
+  })
+
+  test("a planned branch that a run already holds takes the next free number", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    // Hold the branch names of this second and the next ones, so the planned branch is taken.
+    const at = Date.now()
+    for (const ms of [0, 1000, 2000]) {
+      const stamp = worktreeStamp(new Date(at + ms))
+      await t.sql(
+        "INSERT INTO run (id, workflow_id, state, source, started_at, worktree_branch) VALUES (?, ?, 'done', 'hand', 1, ?)",
+        `taken-${ms}`,
+        t.flow.id,
+        `robot/report-${stamp}`,
+      )
+    }
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("done")
+    expect(d.worktree?.branch).toMatch(/^robot\/report-\d{8}-\d{6}-2$/)
+  })
+
+  test("a run whose folder is a subfolder works in the same subfolder of the worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "sub"))
+    writeFileSync(join(dir, "sub", "kept.md"), "kept\n")
+    git(dir, "add", "sub")
+    git(dir, "commit", "--quiet", "-m", "sub")
+    const sub = join(dir, "sub")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, sub)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from subfolder"}',
+    })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("done")
+    const wt = d.worktree
+    expect(wt?.removed).toBe(false)
+    expect(wt?.path.endsWith("/sub")).toBe(false)
+    expect(readFileSync(join(wt?.path ?? "", "sub", "notes.md"), "utf8")).toBe("from subfolder")
+    expect(readFileSync(join(wt?.path ?? "", "notes.md"), "utf8")).toBe("first\n")
+    expect(existsSync(join(sub, "notes.md"))).toBe(false)
+  })
+
+  test("a retry of a subfolder run writes into the same subfolder of the worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "sub"))
+    writeFileSync(join(dir, "sub", "kept.md"), "kept\n")
+    git(dir, "add", "sub")
+    git(dir, "commit", "--quiet", "-m", "sub")
+    const sub = join(dir, "sub")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, sub)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from subfolder"}',
+    })
+    mock.setFailure({ status: 500, message: "mock failure" }, 1)
+    let first: RunDetail
+    try {
+      first = await t.ended((await t.start()).id)
+    } finally {
+      mock.setFailure(null)
+    }
+    expect(first.state).toBe("failed")
+    const target = join(first.worktree?.path ?? "", "sub", "notes.md")
+    expect(readFileSync(target, "utf8")).toBe("from subfolder")
+    rmSync(target)
+    const retryId = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? "")))
+    const retry = await t.ended(retryId)
+    expect(retry.state).toBe("done")
+    expect(retry.worktree).toEqual(first.worktree)
+    expect(readFileSync(target, "utf8")).toBe("from subfolder")
+  })
+
+  test("a retry uses the stored subfolder, not the current folder", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    for (const sub of ["sub", "sub2"]) {
+      mkdirSync(join(dir, sub))
+      writeFileSync(join(dir, sub, "kept.md"), "kept\n")
+    }
+    git(dir, "add", "sub", "sub2")
+    git(dir, "commit", "--quiet", "-m", "subs")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, join(dir, "sub"))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from subfolder"}',
+    })
+    mock.setFailure({ status: 500, message: "mock failure" }, 1)
+    let first: RunDetail
+    try {
+      first = await t.ended((await t.start()).id)
+    } finally {
+      mock.setFailure(null)
+    }
+    expect(first.state).toBe("failed")
+    const target = join(first.worktree?.path ?? "", "sub", "notes.md")
+    expect(readFileSync(target, "utf8")).toBe("from subfolder")
+    rmSync(target)
+    // The user moves the folder after the run: the retry still writes into the stored subfolder.
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, join(dir, "sub2"))))
+    const retryId = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? "")))
+    const retry = await t.ended(retryId)
+    expect(retry.state).toBe("done")
+    expect(retry.worktree).toEqual(first.worktree)
+    expect(readFileSync(target, "utf8")).toBe("from subfolder")
+    expect(existsSync(join(first.worktree?.path ?? "", "sub2", "notes.md"))).toBe(false)
+  })
+
+  test("a subfolder named ..cache counts as inside the repository", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "..cache"))
+    writeFileSync(join(dir, "..cache", "kept.md"), "kept\n")
+    git(dir, "add", "..cache")
+    git(dir, "commit", "--quiet", "-m", "cache")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, join(dir, "..cache"))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"from cache"}',
+    })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("done")
+    expect(readFileSync(join(d.worktree?.path ?? "", "..cache", "notes.md"), "utf8")).toBe(
+      "from cache",
+    )
+  })
+
+  test("a subfolder that the last commit does not hold fails the run", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "fresh"))
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, join(dir, "fresh"))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Write", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("failed")
+    expect(d.reasonCode).toBe("worktree_not_in_commit")
+    expect(d.reasonText).toBeNull()
+    expect(d.nodes.map((n) => n.state)).toEqual(["not_reached"])
+    // The worktree was made, so Remove can delete it.
+    expect(d.worktree).not.toBeNull()
+    expect(existsSync(d.worktree?.path ?? "")).toBe(true)
+    expect(await t.run(Runs.use((r) => r.removeWorktree(d.id, true)))).toBe("removed")
+  })
+
+  test("a Stop after git exits but with a missing subfolder ends the run as stopped, not failed", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    mkdirSync(join(dir, "fresh"))
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, join(dir, "fresh"))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const entered = join(dir, "sub-entered")
+    const release = join(dir, "sub-release")
+    runWorktreeTest.subCheckGate = { entered, release }
+    try {
+      const started = await t.start()
+      await until(() => existsSync(entered))
+      await t.run(Runs.use((r) => r.stop(started.id)))
+      writeFileSync(release, "go\n")
+      const d = await t.ended(started.id)
+      expect(d.state).toBe("cancelled")
+      expect(d.reasonText).toBe("Stopped by you")
+      expect(d.reasonCode).toBe("user")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
+      ).toEqual([{ n: 0 }])
+      expect(d.nodes.map((n) => n.state)).toEqual(["not_reached"])
+      expect(d.worktree).not.toBeNull()
+      expect(existsSync(d.worktree?.path ?? "")).toBe(true)
+      expect(await t.run(Runs.use((r) => r.removeWorktree(d.id, true)))).toBe("removed")
+    } finally {
+      runWorktreeTest.subCheckGate = null
+    }
+  })
+
+  test("a run with the switch off works in the folder and has no worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"in folder"}',
+    })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("done")
+    expect(d.worktree).toBeNull()
+    expect(readFileSync(join(dir, "notes.md"), "utf8")).toBe("in folder")
+  })
+
+  test("a run fails with worktree_failed when no worktree can be made, and starts no task", async () => {
+    const t = await setup()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, gitRepo(false))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Write", prompt: "hello" })
+    const started = await t.start()
+    expect(started.finishedAt).toBeNull()
+    const d = await t.ended(started.id)
+    expect(d.state).toBe("failed")
+    expect(d.reasonCode).toBe("worktree_failed")
+    // The text is the reason of git alone: the screen adds the sentence of spec 007 once.
+    expect(d.reasonText).toBeTruthy()
+    expect(d.reasonText).not.toContain("Could not make a new worktree")
+    expect(d.finishedAt).not.toBeNull()
+    expect(d.nodes.map((n) => n.state)).toEqual(["not_reached"])
+    // No folder was made, so the planned path and branch are cleared.
+    expect(d.worktree).toBeNull()
+  })
+
+  test("a relative workspace root fails the run before git runs and removes nothing", async () => {
+    const t = await setup()
+    // No commit: git itself would fail with its own reason. The absolute-path check
+    // fires first, so the reason below proves the run never reached git.
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, gitRepo(false))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.run(SettingsStore.use((s) => s.update({ workspaceRoot: "relative-root" })))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("failed")
+    expect(d.reasonCode).toBe("worktree_failed")
+    expect(d.reasonText).toBe("the workspace folder is not an absolute path")
+    expect(d.worktree).toBeNull()
+    expect(existsSync(join(process.cwd(), "relative-root"))).toBe(false)
+  })
+
+  test("a cleanup that cannot delete the folder keeps the row, so Remove still reaches it", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    // The hook makes the new worktree read-only and fails the creation: git leaves the
+    // folder behind, and the cleanup cannot delete it.
+    writeFileSync(hook, "#!/bin/sh\nchmod -R a-w .\nexit 1\n")
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    const planned = (
+      await t.rows<{ worktree_path: string; worktree_branch: string }>(
+        "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+        run.id,
+      )
+    )[0] ?? { worktree_path: "", worktree_branch: "" }
+    expect(planned.worktree_path).not.toBe("")
+    const writable = () => {
+      try {
+        execFileSync("chmod", ["-R", "u+w", planned.worktree_path])
+      } catch {
+        // Already gone, or never made: the removal below says what is left.
+      }
+    }
+    try {
+      const d = await t.ended(run.id)
+      expect(d.state).toBe("failed")
+      expect(d.reasonCode).toBe("worktree_failed")
+      // The folder is still there: the row keeps the path and the branch. The entry went
+      // with the cleanup; only the folder stayed.
+      expect(existsSync(planned.worktree_path)).toBe(true)
+      expect(d.worktree).toEqual({
+        path: planned.worktree_path,
+        branch: planned.worktree_branch,
+        removed: false,
+      })
+      expect(git(dir, "worktree", "list", "--porcelain")).not.toContain(planned.worktree_path)
+      // With the permissions back, Remove deletes the leftover. The entry went with
+      // the cleanup, so the status cannot be read and Remove asks first.
+      writable()
+      expect(await t.run(Runs.use((r) => r.removeWorktree(run.id, false)))).toBe("needs_confirm")
+      expect(existsSync(planned.worktree_path)).toBe(true)
+      expect(await t.run(Runs.use((r) => r.removeWorktree(run.id, true)))).toBe("removed")
+      expect(existsSync(planned.worktree_path)).toBe(false)
+    } finally {
+      writable()
+      rmSync(planned.worktree_path, { recursive: true, force: true })
+    }
+  })
+
+  test("a throw in worktree preparation fails the run closed: no node runs, never in the user folder", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "First", prompt: "hello", continueOnFailure: true })
+    const second = await t.node({
+      name: "Second",
+      prompt: 'tool write_file {"path":"pwned.md","content":"x"}',
+    })
+    await t.connect(first, second)
+    runWorktreeTest.failPrepareWith = "db is locked"
+    try {
+      const d = await t.ended((await t.start()).id)
+      expect(d.state).toBe("failed")
+      expect(d.reasonCode).toBe("worktree_failed")
+      expect(d.reasonText).toBe("db is locked")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", d.id),
+      ).toEqual([{ n: 0 }])
+      expect(d.nodes.map((n) => n.state)).toEqual(["not_reached", "not_reached"])
+      expect(d.ended).toBe(0)
+      expect(d.total).toBe(2)
+      expect(existsSync(join(dir, "pwned.md"))).toBe(false)
+    } finally {
+      runWorktreeTest.failPrepareWith = null
+    }
+  })
+
+  test("the run shows while the worktree is made: read-only editor, planned worktree, first task waits", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const entered = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${entered}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const started = await t.start()
+    expect(started.finishedAt).toBeNull()
+    try {
+      await until(() => existsSync(entered))
+      const row = (
+        await t.rows<{
+          worktree_path: string
+          worktree_branch: string
+          worktree_made: number
+        }>("SELECT worktree_path, worktree_branch, worktree_made FROM run WHERE id = ?", started.id)
+      )[0]
+      expect(row?.worktree_made).toBe(0)
+      const planned = { path: row?.worktree_path ?? "", branch: row?.worktree_branch ?? "" }
+      expect(planned.path).not.toBe("")
+      expect(planned.branch).not.toBe("")
+      const mid = await t.get(started.id)
+      expect(mid.worktree).toEqual({ ...planned, removed: false })
+      expect(mid.finishedAt).toBeNull()
+      expect(
+        await t.rows<{ state: string }>("SELECT state FROM task WHERE run_id = ?", started.id),
+      ).toEqual([{ state: "queued" }])
+      expect((await t.run(Workflows.use((w) => w.get(t.flow.id)))).running).toBe(true)
+      const renameCode = await t.run(Workflows.use((w) => w.rename(t.flow.id, "Elsewhere"))).then(
+        () => "ok",
+        (e: { code?: string }) => e.code,
+      )
+      expect(renameCode).toBe("workflow_running")
+      const removeCode = await t.run(Workflows.use((w) => w.remove(t.flow.id))).then(
+        () => "ok",
+        (e: { code?: string }) => e.code,
+      )
+      expect(removeCode).toBe("workflow_running")
+      writeFileSync(release, "go\n")
+      const d = await t.ended(started.id)
+      expect(d.state).toBe("done")
+      expect(d.worktree?.removed).toBe(false)
+      expect(d.worktree?.path).toBe(planned.path)
+      expect(d.worktree?.branch).toBe(planned.branch)
+      expect(existsSync(d.worktree?.path ?? "")).toBe(true)
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  }, 30000)
+
+  test("a stop while the worktree is made ends the run as stopped, starts no task and removes the half-made folder", async () => {
+    const t = await setup()
+    const { dir, started: entered, hooks } = slowHookRepo(30)
+    const hook = join(hooks, "post-checkout")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    try {
+      const started = await t.start()
+      // The hook runs: creation is in flight. The planned path is on the row from the launch.
+      await until(() => existsSync(entered))
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            started.id,
+          )
+        )[0]?.worktree_path ?? ""
+      expect(planned).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(started.id)))
+      const d = await t.ended(started.id)
+      expect(d.state).toBe("cancelled")
+      expect(d.reasonText).toBe("Stopped by you")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
+      ).toEqual([{ n: 0 }])
+      // The cleanup runs in the background: the folder goes and the row is cleared after.
+      await until(() => !existsSync(planned))
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              started.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      // Nothing was made, so the planned path and branch are cleared.
+      expect((await t.get(started.id)).worktree).toBeNull()
+    } finally {
+      await expectHookGone(hook)
+    }
+  }, 30000)
+
+  test("a stop during creation ends the run before the cleanup ends", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    // A git that gates `worktree remove` on a file: the cleanup blocks in it while the test
+    // reads the run. Every other call passes through to the real git.
+    const realGit = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim()
+    const bin = trackTemp(mkdtempSync(join(tmpdir(), "robot-gitbin-")))
+    const entered = join(bin, "remove-entered")
+    const go = join(bin, "remove-release")
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\nhit=no\nprev=\nfor a in "$@"; do if [ "$prev" = "worktree" ] && [ "$a" = "remove" ]; then hit=yes; break; fi; prev="$a"; done\nif [ "$hit" = "yes" ]; then touch ${entered}; n=0; while [ ! -f ${go} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done; fi\nexec ${realGit} "$@"\n`,
+    )
+    chmodSync(join(bin, "git"), 0o755)
+    const pathBefore = process.env.PATH ?? ""
+    process.env.PATH = `${bin}${pathBefore === "" ? "" : `:${pathBefore}`}`
+    try {
+      await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+      await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+      await t.node({ name: "Say", prompt: "hello" })
+      const run = await t.start()
+      await until(() => existsSync(started))
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      // The cleanup reached `worktree remove` and blocks there: the run is already ended.
+      await until(() => existsSync(entered))
+      const stopped = await t.get(run.id)
+      expect(stopped.state).toBe("cancelled")
+      expect(stopped.reasonText).toBe("Stopped by you")
+      expect(stopped.finishedAt).not.toBeNull()
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_path ?? ""
+      expect(planned).not.toBe("")
+      expect(existsSync(planned)).toBe(true)
+      // Release the cleanup: it ends with the folder, the entry and the row cleared.
+      writeFileSync(go, "go\n")
+      await until(() => !existsSync(planned))
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(git(dir, "worktree", "list", "--porcelain")).not.toContain(planned)
+      expect((await t.get(run.id)).worktree).toBeNull()
+    } finally {
+      process.env.PATH = pathBefore
+      writeFileSync(release, "go\n")
+      writeFileSync(go, "go\n")
+      await expectHookGone(hook)
+    }
+  }, 30000)
+
+  test("after the cleanup of a stopped creation ends, one more event tells the run view", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    // A git that gates `worktree remove` on a file: the cleanup blocks in it while the test
+    // counts the events of the run. Every other call passes through to the real git.
+    const realGit = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim()
+    const bin = trackTemp(mkdtempSync(join(tmpdir(), "robot-gitbin-")))
+    const entered = join(bin, "remove-entered")
+    const go = join(bin, "remove-release")
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\nhit=no\nprev=\nfor a in "$@"; do if [ "$prev" = "worktree" ] && [ "$a" = "remove" ]; then hit=yes; break; fi; prev="$a"; done\nif [ "$hit" = "yes" ]; then touch ${entered}; n=0; while [ ! -f ${go} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done; fi\nexec ${realGit} "$@"\n`,
+    )
+    chmodSync(join(bin, "git"), 0o755)
+    const pathBefore = process.env.PATH ?? ""
+    process.env.PATH = `${bin}${pathBefore === "" ? "" : `:${pathBefore}`}`
+    try {
+      await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+      await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+      await t.node({ name: "Say", prompt: "hello" })
+      const run = await t.start()
+      await until(() => existsSync(started))
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      // The cleanup reached `worktree remove` and blocks there: the row still names the
+      // worktree, and every event of the run so far saw it that way.
+      await until(() => existsSync(entered))
+      const eventsOfRun = () =>
+        t.events.filter(
+          (e) => e.event === "runs.changed" && (e.payload as { runId?: string }).runId === run.id,
+        )
+      const before = eventsOfRun().length
+      expect(before).toBeGreaterThan(0)
+      expect(
+        (
+          await t.rows<{ worktree_path: string | null }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_path,
+      ).not.toBeNull()
+      // Release the cleanup: it ends with the row cleared, and one more event tells the
+      // run view, which reads the run with no worktree.
+      writeFileSync(go, "go\n")
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      await until(async () => eventsOfRun().length > before)
+      const done = await t.get(run.id)
+      expect(done.state).toBe("cancelled")
+      expect(done.worktree).toBeNull()
+    } finally {
+      process.env.PATH = pathBefore
+      writeFileSync(release, "go\n")
+      writeFileSync(go, "go\n")
+      await expectHookGone(hook)
+    }
+  }, 30000)
+
+  test("a run that waits in the queue makes its worktree only when it starts", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const pathA = (await t.get(runA.id)).worktree?.path ?? ""
+    expect(existsSync(pathA)).toBe(true)
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    // B waits in the scheduler for its first slot: on the old code its worktree is made by
+    // now (it is made before the queue), on the new code nothing is made for it yet.
+    const queued = () =>
+      t.run(TaskQueue.use((q) => Effect.sync(() => q.scheduler.queuedCount(t.flow.id))))
+    await until(async () => (await queued()) === 1)
+    const plannedB =
+      (
+        await t.rows<{ worktree_path: string }>(
+          "SELECT worktree_path FROM run WHERE id = ?",
+          runB.id,
+        )
+      )[0]?.worktree_path ?? ""
+    expect(plannedB).not.toBe("")
+    expect(plannedB).not.toBe(pathA)
+    expect(existsSync(plannedB)).toBe(false)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).toContain(pathA)
+    expect(listed).not.toContain(plannedB)
+    // A ends; B starts and only then makes its worktree.
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runA.id)
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    const doneB = await t.ended(runB.id)
+    expect(doneB.state).toBe("done")
+    expect(doneB.worktree?.path).toBe(plannedB)
+    expect(existsSync(plannedB)).toBe(true)
+  })
+
+  test("a queued run with only a planned worktree shows no worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    const row = (
+      await t.rows<{ worktree_path: string; worktree_branch: string; worktree_made: number }>(
+        "SELECT worktree_path, worktree_branch, worktree_made FROM run WHERE id = ?",
+        runB.id,
+      )
+    )[0]
+    expect(row?.worktree_path).not.toBe("")
+    expect(row?.worktree_made).toBe(0)
+    expect(existsSync(row?.worktree_path ?? "")).toBe(false)
+    expect((await t.get(runB.id)).worktree).toBeNull()
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runA.id)
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runB.id)
+  })
+
+  test("a run stopped before its worktree was made shows none, and Remove and Open fail with not_found", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    await t.run(Runs.use((r) => r.stop(runB.id)))
+    const stopped = await t.ended(runB.id)
+    expect(stopped.state).toBe("cancelled")
+    expect(stopped.worktree).toBeNull()
+    const removeCode = await t.run(Runs.use((r) => r.removeWorktree(runB.id, true))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(removeCode).toBe("worktree_not_found")
+    const openCode = await t.run(Runs.use((r) => r.openWorktree(runB.id))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(openCode).toBe("worktree_not_found")
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runA.id)
+  })
+
+  test("a never-made worktree with a leftover folder still shows, so Remove can delete it", async () => {
+    const t = await setup()
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
+    mkdirSync(leftover, { recursive: true })
+    writeFileSync(join(leftover, "notes.md"), "leftover\n")
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, finished_at, reason, reason_code,
+         worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'failed', 'hand', 1, 2, 'The app stopped', 'restart', ?, 'robot/report-20261109-120000', 0)`,
+      t.flow.id,
+      leftover,
+    )
+    expect((await t.get("r1")).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    expect(await t.run(Runs.use((r) => r.removeWorktree("r1", true)))).toBe("removed")
+    expect(existsSync(leftover)).toBe(false)
+  })
+
+  test("a removed leftover worktree still shows as removed; a bare plan shows none", async () => {
+    const t = await setup()
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
+    mkdirSync(leftover, { recursive: true })
+    writeFileSync(join(leftover, "notes.md"), "leftover\n")
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'failed', 'hand', 1, ?, 'robot/report-20261109-120000', 0)`,
+      t.flow.id,
+      leftover,
+    )
+    expect((await t.get("r1")).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    expect(await t.run(Runs.use((r) => r.removeWorktree("r1", true)))).toBe("removed")
+    expect(existsSync(leftover)).toBe(false)
+    expect((await t.get("r1")).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: true,
+    })
+    // A never-made plan with no folder that was never removed shows none.
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r2', ?, 'failed', 'hand', 2, ?, 'robot/report-20261109-120001', 0)`,
+      t.flow.id,
+      join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-missing-"))), "copy"),
+    )
+    expect((await t.get("r2")).worktree).toBeNull()
+  })
+
+  test("a waiting run shows its first task; when its worktree cannot be made the task goes and no node runs", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    const queued = () =>
+      t.run(TaskQueue.use((q) => Effect.sync(() => q.scheduler.queuedCount(t.flow.id))))
+    await until(async () => (await queued()) === 1)
+    const waiting = await t.rows<{ id: string; state: string }>(
+      "SELECT id, state FROM task WHERE run_id = ?",
+      runB.id,
+    )
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]?.state).toBe("queued")
+    const canNext = await t.run(
+      TaskQueue.use((q) => Effect.sync(() => q.scheduler.canRunNext(waiting[0]?.id ?? ""))),
+    )
+    expect(canNext).toBe(true)
+    rmSync(join(dir, ".git"), { recursive: true, force: true })
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runA.id)
+    const failedB = await t.ended(runB.id)
+    expect(failedB.state).toBe("failed")
+    expect(failedB.reasonCode).toBe("worktree_failed")
+    expect(
+      await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", runB.id),
+    ).toEqual([{ n: 0 }])
+    expect(failedB.nodes.map((n) => n.state)).toEqual(["not_reached", "not_reached"])
+    expect(failedB.ended).toBe(0)
+    expect(failedB.total).toBe(2)
+  })
+
+  test("a stop during creation removes the waiting first task and starts no node", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    const queued = () =>
+      t.run(TaskQueue.use((q) => Effect.sync(() => q.scheduler.queuedCount(t.flow.id))))
+    await until(async () => (await queued()) === 1)
+    const waiting = await t.rows<{ id: string; state: string }>(
+      "SELECT id, state FROM task WHERE run_id = ?",
+      runB.id,
+    )
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]?.state).toBe("queued")
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    try {
+      await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+      await t.ended(runA.id)
+      await until(() => existsSync(started))
+      const during = await t.rows<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM task WHERE run_id = ?",
+        runB.id,
+      )
+      expect(during).toEqual([{ n: 1 }])
+      await t.run(Runs.use((r) => r.stop(runB.id)))
+      const stopped = await t.ended(runB.id)
+      expect(stopped.state).toBe("cancelled")
+      expect(stopped.reasonText).toBe("Stopped by you")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", runB.id),
+      ).toEqual([{ n: 0 }])
+      expect(stopped.nodes.map((n) => n.state)).toEqual(["not_reached", "not_reached"])
+      expect(stopped.ended).toBe(0)
+      expect(stopped.total).toBe(2)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
+  test("a Stop during creation leaves no stale worktree entry and no planned branch, but keeps older branches", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    git(dir, "branch", "keep-me")
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned = (
+        await t.rows<{ worktree_path: string; worktree_branch: string }>(
+          "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+          run.id,
+        )
+      )[0] ?? { worktree_path: "", worktree_branch: "" }
+      expect(planned.worktree_path).not.toBe("")
+      expect(planned.worktree_branch).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      // The cleanup runs in the background: it ends with the row cleared.
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(existsSync(planned.worktree_path)).toBe(false)
+      expect((await t.get(run.id)).worktree).toBeNull()
+      const listed = git(dir, "worktree", "list", "--porcelain")
+      expect(listed).not.toContain(planned.worktree_path)
+      expect(listed).not.toContain("prunable")
+      expect(await branchExists(dir, planned.worktree_branch)).toBe(false)
+      expect(await branchExists(dir, "keep-me")).toBe(true)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
+  test("a Stop during creation with relative worktree paths leaves no entry and no branch", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    git(dir, "config", "worktree.useRelativePaths", "true")
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned = (
+        await t.rows<{ worktree_path: string; worktree_branch: string }>(
+          "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+          run.id,
+        )
+      )[0] ?? { worktree_path: "", worktree_branch: "" }
+      expect(planned.worktree_path).not.toBe("")
+      expect(planned.worktree_branch).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      // The cleanup runs in the background: it ends with the row cleared.
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(existsSync(planned.worktree_path)).toBe(false)
+      expect((await t.get(run.id)).worktree).toBeNull()
+      const listed = git(dir, "worktree", "list", "--porcelain")
+      expect(listed).not.toContain(planned.worktree_path)
+      expect(listed).not.toContain("prunable")
+      expect(await branchExists(dir, planned.worktree_branch)).toBe(false)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
+  test("a stopped creation drops only its own worktree entry, never another stale one", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    // Another worktree whose folder moved away: its entry is stale, not locked.
+    const otherPath = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-other-"))), "userwt")
+    git(dir, "worktree", "add", "--quiet", "-b", "userwt-branch", otherPath)
+    renameSync(otherPath, join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-moved-"))), "userwt"))
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_path ?? ""
+      expect(planned).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      // The cleanup ends with the row cleared: only then is the list read.
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(existsSync(planned)).toBe(false)
+      const listed = git(dir, "worktree", "list", "--porcelain")
+      expect(listed).not.toContain(planned)
+      expect(listed).toContain(otherPath)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
+  test("a stopped creation keeps a planned branch whose tip moved past its base commit", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    writeFileSync(join(dir, "second.md"), "second\n")
+    git(dir, "add", "second.md")
+    git(dir, "commit", "--quiet", "-m", "second")
+    const first = git(dir, "rev-parse", "HEAD~1").trim()
+    const base = git(dir, "rev-parse", "HEAD").trim()
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned =
+        (
+          await t.rows<{ worktree_branch: string }>(
+            "SELECT worktree_branch FROM run WHERE id = ?",
+            run.id,
+          )
+        )[0]?.worktree_branch ?? ""
+      expect(planned).not.toBe("")
+      expect(git(dir, "rev-parse", planned).trim()).toBe(base)
+      // Someone moves the branch while the creation hangs in its hook.
+      git(dir, "update-ref", `refs/heads/${planned}`, first)
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      expect(await branchExists(dir, planned)).toBe(true)
+      expect(git(dir, "rev-parse", planned).trim()).toBe(first)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
+  test("a run that waited counts as running while its worktree is made", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    try {
+      await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+      await t.ended(runA.id)
+      await until(() => existsSync(started))
+      expect((await t.get(runB.id)).state).toBe("running")
+      writeFileSync(release, "go\n")
+      await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+      expect((await t.ended(runB.id)).state).toBe("done")
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
+  test("a slot held by a failed first task is freed: the next runs still start", async () => {
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ tasksAtOnce: 1 })))
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const gate = await t.approvalNode("Gate")
+    const broken = await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    await t.connect(gate, broken, { kind: "verdict", verdict: "approve" })
+    const failed = await t.start()
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    const first = await t.ended(failed.id)
+    expect(first.state).toBe("failed")
+    // A retry waits in the queue behind another run while the folder goes away: its first task
+    // holds the only slot when the gate fails it.
+    const holder = await t.start()
+    await t.waitCard()
+    const retryId = await t.run(Runs.use((r) => r.retryTask(first.nodes[1]?.task?.id ?? "")))
+    await until(async () => (await t.get(retryId)).state === "queued")
+    rmSync(first.worktree?.path ?? "", { recursive: true, force: true })
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(holder.id)
+    const retry = await t.ended(retryId)
+    expect(retry.state).toBe("failed")
+    expect(retry.reasonCode).toBe("worktree_unavailable")
+    // The slot is free: a run of another workflow and the next run here still start.
+    const server = await t.run(Servers.use((s) => s.local))
+    const other = await t.run(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Other" })),
+    )
+    await t.run(Workflows.use((w) => w.setSelfImprovement(other.id, false)))
+    await t.run(Memory.use((m) => m.setEnabled(other.id, false)))
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(other.id, {
+          kind: "text",
+          name: "Say",
+          prompt: "hello",
+          accountId: t.account.id,
+          model: "mock-fast",
+        }),
+      ),
+    )
+    const w2 = await t.run(Runs.use((r) => r.start({ workflowId: other.id })))
+    expect((await t.run(Runs.use((r) => r.get(w2.id)))).finishedAt).toBeNull()
+    await until(async () => (await t.run(Runs.use((r) => r.get(w2.id)))).finishedAt !== null)
+    expect((await t.run(Runs.use((r) => r.get(w2.id)))).state).toBe("done")
+    const next = await t.start()
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    expect((await t.ended(next.id)).state).toBe("failed")
+  })
+
+  test("a slot held by a run whose worktree cannot be made is freed: the next runs still start", async () => {
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ tasksAtOnce: 1 })))
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, gitRepo(false))))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Write", prompt: "hello" })
+    const failed = await t.ended((await t.start()).id)
+    expect(failed.state).toBe("failed")
+    expect(failed.reasonCode).toBe("worktree_failed")
+    const server = await t.run(Servers.use((s) => s.local))
+    const other = await t.run(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Other" })),
+    )
+    await t.run(Workflows.use((w) => w.setSelfImprovement(other.id, false)))
+    await t.run(Memory.use((m) => m.setEnabled(other.id, false)))
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(other.id, {
+          kind: "text",
+          name: "Say",
+          prompt: "hello",
+          accountId: t.account.id,
+          model: "mock-fast",
+        }),
+      ),
+    )
+    const w2 = await t.run(Runs.use((r) => r.start({ workflowId: other.id })))
+    await until(async () => (await t.run(Runs.use((r) => r.get(w2.id)))).finishedAt !== null)
+    expect((await t.run(Runs.use((r) => r.get(w2.id)))).state).toBe("done")
+    // The next run here gets its slot too: it fails on git, it is not stuck.
+    const next = await t.ended((await t.start()).id)
+    expect(next.state).toBe("failed")
+    expect(next.reasonCode).toBe("worktree_failed")
+  })
+
+  test("a retry while the worktree is removed is refused with worktree_unavailable", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    const path = first.worktree?.path ?? ""
+    const removing = t.run(Runs.use((r) => r.removeWorktree(first.id, true)))
+    const retrying = t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? "")))
+    const retryCode = await retrying.then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(retryCode).toBe("worktree_unavailable")
+    expect(await removing).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test("a second Remove while the worktree is removed is refused with worktree_in_use", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    const path = first.worktree?.path ?? ""
+    const removing = t.run(Runs.use((r) => r.removeWorktree(first.id, true)))
+    const again = t.run(Runs.use((r) => r.removeWorktree(first.id, true)))
+    const code = await again.then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_in_use")
+    expect(await removing).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test("a leftover branch from an aborted creation does not fail the next run", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    // The next run plans robot/report-<stamp>: hold every stamp it can land on.
+    const stamps = new Set<string>()
+    const now = Date.now()
+    for (let ms = -2000; ms <= 30000; ms += 1000) stamps.add(worktreeStamp(new Date(now + ms)))
+    for (const stamp of stamps) git(dir, "branch", `robot/report-${stamp}`)
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("done")
+    expect(d.worktree?.branch).toMatch(/^robot\/report-\d{8}-\d{6}-2$/)
+  })
+
+  test("a stop during a slow hook ends the run at once and leaves no hook process", async () => {
+    const t = await setup()
+    const { dir, started: entered, done: marker, hooks } = slowHookRepo(30)
+    const hook = join(hooks, "post-checkout")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    try {
+      const started = await t.start()
+      await until(() => existsSync(entered))
+      const planned =
+        (
+          await t.rows<{ worktree_path: string }>(
+            "SELECT worktree_path FROM run WHERE id = ?",
+            started.id,
+          )
+        )[0]?.worktree_path ?? ""
+      const before = Date.now()
+      await t.run(Runs.use((r) => r.stop(started.id)))
+      const d = await t.ended(started.id)
+      // Well under the 30 seconds of the hook: the abort ends the whole process group.
+      expect(Date.now() - before).toBeLessThan(4000)
+      expect(d.state).toBe("cancelled")
+      expect(
+        await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", started.id),
+      ).toEqual([{ n: 0 }])
+      // The cleanup runs in the background: it ends with the row cleared.
+      await until(() => !existsSync(planned))
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              started.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect((await t.get(started.id)).worktree).toBeNull()
+      // The hook died with git: its mark never appears and no process holds the hook.
+      await until(() => !pgrep(hook))
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      await expectHookGone(hook)
+    }
+  }, 30000)
+
+  test("the queue limit counts a run that still waits for its worktree", async () => {
+    const t = await setup()
+    await t.node({ name: "Say", prompt: "hello" })
+    for (let i = 0; i < 19; i++)
+      await t.sql(
+        "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES (?, ?, 'queued', 'hand', ?)",
+        `q${i}`,
+        t.flow.id,
+        i,
+      )
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('making', ?, 'queued', 'hand', 999)",
+      t.flow.id,
+    )
+    const code = await t.run(Runs.use((r) => r.start({ workflowId: t.flow.id }))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("run_queue_full")
+  })
+
+  test("a restart keeps the worktree columns of a run that has not ended", async () => {
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
+    const t = await setup({ databaseFile: file })
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
+    mkdirSync(leftover, { recursive: true })
+    writeFileSync(join(leftover, "notes.md"), "leftover\n")
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'running', 'hand', 1, ?, 'robot/report-20261109-120000', 0)`,
+      t.flow.id,
+      leftover,
+    )
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r2', ?, 'running', 'hand', 2)",
+      t.flow.id,
+    )
+    const again = testRuntime({ databaseFile: file })
+    const r1 = await again.runtime.runPromise(Runs.use((x) => x.get("r1")))
+    expect(r1.state).toBe("failed")
+    expect(r1.reasonText).toBe("The app stopped")
+    expect(r1.worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: false,
+    })
+    const r2 = await again.runtime.runPromise(Runs.use((x) => x.get("r2")))
+    expect(r2.state).toBe("failed")
+    expect(r2.worktree).toBeNull()
+    // The planned path and branch stay, so Remove can delete the leftover. The removed
+    // leftover keeps showing as removed, with its branch.
+    expect(await again.runtime.runPromise(Runs.use((x) => x.removeWorktree("r1", true)))).toBe(
+      "removed",
+    )
+    expect(existsSync(leftover)).toBe(false)
+    expect((await again.runtime.runPromise(Runs.use((x) => x.get("r1")))).worktree).toEqual({
+      path: leftover,
+      branch: "robot/report-20261109-120000",
+      removed: true,
+    })
+  })
+
+  test("a retry of a run whose worktree was never made is refused, and the leftover stays", async () => {
+    // The app quit during creation: the restart turns the queued first task into failed, and
+    // the user can Retry it. The retry is refused with no run; the user starts a new run.
+    const file = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-run-"))), "robot.db")
+    const t = await setup({ databaseFile: file })
+    await t.node({ name: "Say", prompt: "hello" })
+    const leftover = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-leftover-"))), "copy")
+    mkdirSync(leftover, { recursive: true })
+    writeFileSync(join(leftover, "notes.md"), "user edit\n")
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, worktree_path, worktree_branch, worktree_made)
+       VALUES ('r1', ?, 'running', 'hand', 1, ?, 'robot/report-20261109-120000', 0)`,
+      t.flow.id,
+      leftover,
+    )
+    await t.sql(
+      `INSERT INTO task (id, run_id, workflow_id, node_name, node_number, input, state, created_at)
+       VALUES ('q1', 'r1', ?, 'Say', 1, 'hello', 'queued', 1)`,
+      t.flow.id,
+    )
+    const again = testRuntime({ databaseFile: file })
+    const failed = await again.runtime.runPromise(Runs.use((x) => x.get("r1")))
+    expect(failed.state).toBe("failed")
+    expect(failed.reasonText).toBe("The app stopped")
+    const code = await again.runtime.runPromise(Runs.use((x) => x.retryTask("q1"))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect(
+      await again.runtime.runPromise(
+        Database.use((d) => Effect.sync(() => d.all<{ id: string }>("SELECT id FROM run"))),
+      ),
+    ).toEqual([{ id: "r1" }])
+    expect(readFileSync(join(leftover, "notes.md"), "utf8")).toBe("user edit\n")
+  })
+
+  test("a planned path that already exists fails the run and removes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    // Another worktree whose folder moved away: its entry is stale, not locked. A prune would
+    // drop it; the failed creation must leave it alone.
+    const otherPath = join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-other-"))), "userwt")
+    git(dir, "worktree", "add", "--quiet", "-b", "userwt-branch", otherPath)
+    renameSync(otherPath, join(trackTemp(mkdtempSync(join(tmpdir(), "robot-wt-moved-"))), "userwt"))
+    expect(git(dir, "worktree", "list", "--porcelain")).toContain(otherPath)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const first = await t.node({ name: "Draft", prompt: "Draft" })
+    const gate = await t.approvalNode("Gate")
+    await t.connect(first, gate)
+    const runA = await t.start()
+    await t.waitCard()
+    const runB = await t.start()
+    await until(async () => (await t.get(runB.id)).state === "queued")
+    const planned = (
+      await t.rows<{ worktree_path: string; worktree_branch: string }>(
+        "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+        runB.id,
+      )
+    )[0] ?? { worktree_path: "", worktree_branch: "" }
+    expect(planned.worktree_path).not.toBe("")
+    // The user holds this folder: the creation must fail at once and touch nothing.
+    mkdirSync(planned.worktree_path, { recursive: true })
+    writeFileSync(join(planned.worktree_path, "user.md"), "user work\n")
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(runA.id)
+    const failedB = await t.ended(runB.id)
+    expect(failedB.state).toBe("failed")
+    expect(failedB.reasonCode).toBe("worktree_failed")
+    expect(failedB.reasonText).toContain("already exists")
+    expect(failedB.worktree).toBeNull()
+    expect(readFileSync(join(planned.worktree_path, "user.md"), "utf8")).toBe("user work\n")
+    expect(await branchExists(dir, planned.worktree_branch)).toBe(false)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).toContain(otherPath)
+    expect(listed).not.toContain(planned.worktree_path)
+  })
+
+  test("a retry reuses the worktree of the run it retries", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    const retryId = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? "")))
+    const retry = await t.ended(retryId)
+    expect(retry.worktree).toEqual(first.worktree)
+    expect(
+      git(dir, "worktree", "list", "--porcelain")
+        .trim()
+        .split("\n")
+        .filter((l) => l.startsWith("worktree ")),
+    ).toHaveLength(2)
+  })
+
+  test("a retry after Remove is refused with worktree_unavailable and makes no run", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    expect(await t.run(Runs.use((r) => r.removeWorktree(first.id, true)))).toBe("removed")
+    const runs = () =>
+      t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM run WHERE workflow_id = ?", t.flow.id)
+    const before = (await runs())[0]?.n ?? 0
+    const code = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? ""))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect((await runs())[0]?.n).toBe(before)
+  })
+
+  test("a retry when the worktree folder is gone is refused with worktree_unavailable and makes no run", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const first = await t.ended((await t.start()).id)
+    expect(first.state).toBe("failed")
+    rmSync(first.worktree?.path ?? "", { recursive: true, force: true })
+    const runs = () =>
+      t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM run WHERE workflow_id = ?", t.flow.id)
+    const before = (await runs())[0]?.n ?? 0
+    const code = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? ""))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect((await runs())[0]?.n).toBe(before)
+  })
+
+  test("remove is refused while a run that uses the worktree works or waits, and marks every run of it", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const gate = await t.approvalNode("Gate")
+    const broken = await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    await t.connect(gate, broken, { kind: "verdict", verdict: "approve" })
+    const first = await t.start()
+    const card1 = await t.waitCard()
+    // The run works in its worktree: Remove is refused while it works.
+    const refused = await t.run(Runs.use((r) => r.removeWorktree(first.id, true))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(refused).toBe("worktree_in_use")
+    expect(existsSync((await t.get(first.id)).worktree?.path ?? "")).toBe(true)
+    await t.answer(card1.id, { kind: "verdict", verdict: "approve", comment: "" })
+    const done1 = await t.ended(first.id)
+    expect(done1.state).toBe("failed")
+    // A retry waits in the queue behind another run: Remove from the first run is refused too.
+    const holder = await t.start()
+    await t.waitCard()
+    const retryId = await t.run(Runs.use((r) => r.retryTask(done1.nodes[1]?.task?.id ?? "")))
+    await until(async () => (await t.get(retryId)).state === "queued")
+    const refused2 = await t.run(Runs.use((r) => r.removeWorktree(first.id, true))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(refused2).toBe("worktree_in_use")
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    const held = await t.ended(holder.id)
+    expect(held.state).toBe("failed")
+    const retry = await t.ended(retryId)
+    expect(retry.state).toBe("failed")
+    expect(retry.worktree?.path).toBe(done1.worktree?.path)
+    // After every run ended, Remove marks every run of the worktree, and no other.
+    expect(await t.run(Runs.use((r) => r.removeWorktree(first.id, true)))).toBe("removed")
+    expect((await t.get(first.id)).worktree?.removed).toBe(true)
+    expect((await t.get(retryId)).worktree?.removed).toBe(true)
+    expect((await t.get(holder.id)).worktree?.removed).toBe(false)
+    // And a retry of the retry is refused.
+    const code = await t.run(Runs.use((r) => r.retryTask(retry.nodes[0]?.task?.id ?? ""))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+  })
+
+  test("a retry that waited in the queue while the folder went away fails and writes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"late.md","content":"too late"}',
+    })
+    mock.setFailure({ status: 500, message: "mock failure" }, 1)
+    let first: RunDetail
+    try {
+      first = await t.ended((await t.start()).id)
+    } finally {
+      mock.setFailure(null)
+    }
+    expect(first.state).toBe("failed")
+    await t.approvalNode("Gate")
+    const holder = await t.start()
+    await t.waitCard()
+    const retryId = await t.run(Runs.use((r) => r.retryTask(first.nodes[0]?.task?.id ?? "")))
+    await until(async () => (await t.get(retryId)).state === "queued")
+    const path = first.worktree?.path ?? ""
+    rmSync(path, { recursive: true, force: true })
+    await t.answer((await t.waitCard()).id, { kind: "verdict", verdict: "approve", comment: "" })
+    await t.ended(holder.id)
+    const retry = await t.ended(retryId)
+    expect(retry.state).toBe("failed")
+    expect(retry.reasonCode).toBe("worktree_unavailable")
+    expect(
+      await t.rows<{ n: number }>("SELECT COUNT(*) AS n FROM task WHERE run_id = ?", retryId),
+    ).toEqual([{ n: 0 }])
+    expect(retry.nodes.map((n) => n.state)).toEqual(["not_reached", "not_reached"])
+    expect(retry.ended).toBe(0)
+    expect(retry.total).toBe(2)
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test("for the permission rules the folder of the run is the worktree", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: `tool write_file {"path":${JSON.stringify(join(dir, "notes.md"))},"content":"x"}`,
+    })
+    const run = await t.start()
+    // The folder of the workflow is outside the worktree, so the write asks.
+    const card = await t.waitCard()
+    expect(card.summary).toContain("notes.md")
+    await t.answer(card.id, { kind: "approval", answer: "deny" })
+    const d = await t.ended(run.id)
+    expect(d.worktree).not.toBeNull()
+    expect(readFileSync(join(dir, "notes.md"), "utf8")).toBe("first\n")
+  })
+
+  test("open shows the worktree in the system file browser", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.worktree).not.toBeNull()
+    const seen: string[] = []
+    t.platform.openPath = async (p: string) => {
+      seen.push(p)
+    }
+    await t.run(Runs.use((r) => r.openWorktree(d.id)))
+    expect(seen).toEqual([d.worktree?.path ?? ""])
+    const codeOf = (runId: string) =>
+      t.run(Runs.use((r) => r.openWorktree(runId))).then(
+        () => "ok",
+        (e: { code?: string }) => e.code,
+      )
+    expect(await codeOf("missing")).toBe("run_not_found")
+  })
+
+  test("open of a worktree whose folder is gone fails with worktree_unavailable", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    rmSync(d.worktree?.path ?? "", { recursive: true, force: true })
+    const seen: string[] = []
+    t.platform.openPath = async (p: string) => {
+      seen.push(p)
+    }
+    const code = await t.run(Runs.use((r) => r.openWorktree(d.id))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_unavailable")
+    expect(seen).toEqual([])
+  })
+
+  test("open of a worktree that cannot be shown fails with the reason", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    t.platform.openPath = async () => {
+      throw new Error("no file browser")
+    }
+    const failure = await t.run(Runs.use((r) => r.openWorktree(d.id))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_unavailable")
+    expect(failure?.detail).toBe("no file browser")
+  })
+
+  test("remove asks first when dirty; otherwise it removes the folder and keeps the branch", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({
+      name: "Write",
+      prompt: 'tool write_file {"path":"notes.md","content":"changed"}',
+    })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    const branch = d.worktree?.branch ?? ""
+    const remove = (confirmed: boolean) => t.run(Runs.use((r) => r.removeWorktree(d.id, confirmed)))
+    // The node changed a file without committing: not confirmed removes nothing.
+    expect(await remove(false)).toBe("needs_confirm")
+    expect(existsSync(path)).toBe(true)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+    expect(await remove(true)).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+    expect(git(dir, "rev-parse", "--verify", branch).trim()).toBeTruthy()
+    expect(git(dir, "worktree", "list", "--porcelain").trim()).not.toContain(path)
+    expect((await t.get(d.id)).worktree).toEqual({ path, branch, removed: true })
+    // Removing again is fine, but opening a removed worktree fails.
+    expect(await remove(false)).toBe("removed")
+    const opened = await t.run(Runs.use((r) => r.openWorktree(d.id))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(opened).toBe("worktree_removed")
+  })
+
+  test("remove asks first for a file that Git ignores, and confirmed removes", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    writeFileSync(join(dir, ".gitignore"), "*.local\n")
+    git(dir, "add", ".gitignore")
+    git(dir, "commit", "--quiet", "-m", "ignore")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    writeFileSync(join(path, "data.local"), "local\n")
+    const remove = (confirmed: boolean) => t.run(Runs.use((r) => r.removeWorktree(d.id, confirmed)))
+    // A plain status hides the ignored file: Remove must still ask, and remove nothing.
+    expect(await remove(false)).toBe("needs_confirm")
+    expect(existsSync(join(path, "data.local"))).toBe(true)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+    expect(await remove(true)).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test("remove of a clean worktree needs no confirm; a missing folder counts as removed", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const clean = await t.ended((await t.start()).id)
+    expect(await t.run(Runs.use((r) => r.removeWorktree(clean.id, false)))).toBe("removed")
+    expect(existsSync(clean.worktree?.path ?? "")).toBe(false)
+    expect((await t.get(clean.id)).worktree?.removed).toBe(true)
+    const gone = await t.ended((await t.start()).id)
+    rmSync(gone.worktree?.path ?? "", { recursive: true, force: true })
+    expect(await t.run(Runs.use((r) => r.removeWorktree(gone.id, false)))).toBe("removed")
+    expect((await t.get(gone.id)).worktree?.removed).toBe(true)
+  })
+
+  test("remove of a worktree the user locked fails and deletes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    git(dir, "worktree", "lock", "--reason", "user work", path)
+    // The `.git` file is gone too, so the status cannot be read and git refuses the
+    // removal: the fallback must still see the lock of the user and delete nothing.
+    rmSync(join(path, ".git"))
+    const failure = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_remove_failed")
+    expect(failure?.detail).toContain("locked")
+    expect(existsSync(path)).toBe(true)
+    expect(git(dir, "worktree", "list", "--porcelain")).toContain(path)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+  })
+
+  test("remove of a worktree git cannot remove deletes the folder and its own entry", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    const branch = d.worktree?.branch ?? ""
+    // The `.git` file is gone, so git refuses the removal: the fallback removes the
+    // folder and this path's own admin entry, so the branch can be used again.
+    rmSync(join(path, ".git"))
+    expect(await t.run(Runs.use((r) => r.removeWorktree(d.id, true)))).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).not.toContain(path)
+    expect(listed).not.toContain("prunable")
+    expect((await t.get(d.id)).worktree).toEqual({ path, branch, removed: true })
+  })
+
+  test("a Remove that git refuses fails with worktree_remove_failed and removes nothing", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    // Point the run at the main checkout: its status reads clean, but git refuses to remove it.
+    await t.sql("UPDATE run SET worktree_path = ? WHERE id = ?", dir, d.id)
+    const failure = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string; detail?: string }) => e,
+    )
+    expect(failure?.code).toBe("worktree_remove_failed")
+    expect(failure?.detail).toContain("main working tree")
+    expect(existsSync(dir)).toBe(true)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+  })
+
+  test("a failed Remove frees its claim: a second Remove runs again and a retry is not refused", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Broken", prompt: "[[fail]] x" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.state).toBe("failed")
+    const taskId = d.nodes[0]?.task?.id ?? ""
+    await t.sql("UPDATE run SET worktree_path = ? WHERE id = ?", dir, d.id)
+    const first = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string }) => e,
+    )
+    expect(first?.code).toBe("worktree_remove_failed")
+    const second = await t.run(Runs.use((r) => r.removeWorktree(d.id, true))).then(
+      () => null,
+      (e: { code?: string }) => e,
+    )
+    expect(second?.code).toBe("worktree_remove_failed")
+    const retryId = await t.run(Runs.use((r) => r.retryTask(taskId)))
+    const retry = await t.ended(retryId)
+    expect(retry.reasonCode).not.toBe("worktree_unavailable")
+  })
+
+  test("a Remove that cannot read the worktree asks first, then removes what exists", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    rmSync(join(path, ".git"))
+    expect(await t.run(Runs.use((r) => r.removeWorktree(d.id, false)))).toBe("needs_confirm")
+    expect(existsSync(path)).toBe(true)
+    expect(await t.run(Runs.use((r) => r.removeWorktree(d.id, true)))).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+    expect((await t.get(d.id)).worktree?.removed).toBe(true)
+  })
+
+  test("remove of a run with no worktree fails", async () => {
+    const t = await setup()
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    expect(d.worktree).toBeNull()
+    const code = await t.run(Runs.use((r) => r.removeWorktree(d.id, false))).then(
+      () => "ok",
+      (e: { code?: string }) => e.code,
+    )
+    expect(code).toBe("worktree_not_found")
+  })
+
+  test("a run with a new worktree makes no claim and gets no shared folder note (spec 025)", async () => {
+    const t = await setup({ level: "ask_all" })
+    const dir = gitRepo()
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    const server = await t.run(Servers.use((s) => s.local))
+    const other = await t.run(
+      Workflows.use((w) => w.create({ serverId: server.id, name: "Other" })),
+    )
+    await t.run(Workflows.use((w) => w.setFolder(other.id, dir)))
+    await t.run(Workflows.use((w) => w.setSelfImprovement(other.id, false)))
+    await t.run(Memory.use((m) => m.setEnabled(other.id, false)))
+    await t.run(Workflows.use((w) => w.setPermission(other.id, "ask_all")))
+    await t.run(
+      Workflows.use((w) =>
+        w.addNode(other.id, {
+          kind: "text",
+          name: "Also write",
+          prompt: 'tools 2 write_file {"path":"notes.md","content":"from Other"}',
+          accountId: t.account.id,
+          model: "mock-fast",
+        }),
+      ),
+    )
+    await t.node({
+      name: "Write",
+      prompt: 'tools 2 write_file {"path":"notes.md","content":"from worktree"}',
+    })
+    // The editor shows the folder as shared.
+    expect((await t.run(Workflows.use((w) => w.get(t.flow.id)))).sharedWith).toEqual(["Other"])
+    // Other writes notes.md twice: the first card is allowed, the second waits with the claim.
+    const otherRun = await t.run(Runs.use((r) => r.start({ workflowId: other.id })))
+    const openOf = (workflowId: string) =>
+      t.run(Cards.use((c) => Effect.sync(() => c.open(workflowId))))
+    await until(async () => (await openOf(other.id)).length > 0)
+    await t.answer((await openOf(other.id))[0]?.id ?? "", { kind: "approval", answer: "allow" })
+    await until(async () => (await t.run(Runs.use((r) => r.get(otherRun.id)))).state === "waiting")
+    // The worktree run writes the same name twice: the first card is allowed, the second waits.
+    // While it waits it holds no claim, although the folder is shared.
+    const run = await t.start()
+    await t.answer((await t.waitCard()).id, { kind: "approval", answer: "allow" })
+    await until(async () => (await t.get(run.id)).state === "waiting")
+    const waiting = await t.get(run.id)
+    expect(waiting.nodes[0]?.task?.claims.count).toBe(0)
+    expect(
+      await t.rows<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM file_claim WHERE task_id = ?",
+        waiting.nodes[0]?.task?.id ?? "",
+      ),
+    ).toEqual([{ n: 0 }])
+    await t.answer((await t.waitCard()).id, { kind: "approval", answer: "allow" })
+    const d = await t.ended(run.id)
+    expect(d.state).toBe("done")
+    expect(d.nodes[0]?.task?.result).not.toContain("Refused:")
+    // Its request carried no shared folder note.
+    const request = mock.requests
+      .filter((r) => JSON.stringify(r.body.messages).includes("from worktree"))
+      .at(-1)
+    const system = String(request?.body.messages.find((m) => m.role === "system")?.content)
+    expect(system).not.toContain("Shared folder")
+    // Other ends: nothing of the worktree run refused it.
+    await t.answer((await openOf(other.id))[0]?.id ?? "", { kind: "approval", answer: "allow" })
+    await until(async () => (await t.run(Runs.use((r) => r.get(otherRun.id)))).finishedAt !== null)
+    expect((await t.run(Runs.use((r) => r.get(otherRun.id)))).state).toBe("done")
+  })
+
+  test("the chat reads the worktree reasons with their sentences", async () => {
+    const t = await setup()
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, finished_at, reason, reason_code)
+       VALUES ('w1', ?, 'failed', 'hand', 1, 2, 'the disk is full', 'worktree_failed')`,
+      t.flow.id,
+    )
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, finished_at, reason_code)
+       VALUES ('w2', ?, 'failed', 'hand', 3, 4, 'worktree_unavailable')`,
+      t.flow.id,
+    )
+    await t.sql(
+      `INSERT INTO run (id, workflow_id, state, source, started_at, finished_at, reason_code)
+       VALUES ('w3', ?, 'failed', 'hand', 5, 6, 'worktree_not_in_commit')`,
+      t.flow.id,
+    )
+    // With no run that works or waits, the chat reads the last run that ended.
+    const facts = await t.run(RunFacts.use((f) => f.runs(t.flow.id)))
+    expect(facts).toHaveLength(1)
+    expect(facts[0]?.id).toBe("w3")
+    expect(facts[0]?.reason).toBe(
+      "Could not make a new worktree: the folder is not in the last commit.",
+    )
+    await t.sql("DELETE FROM run WHERE id = 'w3'")
+    const unavailable = await t.run(RunFacts.use((f) => f.runs(t.flow.id)))
+    expect(unavailable[0]?.id).toBe("w2")
+    expect(unavailable[0]?.reason).toBe("The new worktree is not available.")
+    await t.sql("DELETE FROM run WHERE id = 'w2'")
+    const failed = await t.run(RunFacts.use((f) => f.runs(t.flow.id)))
+    expect(failed[0]?.reason).toBe("Could not make a new worktree: the disk is full")
+  })
+})
+
+const git = (dir: string, ...args: string[]) =>
+  execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: gitEnv() })
+
+const gitRepo = (committed = true) => {
+  const dir = trackTemp(mkdtempSync(join(tmpdir(), "robot-run-wt-")))
+  git(dir, "-c", "init.defaultBranch=main", "init", "--quiet")
+  git(dir, "config", "user.email", "test@robot.local")
+  git(dir, "config", "user.name", "ROBot test")
+  if (committed) {
+    writeFileSync(join(dir, "notes.md"), "first\n")
+    git(dir, "add", "notes.md")
+    git(dir, "commit", "--quiet", "-m", "first")
+  }
+  return dir
+}
+
+/**
+ * A repository whose post-checkout hook touches `started`, sleeps, then touches `done`: the
+ * `started` file gates a Stop during creation, and the `done` file must never appear after it.
+ */
+const slowHookRepo = (sleepSeconds: number) => {
+  const dir = gitRepo()
+  const hooks = join(dir, ".git", "hooks")
+  const started = join(dir, "hook-started")
+  const done = join(dir, "hook-done")
+  const hook = join(hooks, "post-checkout")
+  writeFileSync(hook, `#!/bin/sh\ntouch ${started}\nsleep ${sleepSeconds}\ntouch ${done}\n`)
+  chmodSync(hook, 0o755)
+  return { dir, started, done, hooks }
+}
+
+/** True when a process has `text` in its command line. */
+const pgrep = (text: string): boolean => {
+  try {
+    execFileSync("pgrep", ["-f", text], { encoding: "utf8" })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Kills the hook processes whose command line holds `hook`. The pattern is exact. */
+const killHook = (hook: string): void => {
+  try {
+    execFileSync("pkill", ["-9", "-f", hook.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")], {
+      encoding: "utf8",
+    })
+  } catch {
+    // None matched, or pkill is missing: the wait below says what is left.
+  }
+}
+
+/**
+ * Waits for the hook processes of `hook` to be gone, kills them when they linger, and fails
+ * the test when one is still alive: no test leaves a hook behind.
+ */
+const expectHookGone = async (hook: string): Promise<void> => {
+  try {
+    await until(() => !pgrep(hook))
+  } catch {
+    killHook(hook)
+    await until(() => !pgrep(hook))
+  }
+  expect(pgrep(hook)).toBe(false)
+}

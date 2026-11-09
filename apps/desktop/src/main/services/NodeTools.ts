@@ -39,6 +39,7 @@ import type { BrowserWork } from "./browserWork.ts"
 import type { CardReply } from "./Cards.ts"
 import { type ConnectionTaskContext, makeConnectionTools } from "./connectionTools.ts"
 import type { ClaimOutcome, FileClaimsService } from "./FileClaims.ts"
+import { scrubGitEnv } from "./GitWorktrees.ts"
 import type { PlatformService } from "./Platform.ts"
 import { programStep } from "./programSteps.ts"
 import type { RulesService } from "./Rules.ts"
@@ -614,7 +615,9 @@ export const makeNodeTools = (deps: NodeToolsDeps) => {
       const child = spawn(command, {
         cwd: ctx.workspace,
         shell: true,
-        env: { ...process.env, HOME: platform.homeDir },
+        // Without the git variables: a `git` of the command cannot reach another repository
+        // through an inherited `GIT_DIR` or `GIT_INDEX_FILE`.
+        env: { ...scrubGitEnv(process.env), HOME: platform.homeDir },
         stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",
       })

@@ -438,6 +438,15 @@ export const en = {
   "toast.dismiss": "Close message",
   "error.workflow_not_found": "This workflow does not exist any more.",
   "error.workflow_running": "This workflow is running.",
+  "error.worktree_not_git": "The folder is not in a Git repository.",
+  "error.worktree_failed": "Could not make a new worktree: {detail}",
+  "error.worktree_unavailable": "The new worktree is not available.",
+  "error.worktree_not_found": "This run has no new worktree.",
+  "error.worktree_not_in_commit":
+    "Could not make a new worktree: the folder is not in the last commit.",
+  "error.worktree_in_use": "The worktree is in use by a run that works.",
+  "error.worktree_remove_failed": "Could not remove the worktree: {detail}",
+  "error.worktree_removed": "The worktree of this run is removed.",
 
   "devices.name": "Name of this device",
   "devices.name.hint":
@@ -1042,6 +1051,7 @@ export const en = {
   "workflow.shared": "Shares this folder with {names}.",
   "workflow.claimless": "{program} does not take part in file claims.",
   "workflow.permission": "Permission level of the workflow",
+  "workflow.newWorktree": "Work in a new worktree",
   "permission.level.read_only": "Read only",
   "permission.level.ask_all": "Ask for everything",
   "permission.level.ask_risky": "Ask for risky steps",
@@ -1143,6 +1153,12 @@ export const en = {
   "runs.refused": "Refused: in use by {holder}: {path}",
   "runs.refused.limit": "Refused: this task changed {count} files. Finish it. ({path})",
   "runs.stoppedAt": "The run stopped at node {number}.",
+  "runs.worktree": "Worktree: {path}, branch {branch}",
+  "runs.worktree.removed": "Worktree removed, branch {branch}",
+  "runs.worktree.open": "Open",
+  "runs.worktree.remove": "Remove",
+  "runs.worktree.remove.ask":
+    "Remove the worktree at {path}? It may hold changes that are not committed or files that Git ignores.",
   "runs.back": "Back to the runs",
   "cards.title.approval": "Approval needed",
   "cards.title.question": "A node asks you",
