@@ -51,7 +51,8 @@ manages the API keys and passwords of that workflow.
    - The card in the chat shows the name of the secret, the method and the address. It never
      shows the value.
 3. Forget: a text node calls the tool "forget a secret" with a name. The value leaves
-   the secrets file at once. A request that has already started can end.
+   the secrets file at once when the state is Readable (see 014). A request that has already
+   started can end.
 4. Vault: the Secrets tab of the workflow view holds the vault of the open workflow. It has two
    lists: "Saved secrets" and "Saved logins". Each row shows the name, the origin, the way to send
    it (or the user name for a login), the date it was saved, and the date it was last used. No row
@@ -83,7 +84,8 @@ manages the API keys and passwords of that workflow.
      not change the date last used. The result stays on the row until the next Test. Logins have
      no Test button: the fill at run time is the test.
    - Delete: the user deletes a secret or a login after a confirm (000). The value
-     leaves the secrets file at once. A request that has already started can end.
+     leaves the secrets file at once when the state is Readable (see 014). A request that has
+     already started can end.
    - Settings → Permissions holds an overview, "Saved secrets". It lists each workflow that holds
      a secret or a login: the name of the workflow, the count of secrets, the count of logins, and
      a link "Open vault" that opens the vault of that workflow. It shows no value, and the user
@@ -134,8 +136,8 @@ the user name or the password.
   workflow and links to its vault.
 - A workflow file (010) holds no login, so a workflow that an import makes has none. A duplicated
   workflow starts with an empty vault. Deleting a workflow deletes its vault. Its logins leave
-  the secrets file at once. Renaming a workflow moves its vault with it. A workflow holds at
-  most 50 logins.
+  the secrets file when the state is next Readable (see 014). Renaming a workflow moves its
+  vault with it. A workflow holds at most 50 logins.
 - An export holds the name, the workflow and the origin of each login, not the values. After an
   import each login shows "Value missing" in its vault. Logins do not sync (019).
 - On a linked device (012), the protected card shows "Answer this on NAME". A value never goes
@@ -197,7 +199,7 @@ the user name or the password.
 - A workflow file (010) holds no secret, so a workflow that an import makes has none. A
   duplicated workflow starts with an empty vault. Renaming a workflow moves its vault with it.
   The rows stay, under the new name. Deleting a workflow deletes its vault. Its secrets leave
-  the secrets file at once.
+  the secrets file when the state is next Readable (see 014).
 - An export holds the name, the workflow, the origin and the way to send each secret, not the
   value. After an import, each secret shows "Value missing" in its vault.
 - Saved secrets do not sync (019). The values stay on one computer. The vault of the other
