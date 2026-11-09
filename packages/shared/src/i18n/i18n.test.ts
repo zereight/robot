@@ -67,6 +67,26 @@ describe("translation catalogues", () => {
     expect(rest).not.toMatch(/\b(train|trains|trained|training)\b/i)
   })
 
+  // Spec 013: interface text uses the polite informal form (해요체), not the formal
+  // form (합니다체). Statements end in 니다, formal questions in ㅂ니까, formal
+  // orders in 시오. Causal 니까 (바쁘니까) has no final ㅂ and stays valid.
+  test("Korean uses the polite informal form, not the formal one", () => {
+    // Keys that a model reads, not interface text: they may keep the formal form.
+    const PROMPT_KEYS = ["workflows.document.default"]
+    const formalQuestion = (text: string) =>
+      [...text.matchAll(/([\uAC00-\uD7A3])니까/g)].some((m) => {
+        const code = (m[1] ?? "").codePointAt(0) ?? 0
+        return code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 === 17
+      })
+    for (const [key, text] of Object.entries(catalogues.ko)) {
+      if (PROMPT_KEYS.includes(key)) continue
+      expect({ key, formal: /(니다|십시오)/.test(text) || formalQuestion(text) }).toEqual({
+        key,
+        formal: false,
+      })
+    }
+  })
+
   test("fills placeholders", () => {
     expect(translate("en", "settings.about.version", { version: "1.2.3" })).toBe("Version 1.2.3")
     expect(translate("ko", "settings.about.version", { version: "1.2.3" })).toBe("버전 1.2.3")
