@@ -1191,3 +1191,13 @@ R1 marks the optional backup model as "to confirm". This slice builds what 006 s
 | --- | --- | --- |
 | 014 | Values saved by an earlier version in the keychain. Does the app move them to the secrets file? | No. The app never reads them, never moves them and never removes them. They stay in the keychain. The user types the values again. This matches the owner decision of the workflow-first reset. Decided. |
 | 014 | The secrets file is damaged and the app cannot open it with the secrets key of this profile. How does the user recover? | No recovery action in the app. The user deletes the secrets file by hand, then the state is Readable. A file made with another secrets key counts as Damaged. When the app next starts in Readable and finds no device identity, it makes a new one. Every linked device is then treated as if the user had chosen "Remove access" (012). To confirm. |
+
+## SK1: make a skill from a workflow (open points for 017, 010)
+
+| Spec | Question | Choice for now |
+| --- | --- | --- |
+| 017 | Does the diet use a model, or fixed cuts? | Fixed cuts. They need no account, send no text out, and give the same draft for the same workflow. A model that rewrites the steps stays open. To confirm. |
+| 017 | What does "skill eval" mean: test that a model picks the skill, or check that the app can find and load it? | The second. The skill check reads facts and asks no model, so it also runs with no account. A test that asks a model to pick the skill for sample tasks stays open. To confirm. |
+| 017 | Why 4000 characters for a lean skill? | It is a fifth of the form limit (20000) and holds about 40 short steps. A skill above it still works and shows "Long". To confirm. |
+| 017 | Does the skill follow the workflow when the workflow changes? | No. The skill is a copy with no link back. To confirm. |
+| 017 | Which Korean words for "Skill diet" and "Skill check"? | 스킬 다이어트 and 스킬 확인 (proposed). To confirm. |

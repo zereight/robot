@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto"
 import {
+  checkSkill,
   copySkillName,
   numberedSkillName,
   SKILLS_MAX,
   type Skill,
+  type SkillFactResult,
   type SkillInput,
   skillName,
   skillNameKey,
@@ -65,6 +67,11 @@ export interface SkillsService {
   room(serverId: string): Effect.Effect<number>
   /** A skill that a workflow may use now: it exists and it is on. */
   usable(skillId: string): Effect.Effect<Skill, AppError>
+  /**
+   * The skill check (spec 017): facts about one skill and the other skills of its server. It reads
+   * only and asks no model. A skill that is gone gives "Saved" as failed and the rest not checked.
+   */
+  check(id: string): Effect.Effect<readonly SkillFactResult[]>
 }
 
 export class Skills extends Context.Service<Skills, SkillsService>()("robot/main/Skills") {
@@ -202,6 +209,13 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
               db.get<{ n: number }>("SELECT COUNT(*) AS n FROM skill WHERE server_id = ?", serverId)
                 ?.n ?? 0
             return Math.max(0, SKILLS_MAX - count)
+          }),
+        check: (id) =>
+          Effect.sync(() => {
+            const row = db.get<SkillRow>("SELECT * FROM skill WHERE id = ?", id)
+            if (!row) return checkSkill(null, [])
+            const all = db.all<SkillRow>("SELECT * FROM skill WHERE server_id = ?", row.server_id)
+            return checkSkill(toSkill(row), all.map(toSkill))
           }),
         usable: (skillId) =>
           Effect.gen(function* () {
