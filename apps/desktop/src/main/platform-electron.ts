@@ -5,7 +5,9 @@ import {
   BROWSER_LIMITS,
   type ControlPlace,
   PAGE_INPUT_CHANNEL,
+  resolveLocale,
   SCREEN_INPUT_CHANNEL,
+  translate,
 } from "@robot/shared"
 import {
   app,
@@ -22,6 +24,7 @@ import {
   shell,
   WebContentsView,
 } from "electron"
+import { getDialogLanguage } from "./dialogLanguage.ts"
 import { appendLog, pruneOldLogs, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
@@ -65,6 +68,13 @@ import { pageUserAgent } from "./web/userAgent.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
+
+/** A file-dialog filter name in the chosen language (spec 013). */
+const dialogFilter = (key: "dialog.filter.export" | "dialog.filter.workflows"): string =>
+  translate(
+    resolveLocale(getDialogLanguage(), process.env.ROBOT_SYSTEM_LOCALE ?? app.getLocale()),
+    key,
+  )
 
 const PAGE_TEXT_MAX = 20_000
 
@@ -1261,7 +1271,7 @@ export const electronPlatform = (): PlatformService => {
       if (isTestRun && process.env.ROBOT_TEST_SAVE_PATH) return process.env.ROBOT_TEST_SAVE_PATH
       const options = {
         defaultPath: join(app.getPath("documents"), defaultName),
-        filters: [{ name: "ROBot export", extensions: ["zip"] }],
+        filters: [{ name: dialogFilter("dialog.filter.export"), extensions: ["zip"] }],
       }
       const parent = BrowserWindow.getFocusedWindow()
       const result = parent
@@ -1272,7 +1282,7 @@ export const electronPlatform = (): PlatformService => {
     pickArchive: async () => {
       if (isTestRun && process.env.ROBOT_TEST_OPEN_PATH) return process.env.ROBOT_TEST_OPEN_PATH
       const options = {
-        filters: [{ name: "ROBot export", extensions: ["zip"] }],
+        filters: [{ name: dialogFilter("dialog.filter.export"), extensions: ["zip"] }],
         properties: ["openFile"] as "openFile"[],
       }
       const parent = BrowserWindow.getFocusedWindow()
@@ -1286,7 +1296,7 @@ export const electronPlatform = (): PlatformService => {
         return process.env.ROBOT_TEST_WORKFLOW_FILE_SAVE
       const options = {
         defaultPath: join(app.getPath("documents"), defaultName),
-        filters: [{ name: "ROBot workflows", extensions: ["json"] }],
+        filters: [{ name: dialogFilter("dialog.filter.workflows"), extensions: ["json"] }],
       }
       const parent = BrowserWindow.getFocusedWindow()
       const result = parent
@@ -1298,7 +1308,7 @@ export const electronPlatform = (): PlatformService => {
       if (isTestRun && process.env.ROBOT_TEST_WORKFLOW_FILE_OPEN)
         return process.env.ROBOT_TEST_WORKFLOW_FILE_OPEN
       const options = {
-        filters: [{ name: "ROBot workflows", extensions: ["json"] }],
+        filters: [{ name: dialogFilter("dialog.filter.workflows"), extensions: ["json"] }],
         properties: ["openFile"] as "openFile"[],
       }
       const parent = BrowserWindow.getFocusedWindow()

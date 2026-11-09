@@ -32,6 +32,7 @@ import {
   WorkflowCreate,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
+import { setDialogLanguage } from "./dialogLanguage.ts"
 import type { AppServices } from "./layers.ts"
 import { chatMayUse } from "./runtimes/driver.ts"
 import { ActionLog } from "./services/ActionLog.ts"
@@ -178,6 +179,7 @@ const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   const platform = yield* Platform
   if (patch.startAtLogin !== undefined) platform.setStartAtLogin(patch.startAtLogin)
   if (patch.theme !== undefined) platform.setThemeSource(patch.theme)
+  if (patch.language !== undefined) setDialogLanguage(patch.language)
 })
 
 export const handlers: Handlers = {
