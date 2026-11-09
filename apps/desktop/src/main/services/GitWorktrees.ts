@@ -232,10 +232,14 @@ export const createWorktree = async (
   })
 }
 
-/** True when the worktree holds changes that are not committed, including new files. */
+/**
+ * True when the worktree holds changes that are not committed, including new files and files
+ * that Git ignores (a copied `.env`, `dist/`, local data): all of them go with `--force`, so
+ * Remove asks first for all of them (spec 007, "New worktree").
+ */
 export const isWorktreeDirty = async (path: string): Promise<boolean> => {
   try {
-    const { stdout } = await runFile("git", ["-C", path, "status", "--porcelain"], {
+    const { stdout } = await runFile("git", ["-C", path, "status", "--porcelain", "--ignored"], {
       timeout: 60_000,
       env: gitEnv(),
     })

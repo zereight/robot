@@ -3264,6 +3264,27 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     expect(opened).toBe("worktree_removed")
   })
 
+  test("remove asks first for a file that Git ignores, and confirmed removes", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    writeFileSync(join(dir, ".gitignore"), "*.local\n")
+    git(dir, "add", ".gitignore")
+    git(dir, "commit", "--quiet", "-m", "ignore")
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const d = await t.ended((await t.start()).id)
+    const path = d.worktree?.path ?? ""
+    writeFileSync(join(path, "data.local"), "local\n")
+    const remove = (confirmed: boolean) => t.run(Runs.use((r) => r.removeWorktree(d.id, confirmed)))
+    // A plain status hides the ignored file: Remove must still ask, and remove nothing.
+    expect(await remove(false)).toBe("needs_confirm")
+    expect(existsSync(join(path, "data.local"))).toBe(true)
+    expect((await t.get(d.id)).worktree?.removed).toBe(false)
+    expect(await remove(true)).toBe("removed")
+    expect(existsSync(path)).toBe(false)
+  })
+
   test("remove of a clean worktree needs no confirm; a missing folder counts as removed", async () => {
     const t = await setup()
     const dir = gitRepo()

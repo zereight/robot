@@ -367,6 +367,18 @@ describe("dirty and remove (spec 007, New worktree)", () => {
     expect(await isWorktreeDirty(path)).toBe(true)
   })
 
+  test("a file that Git ignores makes it dirty too", async () => {
+    const dir = repo()
+    writeFileSync(join(dir, ".gitignore"), "*.local\n")
+    git(dir, "add", ".gitignore")
+    git(dir, "commit", "--quiet", "-m", "ignore")
+    const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
+    await createWorktree(dir, path, "robot/report-20261109-120000")
+    expect(await isWorktreeDirty(path)).toBe(false)
+    writeFileSync(join(path, "data.local"), "local\n")
+    expect(await isWorktreeDirty(path)).toBe(true)
+  })
+
   test("remove deletes the folder only: the branch stays and the worktree leaves the list", async () => {
     const dir = repo()
     const path = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "copy")
