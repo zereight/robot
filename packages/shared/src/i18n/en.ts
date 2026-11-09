@@ -441,6 +441,7 @@ export const en = {
   "error.worktree_failed": "Could not make a new worktree: {detail}",
   "error.worktree_unavailable": "The new worktree is not available.",
   "error.worktree_not_found": "This run has no new worktree.",
+  "error.worktree_in_use": "The worktree is in use by a run that works.",
   "error.worktree_remove_failed": "Could not remove the worktree: {detail}",
   "error.worktree_removed": "The worktree of this run is removed.",
 

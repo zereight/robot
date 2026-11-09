@@ -79,11 +79,19 @@ can take the feedback of the user while the run works.
   shows the worktree in the system file browser. "Remove" asks first when the worktree holds
   changes that are not committed. It deletes the folder of the worktree. The branch stays.
 - The worktree stays when the run ends. The app never removes it by itself.
-- While the app makes the worktree, the run shows in the run view and the workflow counts as
-  running, so the editor is read-only. If the app stops during that time, the run is failed with
+- A run makes its worktree when the run starts, not while it waits in the queue. While the app
+  makes the worktree, the run shows in the run view and the workflow counts as running, so the
+  editor is read-only. Stop during that time ends the run and starts no task. A worktree that was
+  made stays with the run, so "Remove" can delete it. If the app stops during that time, the run is failed with
   the reason "The app stopped" (see "Rules").
+- When the folder is a subfolder that the last commit does not hold, the run is failed with the
+  reason "Could not make a new worktree: the folder is not in the last commit." A retry works in
+  the same subfolder as the run it retries, also when the user changed the folder since.
 - A retry of a node uses the worktree of its run. When that worktree is removed, or its folder is
   gone, the retry is refused with "The new worktree is not available." The user starts a new run.
+- "Remove" is refused while a run that uses the worktree works or waits: "The worktree is in use
+  by a run that works." A retry uses the worktree of the run it retries, so "Remove" marks every
+  run of that worktree as removed.
 - "Remove" is a danger button (000). A failed "Remove" says "Could not remove the worktree:
   <reason>". "Open" on a folder that is gone says "The new worktree is not available."
 - The run does not start when the app cannot make the worktree, for example when the repository has
@@ -851,3 +859,9 @@ steer the node to an address that only this computer or its network can reach.
 - The folder is a subfolder of the repository: the run works in the same subfolder of the worktree.
 - A run with a worktree ends. The user presses "Remove", then retries a node: the retry is refused
   with "The new worktree is not available." and nothing is written.
+- A run works in its worktree. The user presses "Remove" on the run line: it is refused with "The
+  worktree is in use by a run that works." The folder stays.
+- A retry of a node waits in the queue behind another run. The user removes the worktree: the
+  retry is failed with "The new worktree is not available." and nothing is written under the
+  removed path.
+- The user presses Stop while the worktree is made: the run ends as stopped and no task starts.
