@@ -25,7 +25,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.language.en": "English",
   "settings.language.ko": "한국어",
   "settings.startAtLogin": "로그인할 때 시작",
-  "settings.startAtLogin.hint": "이 컴퓨터에 로그인하면 ROBot을 열어요.",
+  "settings.startAtLogin.hint": "이 컴퓨터에 로그인하면 ROBot이 자동으로 열려요.",
   "settings.workspaceRoot": "에이전트 작업 폴더",
   "settings.workspaceRoot.change": "변경…",
   "settings.workspaceRoot.reset": "기본값 사용",
@@ -44,13 +44,13 @@ export const ko: Record<MessageKey, string> = {
   "settings.reduceMotion.off": "끄기",
   "settings.showToolSteps": "도구 단계 표시",
   "settings.showToolSteps.hint":
-    "끄면 채팅이 끝난 일반 도구 단계를 연속된 묶음마다 개수가 적힌 한 줄로 접어요.",
+    "끄면 끝난 일반 도구 단계를 묶음마다 개수와 함께 한 줄로 접어서 보여줘요.",
 
   "settings.data.folder": "데이터 폴더",
   "settings.data.open": "폴더 열기",
   "settings.data.report": "진단 보고서",
   "settings.data.report.hint":
-    "앱의 어딘가, 또는 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여 넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱이 어디로 보내지는 않아요.",
+    "앱의 어느 곳이나 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱이 보고서를 어디로 보내지 않아요.",
   "settings.data.report.button": "진단 보고서 복사",
   "settings.data.report.copied": "복사했어요",
   "settings.data.report.failed": "보고서를 만들지 못했어요.",
@@ -65,15 +65,15 @@ export const ko: Record<MessageKey, string> = {
   "page.help": "도움말",
   "page.settings": "설정",
 
-  "studio.pick": "목록에서 워크플로우를 선택하세요.",
-  "studio.chat.empty": "채팅하려면 워크플로우를 여세요.",
+  "studio.pick": "목록에서 워크플로우를 선택해 주세요.",
+  "studio.chat.empty": "채팅하려면 워크플로우를 열어 주세요.",
   "studio.list.show": "워크플로 목록 보기",
   "studio.chat.show": "채팅 보기",
   "studio.chat.hide": "채팅 숨기기",
   "studio.panel.resize": "채팅 너비 바꾸기",
 
   "main.noServer.title": "아직 서버가 없어요",
-  "main.noServer.body": "서버는 워크플로우를 실행하는 컴퓨터예요. 서버를 추가해서 시작하세요.",
+  "main.noServer.body": "서버는 워크플로우를 실행하는 컴퓨터예요. 시작하려면 서버를 추가해 주세요.",
 
   "help.shortcuts": "키보드 단축키",
   "help.shortcut.find": "채팅에서 찾기",
@@ -88,16 +88,16 @@ export const ko: Record<MessageKey, string> = {
   "error.unknown": "문제가 생겼어요. 다시 시도해 주세요.",
   "error.database_newer.title": "ROBot이 데이터를 열 수 없어요",
   "error.database_newer":
-    "이 컴퓨터의 ROBot 데이터는 더 새로운 버전의 앱이 만든 거예요. 열려면 최신 버전의 ROBot을 설치하세요. 데이터는 바뀌지 않았어요.",
+    "이 컴퓨터의 ROBot 데이터는 더 새로운 버전의 앱이 만든 거예요. 열려면 최신 버전의 ROBot을 설치해 주세요. 데이터는 바뀌지 않았어요.",
 
   "error.database_failed.title": "ROBot이 데이터 파일을 열 수 없어요",
   "error.database_failed":
-    "ROBot이 데이터 파일 {path}을(를) 열지 못했어요. 파일이 손상되었거나, 이 계정에 파일이나 폴더를 읽고 쓸 권한이 없을 수 있어요. 파일과 권한을 확인한 뒤 ROBot을 다시 시작하세요. 파일은 바뀌지 않았어요. 자세한 내용: {detail}",
+    "ROBot이 데이터 파일 {path}을(를) 열지 못했어요. 파일이 손상되었거나, 이 계정에 파일이나 폴더를 읽고 쓸 권한이 없을 수 있어요. 파일과 권한을 확인한 뒤 ROBot을 다시 시작해 주세요. 파일은 바뀌지 않았어요. 자세한 내용: {detail}",
   "providers.add": "계정 추가",
   "providers.kind": "제공자",
   "providers.kind.openai": "OpenAI",
   "providers.kind.anthropic": "Anthropic",
-  "providers.kind.custom": "OpenAI 호환, 직접 입력한 주소",
+  "providers.kind.custom": "OpenAI 호환 (주소 직접 입력)",
   "providers.kind.claude_code": "Claude Code (Claude 구독)",
   "providers.kind.codex": "Codex (ChatGPT 구독)",
   "providers.kind.muse": "Muse Code (Meta 계정)",
@@ -119,19 +119,19 @@ export const ko: Record<MessageKey, string> = {
   "providers.reconnect": "다시 연결",
   "providers.remove": "삭제",
   "providers.remove.ask":
-    "계정 {name}을(를) 삭제할까요? 이 계정을 쓰던 에이전트는 “이 계정은 연결되어 있지 않아요.”로 보여요.",
+    "계정 {name}을(를) 삭제할까요? 이 계정을 쓰던 에이전트에는 “이 계정은 연결되어 있지 않아요.”라고 표시돼요.",
   "providers.cancel": "취소",
-  "providers.empty": "아직 계정이 없어요. 계정을 추가해서 에이전트에게 모델을 연결하세요.",
+  "providers.empty": "아직 계정이 없어요. 계정을 추가해서 에이전트에게 모델을 연결해 주세요.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code, pi, opencode, Cursor는 이미 로그인한 계정을 그대로 써요. ROBot은 이 컴퓨터에서 프로그램을 실행만 하고, 로그인 정보를 읽지 않아요. 별도 Claude Code 로그인은 프로그램이 ROBot 데이터 폴더에 보관해요. pi와 opencode는 각각에서 설정한 모델을 쓰며, 요금도 그 설정을 따라요. Cursor는 이 컴퓨터의 Cursor 계정을 써요.",
+    "Claude Code, Codex, Muse Code, pi, opencode, Cursor는 이미 로그인한 계정을 그대로 써요. ROBot은 이 컴퓨터에서 프로그램을 실행만 하고, 로그인 정보를 읽지 않아요. 별도의 Claude Code 로그인 정보는 프로그램이 ROBot 데이터 폴더에 보관해요. pi와 opencode는 각 프로그램에서 설정한 모델을 쓰며, 요금도 그 설정을 따라요. Cursor는 이 컴퓨터의 Cursor 계정을 써요.",
   "providers.signIn.choice": "Claude 계정",
   "providers.signIn.computer": "이 컴퓨터의 계정",
   "providers.signIn.own": "다른 계정",
-  "providers.signIn.computerHint": "이 컴퓨터에서 Claude Code가 로그인된 계정을 써요.",
+  "providers.signIn.computerHint": "이 컴퓨터의 Claude Code에 로그인한 계정을 써요.",
   "providers.signIn.ownHint":
-    "추가할 계정으로 아래에서 로그인하세요. 이 로그인은 ROBot에서만 쓰고, 이 컴퓨터의 Claude Code 로그인은 바뀌지 않아요.",
+    "추가할 계정으로 아래에서 로그인해 주세요. 이 로그인은 ROBot에서만 쓰고, 이 컴퓨터의 Claude Code 로그인은 바뀌지 않아요.",
   "providers.signIn.taken":
-    "“{name}” 계정이 이미 이 컴퓨터의 계정을 쓰고 있어요. 아래에서 다른 계정으로 로그인하세요.",
+    "“{name}” 계정이 이미 이 컴퓨터의 계정을 쓰고 있어요. 아래에서 다른 계정으로 로그인해 주세요.",
   "providers.signIn.badge": "별도 로그인",
   "providers.model.default": "기본값 (프로그램이 선택)",
   "providers.models": "모델",
@@ -149,8 +149,8 @@ export const ko: Record<MessageKey, string> = {
   "providers.models.add": "모델 추가",
   "providers.models.removeOne": "목록에서 {name} 빼기",
   "providers.models.custom": "직접 추가함",
-  "error.model_limit_invalid": "1부터 10,000,000까지의 정수를 쓰세요.",
-  "error.model_id_invalid": "1자에서 200자 사이의 모델 ID를 쓰세요.",
+  "error.model_limit_invalid": "1부터 10,000,000까지의 정수를 입력해 주세요.",
+  "error.model_id_invalid": "1자에서 200자 사이의 모델 ID를 입력해 주세요.",
   "runtime.checking": "프로그램을 찾는 중…",
   "runtime.missing": "이 컴퓨터에 프로그램이 없어요.",
   "runtime.found": "버전 {version}을(를) 찾았어요 ({source}).",
@@ -164,21 +164,21 @@ export const ko: Record<MessageKey, string> = {
   "runtime.signedIn": "로그인했어요.",
   "runtime.plan": "요금제: {plan}",
   "runtime.apiKeyLogin":
-    "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 다시 로그인하세요.",
+    "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 다시 로그인해 주세요.",
   "runtime.signIn": "로그인",
-  "runtime.install.muse": "이 컴퓨터에 Muse Code를 설치한 뒤 '다시 확인'을 누르세요.",
+  "runtime.install.muse": "이 컴퓨터에 Muse Code를 설치한 뒤 '다시 확인'을 눌러 주세요.",
   "runtime.install.pi":
-    "이 컴퓨터에 pi를 설치한 뒤(npm 패키지 @earendil-works/pi-coding-agent) '다시 확인'을 누르세요.",
+    "이 컴퓨터에 pi를 설치한 뒤(npm 패키지 @earendil-works/pi-coding-agent) '다시 확인'을 눌러 주세요.",
   "runtime.install.opencode":
-    "이 컴퓨터에 opencode 2 이상을 설치한 뒤(예: brew install opencode) '다시 확인'을 누르세요.",
+    "이 컴퓨터에 opencode 2 이상을 설치한 뒤(예: brew install opencode) '다시 확인'을 눌러 주세요.",
   "runtime.signIn.opencode":
-    "opencode 안에서 로그인하세요. opencode auth login을 실행하거나 키를 설정하세요. ROBot에는 opencode 2 이상이 필요해요. 그다음 '다시 확인'을 누르세요.",
-  "runtime.install.cursor": "이 컴퓨터에 Cursor를 설치한 뒤 '다시 확인'을 누르세요.",
+    "opencode에서 로그인해 주세요. opencode auth login을 실행하거나 키를 설정해 주세요. ROBot에는 opencode 2 이상이 필요해요. 그다음 '다시 확인'을 눌러 주세요.",
+  "runtime.install.cursor": "이 컴퓨터에 Cursor를 설치한 뒤 '다시 확인'을 눌러 주세요.",
   "runtime.signIn.cursor":
-    "Cursor에서 로그인하세요. cursor-agent login을 실행하거나 CURSOR_API_KEY를 설정한 뒤 '다시 확인'을 누르세요.",
+    "Cursor에서 로그인해 주세요. cursor-agent login을 실행하거나 CURSOR_API_KEY를 설정한 뒤 '다시 확인'을 눌러 주세요.",
   "runtime.signIn.pi":
-    "pi 안에서 로그인하세요. pi를 실행해 /login을 쓰거나 키를 설정한 뒤 '다시 확인'을 누르세요.",
-  "runtime.signInCode": "페이지를 열고 이 코드와 같은지 확인하세요:",
+    "pi에서 로그인해 주세요. pi를 실행해 /login을 쓰거나 키를 설정한 뒤 '다시 확인'을 눌러 주세요.",
+  "runtime.signInCode": "페이지를 열고 이 코드와 같은지 확인해 주세요:",
   "runtime.signingIn": "브라우저에서 로그인하기를 기다리는 중…",
   "runtime.cancel": "취소",
   "runtime.recheck": "다시 확인",
@@ -197,16 +197,16 @@ export const ko: Record<MessageKey, string> = {
   "runtime.repair.note":
     "복구는 프로그램을 다시 찾아요. ROBot이 내려받은 프로그램이면 다시 내려받아 확인해요. 로그인은 바뀌지 않아요.",
   "runtime.repair.help.system":
-    "프로그램을 다시 설치하거나 원래 있던 자리에 되돌려 놓은 뒤 '복구'를 누르세요.",
-  "runtime.repair.help.download": "네트워크를 확인한 뒤 '복구'를 다시 누르세요.",
+    "프로그램을 다시 설치하거나 원래 있던 자리에 되돌려 놓은 뒤 '복구'를 눌러 주세요.",
+  "runtime.repair.help.download": "네트워크를 확인한 뒤 '복구'를 다시 눌러 주세요.",
   "runtime.problem.repair": "복구하지 못했어요. {detail}",
-  "runtime.limit.five_hour": "5시간 사용량: {percent}% 사용, {time}에 초기화",
-  "runtime.limit.seven_day": "주간 사용량: {percent}% 사용, {time}에 초기화",
-  "runtime.limit.window": "현재 구간: {percent}% 사용, {time}에 초기화",
-  "runtime.limit.weekly": "주간 사용량: {percent}% 사용, {time}에 초기화",
-  "runtime.limit.other": "{window} 사용량: {percent}% 사용, {time}에 초기화",
+  "runtime.limit.five_hour": "5시간 사용량: {percent}% 사용, {time}에 초기화돼요",
+  "runtime.limit.seven_day": "주간 사용량: {percent}% 사용, {time}에 초기화돼요",
+  "runtime.limit.window": "현재 구간: {percent}% 사용, {time}에 초기화돼요",
+  "runtime.limit.weekly": "주간 사용량: {percent}% 사용, {time}에 초기화돼요",
+  "runtime.limit.other": "{window} 사용량: {percent}% 사용, {time}에 초기화돼요",
   "runtime.limit.noReset": "{window} 사용량: {percent}% 사용",
-  "runtime.limits.readAt": "사용량을 {time}에 읽었어요",
+  "runtime.limits.readAt": "사용량을 {time}에 확인했어요",
   "runtime.problem.install": "내려받지 못했어요: {detail}",
   "runtime.problem.signIn": "로그인을 마치지 못했어요: {detail}",
 
@@ -214,35 +214,35 @@ export const ko: Record<MessageKey, string> = {
   "model.new": "새 모델",
 
   "error.provider_auth": "제공자가 키를 거부했어요.",
-  "error.provider_unreachable": "제공자에 연결하지 못했어요. 주소와 네트워크를 확인하세요.",
+  "error.provider_unreachable": "제공자에 연결하지 못했어요. 주소와 네트워크를 확인해 주세요.",
   "error.provider_error": "제공자가 오류를 보냈어요: {detail}",
   "error.provider_limit": "이 계정의 사용 한도에 도달했어요.",
   "error.provider_not_found": "이 계정은 더 이상 없어요.",
   "error.provider_not_connected": "이 계정은 연결되어 있지 않아요.",
   "error.chat_model_unknown": "이 계정에서는 이 모델을 쓸 수 없어요.",
   "error.runtime_missing":
-    "설치되지 않음: 이 컴퓨터에 프로그램이 없어요. 모델 제공자를 열어 설치하세요.",
+    "설치되지 않았어요. 이 컴퓨터에 프로그램이 없어요. 모델 제공자를 열어 설치해 주세요.",
   "error.runtime_repair_gone":
-    "프로그램을 복구해야 해요. 파일이 없어졌거나 옮겨졌어요. 모델 제공자를 열어 '복구'를 누르세요.",
+    "프로그램을 복구해야 해요. 파일이 없어졌거나 옮겨졌어요. 모델 제공자를 열어 '복구'를 눌러 주세요.",
   "error.runtime_repair_start":
-    "프로그램을 복구해야 해요. 프로그램이 시작되지 않아요. 모델 제공자를 열어 '복구'를 누르세요.",
+    "프로그램을 복구해야 해요. 프로그램이 시작되지 않아요. 모델 제공자를 열어 '복구'를 눌러 주세요.",
   "error.runtime_repair_answer":
-    "프로그램을 복구해야 해요. 프로그램이 응답하지 않아요. 모델 제공자를 열어 '복구'를 누르세요.",
+    "프로그램을 복구해야 해요. 프로그램이 응답하지 않아요. 모델 제공자를 열어 '복구'를 눌러 주세요.",
   "error.runtime_repair_unreadable":
-    "프로그램을 복구해야 해요. 프로그램의 응답을 읽을 수 없어요. 모델 제공자를 열어 '복구'를 누르세요.",
+    "프로그램을 복구해야 해요. 프로그램의 응답을 읽을 수 없어요. 모델 제공자를 열어 '복구'를 눌러 주세요.",
   "error.decision_not_set_up":
-    "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장하세요.",
+    "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장해 주세요.",
   "error.read_only_unsupported":
-    "이 노드는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
-  "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인하세요.",
+    "이 노드는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 골라 주세요.",
+  "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인해 주세요.",
   "error.runtime_api_key_login":
-    "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 로그인하세요.",
-  "error.runtime_signed_out": "구독 로그인이 유효하지 않아요. 설정에서 다시 로그인하세요.",
+    "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 로그인해 주세요.",
+  "error.runtime_signed_out": "구독 로그인이 유효하지 않아요. 설정에서 다시 로그인해 주세요.",
 
   "chat.tools.folded.one": "도구 단계 {count}개",
   "chat.tools.folded.other": "도구 단계 {count}개",
 
-  "firstRun.title": "ROBot에 오신 것을 환영해요",
+  "firstRun.title": "ROBot에 오신 걸 환영해요",
   "firstRun.step": "{total}단계 중 {current}단계",
   "firstRun.look.title": "언어와 테마",
   "firstRun.look.body": "두 가지 모두 나중에 설정에서 바꿀 수 있어요.",
@@ -274,7 +274,7 @@ export const ko: Record<MessageKey, string> = {
   "sensitive.label.robot": "ROBot 데이터",
   "permissions.log.title": "작업 기록",
   "permissions.log.hint":
-    "권한 수준과 내 답이 결정한 단계예요. 기록은 90일 동안 이 컴퓨터에만 남아요.",
+    "권한 수준과 내 선택으로 결정된 단계예요. 기록은 90일 동안 이 컴퓨터에만 남아요.",
   "permissions.log.empty": "아직 기록이 없어요.",
   "permissions.log.filterResult": "결과",
   "permissions.log.allResults": "전체",
@@ -294,7 +294,7 @@ export const ko: Record<MessageKey, string> = {
   "permissions.log.decided.level": "권한 수준",
   "permissions.log.decided.allow_rule": "허용 규칙",
   "permissions.log.decided.deny_rule": "거부 규칙",
-  "permissions.log.decided.user": "카드에서 내가 결정",
+  "permissions.log.decided.user": "카드에서 직접 결정",
   "permissions.log.decided.app": "앱",
   "permissions.log.result.ran": "실행됨",
   "permissions.log.result.failed": "실패",
@@ -325,9 +325,9 @@ export const ko: Record<MessageKey, string> = {
   "vault.secrets": "저장된 비밀 값",
   "vault.logins": "저장된 로그인",
   "vault.empty.secrets":
-    "저장된 비밀 값이 없어요. 저장된 비밀 값은 텍스트 노드가 웹 서비스 하나에 쓰는 키나 비밀번호예요. 모델은 값을 절대 보지 않아요.",
+    "저장된 비밀 값이 없어요. 저장된 비밀 값은 텍스트 노드가 하나의 웹 서비스에 쓰는 키나 비밀번호예요. 모델은 값을 절대 보지 않아요.",
   "vault.empty.logins":
-    "저장된 로그인이 없어요. 저장된 로그인은 브라우저가 사이트의 로그인 양식에 채워 넣는 사용자 이름과 비밀번호예요. 모델은 값을 절대 보지 않아요.",
+    "저장된 로그인이 없어요. 저장된 로그인은 브라우저가 사이트의 로그인 양식에 채워넣는 사용자 이름과 비밀번호예요. 모델은 값을 절대 보지 않아요.",
   "vault.remote": "이 워크플로의 보관함은 {name}에서 열 수 있어요.",
   "vault.loading": "불러오는 중…",
   "vault.unreadable": "보관함을 읽을 수 없어요.",
@@ -351,9 +351,9 @@ export const ko: Record<MessageKey, string> = {
   "vault.login.replace.title": "{name}의 새 값",
   "vault.login.delete.title": "로그인 {name}을(를) 삭제할까요?",
   "vault.delete.body.secret":
-    "값이 키체인에서 나가요. 이 워크플로의 텍스트 노드는 더 이상 쓸 수 없어요. 이미 시작된 요청은 끝날 수 있어요.",
+    "값이 키체인에서 삭제돼요. 이 워크플로의 텍스트 노드는 더 이상 쓸 수 없어요. 이미 시작된 요청은 끝날 수 있어요.",
   "vault.delete.body.login":
-    "두 값이 키체인에서 나가요. 이 워크플로의 텍스트 노드는 더 이상 쓸 수 없어요.",
+    "두 값이 키체인에서 삭제돼요. 이 워크플로의 텍스트 노드는 더 이상 쓸 수 없어요.",
   "vault.test": "테스트",
   "vault.test.status": "상태 코드 {status}",
   "vault.test.reason.invalid": "주소가 올바르지 않아요.",
@@ -384,7 +384,7 @@ export const ko: Record<MessageKey, string> = {
   "error.secret_origin_invalid":
     "https://api.example.com처럼 경로와 로그인 정보가 없는 출처를 입력해 주세요.",
   "error.secret_origin_local":
-    "이 컴퓨터나 로컬 네트워크의 주소는 설정, 권한의 “이 컴퓨터와 로컬 네트워크에서 저장된 비밀 값 허용” 스위치가 필요해요.",
+    "이 컴퓨터나 로컬 네트워크의 주소는 설정의 권한에 있는 “이 컴퓨터와 로컬 네트워크에서 저장된 비밀 값 허용” 스위치를 켜야 해요.",
   "error.login_name_invalid": "40자 이내의 영문, 숫자, -, _로 이름을 입력해 주세요.",
   "error.login_name_taken": "이 워크플로에 이미 같은 이름의 로그인이 있어요.",
   "error.login_value_invalid":
@@ -397,7 +397,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.section.browser": "브라우저",
   "browserProfiles.title": "브라우저 프로필",
   "browserProfiles.hint":
-    "브라우저 프로필은 쿠키와 로그인 정보를 이 컴퓨터에 보관해요. 같은 프로필을 쓰는 에이전트는 같은 사이트에 로그인된 상태가 돼요. 프로필이 없는 에이전트는 자기만의 로그인 정보를 써요.",
+    "브라우저 프로필은 쿠키와 로그인 정보를 이 컴퓨터에 보관해요. 같은 프로필을 쓰는 에이전트는 같은 사이트에 로그인한 상태가 돼요. 프로필이 없는 에이전트는 자기만의 로그인 정보를 써요.",
   "browserProfiles.empty":
     "아직 브라우저 프로필이 없어요. 에이전트마다 자기만의 로그인 정보를 써요.",
   "browserProfiles.add": "프로필 추가",
@@ -443,7 +443,7 @@ export const ko: Record<MessageKey, string> = {
     "꺼 두면 이 컴퓨터는 어떤 연결도 받지 않아요. 이미 연결한 기기도 마찬가지예요.",
   "devices.pair": "기기 연결하기",
   "devices.vpn":
-    "다른 네트워크에서 이 컴퓨터에 닿으려면 두 기기를 같은 VPN(예: Tailscale)에 넣어 주세요. ROBot은 VPN을 설정하지 않아요.",
+    "다른 네트워크에서 이 컴퓨터에 연결하려면 두 기기를 같은 VPN(예: Tailscale)에 넣어 주세요. ROBot은 VPN을 설정하지 않아요.",
   "devices.clients": "이 컴퓨터를 열 수 있는 기기",
   "devices.clients.empty": "이 컴퓨터를 열 수 있는 기기가 없어요.",
   "devices.count": "{count}/{max}",
@@ -454,7 +454,7 @@ export const ko: Record<MessageKey, string> = {
   "devices.client.offline": "지금 연결 안 됨",
   "devices.client.remove": "접근 해제",
   "devices.client.remove.ask":
-    "{name}의 접근을 해제할까요? 다시 연결하기 전까지 이 컴퓨터를 열 수 없어요.",
+    "{name}의 접근을 해제하면 다시 연결하기 전까지 이 컴퓨터를 열 수 없어요. 해제할까요?",
   "devices.client.canChange": "에이전트 만들기와 바꾸기 허용",
   "devices.client.canChange.locked": "두 컴퓨터가 동기화하는 동안은 켜져 있어요.",
   "pair.title": "기기 연결하기",
@@ -462,7 +462,7 @@ export const ko: Record<MessageKey, string> = {
   "pair.turnOn.body":
     "연결한 기기는 이 컴퓨터의 에이전트를 지시할 수 있어요. 파일을 바꾸고 명령을 실행하는 단계도 포함돼요. 기기마다 직접 허용 여부를 정해요.",
   "pair.turnOn.confirm": "켜고 연결하기",
-  "pair.intro": "다른 기기에서 QR 코드를 스캔하거나, 주소 하나와 연결 코드를 입력하세요.",
+  "pair.intro": "다른 기기에서 QR 코드를 스캔하거나, 주소와 연결 코드를 입력해 주세요.",
   "pair.qr": "연결용 QR 코드",
   "pair.code": "연결 코드",
   "pair.addresses": "이 컴퓨터의 주소",
@@ -470,9 +470,9 @@ export const ko: Record<MessageKey, string> = {
   "pair.address.vpn": "VPN",
   "pair.copyLink": "링크 복사",
   "pair.copied": "링크를 복사했어요.",
-  "pair.left": "{time} 뒤에 코드가 끝나요.",
-  "pair.ended.expired": "코드가 끝났어요. 새 코드를 만들어 주세요.",
-  "pair.ended.tries": "잘못된 코드가 5번 입력돼서 코드가 끝났어요.",
+  "pair.left": "{time} 뒤에 코드가 만료돼요.",
+  "pair.ended.expired": "코드가 만료됐어요. 새 코드를 만들어 주세요.",
+  "pair.ended.tries": "코드를 5번 잘못 입력해서 코드가 만료됐어요.",
   "pair.ended.used": "코드를 사용했어요. 다른 기기를 연결하려면 새 코드를 만들어 주세요.",
   "pair.ended.stopped": "연결을 멈췄어요.",
   "pair.new": "새 코드",
@@ -488,19 +488,19 @@ export const ko: Record<MessageKey, string> = {
   "join.allow": "허용",
   "join.deny": "거부",
   "error.wrong_code": "코드가 맞지 않아요. 다른 컴퓨터에 표시된 코드를 확인해 주세요.",
-  "error.code_ended": "이 코드는 끝났어요. 다른 컴퓨터에서 새 코드를 만들어 주세요.",
-  "error.unreachable": "이 컴퓨터에 닿을 수 없어요. 네트워크나 두 기기의 VPN을 확인해 주세요.",
+  "error.code_ended": "이 코드는 만료됐어요. 다른 컴퓨터에서 새 코드를 만들어 주세요.",
+  "error.unreachable": "이 컴퓨터에 연결할 수 없어요. 네트워크나 두 기기의 VPN을 확인해 주세요.",
   "error.not_accepting":
-    "이 컴퓨터는 연결을 받지 않아요. 그 컴퓨터에서 “다른 기기의 연결 허용”을 켜 주세요.",
+    "이 컴퓨터는 연결을 받지 않아요. 이 컴퓨터에서 “다른 기기의 연결 허용”을 켜 주세요.",
   "error.same_device": "같은 컴퓨터예요. 다른 컴퓨터와 연결해 주세요.",
   "error.denied": "다른 컴퓨터가 이 기기를 허용하지 않았어요.",
   "error.limit": "연결할 수 있는 기기 10대를 모두 채웠어요.",
   "error.update_app": "두 앱의 연결 버전이 달라요. 더 오래된 쪽 앱을 업데이트해 주세요.",
   "error.invalid_link": "ROBot 링크가 아니에요.",
-  "error.invalid_address": "주소가 아니에요. 192.168.1.4:47800 같은 형식으로 입력해 주세요.",
+  "error.invalid_address": "올바른 주소가 아니에요. 192.168.1.4:47800 같은 형식으로 입력해 주세요.",
   "error.join_gone": "이미 응답한 요청이에요.",
   "error.server_not_found": "이 컴퓨터는 더 이상 연결되어 있지 않아요.",
-  "error.listen_failed": "다른 기기를 위한 포트를 열 수 없었어요.",
+  "error.listen_failed": "다른 기기 연결용 포트를 열 수 없었어요.",
   "error.offline": "이 서버는 오프라인이에요.",
   "error.timeout": "서버가 제때 응답하지 않았어요.",
   "error.not_allowed": "허용되지 않아요. 에이전트를 실행하는 컴퓨터에서 열어 주세요.",
@@ -514,17 +514,17 @@ export const ko: Record<MessageKey, string> = {
   "error.blocked": "{detail}",
   "settings.section.decision": "결정 모델",
   "decision.hint":
-    "결정 모델은 빠르게 답하는 작은 모델이에요. ROBot은 컴퓨터 사용과 권한 확인에 써요. 기본값은 꺼짐이에요.",
+    "결정 모델은 빠르게 답하는 작은 모델이에요. ROBot은 컴퓨터 사용과 권한 확인에 써요. 기본적으로 꺼져 있어요.",
   "decision.choice": "결정 모델",
   "decision.choice.off": "끄기",
   "decision.choice.openrouter": "OpenRouter의 Jev",
   "decision.off.hint": "꺼져 있어요. ROBot은 결정 모델에 아무것도 보내지 않아요.",
   "decision.sends":
-    "켜 두면 정할 단계와 그 선택지가 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. ROBot은 답을 저장하지 않아요. 키처럼 보이는 글은 먼저 가려요.",
+    "켜 두면 결정할 단계와 선택지가 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. ROBot은 답을 저장하지 않아요. 키처럼 보이는 글은 먼저 가려요.",
   "decision.key": "OpenRouter API 키",
   "decision.key.saved": "이 컴퓨터에 키가 저장돼 있어요.",
   "decision.key.none": "저장된 키가 없어요.",
-  "decision.key.field": "키를 붙여 넣으세요",
+  "decision.key.field": "키를 붙여넣어 주세요",
   "decision.key.save": "키 저장",
   "decision.key.remove": "키 지우기",
   "decision.model": "모델 이름",
