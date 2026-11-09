@@ -8,6 +8,7 @@ import {
   ConnectionSource,
   DEVICE_NAME_MAX,
   DecisionKeys,
+  draftSkillFromWorkflow,
   isChangeMethod,
   isClientMethod,
   type ModelChoice,
@@ -714,6 +715,22 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String }))(input).pipe(
       Effect.flatMap(({ id }) => Skills.use((s) => s.remove(id))),
       done,
+    ),
+  "skills.fromWorkflow": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) =>
+        Effect.gen(function* () {
+          const flow = yield* Workflows.use((w) => w.get(workflowId))
+          if (flow.graph.nodes.length === 0)
+            return yield* new AppError({ code: "workflow_no_nodes" })
+          const skills = yield* Skills
+          return draftSkillFromWorkflow(flow, (name) => skills.nameTaken(flow.serverId, name))
+        }),
+      ),
+    ),
+  "skills.check": (input) =>
+    decode(Schema.Struct({ id: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id }) => Skills.use((s) => s.check(id))),
     ),
   "workflows.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(

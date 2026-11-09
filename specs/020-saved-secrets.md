@@ -12,8 +12,8 @@ manages the API keys and passwords of that workflow.
 - **Vault**: the saved secrets and the saved logins of one workflow, in the Secrets tab of the
   workflow view. The vault shows the name of the workflow. It shows no value.
 - **Saved secret**: a name, the workflow that it belongs to, an origin, a way to send it, the date
-  it was saved, and the date it was last used. The value is in the system keychain (see 014), never
-  in the database.
+  it was saved, and the date it was last used. The value is in the secrets file (see 014),
+  never in the database.
   - The name holds 1 to 40 characters: letters, digits, `-` and `_`. It is unique for its
     workflow, and the check ignores case.
   - The origin is the scheme, the host and the port of the service, for example
@@ -35,8 +35,8 @@ manages the API keys and passwords of that workflow.
    origin and the way to send it. The chat of the workflow shows a protected card. The card shows
    the reason, the node, the origin in large text, the way to send it, a hidden field, Save and
    Cancel. The task waits for the user (005, "Waits for your answer").
-   - Save puts the value in the keychain. The field is cleared when the save starts. The card
-     then shows "Saved". The node gets the name, not the value.
+   - Save puts the value in the secrets file. The field is cleared when the save
+     starts. The card then shows "Saved". The node gets the name, not the value.
    - Cancel: the card shows "Cancelled", and the node gets that answer.
    - When a secret with the same name and the same origin and way to send it exists, no card
      shows. The node gets the name. With the choice "replace", a new card shows and the new
@@ -50,8 +50,9 @@ manages the API keys and passwords of that workflow.
      name of the secret and a method, or "any method".
    - The card in the chat shows the name of the secret, the method and the address. It never
      shows the value.
-3. Forget: a text node calls the tool "forget a secret" with a name. The value leaves the
-   keychain. A request that has already started can end.
+3. Forget: a text node calls the tool "forget a secret" with a name. The value leaves
+   the secrets file at once when the state is Readable (see 014). A request that has already
+   started can end.
 4. Vault: the Secrets tab of the workflow view holds the vault of the open workflow. It has two
    lists: "Saved secrets" and "Saved logins". Each row shows the name, the origin, the way to send
    it (or the user name for a login), the date it was saved, and the date it was last used. No row
@@ -82,8 +83,9 @@ manages the API keys and passwords of that workflow.
      metadata addresses, and the time limit of 30 seconds. It never shows the value. Test does
      not change the date last used. The result stays on the row until the next Test. Logins have
      no Test button: the fill at run time is the test.
-   - Delete: the user deletes a secret or a login after a confirm (000). The value leaves the
-     keychain at once. A request that has already started can end.
+   - Delete: the user deletes a secret or a login after a confirm (000). In Locked
+     and Damaged a Delete is refused (see 014). The value leaves the secrets file at
+     once only when the state is Readable. A request that has already started can end.
    - Settings → Permissions holds an overview, "Saved secrets". It lists each workflow that holds
      a secret or a login: the name of the workflow, the count of secrets, the count of logins, and
      a link "Open vault" that opens the vault of that workflow. It shows no value, and the user
@@ -99,15 +101,15 @@ A saved login lets a text node sign in to a site in its browser (007) while the 
 the user name or the password.
 
 - **Saved login**: a name, the workflow, the origin of the site (scheme, host and port), a user
-  name and a password. Both values are in the system keychain (014), never in the database. The
-  name follows the rule of a saved secret: 1 to 40 characters, unique for its workflow, ignoring
-  case. A workflow can have more than one login for one site, under different names, for example
-  for two accounts.
+  name and a password. Both values are in the secrets file (014), never in the database. The
+  name follows the rule of a saved secret. It holds 1 to 40 characters. It is unique for its
+  workflow, ignoring case. A workflow can have more than one login for one site, under
+  different names, for example for two accounts.
 - Ask: a text node calls the tool "ask for a login" with a name, a short label, the reason and the
   origin. The chat shows a protected card with the reason, the origin in large text, a field for
   the user name, a hidden field for the password, Save and Cancel.
-  - Save puts both values in the keychain. The fields are cleared when the save starts. The card
-    then shows "Saved". The node gets the name, never a value.
+  - Save puts both values in the secrets file. The fields are cleared when the save
+    starts. The card then shows "Saved". The node gets the name, never a value.
   - Cancel: the card shows "Cancelled", and the node gets that answer.
   - When a login with the same name and the same origin exists, no card shows, and the node gets
     the name. A login with the same name and another origin is refused.
@@ -133,9 +135,9 @@ the user name or the password.
   confirm, as with secrets (see "Flows", item 4). The Settings overview counts the logins of each
   workflow and links to its vault.
 - A workflow file (010) holds no login, so a workflow that an import makes has none. A duplicated
-  workflow starts with an empty vault. Deleting a workflow deletes its vault: its logins leave the
-  keychain at once. Renaming a workflow moves its vault with it. A workflow holds at most 50
-  logins.
+  workflow starts with an empty vault. Deleting a workflow deletes its vault. Its logins leave
+  the secrets file when the state is next Readable (see 014). Renaming a workflow moves its
+  vault with it. A workflow holds at most 50 logins.
 - An export holds the name, the workflow and the origin of each login, not the values. After an
   import each login shows "Value missing" in its vault. Logins do not sync (019).
 - On a linked device (012), the protected card shows "Answer this on NAME". A value never goes
@@ -148,9 +150,17 @@ the user name or the password.
 - Empty vault: with no saved secret, the "Saved secrets" list shows one muted line that says what
   a saved secret is. With no saved login, the "Saved logins" list shows one muted line that says
   what a saved login is.
-- Loading: while the vault reads the keychain, it shows "Loading…".
-- Keychain error: when the keychain cannot be read, the vault shows "Cannot read the vault." with
-  Retry. A request with a secret then fails with that reason until the keychain can be read again.
+- Loading: while the vault reads the saved secrets, it shows "Loading…".
+- Locked secrets key: when the secrets key is locked or denied (see 014), the vault shows
+  "Cannot read the vault." with Retry. A request with a secret then fails with that reason.
+  Add, Replace, Delete and Forget are refused with that reason. Retry works again when the
+  state is Readable.
+- Missing secrets key: when the secrets file exists but the secrets key does not, every row
+  shows "Value missing" (see 014). The user can save new secrets. A request fails with that
+  reason until the user saves a new value.
+- Damaged secrets file: when the app cannot open the secrets file with the secrets key of
+  this profile (see 014), the vault shows "Cannot read the vault." with Retry. Add,
+  Replace, Delete and Forget are refused with that reason. Nothing is overwritten.
 - A secret whose value is missing (for example after an import, see 014) shows "Value missing".
   A request with it fails with that reason until the user replaces the value.
 - A protected card that waits counts as a question for the island and the notifications (see
@@ -188,13 +198,13 @@ the user name or the password.
 - A text node reads only the secrets and logins of its own workflow. A name from another
   workflow is refused as unknown.
 - A workflow file (010) holds no secret, so a workflow that an import makes has none. A
-  duplicated workflow starts with an empty vault. Renaming a workflow moves its vault with it:
-  the rows stay, under the new name. Deleting a workflow deletes its vault: its secrets leave the
-  keychain at once.
+  duplicated workflow starts with an empty vault. Renaming a workflow moves its vault with it.
+  The rows stay, under the new name. Deleting a workflow deletes its vault. Its secrets leave
+  the secrets file when the state is next Readable (see 014).
 - An export holds the name, the workflow, the origin and the way to send each secret, not the
   value. After an import, each secret shows "Value missing" in its vault.
-- Saved secrets do not sync (019). The values are in the keychain of one computer. The vault of
-  the other computer does not show them. Each computer shows the vaults of its own workflows only.
+- Saved secrets do not sync (019). The values stay on one computer. The vault of the other
+  computer does not show them. Each computer shows the vaults of its own workflows only.
 - These tools are for text nodes whose model comes from an API provider (see 006), as connections
   are (see 018).
 
@@ -213,7 +223,8 @@ the user name or the password.
 - **Seeing the state**: the card in the chat, the run view (the task waits for the user), the vault
   of the workflow, the overview in Settings, and "Value missing". All stay after a restart, except
   a card of a task that the restart ended (010).
-- **Data**: the keychain holds the values. The database holds the other fields. See "Rules".
+- **Data**: the secrets file holds the values, encrypted. The database holds the other
+  fields. See "Rules".
 - **Words**: "Vault" goes in `docs/glossary.md`, in English and Korean.
 
 ## Out of scope
@@ -230,8 +241,8 @@ All checks use a small test web service, written for the test.
 
 - A text node asks for the secret `test_api` for `https://127.0.0.1:PORT` with a bearer token, and
   the switch for this computer is on. The card shows the origin and shows in the chat of the
-  workflow. Save a value: the database file, the logs, the chat and an export hold no clear text of
-  it.
+  workflow. Save a value: the database file, the secrets file, the logs, the chat and an
+  export hold no clear text of it.
 - A GET request with the secret: the test service gets the header with the value. The node gets
   the body.
 - The test service sends the value back in its body, as plain text and as base64: the node gets
@@ -248,7 +259,8 @@ All checks use a small test web service, written for the test.
 - A protected card waits in a run. Ask the chat "Why does it wait?": the answer names the node and
   says that the run waits for the card of a secret. The answer holds no value. A run that a
   schedule started waits with no time limit.
-- Delete the secret in the vault: the next request fails, and the keychain no longer holds it.
+- Delete the secret in the vault. The next request fails, and the secrets file no longer
+  holds it.
 - Export, then import into an empty app: the vault of the workflow shows the secret with "Value
   missing".
 - Import a workflow file: the new workflow has an empty vault. Duplicate a workflow with a secret:
@@ -256,7 +268,8 @@ All checks use a small test web service, written for the test.
 - A test service that waits 40 seconds: the request fails after 30 seconds.
 - A test page has a sign-in form at `https://127.0.0.1:PORT`. A text node asks for the login
   `test_user`. The card shows the origin. Save a user name and a password: the database file, the
-  logs, the chat and an export hold no clear text of them. The node calls "sign in with a login":
+  secrets file, the logs, the chat and an export hold no clear text of them. The node calls
+  "sign in with a login":
   the page fields hold the values, the answer says "Filled", and the model request holds neither
   value. The test page echoes the user name in an error text: the node gets `[redacted]`.
 - A page of another port: the call is refused with the reason. A form that sends to another origin
@@ -266,9 +279,9 @@ All checks use a small test web service, written for the test.
   rule stops it at every level.
 - Export and import into an empty app: the vault shows the login with "Value missing", and the
   call fails with that reason until the user replaces the values.
-- Save a login, then delete the workflow: the keychain holds no value of it. Ask for a login with
-  the same name and another origin: the app refuses it. Press Cancel on the card: the node gets
-  "Cancelled". Ask for 51 logins for one workflow: the 51st is refused.
+- Save a login, then delete the workflow. The secrets file holds no value of it. Ask for
+  a login with the same name and another origin: the app refuses it. Press Cancel on the card:
+  the node gets "Cancelled". Ask for 51 logins for one workflow: the 51st is refused.
 - Open the vault of a workflow that holds a secret, while another workflow holds a secret of the
   same name: the vault shows only the secrets of the open workflow. A request that names the other
   workflow's secret is refused as unknown.
@@ -282,3 +295,8 @@ All checks use a small test web service, written for the test.
 - Rename a workflow that holds a secret: the vault shows the same rows under the new name.
   Settings → Permissions shows the counts of each workflow with "Open vault", and no value.
 - A decision node and the responsible document have no tool of this spec.
+- Delete the secrets key and keep the secrets file. A request with a secret fails with
+  "Value missing" until the user saves a new value.
+- With the secrets key locked, Add and Replace in the vault are refused with "Cannot read
+  the vault." Change the secrets file so the app cannot open it. Add and Replace are refused
+  with that reason.

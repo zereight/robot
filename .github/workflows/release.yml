@@ -29,11 +29,13 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  # A new push to a PR replaces its running build. A tag build never gets cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -81,9 +83,9 @@ jobs:
   # only build. macos-latest is an Apple silicon runner.
   package:
     runs-on: macos-latest
-    # Notarization waits for Apple. Most runs take a few minutes; a stuck one must not hold the
-    # runner for the six hours that are the default.
-    timeout-minutes: 60
+    # macOS minutes cost the most. A good run takes 25 minutes at most, notarization included. A
+    # stuck one must not hold the runner for the six hours that are the default.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

@@ -5,7 +5,7 @@ export interface SecretsService {
   get(key: string): string | null
   set(key: string, value: string): void
   remove(key: string): void
-  /** Throws when the keychain cannot be read (spec 020, "Keychain error"). */
+  /** Throws when the secrets file cannot be read (see 014, states Locked and Damaged). */
   check(): void
 }
 
@@ -15,11 +15,18 @@ const NO_VALUE = 3
 const exitCode = (error: unknown) =>
   typeof error === "object" && error !== null && "status" in error ? error.status : undefined
 
+/** Where the host keeps the secrets: the encrypted file of one profile, or the file of tests. */
+export type SecretsSource = { vault: { path: string; profile: string } } | { file: string }
+
 /** The store of the host program, with the values that were read kept in memory. */
-export const hostStore = (command: string, file?: string): SecretsService => {
+export const hostStore = (command: string, source: SecretsSource): SecretsService => {
   const known = new Map<string, string | null>()
+  const locator =
+    "vault" in source
+      ? ["--vault", source.vault.path, "--profile", source.vault.profile]
+      : ["--file", source.file]
   const run = (args: string[], input?: string) =>
-    execFileSync(command, ["secrets", ...args, ...(file ? ["--file", file] : [])], {
+    execFileSync(command, ["secrets", ...args, ...locator], {
       encoding: "utf8",
       // stderr holds the reason only, never a value.
       stdio: ["pipe", "pipe", "pipe"],
@@ -39,7 +46,7 @@ export const hostStore = (command: string, file?: string): SecretsService => {
       return value
     },
     set: (key, value) => {
-      known.delete(key)
+      known.clear()
       try {
         run(["set", key], value)
       } catch {
@@ -57,26 +64,26 @@ export const hostStore = (command: string, file?: string): SecretsService => {
       known.set(key, null)
     },
     check: () => {
-      // A key that was never written reads as no value (exit 3) when the store can be read.
       try {
-        run(["get", `probe:${Date.now().toString(36)}`])
-      } catch (error) {
-        if (exitCode(error) !== NO_VALUE) throw new Error("The keychain could not be read")
+        run(["check"])
+      } catch {
+        known.clear()
+        throw new Error("The keychain could not be read")
       }
     },
   }
 }
 
-/** Keys and tokens. They live in the system keychain and nowhere else. */
+/** Keys and tokens. They live in the encrypted secrets file of the profile, and nowhere else. */
 export class Secrets extends Context.Service<Secrets, SecretsService>()("robot/main/Secrets") {
   /**
-   * The store of the host program (`host/src/secrets.rs`): the system keychain, or with `file`
-   * the file store of end-to-end tests. Each read or write is one short run of the host that the
-   * main process waits for, so the calls stay synchronous. Values that were read once are kept in
-   * memory: only this app writes them.
+   * The store of the host program (`host/src/secrets.rs`): the secrets file of one profile, or
+   * with `file` the plain store of end-to-end tests. Values that were read once are kept in
+   * memory. Every `set` and every failed `check` drops them all, so a replaced
+   * file never shows an old value.
    */
-  static readonly host = (command: string, file?: string) =>
-    Layer.sync(Secrets, () => Secrets.of(hostStore(command, file)))
+  static readonly host = (command: string, source: SecretsSource) =>
+    Layer.sync(Secrets, () => Secrets.of(hostStore(command, source)))
 
   /** Keeps secrets in memory. For unit tests. */
   static readonly memory = Layer.sync(Secrets, () => {

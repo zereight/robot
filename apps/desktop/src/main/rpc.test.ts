@@ -291,3 +291,77 @@ describe("the worktree of a run over rpc (spec 007)", () => {
     ).toMatchObject({ ok: false, error: { code: "run_not_found" } })
   })
 })
+
+describe("make a skill from a workflow, and the skill check (spec 017)", () => {
+  const made = async () => {
+    const t = await setup()
+    const flow = (await t.ask("workflows.create", { serverId: t.server.id, name: "Weekly" })) as {
+      value: Workflow
+    }
+    return { ...t, workflowId: flow.value.id }
+  }
+
+  test("a workflow with no node cannot make a draft", async () => {
+    const t = await made()
+    expect(await t.ask("skills.fromWorkflow", { workflowId: t.workflowId })).toMatchObject({
+      ok: false,
+      error: { code: "workflow_no_nodes" },
+    })
+  })
+
+  test("the draft is not saved, and a taken name gets a number", async () => {
+    const t = await made()
+    await t.ask("workflows.node.add", {
+      workflowId: t.workflowId,
+      node: { kind: "text", name: "Collect", prompt: "Collect the news.  {{input}}" },
+    })
+    const first = (await t.ask("skills.fromWorkflow", { workflowId: t.workflowId })) as {
+      ok: true
+      value: { name: string; instructions: string }
+    }
+    expect(first.value).toMatchObject({ name: "Weekly", instructions: "1. Collect the news." })
+    expect(await t.ask("skills.list", { serverId: t.server.id })).toEqual({ ok: true, value: [] })
+
+    await t.ask("skills.create", {
+      serverId: t.server.id,
+      name: "weekly",
+      description: "",
+      instructions: "x",
+    })
+    const second = (await t.ask("skills.fromWorkflow", { workflowId: t.workflowId })) as {
+      value: { name: string }
+    }
+    expect(second.value.name).toBe("Weekly 2")
+  })
+
+  test("the check reads a saved skill, and a deleted skill fails Saved", async () => {
+    const t = await made()
+    const created = (await t.ask("skills.create", {
+      serverId: t.server.id,
+      name: "Weekly",
+      description: "Write the weekly summary.",
+      instructions: "1. Do it.",
+    })) as { value: { id: string } }
+    const checked = (await t.ask("skills.check", { id: created.value.id })) as {
+      value: { id: string; status: string }[]
+    }
+    expect(checked.value.every((f) => f.status === "ok")).toBe(true)
+    await t.ask("skills.delete", { id: created.value.id })
+    const gone = (await t.ask("skills.check", { id: created.value.id })) as {
+      value: { id: string; status: string }[]
+    }
+    expect(gone.value.map((f) => f.status)).toEqual(["fail", ...Array(6).fill("skipped")])
+  })
+
+  test("a linked device cannot use either request", async () => {
+    const t = await made()
+    expect(await t.ask("skills.fromWorkflow", { workflowId: t.workflowId }, "may")).toMatchObject({
+      ok: false,
+      error: { code: "not_allowed" },
+    })
+    expect(await t.ask("skills.check", { id: "x" }, "may")).toMatchObject({
+      ok: false,
+      error: { code: "not_allowed" },
+    })
+  })
+})

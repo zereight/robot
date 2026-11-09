@@ -22,7 +22,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 014 | [Local data, privacy, secrets, export, and the review before an import of a workflow file](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island: notices of replies, approvals, failed nodes, finished runs and proposals, each leading to the chat of the workflow](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles that the nodes of a workflow write, cite and read again](016-knowledge.md) | Draft |
-| 017 | [Skills: saved instructions that the user calls with a slash, and that a prompt can include](017-skills.md) | Draft |
+| 017 | [Skills: saved instructions that the user calls with a slash, and that a prompt can include; make a skill from a workflow, the diet of its draft, and the skill check](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for the text nodes of workflows, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where workflows run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that the nodes of a workflow use and the model never sees](020-saved-secrets.md) | Draft |

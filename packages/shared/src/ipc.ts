@@ -25,6 +25,7 @@ import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
 import type { CardAnswer, RunDetail, RunStart, RunSummary } from "./runs.ts"
 import type { SavedLogin, SavedSecret, SecretTestResult } from "./secrets.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type { SkillDraft, SkillFactResult } from "./skillFromWorkflow.ts"
 import type { Skill, SkillInput } from "./skills.ts"
 import type { QuietTurn, RetryResult, TaskFilter, TaskItem, TaskView } from "./tasks.ts"
 import type {
@@ -482,6 +483,13 @@ export interface RpcMethods {
   "skills.duplicate": { input: { id: string; suffix: string }; output: Skill }
   "skills.setEnabled": { input: { id: string; enabled: boolean }; output: Skill }
   "skills.delete": { input: { id: string }; output: undefined }
+  /**
+   * Make a skill from a workflow (spec 017): the draft after the diet. It reads the workflow, asks
+   * no model, and saves nothing. A workflow with no node fails with `workflow_no_nodes`.
+   */
+  "skills.fromWorkflow": { input: { workflowId: string }; output: SkillDraft }
+  /** The skill check (spec 017): the facts about one skill. It reads only and stores nothing. */
+  "skills.check": { input: { id: string }; output: readonly SkillFactResult[] }
 }
 
 /** A thread of an agent. `threadId` none or null is the main thread. */
