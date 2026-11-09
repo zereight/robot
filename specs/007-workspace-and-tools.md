@@ -82,7 +82,9 @@ can take the feedback of the user while the run works.
 - A run makes its worktree when the run starts, not while it waits in the queue. While the app
   makes the worktree, the run shows in the run view and the workflow counts as running, so the
   editor is read-only. Stop during that time ends the run and starts no task. A worktree that was
-  made stays with the run, so "Remove" can delete it. If the app stops during that time, the run is failed with
+  made stays with the run, so "Remove" can delete it. While the run waits for the workflow, its
+  first task shows as waiting (005). When the worktree cannot be made, or the user stops the run
+  during that time, that task is removed and no node runs. If the app stops during that time, the run is failed with
   the reason "The app stopped" (see "Rules").
 - When the folder is a subfolder that the last commit does not hold, the run is failed with the
   reason "Could not make a new worktree: the folder is not in the last commit." A retry works in
