@@ -36,7 +36,8 @@ export interface FileClaimsService {
   /**
    * Checks the step, and when it may run, gives the task a claim on each file. The files of one
    * step are claimed together or not at all. A workflow whose folder is not shared holds no claim
-   * (spec 025, "Concepts"), but a file that another workflow holds is still refused.
+   * (spec 025, "Concepts"), and neither does a task of a run with a new worktree (spec 007), but
+   * a file that another workflow holds is still refused.
    */
   readonly claim: (input: ClaimInput) => ClaimOutcome
   /** Ends the claims of a task. Called when the task is final (spec 025, flow 4). */
@@ -112,6 +113,13 @@ export const makeFileClaims = (db: DatabaseService): FileClaimsService => {
       db.transaction(() => {
         const outcome = check(input)
         if (outcome.kind !== "ok") return outcome
+        // A run in a new worktree works where no other workflow does: its tasks hold no claim
+        // (spec 025, "Rules").
+        const run = db.get<{ worktree_path: string | null }>(
+          "SELECT r.worktree_path FROM task t JOIN run r ON r.id = t.run_id WHERE t.id = ?",
+          input.taskId,
+        )
+        if (run && run.worktree_path !== null) return outcome
         if (sharingWorkflows(db, input.workflowId).length === 0) return outcome
         const at = Date.now()
         for (const path of input.paths)

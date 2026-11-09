@@ -185,6 +185,25 @@ describe("claims (spec 025, flows 2 to 4)", () => {
     expect(t.claims.note(a.id)).toBeNull()
   })
 
+  test("a task of a run with a new worktree holds no claim", async () => {
+    const t = await setup()
+    const shared = folder()
+    await t.make("A", shared)
+    const b = await t.make("B", shared)
+    const taskB = t.task(b.id, 1, "Write notes", "write")
+    t.db.run(
+      "UPDATE run SET worktree_path = ?, worktree_branch = ? WHERE id = ?",
+      "/tmp/wt-b",
+      "robot/b-20261109-120000",
+      `run-${b.id}-1`,
+    )
+    expect(
+      t.claims.claim({ taskId: taskB, workflowId: b.id, paths: [join(shared, "notes.md")] }).kind,
+    ).toBe("ok")
+    expect(t.claims.ofTask(taskB).count).toBe(0)
+    expect(t.claims.note(b.id)).not.toBeNull()
+  })
+
   test("a rename claims the old and the new path, or neither", async () => {
     const t = await setup()
     const shared = folder()
