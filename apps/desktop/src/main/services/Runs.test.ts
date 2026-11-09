@@ -2546,6 +2546,58 @@ describe("the worktree of a run (spec 007, New worktree)", () => {
     }
   })
 
+  test("a Stop during creation with relative worktree paths leaves no entry and no branch", async () => {
+    const t = await setup()
+    const dir = gitRepo()
+    git(dir, "config", "worktree.useRelativePaths", "true")
+    const started = join(dir, "hook-started")
+    const release = join(dir, "hook-release")
+    const hook = join(dir, ".git", "hooks", "post-checkout")
+    writeFileSync(
+      hook,
+      `#!/bin/sh\ntouch ${started}\nn=0\nwhile [ ! -f ${release} ] && [ $n -lt 2400 ]; do sleep 0.05; n=$((n+1)); done\n`,
+    )
+    chmodSync(hook, 0o755)
+    await t.run(Workflows.use((w) => w.setFolder(t.flow.id, dir)))
+    await t.run(Workflows.use((w) => w.setNewWorktree(t.flow.id, true)))
+    await t.node({ name: "Say", prompt: "hello" })
+    const run = await t.start()
+    try {
+      await until(() => existsSync(started))
+      const planned = (
+        await t.rows<{ worktree_path: string; worktree_branch: string }>(
+          "SELECT worktree_path, worktree_branch FROM run WHERE id = ?",
+          run.id,
+        )
+      )[0] ?? { worktree_path: "", worktree_branch: "" }
+      expect(planned.worktree_path).not.toBe("")
+      expect(planned.worktree_branch).not.toBe("")
+      await t.run(Runs.use((r) => r.stop(run.id)))
+      const stopped = await t.ended(run.id)
+      expect(stopped.state).toBe("cancelled")
+      // The cleanup runs in the background: it ends with the row cleared.
+      await until(
+        async () =>
+          (
+            await t.rows<{ worktree_path: string | null }>(
+              "SELECT worktree_path FROM run WHERE id = ?",
+              run.id,
+            )
+          )[0]?.worktree_path == null,
+      )
+      expect(existsSync(planned.worktree_path)).toBe(false)
+      expect((await t.get(run.id)).worktree).toBeNull()
+      const listed = git(dir, "worktree", "list", "--porcelain")
+      expect(listed).not.toContain(planned.worktree_path)
+      expect(listed).not.toContain("prunable")
+      expect(await branchExists(dir, planned.worktree_branch)).toBe(false)
+      await until(() => !pgrep(hook))
+    } finally {
+      writeFileSync(release, "go\n")
+      await expectHookGone(hook)
+    }
+  })
+
   test("a stopped creation drops only its own worktree entry, never another stale one", async () => {
     const t = await setup()
     const dir = gitRepo()

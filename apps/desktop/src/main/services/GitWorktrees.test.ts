@@ -428,6 +428,20 @@ describe("remove one attempt (spec 007, New worktree)", () => {
     expect(listed).toContain(other)
   })
 
+  test("it drops its own entry when git stores the gitdir as a relative path", async () => {
+    const dir = repo()
+    git(dir, "config", "worktree.useRelativePaths", "true")
+    const mine = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "mine")
+    await createWorktree(dir, mine, "robot/mine-20261109-120000")
+    // A creation killed before the worktree wrote its `.git` file: git refuses to remove
+    // the folder, so only the entry scan can still find the relative gitdir.
+    rmSync(join(mine, ".git"))
+    await removeAttemptWorktree(dir, mine)
+    const listed = git(dir, "worktree", "list", "--porcelain")
+    expect(listed).not.toContain(mine)
+    expect(listed).not.toContain("prunable")
+  })
+
   test("it removes an unregistered half-made folder and touches no entry", async () => {
     const dir = repo()
     const half = join(mkdtempSync(join(tmpdir(), "robot-wt-")), "half")

@@ -319,8 +319,11 @@ const removeOwnWorktreeEntry = async (repo: string, path: string): Promise<void>
       } catch {
         continue
       }
-      if (!isAbsolute(content) || basename(content) !== ".git") continue
-      if (keyOfWorktreePath(dirname(content)) !== want) continue
+      // Since git 2.48 the gitdir can be relative to the entry itself
+      // (`worktree.useRelativePaths`): resolve it against the entry before comparing.
+      const absolute = isAbsolute(content) ? content : join(join(dir, entry), content)
+      if (basename(absolute) !== ".git") continue
+      if (keyOfWorktreePath(dirname(absolute)) !== want) continue
       try {
         rmSync(join(dir, entry), { recursive: true, force: true })
       } catch {
