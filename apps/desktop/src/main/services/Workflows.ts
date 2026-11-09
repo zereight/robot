@@ -50,7 +50,7 @@ import { Browsers } from "./Browsers.ts"
 import { Database, type DatabaseService } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
-import { slugOfName } from "./GitWorktrees.ts"
+import { isInsideRepo, slugOfName } from "./GitWorktrees.ts"
 import { Platform } from "./Platform.ts"
 import { SettingsStore } from "./Settings.ts"
 import { sharingWorkflows } from "./sharedFolders.ts"
@@ -90,6 +90,12 @@ export interface WorkflowsService {
   /** Only the user changes the folder and the permission level of a workflow (spec 010). */
   readonly setPermission: (id: string, level: PermissionLevel) => Effect.Effect<Workflow, AppError>
   readonly setFolder: (id: string, folder: string) => Effect.Effect<Workflow, AppError>
+  /**
+   * The switch "Work in a new worktree" (spec 007). Turning it on fails with `worktree_not_git`
+   * when the folder is not inside a Git repository. Turning it off always works. Only the user
+   * changes it, and never while a run works.
+   */
+  readonly setNewWorktree: (id: string, on: boolean) => Effect.Effect<Workflow, AppError>
   readonly saveDocument: (
     id: string,
     text: string,
@@ -736,9 +742,29 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (busy) return yield* busy
             if (folder.trim() === "")
               return yield* new AppError({ code: "workflow_folder_empty", detail: "folder" })
+            // A folder outside git turns the switch off. A git folder keeps it (spec 007).
+            const keep =
+              row.new_worktree === 0 || (yield* Effect.promise(() => isInsideRepo(folder)))
             db.run(
-              "UPDATE workflow SET folder = ?, updated_at = ? WHERE id = ?",
+              "UPDATE workflow SET folder = ?, new_worktree = ?, updated_at = ? WHERE id = ?",
               folder,
+              keep ? row.new_worktree : 0,
+              Date.now(),
+              id,
+            )
+            changed(row.server_id)
+            return toWorkflow(yield* findRow(id))
+          }),
+        setNewWorktree: (id, on) =>
+          Effect.gen(function* () {
+            const row = yield* findRow(id)
+            const busy = checkIdle(id)
+            if (busy) return yield* busy
+            if (on && !(yield* Effect.promise(() => isInsideRepo(row.folder))))
+              return yield* new AppError({ code: "worktree_not_git", detail: "folder" })
+            db.run(
+              "UPDATE workflow SET new_worktree = ?, updated_at = ? WHERE id = ?",
+              on ? 1 : 0,
               Date.now(),
               id,
             )

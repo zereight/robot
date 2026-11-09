@@ -763,7 +763,10 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, folder: Schema.String }))(input).pipe(
       Effect.flatMap(({ id, folder }) => Workflows.use((w) => w.setFolder(id, folder))),
     ),
-  "workflows.setNewWorktree": () => Effect.fail(new AppError({ code: "worktree_unavailable" })),
+  "workflows.setNewWorktree": (input) =>
+    decode(Schema.Struct({ id: Schema.String, on: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, on }) => Workflows.use((w) => w.setNewWorktree(id, on))),
+    ),
   "runs.worktree.open": () => Effect.fail(new AppError({ code: "worktree_unavailable" })),
   "runs.worktree.remove": () => Effect.fail(new AppError({ code: "worktree_unavailable" })),
   "workflows.pickFolder": (input) =>

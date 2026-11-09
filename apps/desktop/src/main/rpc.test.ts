@@ -214,3 +214,21 @@ describe("a keychain that cannot be read (spec 020)", () => {
     })
   })
 })
+
+describe("the switch Work in a new worktree over rpc (spec 007)", () => {
+  test("workflows.setNewWorktree reaches the service: on fails outside git, off works", async () => {
+    const t = await setup()
+    const created = await t.ask("workflows.create", { serverId: t.server.id, name: "Report" })
+    expect(created.ok).toBe(true)
+    const id = (created as { value: Workflow }).value.id
+    // The default folder is not inside a git repository.
+    expect(await t.ask("workflows.setNewWorktree", { id, on: true })).toMatchObject({
+      ok: false,
+      error: { code: "worktree_not_git" },
+    })
+    expect(await t.ask("workflows.setNewWorktree", { id, on: false })).toMatchObject({
+      ok: true,
+      value: { newWorktree: false },
+    })
+  })
+})

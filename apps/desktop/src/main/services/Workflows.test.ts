@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { catalogues, DOCUMENT_MAX, DOCUMENT_VERSIONS_MAX, NODES_MAX } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { ActionLog } from "./ActionLog.ts"
@@ -824,4 +827,67 @@ describe("the switch Work in a new worktree (spec 007)", () => {
     await t.sql("UPDATE workflow SET new_worktree = 1 WHERE id = ?", flow.id)
     expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(true)
   })
+
+  test("turning on works in a git repository; turning off always works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setFolder(flow.id, gitRepo()))
+    expect((await t.w((x) => x.setNewWorktree(flow.id, true))).newWorktree).toBe(true)
+    expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(true)
+    expect((await t.w((x) => x.setNewWorktree(flow.id, false))).newWorktree).toBe(false)
+  })
+
+  test("turning on outside a git repository fails and the switch stays off", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setFolder(flow.id, mkdtempSync(join(tmpdir(), "robot-plain-"))))
+    expect(await t.code((x) => x.setNewWorktree(flow.id, true))).toBe("worktree_not_git")
+    expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(false)
+  })
+
+  test("turning off works when the folder stopped being a repository", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    const dir = gitRepo()
+    await t.w((x) => x.setFolder(flow.id, dir))
+    await t.w((x) => x.setNewWorktree(flow.id, true))
+    rmSync(join(dir, ".git"), { recursive: true, force: true })
+    expect((await t.w((x) => x.setNewWorktree(flow.id, false))).newWorktree).toBe(false)
+    expect(await t.code((x) => x.setNewWorktree(flow.id, true))).toBe("worktree_not_git")
+  })
+
+  test("the switch does not change while a run works", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setFolder(flow.id, gitRepo()))
+    await t.sql(
+      "INSERT INTO run (id, workflow_id, state, source, started_at) VALUES ('r1', ?, 'running', 'hand', 1)",
+      flow.id,
+    )
+    expect(await t.code((x) => x.setNewWorktree(flow.id, true))).toBe("workflow_running")
+    expect(await t.code((x) => x.setNewWorktree(flow.id, false))).toBe("workflow_running")
+  })
+
+  test("a folder outside git turns the switch off; a git folder keeps it", async () => {
+    const t = await setup()
+    const flow = await t.create("Report")
+    await t.w((x) => x.setFolder(flow.id, gitRepo()))
+    await t.w((x) => x.setNewWorktree(flow.id, true))
+    await t.w((x) => x.setFolder(flow.id, gitRepo()))
+    expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(true)
+    await t.w((x) => x.setFolder(flow.id, mkdtempSync(join(tmpdir(), "robot-plain-"))))
+    expect((await t.w((x) => x.get(flow.id))).newWorktree).toBe(false)
+  })
 })
+
+const gitRepo = () => {
+  const dir = mkdtempSync(join(tmpdir(), "robot-worktree-"))
+  const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" })
+  git("-c", "init.defaultBranch=main", "init", "--quiet")
+  git("config", "user.email", "test@robot.local")
+  git("config", "user.name", "ROBot test")
+  writeFileSync(join(dir, "notes.md"), "first\n")
+  git("add", "notes.md")
+  git("commit", "--quiet", "-m", "first")
+  return dir
+}
