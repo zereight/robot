@@ -6,6 +6,7 @@ pub mod licenses;
 pub mod methods;
 pub mod protocol;
 pub mod secrets;
+mod vault;
 
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;

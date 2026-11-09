@@ -1,7 +1,32 @@
 [
   {
+    "name": "aead",
+    "version": "0.5.2",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
     "name": "bitflags",
     "version": "2.13.2",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "cfg-if",
+    "version": "1.0.5",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "chacha20",
+    "version": "0.9.1",
+    "license": "Apache-2.0 OR MIT"
+  },
+  {
+    "name": "chacha20poly1305",
+    "version": "0.10.1",
+    "license": "Apache-2.0 OR MIT"
+  },
+  {
+    "name": "cipher",
+    "version": "0.4.4",
     "license": "MIT OR Apache-2.0"
   },
   {
@@ -12,6 +37,41 @@
   {
     "name": "core-foundation-sys",
     "version": "0.8.7",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "cpufeatures",
+    "version": "0.2.17",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "crypto-common",
+    "version": "0.1.7",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "fs2",
+    "version": "0.4.3",
+    "license": "MIT/Apache-2.0"
+  },
+  {
+    "name": "generic-array",
+    "version": "0.14.7",
+    "license": "MIT"
+  },
+  {
+    "name": "getrandom",
+    "version": "0.2.17",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "getrandom",
+    "version": "0.3.4",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "inout",
+    "version": "0.1.4",
     "license": "MIT OR Apache-2.0"
   },
   {
@@ -30,6 +90,16 @@
     "license": "Unlicense OR MIT"
   },
   {
+    "name": "opaque-debug",
+    "version": "0.3.1",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "poly1305",
+    "version": "0.8.0",
+    "license": "Apache-2.0 OR MIT"
+  },
+  {
     "name": "proc-macro2",
     "version": "1.0.107",
     "license": "MIT OR Apache-2.0"
@@ -37,6 +107,16 @@
   {
     "name": "quote",
     "version": "1.0.47",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "r-efi",
+    "version": "5.3.0",
+    "license": "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
+  },
+  {
+    "name": "rand_core",
+    "version": "0.6.4",
     "license": "MIT OR Apache-2.0"
   },
   {
@@ -70,14 +150,69 @@
     "license": "MIT OR Apache-2.0"
   },
   {
+    "name": "subtle",
+    "version": "2.6.1",
+    "license": "BSD-3-Clause"
+  },
+  {
     "name": "syn",
     "version": "3.0.9",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "typenum",
+    "version": "1.20.1",
     "license": "MIT OR Apache-2.0"
   },
   {
     "name": "unicode-ident",
     "version": "1.0.27",
     "license": "(MIT OR Apache-2.0) AND Unicode-3.0"
+  },
+  {
+    "name": "universal-hash",
+    "version": "0.5.1",
+    "license": "MIT OR Apache-2.0"
+  },
+  {
+    "name": "version_check",
+    "version": "0.9.5",
+    "license": "MIT/Apache-2.0"
+  },
+  {
+    "name": "wasi",
+    "version": "0.11.1+wasi-snapshot-preview1",
+    "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+  },
+  {
+    "name": "wasip2",
+    "version": "1.0.4+wasi-0.2.12",
+    "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+  },
+  {
+    "name": "winapi",
+    "version": "0.3.9",
+    "license": "MIT/Apache-2.0"
+  },
+  {
+    "name": "winapi-i686-pc-windows-gnu",
+    "version": "0.4.0",
+    "license": "MIT/Apache-2.0"
+  },
+  {
+    "name": "winapi-x86_64-pc-windows-gnu",
+    "version": "0.4.0",
+    "license": "MIT/Apache-2.0"
+  },
+  {
+    "name": "wit-bindgen",
+    "version": "0.57.1",
+    "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+  },
+  {
+    "name": "zeroize",
+    "version": "1.9.1",
+    "license": "Apache-2.0 OR MIT"
   },
   {
     "name": "zmij",
