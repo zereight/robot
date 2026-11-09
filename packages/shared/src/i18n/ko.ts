@@ -438,6 +438,8 @@ export const ko: Record<MessageKey, string> = {
   "error.worktree_not_git": "이 폴더는 Git 리포지토리 안에 있지 않아요.",
   "error.worktree_failed": "새 워크트리를 만들지 못했어요: {detail}",
   "error.worktree_unavailable": "새 워크트리를 쓸 수 없어요.",
+  "error.worktree_not_found": "이 실행에는 새 워크트리가 없어요.",
+  "error.worktree_removed": "이 실행의 워크트리를 이미 제거했어요.",
 
   "devices.name": "이 기기 이름",
   "devices.name.hint": "연결된 기기에 이 이름이 보여요. 비워 두면 컴퓨터 이름을 써요.",

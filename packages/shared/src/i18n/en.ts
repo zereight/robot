@@ -440,6 +440,8 @@ export const en = {
   "error.worktree_not_git": "The folder is not in a Git repository.",
   "error.worktree_failed": "Could not make a new worktree: {detail}",
   "error.worktree_unavailable": "The new worktree is not available.",
+  "error.worktree_not_found": "This run has no new worktree.",
+  "error.worktree_removed": "The worktree of this run is removed.",
 
   "devices.name": "Name of this device",
   "devices.name.hint":
